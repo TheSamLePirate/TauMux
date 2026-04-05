@@ -5,6 +5,8 @@ export default {
     name: "HyperTerm Canvas",
     identifier: "dev.hyperterm.canvas",
     version: "0.0.1",
+    description:
+      "A hybrid terminal emulator with floating canvas overlays for images, charts, and interactive widgets.",
   },
   build: {
     bun: {
@@ -31,12 +33,15 @@ export default {
         "vendor/fonts/nerd-bold.ttf",
     },
     mac: {
+      icons: "icon.iconset",
       bundleCEF: false,
     },
     linux: {
+      icon: "assets/images/icon.png",
       bundleCEF: false,
     },
     win: {
+      icon: "assets/images/icon.ico",
       bundleCEF: false,
     },
   },
