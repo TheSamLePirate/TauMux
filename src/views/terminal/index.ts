@@ -1,11 +1,37 @@
 import { Electroview } from "electrobun/view";
-import type { HyperTermRPC } from "../../shared/types";
+import type { HyperTermRPC, NativeContextMenuRequest } from "../../shared/types";
 import { SurfaceManager } from "./surface-manager";
 import { CommandPalette } from "./command-palette";
+import { createIcon } from "./icons";
+import { showPromptDialog } from "./prompt-dialog";
 
 // Declared before rpc so handlers can reference it; assigned after rpc is created.
 // eslint-disable-next-line prefer-const
 let surfaceManager: SurfaceManager;
+
+const sidebarEl = document.getElementById("sidebar")!;
+const terminalContainerEl = document.getElementById("terminal-container")!;
+const titlebarEl = document.getElementById("titlebar")!;
+const sidebarToggleBtn = document.getElementById(
+  "sidebar-toggle-btn",
+) as HTMLButtonElement | null;
+const commandPaletteBtn = document.getElementById(
+  "command-palette-btn",
+) as HTMLButtonElement | null;
+const newWorkspaceBtn = document.getElementById(
+  "new-workspace-btn",
+) as HTMLButtonElement | null;
+const splitRightBtn = document.getElementById(
+  "split-right-btn",
+) as HTMLButtonElement | null;
+const splitDownBtn = document.getElementById(
+  "split-down-btn",
+) as HTMLButtonElement | null;
+const titlebarBadgeLabelEl = document.getElementById("titlebar-badge-text");
+const workspaceCountLabelEl = document.getElementById(
+  "toolbar-workspace-count-label",
+);
+const paneCountLabelEl = document.getElementById("toolbar-pane-count-label");
 
 const rpc = Electroview.defineRPC<HyperTermRPC>({
   handlers: {
@@ -55,8 +81,8 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
 });
 
 surfaceManager = new SurfaceManager(
-  document.getElementById("terminal-container")!,
-  document.getElementById("sidebar")!,
+  terminalContainerEl,
+  sidebarEl,
   (surfaceId, data) => rpc.send("writeStdin", { surfaceId, data }),
   (surfaceId, cols, rows) => rpc.send("resize", { surfaceId, cols, rows }),
   (surfaceId, event) => rpc.send("panelEvent", { ...event, surfaceId }),
@@ -66,13 +92,29 @@ new Electroview({ rpc });
 
 let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
+function mountTitlebarIcons() {
+  const buttons: Array<[HTMLButtonElement | null, Parameters<typeof createIcon>[0]]> = [
+    [sidebarToggleBtn, "sidebar"],
+    [commandPaletteBtn, "command"],
+    [newWorkspaceBtn, "plus"],
+    [splitRightBtn, "splitHorizontal"],
+    [splitDownBtn, "splitVertical"],
+  ];
+
+  for (const [button, iconName] of buttons) {
+    if (!button) continue;
+    button.replaceChildren(createIcon(iconName));
+  }
+}
+
 function handleResize() {
   if (resizeTimer) clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => surfaceManager.resizeAll(), 200);
 }
 
 const resizeObserver = new ResizeObserver(handleResize);
-resizeObserver.observe(document.getElementById("terminal-container")!);
+resizeObserver.observe(terminalContainerEl);
+mountTitlebarIcons();
 
 setTimeout(() => {
   rpc.send("resize", { surfaceId: "__init__", cols: 80, rows: 24 });
@@ -121,7 +163,7 @@ palette.setCommands([
     label: "Toggle Sidebar",
     description: "Show or hide workspace navigation and activity.",
     shortcut: "\u2318B",
-    action: () => surfaceManager.toggleSidebar(),
+    action: () => toggleSidebar(),
   },
   {
     id: "focus-left",
@@ -188,16 +230,169 @@ palette.setCommands([
 ]);
 
 function syncSidebarState() {
-  const collapsed = document
-    .getElementById("sidebar")!
-    .classList.contains("collapsed");
-  document
-    .getElementById("terminal-container")!
-    .classList.toggle("sidebar-collapsed", collapsed);
+  const collapsed = sidebarEl.classList.contains("collapsed");
+  terminalContainerEl.classList.toggle("sidebar-collapsed", collapsed);
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  sidebarToggleBtn?.classList.toggle("active", !collapsed);
+}
+
+function syncToolbarState() {
+  const state = surfaceManager.getWorkspaceState();
+  const workspaces = state.workspaces;
+  const activeWorkspace =
+    workspaces.find((workspace) => workspace.id === state.activeWorkspaceId) ??
+    null;
+
+  if (titlebarBadgeLabelEl) {
+    titlebarBadgeLabelEl.textContent = activeWorkspace
+      ? `Workspace ${String(workspaces.indexOf(activeWorkspace) + 1).padStart(2, "0")}`
+      : "No Workspace";
+  }
+
+  if (workspaceCountLabelEl) {
+    workspaceCountLabelEl.textContent = `${workspaces.length} workspace${
+      workspaces.length === 1 ? "" : "s"
+    }`;
+  }
+
+  if (paneCountLabelEl) {
+    const paneCount = activeWorkspace?.surfaceIds.length ?? 0;
+    paneCountLabelEl.textContent = `${paneCount} pane${paneCount === 1 ? "" : "s"}`;
+  }
+}
+
+function toggleSidebar() {
+  surfaceManager.toggleSidebar();
+  syncSidebarState();
+  setTimeout(() => surfaceManager.resizeAll(), 200);
+}
+
+function openCommandPalette() {
+  palette.toggle();
+}
+
+function getEditableTarget():
+  | HTMLInputElement
+  | HTMLTextAreaElement
+  | HTMLElement
+  | null {
+  const activeElement = document.activeElement;
+  if (
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement
+  ) {
+    return activeElement;
+  }
+
+  if (activeElement instanceof HTMLElement && activeElement.isContentEditable) {
+    return activeElement;
+  }
+
+  return null;
+}
+
+function copySelection() {
+  const editableTarget = getEditableTarget();
+  if (editableTarget instanceof HTMLElement && editableTarget.isContentEditable) {
+    document.execCommand("copy");
+    return;
+  }
+
+  const term = surfaceManager.getActiveTerm();
+  if (!term) return;
+
+  const selection = term.getSelection();
+  if (!selection) return;
+
+  navigator.clipboard.writeText(selection);
+  term.clearSelection();
+}
+
+function insertTextAtCursor(
+  input: HTMLInputElement | HTMLTextAreaElement,
+  text: string,
+) {
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  input.setRangeText(text, start, end, "end");
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+async function pasteClipboard() {
+  const text = await navigator.clipboard.readText();
+  if (!text) return;
+
+  const editableTarget = getEditableTarget();
+  if (editableTarget instanceof HTMLInputElement) {
+    insertTextAtCursor(editableTarget, text);
+    return;
+  }
+
+  if (editableTarget instanceof HTMLTextAreaElement) {
+    insertTextAtCursor(editableTarget, text);
+    return;
+  }
+
+  if (editableTarget instanceof HTMLElement && editableTarget.isContentEditable) {
+    document.execCommand("insertText", false, text);
+    return;
+  }
+
+  const id = surfaceManager.getActiveSurfaceId();
+  if (id) {
+    rpc.send("writeStdin", { surfaceId: id, data: text });
+  }
+}
+
+function selectAll() {
+  const editableTarget = getEditableTarget();
+  if (editableTarget instanceof HTMLInputElement) {
+    editableTarget.select();
+    return;
+  }
+
+  if (editableTarget instanceof HTMLTextAreaElement) {
+    editableTarget.select();
+    return;
+  }
+
+  if (editableTarget instanceof HTMLElement && editableTarget.isContentEditable) {
+    document.execCommand("selectAll");
+    return;
+  }
+
+  surfaceManager.getActiveTerm()?.selectAll();
+}
+
+async function promptRenameWorkspace(workspaceId: string, name: string) {
+  const nextName = await showPromptDialog({
+    title: "Rename Workspace",
+    message: "Choose a clearer name for this workspace.",
+    initialValue: name,
+    placeholder: "Workspace name",
+    confirmLabel: "Rename",
+  });
+  if (nextName) {
+    surfaceManager.renameWorkspace(workspaceId, nextName);
+  }
+}
+
+async function promptRenameSurface(surfaceId: string, title: string) {
+  const nextName = await showPromptDialog({
+    title: "Rename Pane",
+    message: "Give this pane a short label that is easy to spot in the UI.",
+    initialValue: title,
+    placeholder: "Pane name",
+    confirmLabel: "Rename",
+  });
+  if (nextName) {
+    surfaceManager.renameSurface(surfaceId, nextName);
+  }
 }
 
 window.addEventListener("ht-sidebar-toggle", () => {
   syncSidebarState();
+  syncToolbarState();
   setTimeout(() => surfaceManager.resizeAll(), 200);
 });
 
@@ -208,10 +403,37 @@ window.addEventListener("ht-surface-focused", (e: Event) => {
   }
 });
 
+window.addEventListener("ht-open-context-menu", (e: Event) => {
+  const detail = (e as CustomEvent<NativeContextMenuRequest>).detail;
+  if (detail) {
+    rpc.send("showContextMenu", detail);
+  }
+});
+
+sidebarToggleBtn?.addEventListener("click", () => {
+  toggleSidebar();
+});
+
+commandPaletteBtn?.addEventListener("click", () => {
+  openCommandPalette();
+});
+
+newWorkspaceBtn?.addEventListener("click", () => {
+  rpc.send("createSurface", {});
+});
+
+splitRightBtn?.addEventListener("click", () => {
+  rpc.send("splitSurface", { direction: "horizontal" });
+});
+
+splitDownBtn?.addEventListener("click", () => {
+  rpc.send("splitSurface", { direction: "vertical" });
+});
+
 document.addEventListener("keydown", (e) => {
   if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "p") {
     e.preventDefault();
-    palette.toggle();
+    openCommandPalette();
     return;
   }
 
@@ -219,9 +441,7 @@ document.addEventListener("keydown", (e) => {
 
   if (e.metaKey && !e.shiftKey && e.key === "b") {
     e.preventDefault();
-    surfaceManager.toggleSidebar();
-    syncSidebarState();
-    setTimeout(() => surfaceManager.resizeAll(), 200);
+    toggleSidebar();
     return;
   }
 
@@ -297,30 +517,17 @@ document.addEventListener("keydown", (e) => {
   }
 
   if (e.metaKey && e.key === "c") {
-    const term = surfaceManager.getActiveTerm();
-    if (term) {
-      const selection = term.getSelection();
-      if (selection) {
-        navigator.clipboard.writeText(selection);
-        term.clearSelection();
-        e.preventDefault();
-      }
-    }
+    copySelection();
     return;
   }
 
   if (e.metaKey && e.key === "v") {
     e.preventDefault();
-    const id = surfaceManager.getActiveSurfaceId();
-    if (id) {
-      navigator.clipboard.readText().then((text) => {
-        if (text) rpc.send("writeStdin", { surfaceId: id, data: text });
-      });
-    }
+    void pasteClipboard();
   }
 });
 
-document.getElementById("titlebar")!.addEventListener("dblclick", () => {
+titlebarEl.addEventListener("dblclick", () => {
   rpc.send("toggleMaximize");
 });
 
@@ -369,17 +576,54 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
       if (id && name) surfaceManager.renameWorkspace(id, name);
       break;
     }
+    case "promptRenameWorkspace": {
+      const id = payload["workspaceId"] as string;
+      const name = (payload["name"] as string) || "Workspace";
+      if (id) {
+        void promptRenameWorkspace(id, name);
+      }
+      break;
+    }
+    case "promptRenameSurface": {
+      const id = payload["surfaceId"] as string;
+      const title = (payload["title"] as string) || surfaceManager.getSurfaceTitle(id) || id;
+      if (id) {
+        void promptRenameSurface(id, title);
+      }
+      break;
+    }
+    case "setWorkspaceColor": {
+      const id = payload["workspaceId"] as string;
+      const color = payload["color"] as string;
+      if (id && color) surfaceManager.setWorkspaceColor(id, color);
+      break;
+    }
     case "nextWorkspace":
       surfaceManager.nextWorkspace();
       break;
     case "prevWorkspace":
       surfaceManager.prevWorkspace();
       break;
+    case "toggleSidebar":
+      toggleSidebar();
+      break;
+    case "toggleCommandPalette":
+      openCommandPalette();
+      break;
     case "focusSurface": {
       const id = payload["surfaceId"] as string;
       if (id) surfaceManager.focusSurface(id);
       break;
     }
+    case "copySelection":
+      copySelection();
+      break;
+    case "pasteClipboard":
+      void pasteClipboard();
+      break;
+    case "selectAll":
+      selectAll();
+      break;
     case "setStatus":
       surfaceManager.setStatus(
         payload["workspaceId"] as string | undefined,
@@ -445,6 +689,7 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
     }
   }
   syncWorkspaceState();
+  syncToolbarState();
 }
 
 function syncWorkspaceState() {
@@ -459,3 +704,7 @@ function scheduleSyncWorkspaceState() {
 }
 
 window.addEventListener("ht-workspace-changed", scheduleSyncWorkspaceState);
+window.addEventListener("ht-workspace-changed", syncToolbarState);
+
+syncSidebarState();
+syncToolbarState();

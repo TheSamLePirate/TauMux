@@ -4,44 +4,38 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { PanelManager } from "./panel-manager";
 import { PaneLayout } from "./pane-layout";
 import { Sidebar } from "./sidebar";
-import { showContextMenu, promptInput } from "./context-menu";
-import type { SidebandMetaMessage, PanelEvent } from "../../shared/types";
+import { createIcon } from "./icons";
+import type {
+  PanelEvent,
+  SidebandMetaMessage,
+  SurfaceContextMenuRequest,
+} from "../../shared/types";
+import { WORKSPACE_COLORS } from "../../shared/workspace-colors";
 
-const catppuccinMocha = {
-  background: "#1e1e2e",
-  foreground: "#cdd6f4",
-  cursor: "#f5e0dc",
-  cursorAccent: "#1e1e2e",
-  selectionBackground: "#585b70",
-  selectionForeground: "#cdd6f4",
-  black: "#45475a",
-  red: "#f38ba8",
-  green: "#a6e3a1",
-  yellow: "#f9e2af",
-  blue: "#89b4fa",
-  magenta: "#f5c2e7",
-  cyan: "#94e2d5",
-  white: "#bac2de",
-  brightBlack: "#585b70",
-  brightRed: "#f38ba8",
-  brightGreen: "#a6e3a1",
-  brightYellow: "#f9e2af",
-  brightBlue: "#89b4fa",
-  brightMagenta: "#f5c2e7",
-  brightCyan: "#94e2d5",
-  brightWhite: "#a6adc8",
+const macTerminalDark = {
+  background: "#111318",
+  foreground: "#f5f7fb",
+  cursor: "#dfe6f3",
+  cursorAccent: "#111318",
+  selectionBackground: "rgba(110, 120, 140, 0.32)",
+  selectionForeground: "#f5f7fb",
+  black: "#2b2f37",
+  red: "#ff6b6b",
+  green: "#52d273",
+  yellow: "#ffd45c",
+  blue: "#67a4ff",
+  magenta: "#d38cff",
+  cyan: "#58d0da",
+  white: "#d9dfeb",
+  brightBlack: "#626b7b",
+  brightRed: "#ff8c82",
+  brightGreen: "#7ce38f",
+  brightYellow: "#ffe784",
+  brightBlue: "#90bbff",
+  brightMagenta: "#e2abff",
+  brightCyan: "#85e3ea",
+  brightWhite: "#f5f7fb",
 };
-
-const WORKSPACE_COLORS = [
-  "#89b4fa",
-  "#a6e3a1",
-  "#f9e2af",
-  "#f38ba8",
-  "#f5c2e7",
-  "#94e2d5",
-  "#fab387",
-  "#cba6f7",
-];
 
 interface SurfaceView {
   id: string;
@@ -50,6 +44,7 @@ interface SurfaceView {
   panelManager: PanelManager;
   container: HTMLDivElement;
   panelsEl: HTMLDivElement;
+  titleEl: HTMLSpanElement;
   title: string;
 }
 
@@ -98,29 +93,6 @@ export class SurfaceManager {
               }),
             );
           }
-        }
-      },
-      onRenameWorkspace: (id, name) => {
-        const ws = this.workspaces.find((w) => w.id === id);
-        if (ws) {
-          ws.name = name;
-          if (this.activeWorkspace()?.id === id) {
-            this.updateTitlebar(ws, ws.layout.getAllSurfaceIds().length);
-          }
-          this.updateSidebar();
-        }
-      },
-      onColorWorkspace: (id, color) => {
-        const ws = this.workspaces.find((w) => w.id === id);
-        if (ws) {
-          ws.color = color;
-          if (this.activeWorkspace()?.id === id) {
-            document.documentElement.style.setProperty(
-              "--workspace-accent",
-              color,
-            );
-          }
-          this.updateSidebar();
         }
       },
     });
@@ -218,6 +190,11 @@ export class SurfaceManager {
       v.container.classList.toggle("focused", v.id === surfaceId);
     }
     this.surfaces.get(surfaceId)?.term.focus();
+    const activeWorkspace = this.activeWorkspace();
+    if (activeWorkspace?.surfaceIds.has(surfaceId)) {
+      this.updateTitlebar(activeWorkspace);
+      this.updateSidebar();
+    }
     window.dispatchEvent(
       new CustomEvent("ht-surface-focused", { detail: { surfaceId } }),
     );
@@ -280,6 +257,10 @@ export class SurfaceManager {
   getActiveTerm(): Terminal | null {
     if (!this.focusedSurfaceId) return null;
     return this.surfaces.get(this.focusedSurfaceId)?.term ?? null;
+  }
+
+  getSurfaceTitle(surfaceId: string): string | null {
+    return this.surfaces.get(surfaceId)?.title ?? null;
   }
 
   readScreen(surfaceId: string, lines?: number, scrollback?: boolean): string {
@@ -355,11 +336,38 @@ export class SurfaceManager {
     if (ws) {
       ws.name = name;
       if (this.activeWorkspace()?.id === id) {
-        this.updateTitlebar(ws, ws.layout.getAllSurfaceIds().length);
+        this.updateTitlebar(ws);
       }
       this.updateSidebar();
       this.notifyWorkspaceChanged();
     }
+  }
+
+  renameSurface(surfaceId: string, title: string): void {
+    const view = this.surfaces.get(surfaceId);
+    if (!view) return;
+
+    view.title = title;
+    view.titleEl.textContent = title;
+
+    const workspace = this.findWorkspaceBySurfaceId(surfaceId);
+    if (workspace && this.activeWorkspace()?.id === workspace.id) {
+      this.updateTitlebar(workspace);
+    }
+    this.updateSidebar();
+    this.notifyWorkspaceChanged();
+  }
+
+  setWorkspaceColor(id: string, color: string): void {
+    const ws = this.workspaces.find((w) => w.id === id);
+    if (!ws) return;
+
+    ws.color = color;
+    if (this.activeWorkspace()?.id === id) {
+      document.documentElement.style.setProperty("--workspace-accent", color);
+    }
+    this.updateSidebar();
+    this.notifyWorkspaceChanged();
   }
 
   getWorkspaceState(): {
@@ -449,6 +457,10 @@ export class SurfaceManager {
     return this.workspaces[this.activeWorkspaceIndex] ?? null;
   }
 
+  private findWorkspaceBySurfaceId(surfaceId: string): Workspace | null {
+    return this.workspaces.find((workspace) => workspace.surfaceIds.has(surfaceId)) ?? null;
+  }
+
   private switchToWorkspace(index: number): void {
     this.activeWorkspaceIndex = index;
     const activeWs = this.workspaces[index];
@@ -473,9 +485,9 @@ export class SurfaceManager {
       } else if (ids.length > 0) {
         this.focusSurface(ids[0]);
       }
-      this.updateTitlebar(activeWs, ids.length);
+      this.updateTitlebar(activeWs);
     } else {
-      this.updateTitlebar(null, 0);
+      this.updateTitlebar(null);
     }
 
     this.updateSidebar();
@@ -518,6 +530,7 @@ export class SurfaceManager {
             key,
             value: s.value,
             color: s.color,
+            icon: s.icon,
           })),
           progress: ws.progress,
         };
@@ -526,18 +539,18 @@ export class SurfaceManager {
     this.notifyWorkspaceChanged();
   }
 
-  private updateTitlebar(workspace: Workspace | null, paneCount: number): void {
+  private updateTitlebar(workspace: Workspace | null): void {
     const titleEl = document.getElementById("titlebar-text");
-    const metaEl = document.getElementById("titlebar-meta");
 
     if (titleEl) {
       titleEl.textContent = workspace?.name ?? "HyperTerm Canvas";
     }
 
-    if (metaEl) {
-      metaEl.textContent = workspace
-        ? `${paneCount} pane${paneCount === 1 ? "" : "s"} active`
-        : "Waiting for terminal";
+    const badgeEl = document.getElementById("titlebar-badge-text");
+    if (badgeEl) {
+      badgeEl.textContent = workspace
+        ? `Workspace ${String(this.activeWorkspaceIndex + 1).padStart(2, "0")}`
+        : "No Workspace";
     }
   }
 
@@ -551,10 +564,17 @@ export class SurfaceManager {
     const bar = document.createElement("div");
     bar.className = "surface-bar";
 
+    const barTitleWrap = document.createElement("div");
+    barTitleWrap.className = "surface-bar-title-wrap";
+
+    const barIcon = createIcon("terminal", "surface-bar-icon", 12);
+    barTitleWrap.appendChild(barIcon);
+
     const barTitle = document.createElement("span");
     barTitle.className = "surface-bar-title";
     barTitle.textContent = title;
-    bar.appendChild(barTitle);
+    barTitleWrap.appendChild(barTitle);
+    bar.appendChild(barTitleWrap);
 
     const barActions = document.createElement("div");
     barActions.className = "surface-bar-actions";
@@ -562,7 +582,8 @@ export class SurfaceManager {
     const splitRightBtn = document.createElement("button");
     splitRightBtn.className = "surface-bar-btn";
     splitRightBtn.title = "Split Right (Cmd+D)";
-    splitRightBtn.textContent = "\u2502"; // │
+    splitRightBtn.setAttribute("aria-label", "Split right");
+    splitRightBtn.append(createIcon("splitHorizontal"));
     splitRightBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       window.dispatchEvent(
@@ -576,7 +597,8 @@ export class SurfaceManager {
     const splitDownBtn = document.createElement("button");
     splitDownBtn.className = "surface-bar-btn";
     splitDownBtn.title = "Split Down (Cmd+Shift+D)";
-    splitDownBtn.textContent = "\u2500"; // ─
+    splitDownBtn.setAttribute("aria-label", "Split down");
+    splitDownBtn.append(createIcon("splitVertical"));
     splitDownBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       window.dispatchEvent(
@@ -590,7 +612,8 @@ export class SurfaceManager {
     const closeBtn = document.createElement("button");
     closeBtn.className = "surface-bar-btn surface-bar-close";
     closeBtn.title = "Close (Cmd+W)";
-    closeBtn.textContent = "\u00d7"; // ×
+    closeBtn.setAttribute("aria-label", "Close pane");
+    closeBtn.append(createIcon("close"));
     closeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       window.dispatchEvent(
@@ -601,59 +624,18 @@ export class SurfaceManager {
 
     bar.appendChild(barActions);
 
-    // Right-click context menu on surface bar
     bar.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      showContextMenu(e.clientX, e.clientY, [
-        {
-          label: "Rename",
-          action: () => {
-            promptInput(
-              e.clientX,
-              e.clientY,
-              barTitle.textContent || "",
-              (newName) => {
-                barTitle.textContent = newName;
-                const view = this.surfaces.get(surfaceId);
-                if (view) {
-                  view.title = newName;
-                  this.updateSidebar();
-                }
-              },
-            );
-          },
-        },
-        { label: "", separator: true },
-        {
-          label: "Split Right",
-          action: () => {
-            window.dispatchEvent(
-              new CustomEvent("ht-split", {
-                detail: { surfaceId, direction: "horizontal" },
-              }),
-            );
-          },
-        },
-        {
-          label: "Split Down",
-          action: () => {
-            window.dispatchEvent(
-              new CustomEvent("ht-split", {
-                detail: { surfaceId, direction: "vertical" },
-              }),
-            );
-          },
-        },
-        { label: "", separator: true },
-        {
-          label: "Close Pane",
-          action: () => {
-            window.dispatchEvent(
-              new CustomEvent("ht-close-surface", { detail: { surfaceId } }),
-            );
-          },
-        },
-      ]);
+      const detail: SurfaceContextMenuRequest = {
+        kind: "surface",
+        surfaceId,
+        title: this.surfaces.get(surfaceId)?.title ?? barTitle.textContent ?? surfaceId,
+      };
+      window.dispatchEvent(
+        new CustomEvent("ht-open-context-menu", {
+          detail,
+        }),
+      );
     });
 
     container.appendChild(bar);
@@ -669,11 +651,11 @@ export class SurfaceManager {
     this.terminalContainer.appendChild(container);
 
     const term = new Terminal({
-      theme: catppuccinMocha,
+      theme: macTerminalDark,
       fontFamily:
-        "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Fira Code', monospace",
+        "'SF Mono', 'JetBrainsMono Nerd Font Mono', 'Menlo', monospace",
       fontSize: 14,
-      lineHeight: 1.2,
+      lineHeight: 1.24,
       cursorBlink: true,
       cursorStyle: "bar",
       allowProposedApi: true,
@@ -707,6 +689,7 @@ export class SurfaceManager {
       panelManager,
       container,
       panelsEl,
+      titleEl: barTitle,
       title,
     };
   }

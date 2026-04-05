@@ -49,6 +49,24 @@ export interface PanelEvent {
   pxHeight?: number;
 }
 
+export interface WorkspaceContextMenuRequest {
+  kind: "workspace";
+  workspaceId: string;
+  name: string;
+  color?: string;
+}
+
+export interface SurfaceContextMenuRequest {
+  kind: "surface";
+  surfaceId: string;
+  title: string;
+  workspaceId?: string;
+}
+
+export type NativeContextMenuRequest =
+  | WorkspaceContextMenuRequest
+  | SurfaceContextMenuRequest;
+
 // === RPC Schema ===
 // bun.messages = what bun RECEIVES from webview
 // webview.messages = what webview RECEIVES from bun
@@ -87,6 +105,9 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
 
       // Notifications
       clearNotifications: void;
+
+      // Native menus
+      showContextMenu: NativeContextMenuRequest;
 
       // Web mirror
       toggleWebServer: void;

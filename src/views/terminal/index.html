@@ -9,9 +9,63 @@
   </head>
   <body>
     <div id="titlebar" class="electrobun-webkit-app-region-drag">
-      <div id="titlebar-copy">
-        <div id="titlebar-text">HyperTerm Canvas</div>
-        <div id="titlebar-meta">Waiting for terminal</div>
+      <div id="titlebar-leading" class="titlebar-section">
+        <button
+          id="sidebar-toggle-btn"
+          class="toolbar-icon-btn electrobun-webkit-app-region-no-drag"
+          type="button"
+          aria-label="Toggle sidebar"
+          title="Toggle Sidebar"
+        ></button>
+        <div id="titlebar-copy">
+          <div id="titlebar-text">HyperTerm Canvas</div>
+        </div>
+      </div>
+      <div id="titlebar-center" class="titlebar-section">
+        <div id="titlebar-badge" class="titlebar-info titlebar-info-primary">
+          <span class="icon-slot" data-icon="workspace"></span>
+          <span id="titlebar-badge-text">No Workspace</span>
+        </div>
+        <div id="toolbar-workspace-count" class="titlebar-info">
+          <span class="icon-slot" data-icon="folder"></span>
+          <span id="toolbar-workspace-count-label">0 workspaces</span>
+        </div>
+        <div id="toolbar-pane-count" class="titlebar-info">
+          <span class="icon-slot" data-icon="pane"></span>
+          <span id="toolbar-pane-count-label">0 panes</span>
+        </div>
+      </div>
+      <div id="titlebar-actions" class="titlebar-section electrobun-webkit-app-region-no-drag">
+        <div class="toolbar-icon-strip electrobun-webkit-app-region-no-drag">
+          <button
+            id="command-palette-btn"
+            class="toolbar-icon-btn electrobun-webkit-app-region-no-drag"
+            type="button"
+            aria-label="Open command palette"
+            title="Command Palette"
+          ></button>
+          <button
+            id="new-workspace-btn"
+            class="toolbar-icon-btn electrobun-webkit-app-region-no-drag"
+            type="button"
+            aria-label="New workspace"
+            title="New Workspace"
+          ></button>
+          <button
+            id="split-right-btn"
+            class="toolbar-icon-btn electrobun-webkit-app-region-no-drag"
+            type="button"
+            aria-label="Split right"
+            title="Split Right"
+          ></button>
+          <button
+            id="split-down-btn"
+            class="toolbar-icon-btn electrobun-webkit-app-region-no-drag"
+            type="button"
+            aria-label="Split down"
+            title="Split Down"
+          ></button>
+        </div>
       </div>
     </div>
     <div id="sidebar"></div>

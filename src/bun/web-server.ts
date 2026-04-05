@@ -130,189 +130,197 @@ export class WebServer {
     // Clear cached page so restarts pick up code changes
     cachedPage = null;
 
-    this.server = Bun.serve({
-      port: this.port,
-      hostname: "0.0.0.0",
+    try {
+      this.server = Bun.serve({
+        port: this.port,
+        hostname: "0.0.0.0",
 
-      fetch: (req, server) => {
-        const url = new URL(req.url);
+        fetch: (req, server) => {
+          const url = new URL(req.url);
 
-        // WebSocket upgrade
-        if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-          const data: ClientData = {
-            clientId: `web:${++this.clientCounter}`,
-            subscribedSurfaceId: this.getFocusedSurfaceId(),
-          };
-          const ok = server.upgrade(req, { data });
-          if (ok) return undefined;
-          return new Response("WebSocket upgrade failed", { status: 400 });
-        }
-
-        // Main page (all assets inlined)
-        if (url.pathname === "/" || url.pathname === "/index.html") {
-          return new Response(buildHtmlPage(), {
-            headers: {
-              "content-type": "text/html; charset=utf-8",
-              "cache-control": "no-store",
-            },
-          });
-        }
-
-        // Serve Nerd Font files
-        if (url.pathname === "/fonts/nerd-regular.ttf" && NERD_FONT_REGULAR) {
-          return new Response(NERD_FONT_REGULAR.buffer as ArrayBuffer, {
-            headers: {
-              "content-type": "font/ttf",
-              "cache-control": "public, max-age=31536000",
-            },
-          });
-        }
-        if (url.pathname === "/fonts/nerd-bold.ttf" && NERD_FONT_BOLD) {
-          return new Response(NERD_FONT_BOLD.buffer as ArrayBuffer, {
-            headers: {
-              "content-type": "font/ttf",
-              "cache-control": "public, max-age=31536000",
-            },
-          });
-        }
-
-        // Return valid empty source maps to suppress browser warnings
-        if (url.pathname.endsWith(".map")) {
-          return new Response('{"version":3,"sources":[],"mappings":""}', {
-            headers: { "content-type": "application/json" },
-          });
-        }
-
-        return new Response("Not found", { status: 404 });
-      },
-
-      websocket: {
-        open: (ws: WS) => {
-          this.clients.add(ws);
-
-          // Send welcome
-          const state = this.getAppState();
-          const surfaces = this.sessions.getAllSurfaces().map((s) => ({
-            id: s.id,
-            title: s.title,
-            cols: s.pty.cols,
-            rows: s.pty.rows,
-          }));
-          const focusedSurfaceId = this.getFocusedSurfaceId();
-
-          ws.send(
-            JSON.stringify({
-              type: "welcome",
-              surfaces,
-              focusedSurfaceId,
-              activeWorkspaceId: state.activeWorkspaceId,
-            }),
-          );
-
-          // Send output history for the subscribed surface
-          if (ws.data.subscribedSurfaceId) {
-            const history = this.sessions.getOutputHistory(
-              ws.data.subscribedSurfaceId,
-            );
-            if (history) {
-              ws.send(
-                JSON.stringify({
-                  type: "history",
-                  surfaceId: ws.data.subscribedSurfaceId,
-                  data: history,
-                }),
-              );
-            }
+          // WebSocket upgrade
+          if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+            const data: ClientData = {
+              clientId: `web:${++this.clientCounter}`,
+              subscribedSurfaceId: this.getFocusedSurfaceId(),
+            };
+            const ok = server.upgrade(req, { data });
+            if (ok) return undefined;
+            return new Response("WebSocket upgrade failed", { status: 400 });
           }
+
+          // Main page (all assets inlined)
+          if (url.pathname === "/" || url.pathname === "/index.html") {
+            return new Response(buildHtmlPage(), {
+              headers: {
+                "content-type": "text/html; charset=utf-8",
+                "cache-control": "no-store",
+              },
+            });
+          }
+
+          // Serve Nerd Font files
+          if (url.pathname === "/fonts/nerd-regular.ttf" && NERD_FONT_REGULAR) {
+            return new Response(NERD_FONT_REGULAR.buffer as ArrayBuffer, {
+              headers: {
+                "content-type": "font/ttf",
+                "cache-control": "public, max-age=31536000",
+              },
+            });
+          }
+          if (url.pathname === "/fonts/nerd-bold.ttf" && NERD_FONT_BOLD) {
+            return new Response(NERD_FONT_BOLD.buffer as ArrayBuffer, {
+              headers: {
+                "content-type": "font/ttf",
+                "cache-control": "public, max-age=31536000",
+              },
+            });
+          }
+
+          // Return valid empty source maps to suppress browser warnings
+          if (url.pathname.endsWith(".map")) {
+            return new Response('{"version":3,"sources":[],"mappings":""}', {
+              headers: { "content-type": "application/json" },
+            });
+          }
+
+          return new Response("Not found", { status: 404 });
         },
 
-        message: (ws: WS, raw: string | Buffer) => {
-          const text = typeof raw === "string" ? raw : raw.toString();
-          let msg: Record<string, unknown>;
-          try {
-            msg = JSON.parse(text);
-          } catch {
-            return;
-          }
+        websocket: {
+          open: (ws: WS) => {
+            this.clients.add(ws);
 
-          switch (msg["type"]) {
-            case "stdin": {
-              const surfaceId = msg["surfaceId"] as string;
-              const data = msg["data"] as string;
-              if (surfaceId && data) {
-                this.sessions.writeStdin(surfaceId, data);
-              }
-              break;
-            }
-            case "subscribeSurface": {
-              const surfaceId = msg["surfaceId"] as string;
-              if (!surfaceId) break;
-              ws.data.subscribedSurfaceId = surfaceId;
-              // Send history for the new surface
-              const history = this.sessions.getOutputHistory(surfaceId);
+            // Send welcome
+            const state = this.getAppState();
+            const surfaces = this.sessions.getAllSurfaces().map((s) => ({
+              id: s.id,
+              title: s.title,
+              cols: s.pty.cols,
+              rows: s.pty.rows,
+            }));
+            const focusedSurfaceId = this.getFocusedSurfaceId();
+
+            ws.send(
+              JSON.stringify({
+                type: "welcome",
+                surfaces,
+                focusedSurfaceId,
+                activeWorkspaceId: state.activeWorkspaceId,
+              }),
+            );
+
+            // Send output history for the subscribed surface
+            if (ws.data.subscribedSurfaceId) {
+              const history = this.sessions.getOutputHistory(
+                ws.data.subscribedSurfaceId,
+              );
               if (history) {
                 ws.send(
-                  JSON.stringify({ type: "history", surfaceId, data: history }),
+                  JSON.stringify({
+                    type: "history",
+                    surfaceId: ws.data.subscribedSurfaceId,
+                    data: history,
+                  }),
                 );
               }
-              break;
             }
-            case "panelMouseEvent": {
-              const surfaceId = msg["surfaceId"] as string;
-              if (surfaceId) {
-                const panelEvt = {
-                  id: msg["id"] as string,
-                  event: msg["event"] as string,
-                  x: msg["x"] as number | undefined,
-                  y: msg["y"] as number | undefined,
-                  width: msg["width"] as number | undefined,
-                  height: msg["height"] as number | undefined,
-                  button: msg["button"] as number | undefined,
-                  buttons: msg["buttons"] as number | undefined,
-                  deltaX: msg["deltaX"] as number | undefined,
-                  deltaY: msg["deltaY"] as number | undefined,
-                };
-                // Send to script via fd5
-                this.sessions.sendEvent(surfaceId, panelEvt);
-                // Broadcast drag/resize/close to all web clients + host
-                const evt = panelEvt.event;
-                if (evt === "dragend" || evt === "resize" || evt === "close") {
-                  this.broadcast({
-                    type: "panelEvent",
-                    surfaceId,
-                    id: panelEvt.id,
-                    event: evt,
-                    x: panelEvt.x,
-                    y: panelEvt.y,
-                    width: panelEvt.width,
-                    height: panelEvt.height,
-                  });
-                  // Notify host webview to update panel position/size
-                  const fields: Record<string, unknown> = {};
-                  if (panelEvt.x !== undefined) fields["x"] = panelEvt.x;
-                  if (panelEvt.y !== undefined) fields["y"] = panelEvt.y;
-                  if (panelEvt.width !== undefined)
-                    fields["width"] = panelEvt.width;
-                  if (panelEvt.height !== undefined)
-                    fields["height"] = panelEvt.height;
-                  this.onPanelUpdate?.(surfaceId, panelEvt.id!, fields);
+          },
+
+          message: (ws: WS, raw: string | Buffer) => {
+            const text = typeof raw === "string" ? raw : raw.toString();
+            let msg: Record<string, unknown>;
+            try {
+              msg = JSON.parse(text);
+            } catch {
+              return;
+            }
+
+            switch (msg["type"]) {
+              case "stdin": {
+                const surfaceId = msg["surfaceId"] as string;
+                const data = msg["data"] as string;
+                if (surfaceId && data) {
+                  this.sessions.writeStdin(surfaceId, data);
                 }
+                break;
               }
-              break;
+              case "subscribeSurface": {
+                const surfaceId = msg["surfaceId"] as string;
+                if (!surfaceId) break;
+                ws.data.subscribedSurfaceId = surfaceId;
+                // Send history for the new surface
+                const history = this.sessions.getOutputHistory(surfaceId);
+                if (history) {
+                  ws.send(
+                    JSON.stringify({ type: "history", surfaceId, data: history }),
+                  );
+                }
+                break;
+              }
+              case "panelMouseEvent": {
+                const surfaceId = msg["surfaceId"] as string;
+                if (surfaceId) {
+                  const panelEvt = {
+                    id: msg["id"] as string,
+                    event: msg["event"] as string,
+                    x: msg["x"] as number | undefined,
+                    y: msg["y"] as number | undefined,
+                    width: msg["width"] as number | undefined,
+                    height: msg["height"] as number | undefined,
+                    button: msg["button"] as number | undefined,
+                    buttons: msg["buttons"] as number | undefined,
+                    deltaX: msg["deltaX"] as number | undefined,
+                    deltaY: msg["deltaY"] as number | undefined,
+                  };
+                  // Send to script via fd5
+                  this.sessions.sendEvent(surfaceId, panelEvt);
+                  // Broadcast drag/resize/close to all web clients + host
+                  const evt = panelEvt.event;
+                  if (evt === "dragend" || evt === "resize" || evt === "close") {
+                    this.broadcast({
+                      type: "panelEvent",
+                      surfaceId,
+                      id: panelEvt.id,
+                      event: evt,
+                      x: panelEvt.x,
+                      y: panelEvt.y,
+                      width: panelEvt.width,
+                      height: panelEvt.height,
+                    });
+                    // Notify host webview to update panel position/size
+                    const fields: Record<string, unknown> = {};
+                    if (panelEvt.x !== undefined) fields["x"] = panelEvt.x;
+                    if (panelEvt.y !== undefined) fields["y"] = panelEvt.y;
+                    if (panelEvt.width !== undefined)
+                      fields["width"] = panelEvt.width;
+                    if (panelEvt.height !== undefined)
+                      fields["height"] = panelEvt.height;
+                    this.onPanelUpdate?.(surfaceId, panelEvt.id!, fields);
+                  }
+                }
+                break;
+              }
             }
-          }
-        },
+          },
 
-        close: (ws: WS) => {
-          this.clients.delete(ws);
+          close: (ws: WS) => {
+            this.clients.delete(ws);
+          },
         },
-      },
-    });
+      });
 
-    console.log(`[web] Terminal mirror at http://0.0.0.0:${this.port}`);
-    console.log(
-      `[web] Anyone on your network can view and type in your terminal.`,
-    );
+      console.log(`[web] Terminal mirror at http://0.0.0.0:${this.port}`);
+      console.log(
+        `[web] Anyone on your network can view and type in your terminal.`,
+      );
+    } catch (error) {
+      this.server = null;
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[web] Terminal mirror unavailable on port ${this.port}: ${message}`,
+      );
+    }
   }
 
   stop(): void {

@@ -1,15 +1,5 @@
-import { showContextMenu, promptInput } from "./context-menu";
-
-const COLORS = [
-  { label: "Blue", value: "#89b4fa" },
-  { label: "Green", value: "#a6e3a1" },
-  { label: "Yellow", value: "#f9e2af" },
-  { label: "Red", value: "#f38ba8" },
-  { label: "Pink", value: "#f5c2e7" },
-  { label: "Teal", value: "#94e2d5" },
-  { label: "Orange", value: "#fab387" },
-  { label: "Purple", value: "#cba6f7" },
-];
+import type { WorkspaceContextMenuRequest } from "../../shared/types";
+import { createIcon } from "./icons";
 
 export interface WorkspaceInfo {
   id: string;
@@ -19,7 +9,7 @@ export interface WorkspaceInfo {
   paneCount: number;
   surfaceTitles: string[];
   focusedSurfaceTitle?: string | null;
-  statusPills: { key: string; value: string; color?: string }[];
+  statusPills: { key: string; value: string; color?: string; icon?: string }[];
   progress: { value: number; label?: string } | null;
 }
 
@@ -27,8 +17,6 @@ interface SidebarCallbacks {
   onSelectWorkspace: (id: string) => void;
   onNewWorkspace: () => void;
   onCloseWorkspace: (id: string) => void;
-  onRenameWorkspace: (id: string, name: string) => void;
-  onColorWorkspace: (id: string, color: string) => void;
 }
 
 export interface NotificationInfo {
@@ -64,7 +52,8 @@ export class Sidebar {
 
     const title = document.createElement("span");
     title.className = "sidebar-title";
-    title.textContent = "Workspaces";
+    title.append(createIcon("workspace", "sidebar-title-icon", 12));
+    title.append("Workspaces");
     titleWrap.appendChild(title);
 
     const subtitle = document.createElement("span");
@@ -76,8 +65,9 @@ export class Sidebar {
 
     const newBtn = document.createElement("button");
     newBtn.className = "sidebar-new-btn";
-    newBtn.textContent = "+";
     newBtn.title = "New workspace";
+    newBtn.setAttribute("aria-label", "New workspace");
+    newBtn.append(createIcon("plus"));
     newBtn.addEventListener("click", () => callbacks.onNewWorkspace());
     header.appendChild(newBtn);
 
@@ -152,7 +142,8 @@ export class Sidebar {
       closeBtn.className = "workspace-close";
       closeBtn.type = "button";
       closeBtn.title = "Close workspace";
-      closeBtn.textContent = "\u00d7";
+      closeBtn.setAttribute("aria-label", "Close workspace");
+      closeBtn.append(createIcon("close"));
       closeBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         this.callbacks.onCloseWorkspace(ws.id);
@@ -165,12 +156,14 @@ export class Sidebar {
 
       const stateBadge = document.createElement("span");
       stateBadge.className = `workspace-badge ${ws.active ? "active" : "idle"}`;
-      stateBadge.textContent = ws.active ? "Active" : "Standby";
+      stateBadge.append(createIcon(ws.active ? "sparkles" : "moon", "", 12));
+      stateBadge.append(ws.active ? "Active" : "Standby");
       badges.appendChild(stateBadge);
 
       const paneBadge = document.createElement("span");
       paneBadge.className = "workspace-badge";
-      paneBadge.textContent = `${ws.paneCount} pane${ws.paneCount > 1 ? "s" : ""}`;
+      paneBadge.append(createIcon("pane", "", 12));
+      paneBadge.append(`${ws.paneCount} pane${ws.paneCount > 1 ? "s" : ""}`);
       badges.appendChild(paneBadge);
 
       item.appendChild(badges);
@@ -231,28 +224,17 @@ export class Sidebar {
 
       item.addEventListener("contextmenu", (e) => {
         e.preventDefault();
-        showContextMenu(e.clientX, e.clientY, [
-          {
-            label: "Rename",
-            action: () => {
-              promptInput(e.clientX, e.clientY, ws.name, (newName) => {
-                this.callbacks.onRenameWorkspace(ws.id, newName);
-              });
-            },
-          },
-          {
-            label: "Change Color",
-            submenu: COLORS.map((c) => ({
-              label: c.label,
-              action: () => this.callbacks.onColorWorkspace(ws.id, c.value),
-            })),
-          },
-          { label: "", separator: true },
-          {
-            label: "Close Workspace",
-            action: () => this.callbacks.onCloseWorkspace(ws.id),
-          },
-        ]);
+        const detail: WorkspaceContextMenuRequest = {
+          kind: "workspace",
+          workspaceId: ws.id,
+          name: ws.name,
+          color: ws.color,
+        };
+        window.dispatchEvent(
+          new CustomEvent("ht-open-context-menu", {
+            detail,
+          }),
+        );
       });
 
       this.listEl.appendChild(item);
@@ -280,11 +262,15 @@ export class Sidebar {
     const header = document.createElement("div");
     header.className = "sidebar-section-header";
     const title = document.createElement("span");
-    title.textContent = `Notifications (${notifications.length})`;
+    title.className = "sidebar-section-title";
+    title.append(createIcon("bell", "", 12));
+    title.append(`Notifications (${notifications.length})`);
     header.appendChild(title);
     const clearBtn = document.createElement("button");
     clearBtn.className = "sidebar-section-clear";
-    clearBtn.textContent = "Clear";
+    clearBtn.title = "Clear notifications";
+    clearBtn.setAttribute("aria-label", "Clear notifications");
+    clearBtn.append(createIcon("close", "", 12));
     clearBtn.addEventListener("click", () => {
       window.dispatchEvent(new CustomEvent("ht-clear-notifications"));
     });
@@ -323,11 +309,15 @@ export class Sidebar {
     const header = document.createElement("div");
     header.className = "sidebar-section-header";
     const title = document.createElement("span");
-    title.textContent = "Logs";
+    title.className = "sidebar-section-title";
+    title.append(createIcon("activity", "", 12));
+    title.append("Logs");
     header.appendChild(title);
     const clearBtn = document.createElement("button");
     clearBtn.className = "sidebar-section-clear";
-    clearBtn.textContent = "Clear";
+    clearBtn.title = "Clear logs";
+    clearBtn.setAttribute("aria-label", "Clear logs");
+    clearBtn.append(createIcon("close", "", 12));
     clearBtn.addEventListener("click", () => {
       window.dispatchEvent(new CustomEvent("ht-clear-logs"));
     });
