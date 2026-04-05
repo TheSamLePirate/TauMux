@@ -402,6 +402,9 @@ html, body {
   background: var(--bg); color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
 #toolbar {
   height: 36px; display: flex; align-items: center; gap: 10px;
@@ -434,8 +437,14 @@ html, body {
   border: 1px solid rgba(255,255,255,0.08); background: rgba(14,18,27,0.9);
   backdrop-filter: blur(12px); z-index: 10;
 }
-.web-panel.interactive { pointer-events: auto; cursor: crosshair; }
-.web-panel.draggable, .web-panel.resizable { pointer-events: auto; }
+.web-panel.interactive {
+  pointer-events: auto; cursor: crosshair;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.web-panel.draggable, .web-panel.resizable { pointer-events: auto; touch-action: none; }
 .web-panel-drag {
   height: 22px; display: flex; align-items: center; justify-content: space-between;
   padding: 0 8px; cursor: grab; user-select: none;
