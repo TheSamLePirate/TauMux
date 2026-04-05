@@ -1,5 +1,5 @@
 import type { WorkspaceContextMenuRequest } from "../../shared/types";
-import { createIcon } from "./icons";
+import { ICON_TEMPLATES, createIcon, type IconName } from "./icons";
 
 export interface WorkspaceInfo {
   id: string;
@@ -106,6 +106,11 @@ export class Sidebar {
       const header = document.createElement("div");
       header.className = "workspace-card-header";
 
+      const railIcon = document.createElement("div");
+      railIcon.className = "workspace-rail-icon";
+      railIcon.append(createIcon(ws.active ? "terminal" : "pane", "", 14));
+      header.appendChild(railIcon);
+
       const identity = document.createElement("div");
       identity.className = "workspace-identity";
 
@@ -186,7 +191,12 @@ export class Sidebar {
         for (const pill of ws.statusPills) {
           const pillEl = document.createElement("span");
           pillEl.className = "status-pill";
-          pillEl.textContent = `${pill.key}: ${pill.value}`;
+          if (pill.icon && pill.icon in ICON_TEMPLATES) {
+            pillEl.append(createIcon(pill.icon as IconName, "", 11));
+          }
+          const text = document.createElement("span");
+          text.textContent = `${pill.key}: ${pill.value}`;
+          pillEl.appendChild(text);
           if (pill.color) pillEl.style.color = pill.color;
           statusContainer.appendChild(pillEl);
         }

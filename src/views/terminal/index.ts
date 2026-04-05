@@ -32,6 +32,7 @@ const workspaceCountLabelEl = document.getElementById(
   "toolbar-workspace-count-label",
 );
 const paneCountLabelEl = document.getElementById("toolbar-pane-count-label");
+let typingFocusActive = false;
 
 const rpc = Electroview.defineRPC<HyperTermRPC>({
   handlers: {
@@ -268,7 +269,28 @@ function toggleSidebar() {
 }
 
 function openCommandPalette() {
+  clearTypingFocusMode();
   palette.toggle();
+}
+
+function isTerminalInputActive(): boolean {
+  const activeElement = document.activeElement;
+  return (
+    activeElement instanceof HTMLTextAreaElement &&
+    activeElement.classList.contains("xterm-helper-textarea")
+  );
+}
+
+function setTypingFocusMode() {
+  if (typingFocusActive) return;
+  typingFocusActive = true;
+  document.body.classList.add("terminal-typing");
+}
+
+function clearTypingFocusMode() {
+  if (!typingFocusActive) return;
+  typingFocusActive = false;
+  document.body.classList.remove("terminal-typing");
 }
 
 function getEditableTarget():
@@ -431,6 +453,16 @@ splitDownBtn?.addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (e) => {
+  if (
+    !e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    !palette.isVisible() &&
+    isTerminalInputActive()
+  ) {
+    setTypingFocusMode();
+  }
+
   if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "p") {
     e.preventDefault();
     openCommandPalette();
@@ -527,6 +559,22 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+document.addEventListener(
+  "mousemove",
+  () => {
+    clearTypingFocusMode();
+  },
+  { passive: true },
+);
+
+document.addEventListener(
+  "mousedown",
+  () => {
+    clearTypingFocusMode();
+  },
+  { passive: true },
+);
+
 titlebarEl.addEventListener("dblclick", () => {
   rpc.send("toggleMaximize");
 });
@@ -543,6 +591,7 @@ window.addEventListener("ht-new-workspace", () => {
 });
 
 window.addEventListener("ht-clear-notifications", () => {
+  clearTypingFocusMode();
   rpc.send("clearNotifications");
 });
 

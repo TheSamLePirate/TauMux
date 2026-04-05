@@ -1,4 +1,5 @@
 import type { SidebandMetaMessage, PanelEvent } from "../../shared/types";
+import { createIcon } from "./icons";
 
 const decoder = new TextDecoder();
 
@@ -35,17 +36,25 @@ export class Panel {
 
     this.closeBtn = document.createElement("div");
     this.closeBtn.className = "panel-close-btn";
-    this.closeBtn.textContent = "\u00d7";
+    this.closeBtn.append(createIcon("close", "", 12));
     this.closeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       this.onEvent({ id: this.id, event: "close" });
     });
-    this.dragHandle.appendChild(this.closeBtn);
+
+    const titleGroup = document.createElement("div");
+    titleGroup.className = "panel-title-group";
+    titleGroup.append(
+      createIcon(resolvePanelIcon(meta.type), "panel-title-icon", 12),
+    );
 
     const titleEl = document.createElement("span");
     titleEl.className = "panel-title";
     titleEl.textContent = meta.id;
-    this.dragHandle.appendChild(titleEl);
+    titleGroup.appendChild(titleEl);
+
+    this.dragHandle.appendChild(titleGroup);
+    this.dragHandle.appendChild(this.closeBtn);
 
     this.contentEl = document.createElement("div");
     this.contentEl.className = "panel-content";
@@ -245,6 +254,7 @@ export class Panel {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
       this.dragHandle.style.cursor = "grab";
+      this.el.classList.remove("panel-dragging");
       this.meta.x = parseInt(this.el.style.left) || 0;
       this.meta.y = parseInt(this.el.style.top) || 0;
       this.onEvent({
@@ -264,6 +274,7 @@ export class Panel {
       startLeft = parseInt(this.el.style.left) || 0;
       startTop = parseInt(this.el.style.top) || 0;
       this.dragHandle.style.cursor = "grabbing";
+      this.el.classList.add("panel-dragging");
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
     });
@@ -285,6 +296,7 @@ export class Panel {
     const onMouseUp = () => {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      this.el.classList.remove("panel-resizing");
       this.meta.width = parseInt(this.el.style.width);
       this.meta.height = parseInt(this.el.style.height);
       this.onEvent({
@@ -302,6 +314,7 @@ export class Panel {
       startY = e.clientY;
       startW = this.el.offsetWidth;
       startH = this.el.offsetHeight;
+      this.el.classList.add("panel-resizing");
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
     });
@@ -365,4 +378,19 @@ export class Panel {
       buttons: e.buttons,
     });
   };
+}
+
+function resolvePanelIcon(type: SidebandMetaMessage["type"]) {
+  switch (type) {
+    case "image":
+      return "eye";
+    case "svg":
+      return "globe";
+    case "html":
+      return "window";
+    case "canvas2d":
+      return "chart";
+    default:
+      return "sparkles";
+  }
 }

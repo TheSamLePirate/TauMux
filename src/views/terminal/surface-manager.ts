@@ -12,29 +12,29 @@ import type {
 } from "../../shared/types";
 import { WORKSPACE_COLORS } from "../../shared/workspace-colors";
 
-const macTerminalDark = {
-  background: "#111318",
-  foreground: "#f5f7fb",
-  cursor: "#dfe6f3",
-  cursorAccent: "#111318",
-  selectionBackground: "rgba(110, 120, 140, 0.32)",
-  selectionForeground: "#f5f7fb",
-  black: "#2b2f37",
-  red: "#ff6b6b",
-  green: "#52d273",
-  yellow: "#ffd45c",
-  blue: "#67a4ff",
-  magenta: "#d38cff",
-  cyan: "#58d0da",
-  white: "#d9dfeb",
-  brightBlack: "#626b7b",
-  brightRed: "#ff8c82",
-  brightGreen: "#7ce38f",
-  brightYellow: "#ffe784",
-  brightBlue: "#90bbff",
-  brightMagenta: "#e2abff",
-  brightCyan: "#85e3ea",
-  brightWhite: "#f5f7fb",
+const obsidianGlassTheme = {
+  background: "#09090b",
+  foreground: "#f4f4f5",
+  cursor: "#eab308",
+  cursorAccent: "#09090b",
+  selectionBackground: "rgba(168, 85, 247, 0.24)",
+  selectionForeground: "#f4f4f5",
+  black: "#18181b",
+  red: "#f87171",
+  green: "#4ade80",
+  yellow: "#eab308",
+  blue: "#c4b5fd",
+  magenta: "#a855f7",
+  cyan: "#67e8f9",
+  white: "#e4e4e7",
+  brightBlack: "#52525b",
+  brightRed: "#fb7185",
+  brightGreen: "#86efac",
+  brightYellow: "#facc15",
+  brightBlue: "#ddd6fe",
+  brightMagenta: "#d8b4fe",
+  brightCyan: "#a5f3fc",
+  brightWhite: "#fafafa",
 };
 
 interface SurfaceView {
@@ -651,13 +651,13 @@ export class SurfaceManager {
     this.terminalContainer.appendChild(container);
 
     const term = new Terminal({
-      theme: macTerminalDark,
+      theme: obsidianGlassTheme,
       fontFamily:
-        "'SF Mono', 'JetBrainsMono Nerd Font Mono', 'Menlo', monospace",
-      fontSize: 14,
-      lineHeight: 1.24,
+        "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Berkeley Mono', 'SF Mono', 'Menlo', monospace",
+      fontSize: 13,
+      lineHeight: 1.2,
       cursorBlink: true,
-      cursorStyle: "bar",
+      cursorStyle: "block",
       allowProposedApi: true,
       scrollback: 10000,
     });

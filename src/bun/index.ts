@@ -138,8 +138,9 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
 const mainWindow = new BrowserWindow({
   title: "HyperTerm Canvas",
   titleBarStyle: "hiddenInset",
+  transparent: true,
   styleMask: {
-    UnifiedTitleAndToolbar: true,
+    UnifiedTitleAndToolbar: false,
   },
   url: "views://terminal/index.html",
   frame: {

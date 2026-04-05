@@ -26,11 +26,24 @@ export class CommandPalette {
     const container = document.createElement("div");
     container.className = "palette-container";
 
+    const inputRow = document.createElement("div");
+    inputRow.className = "palette-input-row";
+
+    const prompt = document.createElement("span");
+    prompt.className = "palette-prompt";
+    prompt.textContent = ">";
+    inputRow.appendChild(prompt);
+
     this.input = document.createElement("input");
     this.input.className = "palette-input";
     this.input.type = "text";
-    this.input.placeholder = "Search commands, layouts, workspaces...";
-    container.appendChild(this.input);
+    this.input.placeholder = "command";
+    this.input.autocomplete = "off";
+    this.input.autocapitalize = "off";
+    this.input.spellcheck = false;
+    inputRow.appendChild(this.input);
+
+    container.appendChild(inputRow);
 
     this.resultsEl = document.createElement("div");
     this.resultsEl.className = "palette-results";
@@ -89,6 +102,7 @@ export class CommandPalette {
   show(): void {
     this.visible = true;
     this.overlay.classList.remove("hidden");
+    document.body.classList.add("palette-open");
     this.input.value = "";
     this.selectedIndex = 0;
     this.filter();
@@ -99,6 +113,7 @@ export class CommandPalette {
   hide(): void {
     this.visible = false;
     this.overlay.classList.add("hidden");
+    document.body.classList.remove("palette-open");
     this.input.value = "";
   }
 
