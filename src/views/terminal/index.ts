@@ -178,6 +178,13 @@ palette.setCommands([
     description: "Expand or restore the main window.",
     action: () => rpc.send("toggleMaximize"),
   },
+  {
+    id: "toggle-web-mirror",
+    category: "Network",
+    label: "Toggle Web Mirror",
+    description: "Start or stop the web terminal mirror server.",
+    action: () => rpc.send("toggleWebServer"),
+  },
 ]);
 
 function syncSidebarState() {
@@ -202,7 +209,7 @@ window.addEventListener("ht-surface-focused", (e: Event) => {
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.metaKey && e.shiftKey && e.key === "p") {
+  if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "p") {
     e.preventDefault();
     palette.toggle();
     return;

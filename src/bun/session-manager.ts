@@ -3,6 +3,8 @@ import { PtyManager } from "./pty-manager";
 import { SidebandParser } from "./sideband-parser";
 import { EventWriter } from "./event-writer";
 
+const MAX_HISTORY_BYTES = 64 * 1024; // 64KB of recent output per surface
+
 export interface Surface {
   id: string;
   pty: PtyManager;
@@ -10,6 +12,8 @@ export interface Surface {
   eventWriter: EventWriter | null;
   cwd: string;
   title: string;
+  outputHistory: string[];
+  outputHistorySize: number;
 }
 
 export class SessionManager {
@@ -37,8 +41,20 @@ export class SessionManager {
 
     const pty = new PtyManager();
 
+    // Output history buffer (filled after surface is created below)
+    const outputHistory: string[] = [];
+    let outputHistorySize = 0;
+
     // Wire stdout
     pty.onStdout = (data: string) => {
+      outputHistory.push(data);
+      outputHistorySize += data.length;
+      while (
+        outputHistorySize > MAX_HISTORY_BYTES &&
+        outputHistory.length > 1
+      ) {
+        outputHistorySize -= outputHistory.shift()!.length;
+      }
       this.onStdout?.(id, data);
     };
 
@@ -85,6 +101,8 @@ export class SessionManager {
       eventWriter,
       cwd: surfaceCwd,
       title: this.shell.split("/").pop() || "shell",
+      outputHistory,
+      outputHistorySize,
     };
 
     this.surfaces.set(id, surface);
@@ -124,6 +142,12 @@ export class SessionManager {
 
   sendEvent(surfaceId: string, event: PanelEvent): void {
     this.surfaces.get(surfaceId)?.eventWriter?.send(event);
+  }
+
+  getOutputHistory(surfaceId: string): string {
+    const surface = this.surfaces.get(surfaceId);
+    if (!surface) return "";
+    return surface.outputHistory.join("");
   }
 
   getSurface(surfaceId: string): Surface | undefined {

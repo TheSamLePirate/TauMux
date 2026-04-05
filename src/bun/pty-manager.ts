@@ -38,6 +38,10 @@ export class PtyManager {
     eventFd: null,
   };
 
+  // Current terminal dimensions
+  private _cols = 80;
+  private _rows = 24;
+
   // Write buffer for commands sent before terminal is ready
   private writeBuffer: string[] = [];
 
@@ -67,6 +71,8 @@ export class PtyManager {
   spawn(opts: PtySpawnOptions): number {
     this._exited = false;
     this._exitCode = null;
+    this._cols = opts.cols;
+    this._rows = opts.rows;
     this._sidebandFds = { metaFd: null, dataFd: null, eventFd: null };
 
     const env: Record<string, string> = {
@@ -128,7 +134,17 @@ export class PtyManager {
   }
 
   resize(cols: number, rows: number): void {
+    this._cols = cols;
+    this._rows = rows;
     this.terminal?.resize(cols, rows);
+  }
+
+  get cols(): number {
+    return this._cols;
+  }
+
+  get rows(): number {
+    return this._rows;
   }
 
   kill(signal?: string): void {

@@ -2,6 +2,7 @@ import { BrowserWindow, BrowserView } from "electrobun/bun";
 import type { HyperTermRPC } from "../shared/types";
 import { SessionManager } from "./session-manager";
 import { SocketServer } from "./socket-server";
+import { WebServer } from "./web-server";
 import {
   createRpcHandler,
   type AppState,
@@ -39,35 +40,45 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
           initialResizeReceived = true;
           const surfaceId = sessions.createSurface(payload.cols, payload.rows);
           focusedSurfaceId = surfaceId;
-          rpc.send("surfaceCreated", {
-            surfaceId,
-            title: sessions.getSurface(surfaceId)?.title ?? "shell",
-          });
+          const title = sessions.getSurface(surfaceId)?.title ?? "shell";
+          rpc.send("surfaceCreated", { surfaceId, title });
+          broadcastSurfaceCreated(surfaceId, title);
         } else {
           sessions.resize(payload.surfaceId, payload.cols, payload.rows);
+          webServer?.broadcast({
+            type: "resize",
+            surfaceId: payload.surfaceId,
+            cols: payload.cols,
+            rows: payload.rows,
+          });
         }
       },
       createSurface: (payload) => {
         const surfaceId = sessions.createSurface(80, 24, payload.cwd);
-        rpc.send("surfaceCreated", {
-          surfaceId,
-          title: sessions.getSurface(surfaceId)?.title ?? "shell",
-        });
+        const title = sessions.getSurface(surfaceId)?.title ?? "shell";
+        rpc.send("surfaceCreated", { surfaceId, title });
+        broadcastSurfaceCreated(surfaceId, title);
       },
       splitSurface: (payload) => {
         const surfaceId = sessions.createSurface(80, 24);
+        const title = sessions.getSurface(surfaceId)?.title ?? "shell";
         rpc.send("surfaceCreated", {
           surfaceId,
-          title: sessions.getSurface(surfaceId)?.title ?? "shell",
+          title,
           splitFrom: focusedSurfaceId ?? undefined,
           direction: payload.direction,
         });
+        broadcastSurfaceCreated(surfaceId, title);
       },
       closeSurface: (payload) => {
         sessions.closeSurface(payload.surfaceId);
       },
       focusSurface: (payload) => {
         focusedSurfaceId = payload.surfaceId;
+        webServer?.broadcast({
+          type: "focusChanged",
+          surfaceId: payload.surfaceId,
+        });
       },
       panelEvent: (payload) => {
         sessions.sendEvent(payload.surfaceId, payload);
@@ -85,6 +96,9 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       },
       clearNotifications: () => {
         socketHandler("notification.clear", {});
+      },
+      toggleWebServer: () => {
+        toggleWebServer();
       },
       toggleMaximize: () => {
         if (mainWindow.isMaximized()) {
@@ -111,26 +125,55 @@ const mainWindow = new BrowserWindow({
   rpc,
 });
 
-// Wire session callbacks → RPC → webview
+// Wire session callbacks → RPC → webview + web mirror
 sessions.onStdout = (surfaceId, data) => {
   rpc.send("writeStdout", { surfaceId, data });
+  webServer?.broadcastStdout(surfaceId, data);
 };
 
 sessions.onSidebandMeta = (surfaceId, msg) => {
   rpc.send("sidebandMeta", { ...msg, surfaceId });
+  webServer?.broadcast({ type: "sidebandMeta", surfaceId, meta: msg });
 };
 
 sessions.onSidebandData = (surfaceId, id, data) => {
   const base64 = Buffer.from(data).toString("base64");
   rpc.send("sidebandData", { surfaceId, id, data: base64 });
+  webServer?.broadcast({ type: "sidebandData", surfaceId, id, data: base64 });
 };
 
 sessions.onSurfaceClosed = (surfaceId) => {
   rpc.send("surfaceClosed", { surfaceId });
+  webServer?.broadcast({ type: "surfaceClosed", surfaceId });
   if (sessions.surfaceCount === 0) {
     mainWindow.close();
   }
 };
+
+// ── Web Mirror ──
+
+const webServerPort = parseInt(process.env["HYPERTERM_WEB_PORT"] ?? "3000", 10);
+let webServer: WebServer | null = null;
+
+function broadcastSurfaceCreated(surfaceId: string, title: string): void {
+  webServer?.broadcast({ type: "surfaceCreated", surfaceId, title });
+}
+
+function toggleWebServer(): void {
+  if (webServer?.running) {
+    webServer.stop();
+  } else {
+    if (!webServer) {
+      webServer = new WebServer(
+        webServerPort,
+        sessions,
+        getAppState,
+        () => focusedSurfaceId,
+      );
+    }
+    webServer.start();
+  }
+}
 
 // ── Socket API ──
 
@@ -145,18 +188,19 @@ function dispatch(action: string, payload: Record<string, unknown>) {
       24,
       payload["cwd"] as string | undefined,
     );
-    rpc.send("surfaceCreated", {
-      surfaceId,
-      title: sessions.getSurface(surfaceId)?.title ?? "shell",
-    });
+    const title = sessions.getSurface(surfaceId)?.title ?? "shell";
+    rpc.send("surfaceCreated", { surfaceId, title });
+    broadcastSurfaceCreated(surfaceId, title);
   } else if (action === "splitSurface") {
     const surfaceId = sessions.createSurface(80, 24);
+    const title = sessions.getSurface(surfaceId)?.title ?? "shell";
     rpc.send("surfaceCreated", {
       surfaceId,
-      title: sessions.getSurface(surfaceId)?.title ?? "shell",
+      title,
       splitFrom: focusedSurfaceId ?? undefined,
       direction: payload["direction"] as "horizontal" | "vertical",
     });
+    broadcastSurfaceCreated(surfaceId, title);
   }
 }
 
@@ -193,12 +237,25 @@ const socketHandler = createRpcHandler(
 const socketServer = new SocketServer("/tmp/hyperterm.sock", socketHandler);
 socketServer.start();
 
-// Clean up socket on exit
+// Auto-start web mirror server
+if (webServerPort > 0) {
+  webServer = new WebServer(
+    webServerPort,
+    sessions,
+    getAppState,
+    () => focusedSurfaceId,
+  );
+  webServer.start();
+}
+
+// Clean up on exit
 process.on("SIGINT", () => {
+  webServer?.stop();
   socketServer.stop();
   process.exit(0);
 });
 process.on("SIGTERM", () => {
+  webServer?.stop();
   socketServer.stop();
   process.exit(0);
 });

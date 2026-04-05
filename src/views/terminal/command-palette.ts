@@ -120,7 +120,9 @@ export class CommandPalette {
         const recentDelta = this.recentRank(a.id) - this.recentRank(b.id);
         if (recentDelta !== 0) return recentDelta;
 
-        const categoryDelta = (a.category || "").localeCompare(b.category || "");
+        const categoryDelta = (a.category || "").localeCompare(
+          b.category || "",
+        );
         if (categoryDelta !== 0) return categoryDelta;
 
         return a.label.localeCompare(b.label);
@@ -229,6 +231,14 @@ export class CommandPalette {
       this.resultsEl.appendChild(el);
     }
 
+    // Scroll selected item into view
+    const selectedEl = this.resultsEl.children[this.selectedIndex] as
+      | HTMLElement
+      | undefined;
+    if (selectedEl) {
+      selectedEl.scrollIntoView({ block: "nearest" });
+    }
+
     if (items.length === 0) {
       const empty = document.createElement("div");
       empty.className = "palette-empty";
@@ -238,10 +248,10 @@ export class CommandPalette {
   }
 
   private remember(id: string): void {
-    this.recentIds = [id, ...this.recentIds.filter((value) => value !== id)].slice(
-      0,
-      6,
-    );
+    this.recentIds = [
+      id,
+      ...this.recentIds.filter((value) => value !== id),
+    ].slice(0, 6);
     try {
       localStorage.setItem(RECENTS_STORAGE_KEY, JSON.stringify(this.recentIds));
     } catch {

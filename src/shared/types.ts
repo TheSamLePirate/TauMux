@@ -88,6 +88,9 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       // Notifications
       clearNotifications: void;
 
+      // Web mirror
+      toggleWebServer: void;
+
       // Window
       toggleMaximize: void;
     };
