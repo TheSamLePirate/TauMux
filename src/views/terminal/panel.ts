@@ -94,11 +94,6 @@ export class Panel {
   }
 
   setContent(data: Uint8Array): void {
-    if (this.blobUrl) {
-      URL.revokeObjectURL(this.blobUrl);
-      this.blobUrl = null;
-    }
-
     const type = this.meta.type;
 
     if (type === "image") {
@@ -111,22 +106,43 @@ export class Panel {
       };
       const mime = mimeMap[this.meta.format ?? "png"] ?? "image/png";
       const blob = new Blob([data.buffer as ArrayBuffer], { type: mime });
-      this.blobUrl = URL.createObjectURL(blob);
+      const newUrl = URL.createObjectURL(blob);
+      const oldUrl = this.blobUrl;
+      this.blobUrl = newUrl;
 
-      const img = document.createElement("img");
-      img.src = this.blobUrl;
-      img.style.width = "100%";
-      img.style.height = "100%";
-      img.style.objectFit = "contain";
-      img.draggable = false;
-
-      this.contentEl.innerHTML = "";
-      this.contentEl.appendChild(img);
+      // Reuse existing <img> element to avoid blank flash between frames
+      let img = this.contentEl.querySelector("img");
+      if (img) {
+        img.src = newUrl;
+        if (oldUrl) URL.revokeObjectURL(oldUrl);
+      } else {
+        if (oldUrl) URL.revokeObjectURL(oldUrl);
+        img = document.createElement("img");
+        img.src = newUrl;
+        img.style.width = "100%";
+        img.style.height = "100%";
+        img.style.objectFit = "contain";
+        img.draggable = false;
+        this.contentEl.innerHTML = "";
+        this.contentEl.appendChild(img);
+      }
     } else if (type === "svg") {
+      if (this.blobUrl) {
+        URL.revokeObjectURL(this.blobUrl);
+        this.blobUrl = null;
+      }
       this.contentEl.innerHTML = decoder.decode(data);
     } else if (type === "html") {
+      if (this.blobUrl) {
+        URL.revokeObjectURL(this.blobUrl);
+        this.blobUrl = null;
+      }
       this.contentEl.innerHTML = decoder.decode(data);
     } else if (type === "canvas2d") {
+      if (this.blobUrl) {
+        URL.revokeObjectURL(this.blobUrl);
+        this.blobUrl = null;
+      }
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d")!;
       const blob = new Blob([data.buffer as ArrayBuffer], {
