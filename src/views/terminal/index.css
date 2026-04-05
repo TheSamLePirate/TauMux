@@ -828,14 +828,48 @@ textarea {
 }
 
 .surface-terminal {
+  position: relative;
   width: 100%;
   flex: 1;
   min-height: 0;
-  background: var(--bg-terminal);
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(234, 179, 8, 0.035), transparent 24%),
+    radial-gradient(circle at 85% 16%, rgba(168, 85, 247, 0.05), transparent 28%),
+    var(--bg-terminal);
 }
 
-.surface-terminal .xterm {
+.surface-terminal-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+.terminal-effects-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 32;
+  width: 100%;
   height: 100%;
+  pointer-events: none;
+  mix-blend-mode: normal;
+  opacity: 1;
+  filter: none;
+}
+
+.surface-terminal .xterm,
+.surface-terminal-layer .xterm {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  background: transparent !important;
+}
+
+.surface-terminal-layer .xterm-screen,
+.surface-terminal-layer .xterm-screen canvas,
+.surface-terminal-layer .xterm-viewport {
+  background: transparent !important;
 }
 
 .surface-panels {
@@ -879,7 +913,7 @@ textarea {
 }
 
 .xterm-viewport {
-  background-color: var(--bg-terminal) !important;
+  background-color: transparent !important;
   scrollbar-width: none;
 }
 

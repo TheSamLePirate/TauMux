@@ -5,6 +5,7 @@ import { PanelManager } from "./panel-manager";
 import { PaneLayout } from "./pane-layout";
 import { Sidebar } from "./sidebar";
 import { createIcon } from "./icons";
+import { TerminalEffects } from "./terminal-effects";
 import type {
   PanelEvent,
   SidebandMetaMessage,
@@ -13,7 +14,7 @@ import type {
 import { WORKSPACE_COLORS } from "../../shared/workspace-colors";
 
 const obsidianGlassTheme = {
-  background: "#09090b",
+  background: "rgba(9, 9, 11, 0)",
   foreground: "#f4f4f5",
   cursor: "#eab308",
   cursorAccent: "#09090b",
@@ -41,6 +42,7 @@ interface SurfaceView {
   id: string;
   term: Terminal;
   fitAddon: FitAddon;
+  effects: TerminalEffects;
   panelManager: PanelManager;
   container: HTMLDivElement;
   panelsEl: HTMLDivElement;
@@ -66,6 +68,7 @@ export class SurfaceManager {
   private focusedSurfaceId: string | null = null;
   private dividerEls: HTMLDivElement[] = [];
   private sidebar: Sidebar;
+  private terminalEffectsEnabled = true;
   private wsCounter = 0;
 
   constructor(
@@ -178,6 +181,7 @@ export class SurfaceManager {
       this.applyLayout();
     }
 
+    view.effects.destroy();
     view.term.dispose();
     view.container.remove();
     this.surfaces.delete(surfaceId);
@@ -188,6 +192,7 @@ export class SurfaceManager {
     this.focusedSurfaceId = surfaceId;
     for (const v of this.surfaces.values()) {
       v.container.classList.toggle("focused", v.id === surfaceId);
+      v.effects.setFocused(v.id === surfaceId);
     }
     this.surfaces.get(surfaceId)?.term.focus();
     const activeWorkspace = this.activeWorkspace();
@@ -208,7 +213,10 @@ export class SurfaceManager {
   }
 
   writeToSurface(surfaceId: string, data: string): void {
-    this.surfaces.get(surfaceId)?.term.write(data);
+    const view = this.surfaces.get(surfaceId);
+    if (!view) return;
+    view.effects.pulseOutput(data.length);
+    view.term.write(data);
   }
 
   handleSidebandMeta(surfaceId: string, msg: SidebandMetaMessage): void {
@@ -257,6 +265,23 @@ export class SurfaceManager {
   getActiveTerm(): Terminal | null {
     if (!this.focusedSurfaceId) return null;
     return this.surfaces.get(this.focusedSurfaceId)?.term ?? null;
+  }
+
+  setTerminalEffectsEnabled(enabled: boolean): void {
+    this.terminalEffectsEnabled = enabled;
+    for (const view of this.surfaces.values()) {
+      view.effects.setEnabled(enabled);
+      view.effects.setFocused(view.id === this.focusedSurfaceId);
+    }
+  }
+
+  toggleTerminalEffects(): boolean {
+    this.setTerminalEffectsEnabled(!this.terminalEffectsEnabled);
+    return this.terminalEffectsEnabled;
+  }
+
+  areTerminalEffectsEnabled(): boolean {
+    return this.terminalEffectsEnabled;
   }
 
   getSurfaceTitle(surfaceId: string): string | null {
@@ -642,6 +667,9 @@ export class SurfaceManager {
 
     const termEl = document.createElement("div");
     termEl.className = "surface-terminal";
+    const termLayerEl = document.createElement("div");
+    termLayerEl.className = "surface-terminal-layer";
+    termEl.appendChild(termLayerEl);
     container.appendChild(termEl);
 
     const panelsEl = document.createElement("div");
@@ -658,6 +686,7 @@ export class SurfaceManager {
       lineHeight: 1.2,
       cursorBlink: true,
       cursorStyle: "block",
+      allowTransparency: true,
       allowProposedApi: true,
       scrollback: 10000,
     });
@@ -666,9 +695,13 @@ export class SurfaceManager {
     const webLinksAddon = new WebLinksAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(webLinksAddon);
-    term.open(termEl);
+    term.open(termLayerEl);
+
+    const effects = new TerminalEffects(termEl, term);
+    effects.setEnabled(this.terminalEffectsEnabled);
 
     term.onData((data) => {
+      effects.pulseInput(data.length);
       this.onStdin(surfaceId, data);
     });
 
@@ -686,6 +719,7 @@ export class SurfaceManager {
       id: surfaceId,
       term,
       fitAddon,
+      effects,
       panelManager,
       container,
       panelsEl,
@@ -702,6 +736,7 @@ export class SurfaceManager {
       const view = this.surfaces.get(surfaceId);
       if (!view) continue;
       view.fitAddon.fit();
+      view.effects.setFocused(view.id === this.focusedSurfaceId);
       this.onResize(surfaceId, view.term.cols, view.term.rows);
       view.panelManager.updateInlinePanels();
     }

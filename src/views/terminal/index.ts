@@ -1,7 +1,7 @@
 import { Electroview } from "electrobun/view";
 import type { HyperTermRPC, NativeContextMenuRequest } from "../../shared/types";
 import { SurfaceManager } from "./surface-manager";
-import { CommandPalette } from "./command-palette";
+import { CommandPalette, type PaletteCommand } from "./command-palette";
 import { createIcon } from "./icons";
 import { showPromptDialog } from "./prompt-dialog";
 
@@ -32,6 +32,7 @@ const workspaceCountLabelEl = document.getElementById(
   "toolbar-workspace-count-label",
 );
 const paneCountLabelEl = document.getElementById("toolbar-pane-count-label");
+const TERMINAL_EFFECTS_STORAGE_KEY = "hyperterm-canvas.terminal-effects.enabled";
 let typingFocusActive = false;
 
 const rpc = Electroview.defineRPC<HyperTermRPC>({
@@ -88,6 +89,7 @@ surfaceManager = new SurfaceManager(
   (surfaceId, cols, rows) => rpc.send("resize", { surfaceId, cols, rows }),
   (surfaceId, event) => rpc.send("panelEvent", { ...event, surfaceId }),
 );
+surfaceManager.setTerminalEffectsEnabled(loadTerminalEffectsEnabled());
 
 new Electroview({ rpc });
 
@@ -122,113 +124,156 @@ setTimeout(() => {
 }, 300);
 
 const palette = new CommandPalette();
-palette.setCommands([
-  {
-    id: "new-workspace",
-    category: "Workspace",
-    label: "New Workspace",
-    description: "Open a fresh shell workspace.",
-    shortcut: "\u2318N",
-    action: () => rpc.send("createSurface", {}),
-  },
-  {
-    id: "split-right",
-    category: "Layout",
-    label: "Split Right",
-    description: "Create a new pane to the right of the current one.",
-    shortcut: "\u2318D",
-    action: () => rpc.send("splitSurface", { direction: "horizontal" }),
-  },
-  {
-    id: "split-down",
-    category: "Layout",
-    label: "Split Down",
-    description: "Create a new pane below the current one.",
-    shortcut: "\u2318\u21e7D",
-    action: () => rpc.send("splitSurface", { direction: "vertical" }),
-  },
-  {
-    id: "close-pane",
-    category: "Layout",
-    label: "Close Pane",
-    description: "Close the currently focused terminal pane.",
-    shortcut: "\u2318W",
-    action: () => {
-      const id = surfaceManager.getActiveSurfaceId();
-      if (id) rpc.send("closeSurface", { surfaceId: id });
+syncPaletteCommands();
+
+function loadTerminalEffectsEnabled(): boolean {
+  try {
+    return localStorage.getItem(TERMINAL_EFFECTS_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function persistTerminalEffectsEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(TERMINAL_EFFECTS_STORAGE_KEY, String(enabled));
+  } catch {
+    // Ignore storage failures in restricted webviews.
+  }
+}
+
+function toggleTerminalEffects(): void {
+  const enabled = surfaceManager.toggleTerminalEffects();
+  persistTerminalEffectsEnabled(enabled);
+  syncPaletteCommands();
+}
+
+function buildPaletteCommands(): PaletteCommand[] {
+  const terminalEffectsEnabled = surfaceManager.areTerminalEffectsEnabled();
+
+  return [
+    {
+      id: "new-workspace",
+      category: "Workspace",
+      label: "New Workspace",
+      description: "Open a fresh shell workspace.",
+      shortcut: "\u2318N",
+      action: () => rpc.send("createSurface", {}),
     },
-  },
-  {
-    id: "toggle-sidebar",
-    category: "View",
-    label: "Toggle Sidebar",
-    description: "Show or hide workspace navigation and activity.",
-    shortcut: "\u2318B",
-    action: () => toggleSidebar(),
-  },
-  {
-    id: "focus-left",
-    category: "Navigation",
-    label: "Focus Pane Left",
-    description: "Move focus to the pane on the left.",
-    shortcut: "\u2318\u2325\u2190",
-    action: () => surfaceManager.focusDirection("left"),
-  },
-  {
-    id: "focus-right",
-    category: "Navigation",
-    label: "Focus Pane Right",
-    description: "Move focus to the pane on the right.",
-    shortcut: "\u2318\u2325\u2192",
-    action: () => surfaceManager.focusDirection("right"),
-  },
-  {
-    id: "focus-up",
-    category: "Navigation",
-    label: "Focus Pane Up",
-    description: "Move focus to the pane above.",
-    shortcut: "\u2318\u2325\u2191",
-    action: () => surfaceManager.focusDirection("up"),
-  },
-  {
-    id: "focus-down",
-    category: "Navigation",
-    label: "Focus Pane Down",
-    description: "Move focus to the pane below.",
-    shortcut: "\u2318\u2325\u2193",
-    action: () => surfaceManager.focusDirection("down"),
-  },
-  {
-    id: "next-workspace",
-    category: "Workspace",
-    label: "Next Workspace",
-    description: "Jump to the next workspace in the stack.",
-    shortcut: "\u2303\u2318]",
-    action: () => surfaceManager.nextWorkspace(),
-  },
-  {
-    id: "prev-workspace",
-    category: "Workspace",
-    label: "Previous Workspace",
-    description: "Jump to the previous workspace.",
-    shortcut: "\u2303\u2318[",
-    action: () => surfaceManager.prevWorkspace(),
-  },
-  {
-    id: "maximize",
-    category: "Window",
-    label: "Toggle Maximize",
-    description: "Expand or restore the main window.",
-    action: () => rpc.send("toggleMaximize"),
-  },
-  {
-    id: "toggle-web-mirror",
-    category: "Network",
-    label: "Toggle Web Mirror",
-    description: "Start or stop the web terminal mirror server.",
-    action: () => rpc.send("toggleWebServer"),
-  },
-]);
+    {
+      id: "split-right",
+      category: "Layout",
+      label: "Split Right",
+      description: "Create a new pane to the right of the current one.",
+      shortcut: "\u2318D",
+      action: () => rpc.send("splitSurface", { direction: "horizontal" }),
+    },
+    {
+      id: "split-down",
+      category: "Layout",
+      label: "Split Down",
+      description: "Create a new pane below the current one.",
+      shortcut: "\u2318\u21e7D",
+      action: () => rpc.send("splitSurface", { direction: "vertical" }),
+    },
+    {
+      id: "close-pane",
+      category: "Layout",
+      label: "Close Pane",
+      description: "Close the currently focused terminal pane.",
+      shortcut: "\u2318W",
+      action: () => {
+        const id = surfaceManager.getActiveSurfaceId();
+        if (id) rpc.send("closeSurface", { surfaceId: id });
+      },
+    },
+    {
+      id: "toggle-sidebar",
+      category: "View",
+      label: "Toggle Sidebar",
+      description: "Show or hide workspace navigation and activity.",
+      shortcut: "\u2318B",
+      action: () => toggleSidebar(),
+    },
+    {
+      id: "toggle-terminal-effects",
+      category: "View",
+      label: terminalEffectsEnabled
+        ? "Disable Terminal Bloom"
+        : "Enable Terminal Bloom",
+      description: terminalEffectsEnabled
+        ? "Turn off the GPU blur, glow, and bloom pass over terminal pixels."
+        : "Turn on the GPU blur, glow, and bloom pass over terminal pixels.",
+      action: () => toggleTerminalEffects(),
+    },
+    {
+      id: "focus-left",
+      category: "Navigation",
+      label: "Focus Pane Left",
+      description: "Move focus to the pane on the left.",
+      shortcut: "\u2318\u2325\u2190",
+      action: () => surfaceManager.focusDirection("left"),
+    },
+    {
+      id: "focus-right",
+      category: "Navigation",
+      label: "Focus Pane Right",
+      description: "Move focus to the pane on the right.",
+      shortcut: "\u2318\u2325\u2192",
+      action: () => surfaceManager.focusDirection("right"),
+    },
+    {
+      id: "focus-up",
+      category: "Navigation",
+      label: "Focus Pane Up",
+      description: "Move focus to the pane above.",
+      shortcut: "\u2318\u2325\u2191",
+      action: () => surfaceManager.focusDirection("up"),
+    },
+    {
+      id: "focus-down",
+      category: "Navigation",
+      label: "Focus Pane Down",
+      description: "Move focus to the pane below.",
+      shortcut: "\u2318\u2325\u2193",
+      action: () => surfaceManager.focusDirection("down"),
+    },
+    {
+      id: "next-workspace",
+      category: "Workspace",
+      label: "Next Workspace",
+      description: "Jump to the next workspace in the stack.",
+      shortcut: "\u2303\u2318]",
+      action: () => surfaceManager.nextWorkspace(),
+    },
+    {
+      id: "prev-workspace",
+      category: "Workspace",
+      label: "Previous Workspace",
+      description: "Jump to the previous workspace.",
+      shortcut: "\u2303\u2318[",
+      action: () => surfaceManager.prevWorkspace(),
+    },
+    {
+      id: "maximize",
+      category: "Window",
+      label: "Toggle Maximize",
+      description: "Expand or restore the main window.",
+      action: () => rpc.send("toggleMaximize"),
+    },
+    {
+      id: "toggle-web-mirror",
+      category: "Network",
+      label: "Toggle Web Mirror",
+      description: "Start or stop the web terminal mirror server.",
+      action: () => rpc.send("toggleWebServer"),
+    },
+  ];
+}
+
+function syncPaletteCommands(): void {
+  palette.setCommands(buildPaletteCommands());
+}
 
 function syncSidebarState() {
   const collapsed = sidebarEl.classList.contains("collapsed");
@@ -270,6 +315,7 @@ function toggleSidebar() {
 
 function openCommandPalette() {
   clearTypingFocusMode();
+  syncPaletteCommands();
   palette.toggle();
 }
 
