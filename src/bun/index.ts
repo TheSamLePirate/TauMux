@@ -82,6 +82,23 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       },
       panelEvent: (payload) => {
         sessions.sendEvent(payload.surfaceId, payload);
+        // Broadcast panel position/size changes to web clients
+        if (
+          payload.event === "dragend" ||
+          payload.event === "resize" ||
+          payload.event === "close"
+        ) {
+          webServer?.broadcast({
+            type: "panelEvent",
+            surfaceId: payload.surfaceId,
+            id: payload.id,
+            event: payload.event,
+            x: payload.x,
+            y: payload.y,
+            width: payload.width,
+            height: payload.height,
+          });
+        }
       },
       readScreenResponse: (payload) => {
         const resolve = pendingReads.get(payload.reqId);
@@ -245,6 +262,14 @@ if (webServerPort > 0) {
     getAppState,
     () => focusedSurfaceId,
   );
+  webServer.onPanelUpdate = (surfaceId, panelId, fields) => {
+    rpc.send("sidebandMeta", {
+      surfaceId,
+      id: panelId,
+      type: "update" as const,
+      ...fields,
+    });
+  };
   webServer.start();
 }
 

@@ -80,6 +80,15 @@ export class WebServer {
   private clients = new Set<WS>();
   private clientCounter = 0;
 
+  // Called when a web client changes a panel's position or size
+  onPanelUpdate:
+    | ((
+        surfaceId: string,
+        panelId: string,
+        fields: Record<string, unknown>,
+      ) => void)
+    | null = null;
+
   constructor(
     private port: number,
     private sessions: SessionManager,
@@ -216,6 +225,49 @@ export class WebServer {
                 ws.send(
                   JSON.stringify({ type: "history", surfaceId, data: history }),
                 );
+              }
+              break;
+            }
+            case "panelMouseEvent": {
+              const surfaceId = msg["surfaceId"] as string;
+              if (surfaceId) {
+                const panelEvt = {
+                  id: msg["id"] as string,
+                  event: msg["event"] as string,
+                  x: msg["x"] as number | undefined,
+                  y: msg["y"] as number | undefined,
+                  width: msg["width"] as number | undefined,
+                  height: msg["height"] as number | undefined,
+                  button: msg["button"] as number | undefined,
+                  buttons: msg["buttons"] as number | undefined,
+                  deltaX: msg["deltaX"] as number | undefined,
+                  deltaY: msg["deltaY"] as number | undefined,
+                };
+                // Send to script via fd5
+                this.sessions.sendEvent(surfaceId, panelEvt);
+                // Broadcast drag/resize/close to all web clients + host
+                const evt = panelEvt.event;
+                if (evt === "dragend" || evt === "resize" || evt === "close") {
+                  this.broadcast({
+                    type: "panelEvent",
+                    surfaceId,
+                    id: panelEvt.id,
+                    event: evt,
+                    x: panelEvt.x,
+                    y: panelEvt.y,
+                    width: panelEvt.width,
+                    height: panelEvt.height,
+                  });
+                  // Notify host webview to update panel position/size
+                  const fields: Record<string, unknown> = {};
+                  if (panelEvt.x !== undefined) fields["x"] = panelEvt.x;
+                  if (panelEvt.y !== undefined) fields["y"] = panelEvt.y;
+                  if (panelEvt.width !== undefined)
+                    fields["width"] = panelEvt.width;
+                  if (panelEvt.height !== undefined)
+                    fields["height"] = panelEvt.height;
+                  this.onPanelUpdate?.(surfaceId, panelEvt.id!, fields);
+                }
               }
               break;
             }
@@ -373,13 +425,34 @@ html, body {
 #status-dot.connected { background: var(--green); }
 #status-dot.reconnecting { background: var(--yellow); }
 #client-count { font-size: 10px; color: var(--subtext); }
-#terminal-wrapper { position: absolute; top: 36px; left: 0; right: 0; bottom: 0; }
+#terminal-wrapper { position: absolute; top: 36px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+#terminal { width: 100%; height: 100%; overflow: hidden; }
 #terminal-wrapper .xterm { height: 100%; }
 .xterm-viewport { background-color: var(--bg) !important; }
 .web-panel {
   position: absolute; pointer-events: none; border-radius: 8px; overflow: hidden;
   border: 1px solid rgba(255,255,255,0.08); background: rgba(14,18,27,0.9);
   backdrop-filter: blur(12px); z-index: 10;
+}
+.web-panel.interactive { pointer-events: auto; cursor: crosshair; }
+.web-panel.draggable, .web-panel.resizable { pointer-events: auto; }
+.web-panel-drag {
+  height: 22px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 8px; cursor: grab; user-select: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-size: 10px; color: rgba(255,255,255,0.4);
+}
+.web-panel-drag:active { cursor: grabbing; }
+.web-panel-resize {
+  position: absolute; bottom: 0; right: 0; width: 14px; height: 14px;
+  cursor: nwse-resize; opacity: 0; transition: opacity 0.15s;
+}
+.web-panel:hover .web-panel-resize { opacity: 0.7; }
+.web-panel-resize::after {
+  content: ''; position: absolute; bottom: 3px; right: 3px;
+  width: 5px; height: 5px; border-right: 1.5px solid rgba(255,255,255,0.5);
+  border-bottom: 1.5px solid rgba(255,255,255,0.5);
 }
 .web-panel-content { overflow: hidden; }
 .web-panel-content img { width: 100%; height: 100%; object-fit: contain; display: block; }
@@ -474,9 +547,138 @@ const APP_JS = [
   '  if (msg.height !== undefined && msg.height !== "auto") el.style.height = msg.height + "px";',
   "  if (msg.opacity !== undefined) el.style.opacity = msg.opacity;",
   "  if (msg.zIndex !== undefined) el.style.zIndex = msg.zIndex;",
+  "  var draggable = msg.draggable !== undefined ? msg.draggable : (msg.position === 'float');",
+  "  var resizable = msg.resizable !== undefined ? msg.resizable : (msg.position === 'float');",
+  "  // Drag handle",
+  "  if (draggable) {",
+  '    el.classList.add("draggable");',
+  '    var dragH = document.createElement("div"); dragH.className = "web-panel-drag";',
+  "    dragH.textContent = id;",
+  "    el.insertBefore(dragH, el.firstChild);",
+  "    setupPanelDrag(el, dragH, id, msg.surfaceId);",
+  "  }",
   '  var contentEl = document.createElement("div"); contentEl.className = "web-panel-content";',
-  "  el.appendChild(contentEl); panelContainer.appendChild(el);",
+  "  el.appendChild(contentEl);",
+  "  // Resize handle",
+  "  if (resizable) {",
+  '    el.classList.add("resizable");',
+  '    var resizeH = document.createElement("div"); resizeH.className = "web-panel-resize";',
+  "    el.appendChild(resizeH);",
+  "    setupPanelResize(el, resizeH, id, msg.surfaceId);",
+  "  }",
+  "  panelContainer.appendChild(el);",
+  "  if (msg.interactive) { el.classList.add('interactive'); setupPanelMouse(contentEl, id, msg.surfaceId); }",
   "  panels[id] = { el: el, contentEl: contentEl, meta: msg };",
+  "}",
+  "",
+  "// Touch helper: extract clientX/clientY from touch or mouse event",
+  "function txy(e) { var t = e.touches ? e.touches[0] || e.changedTouches[0] : e; return t || e; }",
+  "",
+  "var lastMoveTime = 0;",
+  "function setupPanelMouse(el, panelId, surfaceId) {",
+  "  function sendXY(evtName, cx, cy, btn, btns) {",
+  "    var rect = el.getBoundingClientRect();",
+  "    sendMsg({ type: 'panelMouseEvent', surfaceId: surfaceId, id: panelId, event: evtName,",
+  "      x: Math.round(cx - rect.left), y: Math.round(cy - rect.top),",
+  "      button: btn, buttons: btns });",
+  "  }",
+  "  // Mouse events",
+  "  el.addEventListener('mousedown', function(e) { e.preventDefault(); sendXY('mousedown', e.clientX, e.clientY, e.button, e.buttons); });",
+  "  el.addEventListener('mouseup', function(e) { sendXY('mouseup', e.clientX, e.clientY, e.button, 0); });",
+  "  el.addEventListener('click', function(e) { sendXY('click', e.clientX, e.clientY, e.button, 0); });",
+  "  el.addEventListener('mousemove', function(e) {",
+  "    var now = Date.now(); if (now - lastMoveTime < 16) return; lastMoveTime = now;",
+  "    sendXY('mousemove', e.clientX, e.clientY, 0, e.buttons);",
+  "  });",
+  "  el.addEventListener('mouseenter', function(e) { sendXY('mouseenter', e.clientX, e.clientY, 0, e.buttons); });",
+  "  el.addEventListener('mouseleave', function(e) { sendXY('mouseleave', e.clientX, e.clientY, 0, 0); });",
+  "  // Touch → mouse mapping. Capture move/end on document so we don't lose events",
+  "  // when the finger slides off the element.",
+  "  var touching = false;",
+  "  el.addEventListener('touchstart', function(e) {",
+  "    e.preventDefault(); touching = true; var t = e.touches[0];",
+  "    if (t) sendXY('mousedown', t.clientX, t.clientY, 0, 1);",
+  "    function onTouchMove(me) {",
+  "      me.preventDefault(); var mt = me.touches[0];",
+  "      if (mt) sendXY('mousemove', mt.clientX, mt.clientY, 0, 1);",
+  "    }",
+  "    function onTouchEnd(me) {",
+  "      document.removeEventListener('touchmove', onTouchMove);",
+  "      document.removeEventListener('touchend', onTouchEnd);",
+  "      document.removeEventListener('touchcancel', onTouchEnd);",
+  "      touching = false;",
+  "      var ct = me.changedTouches[0];",
+  "      if (ct) sendXY('mouseup', ct.clientX, ct.clientY, 0, 0);",
+  "    }",
+  "    document.addEventListener('touchmove', onTouchMove, { passive: false });",
+  "    document.addEventListener('touchend', onTouchEnd);",
+  "    document.addEventListener('touchcancel', onTouchEnd);",
+  "  }, { passive: false });",
+  "  el.addEventListener('wheel', function(e) {",
+  "    var rect = el.getBoundingClientRect();",
+  "    sendMsg({ type: 'panelMouseEvent', surfaceId: surfaceId, id: panelId, event: 'wheel',",
+  "      x: Math.round(e.clientX - rect.left), y: Math.round(e.clientY - rect.top),",
+  "      deltaX: Math.round(e.deltaX), deltaY: Math.round(e.deltaY), buttons: e.buttons });",
+  "  }, { passive: true });",
+  "}",
+  "",
+  "function setupPanelDrag(el, handle, panelId, surfaceId) {",
+  "  function startDrag(e) {",
+  "    e.preventDefault(); e.stopPropagation();",
+  "    var p = txy(e);",
+  "    var startX = p.clientX, startY = p.clientY;",
+  "    var startLeft = parseInt(el.style.left) || 0;",
+  "    var startTop = parseInt(el.style.top) || 0;",
+  "    function onMove(me) {",
+  "      var mp = txy(me);",
+  "      el.style.left = (startLeft + mp.clientX - startX) + 'px';",
+  "      el.style.top = (startTop + mp.clientY - startY) + 'px';",
+  "    }",
+  "    function onUp() {",
+  "      document.removeEventListener('mousemove', onMove);",
+  "      document.removeEventListener('mouseup', onUp);",
+  "      document.removeEventListener('touchmove', onMove);",
+  "      document.removeEventListener('touchend', onUp);",
+  "      var nx = parseInt(el.style.left) || 0;",
+  "      var ny = parseInt(el.style.top) || 0;",
+  "      sendMsg({ type: 'panelMouseEvent', surfaceId: surfaceId, id: panelId, event: 'dragend', x: nx, y: ny });",
+  "    }",
+  "    document.addEventListener('mousemove', onMove);",
+  "    document.addEventListener('mouseup', onUp);",
+  "    document.addEventListener('touchmove', onMove, { passive: false });",
+  "    document.addEventListener('touchend', onUp);",
+  "  }",
+  "  handle.addEventListener('mousedown', startDrag);",
+  "  handle.addEventListener('touchstart', startDrag, { passive: false });",
+  "}",
+  "",
+  "function setupPanelResize(el, handle, panelId, surfaceId) {",
+  "  function startResize(e) {",
+  "    e.preventDefault(); e.stopPropagation();",
+  "    var p = txy(e);",
+  "    var startX = p.clientX, startY = p.clientY;",
+  "    var startW = el.offsetWidth, startH = el.offsetHeight;",
+  "    function onMove(me) {",
+  "      if (me.preventDefault) me.preventDefault();",
+  "      var mp = txy(me);",
+  "      el.style.width = Math.max(120, startW + mp.clientX - startX) + 'px';",
+  "      el.style.height = Math.max(72, startH + mp.clientY - startY) + 'px';",
+  "    }",
+  "    function onUp() {",
+  "      document.removeEventListener('mousemove', onMove);",
+  "      document.removeEventListener('mouseup', onUp);",
+  "      document.removeEventListener('touchmove', onMove);",
+  "      document.removeEventListener('touchend', onUp);",
+  "      var nw = el.offsetWidth; var nh = el.offsetHeight;",
+  "      sendMsg({ type: 'panelMouseEvent', surfaceId: surfaceId, id: panelId, event: 'resize', width: nw, height: nh });",
+  "    }",
+  "    document.addEventListener('mousemove', onMove);",
+  "    document.addEventListener('mouseup', onUp);",
+  "    document.addEventListener('touchmove', onMove, { passive: false });",
+  "    document.addEventListener('touchend', onUp);",
+  "  }",
+  "  handle.addEventListener('mousedown', startResize);",
+  "  handle.addEventListener('touchstart', startResize, { passive: false });",
   "}",
   "",
   "function handleSidebandData(msg) {",
@@ -549,6 +751,18 @@ const APP_JS = [
   '      case "sidebandMeta":',
   "        handleSidebandMeta(Object.assign({}, msg.meta, { surfaceId: msg.surfaceId })); break;",
   '      case "sidebandData": handleSidebandData(msg); break;',
+  '      case "panelEvent":',
+  "        var pe = panels[msg.id];",
+  '        if (pe && msg.event === "dragend") {',
+  '          if (msg.x !== undefined) pe.el.style.left = msg.x + "px";',
+  '          if (msg.y !== undefined) pe.el.style.top = msg.y + "px";',
+  "        }",
+  '        if (pe && msg.event === "resize") {',
+  '          if (msg.width !== undefined) pe.el.style.width = msg.width + "px";',
+  '          if (msg.height !== undefined) pe.el.style.height = msg.height + "px";',
+  "        }",
+  '        if (pe && msg.event === "close") { pe.el.remove(); delete panels[msg.id]; }',
+  "        break;",
   "    }",
   "  };",
   "  ws.onclose = function() {",
@@ -559,6 +773,8 @@ const APP_JS = [
   "}",
   "",
   'term.onData(function(data) { sendMsg({ type: "stdin", surfaceId: subscribedSurface, data: data }); });',
+  "// onBinary handles mouse escape sequences that use raw bytes (X10/normal mouse protocol)",
+  'term.onBinary(function(data) { sendMsg({ type: "stdin", surfaceId: subscribedSurface, data: data }); });',
   'document.getElementById("terminal").addEventListener("click", function() { term.focus(); });',
   "connect();",
   "});",
