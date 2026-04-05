@@ -1,0 +1,352 @@
+import type { SidebandMetaMessage, PanelEvent } from "../../shared/types";
+
+const decoder = new TextDecoder();
+
+export class Panel {
+  readonly id: string;
+  readonly el: HTMLDivElement;
+  readonly isInline: boolean;
+  anchorRow: number;
+  private contentEl: HTMLDivElement;
+  private dragHandle: HTMLDivElement;
+  private closeBtn: HTMLDivElement;
+  private resizeHandle: HTMLDivElement;
+  private meta: SidebandMetaMessage;
+  private onEvent: (e: PanelEvent) => void;
+  private blobUrl: string | null = null;
+
+  constructor(
+    meta: SidebandMetaMessage,
+    container: HTMLElement,
+    onEvent: (e: PanelEvent) => void,
+  ) {
+    this.id = meta.id;
+    this.meta = meta;
+    this.onEvent = onEvent;
+    this.isInline = meta.position === "inline";
+    this.anchorRow = 0;
+
+    this.el = document.createElement("div");
+    this.el.className = "panel";
+    this.el.dataset["panelId"] = meta.id;
+
+    this.dragHandle = document.createElement("div");
+    this.dragHandle.className = "panel-drag-handle";
+
+    this.closeBtn = document.createElement("div");
+    this.closeBtn.className = "panel-close-btn";
+    this.closeBtn.textContent = "\u00d7";
+    this.closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.onEvent({ id: this.id, event: "close" });
+    });
+    this.dragHandle.appendChild(this.closeBtn);
+
+    const titleEl = document.createElement("span");
+    titleEl.className = "panel-title";
+    titleEl.textContent = meta.id;
+    this.dragHandle.appendChild(titleEl);
+
+    this.contentEl = document.createElement("div");
+    this.contentEl.className = "panel-content";
+
+    this.resizeHandle = document.createElement("div");
+    this.resizeHandle.className = "panel-resize-handle";
+
+    this.el.appendChild(this.dragHandle);
+    this.el.appendChild(this.contentEl);
+    this.el.appendChild(this.resizeHandle);
+
+    this.syncClasses();
+    this.applyMeta(meta);
+    this.setupDrag();
+    this.setupResize();
+    this.setupInteractive(meta.interactive ?? false);
+
+    container.appendChild(this.el);
+
+    this.el.style.opacity = "0";
+    requestAnimationFrame(() => {
+      this.el.style.opacity = String(meta.opacity ?? 1);
+    });
+  }
+
+  updateMeta(msg: SidebandMetaMessage): void {
+    if (msg.x !== undefined) this.meta.x = msg.x;
+    if (msg.y !== undefined) this.meta.y = msg.y;
+    if (msg.width !== undefined) this.meta.width = msg.width;
+    if (msg.height !== undefined) this.meta.height = msg.height;
+    if (msg.zIndex !== undefined) this.meta.zIndex = msg.zIndex;
+    if (msg.opacity !== undefined) this.meta.opacity = msg.opacity;
+    if (msg.borderRadius !== undefined) {
+      this.meta.borderRadius = msg.borderRadius;
+    }
+    if (msg.interactive !== undefined) {
+      this.meta.interactive = msg.interactive;
+      this.setupInteractive(msg.interactive);
+    }
+    if (msg.data !== undefined) {
+      this.contentEl.innerHTML = msg.data;
+    }
+
+    this.syncClasses();
+    this.applyMeta(this.meta);
+  }
+
+  setContent(data: Uint8Array): void {
+    if (this.blobUrl) {
+      URL.revokeObjectURL(this.blobUrl);
+      this.blobUrl = null;
+    }
+
+    const type = this.meta.type;
+
+    if (type === "image") {
+      const mimeMap: Record<string, string> = {
+        png: "image/png",
+        jpeg: "image/jpeg",
+        jpg: "image/jpeg",
+        webp: "image/webp",
+        gif: "image/gif",
+      };
+      const mime = mimeMap[this.meta.format ?? "png"] ?? "image/png";
+      const blob = new Blob([data.buffer as ArrayBuffer], { type: mime });
+      this.blobUrl = URL.createObjectURL(blob);
+
+      const img = document.createElement("img");
+      img.src = this.blobUrl;
+      img.style.width = "100%";
+      img.style.height = "100%";
+      img.style.objectFit = "contain";
+      img.draggable = false;
+
+      this.contentEl.innerHTML = "";
+      this.contentEl.appendChild(img);
+    } else if (type === "svg") {
+      this.contentEl.innerHTML = decoder.decode(data);
+    } else if (type === "html") {
+      this.contentEl.innerHTML = decoder.decode(data);
+    } else if (type === "canvas2d") {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const blob = new Blob([data.buffer as ArrayBuffer], {
+        type: "image/png",
+      });
+      createImageBitmap(blob).then((bitmap) => {
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        ctx.drawImage(bitmap, 0, 0);
+      });
+      this.contentEl.innerHTML = "";
+      this.contentEl.appendChild(canvas);
+    }
+  }
+
+  updateInlinePosition(
+    viewportY: number,
+    cellHeight: number,
+    visibleRows: number,
+  ): void {
+    if (!this.isInline) return;
+    const visibleRow = this.anchorRow - viewportY;
+    if (visibleRow < 0 || visibleRow >= visibleRows) {
+      this.el.style.display = "none";
+    } else {
+      this.el.style.display = "";
+      this.el.style.top = `${visibleRow * cellHeight}px`;
+    }
+  }
+
+  remove(): void {
+    if (this.blobUrl) {
+      URL.revokeObjectURL(this.blobUrl);
+      this.blobUrl = null;
+    }
+    this.el.remove();
+  }
+
+  private syncClasses(): void {
+    this.el.classList.toggle(
+      "panel-position-inline",
+      this.meta.position === "inline",
+    );
+    this.el.classList.toggle(
+      "panel-position-float",
+      this.meta.position === "float",
+    );
+    this.el.classList.toggle(
+      "panel-position-overlay",
+      this.meta.position === "overlay",
+    );
+    this.el.classList.toggle(
+      "panel-interactive",
+      Boolean(this.meta.interactive),
+    );
+    this.el.classList.toggle("panel-type-image", this.meta.type === "image");
+    this.el.classList.toggle("panel-type-html", this.meta.type === "html");
+    this.el.classList.toggle("panel-type-svg", this.meta.type === "svg");
+    this.el.classList.toggle(
+      "panel-type-canvas",
+      this.meta.type === "canvas2d",
+    );
+  }
+
+  private applyMeta(m: SidebandMetaMessage): void {
+    const s = this.el.style;
+    if (m.x !== undefined) s.left = `${m.x}px`;
+    if (m.y !== undefined) s.top = `${m.y}px`;
+    if (m.width !== undefined && m.width !== "auto") s.width = `${m.width}px`;
+    if (m.height !== undefined && m.height !== "auto")
+      s.height = `${m.height}px`;
+    if (m.zIndex !== undefined) s.zIndex = String(m.zIndex);
+    if (m.opacity !== undefined) s.opacity = String(m.opacity);
+    if (m.borderRadius !== undefined) s.borderRadius = `${m.borderRadius}px`;
+    if (this.isInline && m.x === undefined) s.left = "12px";
+
+    const draggable = m.draggable ?? m.position === "float";
+    this.dragHandle.style.display = draggable ? "flex" : "none";
+
+    const resizable = m.resizable ?? m.position === "float";
+    this.resizeHandle.style.display = resizable ? "block" : "none";
+  }
+
+  private setupDrag(): void {
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const newLeft = startLeft + dx;
+      const newTop = startTop + dy;
+      this.el.style.left = `${newLeft}px`;
+      this.el.style.top = `${newTop}px`;
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      this.dragHandle.style.cursor = "grab";
+      this.meta.x = parseInt(this.el.style.left) || 0;
+      this.meta.y = parseInt(this.el.style.top) || 0;
+      this.onEvent({
+        id: this.id,
+        event: "dragend",
+        x: this.meta.x,
+        y: this.meta.y,
+      });
+    };
+
+    this.dragHandle.addEventListener("mousedown", (e) => {
+      if ((e.target as HTMLElement).classList.contains("panel-close-btn"))
+        return;
+      e.preventDefault();
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = parseInt(this.el.style.left) || 0;
+      startTop = parseInt(this.el.style.top) || 0;
+      this.dragHandle.style.cursor = "grabbing";
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+  }
+
+  private setupResize(): void {
+    let startX = 0;
+    let startY = 0;
+    let startW = 0;
+    let startH = 0;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const newW = Math.max(120, startW + (e.clientX - startX));
+      const newH = Math.max(72, startH + (e.clientY - startY));
+      this.el.style.width = `${newW}px`;
+      this.el.style.height = `${newH}px`;
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      this.meta.width = parseInt(this.el.style.width);
+      this.meta.height = parseInt(this.el.style.height);
+      this.onEvent({
+        id: this.id,
+        event: "resize",
+        width: parseInt(this.el.style.width),
+        height: parseInt(this.el.style.height),
+      });
+    };
+
+    this.resizeHandle.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startX = e.clientX;
+      startY = e.clientY;
+      startW = this.el.offsetWidth;
+      startH = this.el.offsetHeight;
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+  }
+
+  private setupInteractive(interactive: boolean): void {
+    this.el.classList.toggle("panel-interactive", interactive);
+    if (interactive) {
+      this.contentEl.classList.remove("non-interactive");
+      this.contentEl.addEventListener("click", this.handleContentEvent);
+      this.contentEl.addEventListener("mousedown", this.handleContentEvent);
+      this.contentEl.addEventListener("mouseup", this.handleContentEvent);
+      this.contentEl.addEventListener("mousemove", this.handleMouseMove);
+      this.contentEl.addEventListener("mouseenter", this.handleContentEvent);
+      this.contentEl.addEventListener("mouseleave", this.handleContentEvent);
+      this.contentEl.addEventListener("wheel", this.handleWheel, {
+        passive: true,
+      });
+    } else {
+      this.contentEl.classList.add("non-interactive");
+      this.contentEl.removeEventListener("click", this.handleContentEvent);
+      this.contentEl.removeEventListener("mousedown", this.handleContentEvent);
+      this.contentEl.removeEventListener("mouseup", this.handleContentEvent);
+      this.contentEl.removeEventListener("mousemove", this.handleMouseMove);
+      this.contentEl.removeEventListener("mouseenter", this.handleContentEvent);
+      this.contentEl.removeEventListener("mouseleave", this.handleContentEvent);
+      this.contentEl.removeEventListener("wheel", this.handleWheel);
+    }
+  }
+
+  private handleContentEvent = (e: MouseEvent): void => {
+    const rect = this.contentEl.getBoundingClientRect();
+    this.onEvent({
+      id: this.id,
+      event: e.type,
+      x: Math.round(e.clientX - rect.left),
+      y: Math.round(e.clientY - rect.top),
+      button: e.button,
+      buttons: e.buttons,
+    });
+  };
+
+  // Throttle mousemove to ~60 fps to avoid flooding fd5
+  private lastMoveTime = 0;
+  private handleMouseMove = (e: MouseEvent): void => {
+    const now = performance.now();
+    if (now - this.lastMoveTime < 16) return;
+    this.lastMoveTime = now;
+    this.handleContentEvent(e);
+  };
+
+  private handleWheel = (e: WheelEvent): void => {
+    const rect = this.contentEl.getBoundingClientRect();
+    this.onEvent({
+      id: this.id,
+      event: "wheel",
+      x: Math.round(e.clientX - rect.left),
+      y: Math.round(e.clientY - rect.top),
+      deltaX: Math.round(e.deltaX),
+      deltaY: Math.round(e.deltaY),
+      buttons: e.buttons,
+    });
+  };
+}

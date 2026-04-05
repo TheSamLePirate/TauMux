@@ -1,0 +1,385 @@
+#!/usr/bin/env bun
+/**
+ * ht — HyperTerm Canvas CLI
+ * Controls HyperTerm Canvas via Unix socket (JSON-RPC).
+ */
+
+import { connect } from "net";
+
+const SOCKET_PATH =
+  process.env["HT_SOCKET_PATH"] || "/tmp/hyperterm.sock";
+
+const args = process.argv.slice(2);
+const command = args[0];
+
+if (!command || command === "--help" || command === "-h") {
+  printHelp();
+  process.exit(0);
+}
+
+// Parse flags from remaining args
+function parseFlags(
+  a: string[],
+): { positional: string[]; flags: Record<string, string> } {
+  const positional: string[] = [];
+  const flags: Record<string, string> = {};
+  let i = 0;
+  while (i < a.length) {
+    if (a[i].startsWith("--")) {
+      const key = a[i].slice(2);
+      const val = a[i + 1] && !a[i + 1].startsWith("--") ? a[i + 1] : "true";
+      flags[key] = val;
+      i += val === "true" ? 1 : 2;
+    } else if (a[i].startsWith("-") && a[i].length === 2) {
+      const key = a[i].slice(1);
+      const val = a[i + 1] && !a[i + 1].startsWith("-") ? a[i + 1] : "true";
+      flags[key] = val;
+      i += val === "true" ? 1 : 2;
+    } else {
+      positional.push(a[i]);
+      i++;
+    }
+  }
+  return { positional, flags };
+}
+
+const { positional, flags } = parseFlags(args.slice(1));
+
+function unescapeText(s: string): string {
+  return s
+    .replace(/\\n/g, "\r")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\x1b/g, "\x1b")
+    .replace(/\\\\/g, "\\");
+}
+
+// Map CLI command → JSON-RPC method + params
+interface RpcCall {
+  method: string;
+  params: Record<string, unknown>;
+}
+
+function mapCommand(): RpcCall {
+  switch (command) {
+    case "ping":
+      return { method: "system.ping", params: {} };
+    case "version":
+      return { method: "system.version", params: {} };
+    case "identify":
+      return { method: "system.identify", params: {} };
+    case "capabilities":
+      return { method: "system.capabilities", params: {} };
+    case "tree":
+      return { method: "system.tree", params: {} };
+
+    case "list-workspaces":
+      return { method: "workspace.list", params: {} };
+    case "current-workspace":
+      return { method: "workspace.current", params: {} };
+    case "new-workspace":
+      return {
+        method: "workspace.create",
+        params: { name: flags["name"], cwd: flags["cwd"] },
+      };
+    case "select-workspace":
+      return {
+        method: "workspace.select",
+        params: { workspace_id: flags["workspace"] },
+      };
+    case "close-workspace":
+      return {
+        method: "workspace.close",
+        params: { workspace_id: flags["workspace"] },
+      };
+    case "rename-workspace":
+      return {
+        method: "workspace.rename",
+        params: {
+          workspace_id: flags["workspace"],
+          name: positional[0],
+        },
+      };
+    case "next-workspace":
+      return { method: "workspace.next", params: {} };
+    case "previous-workspace":
+      return { method: "workspace.previous", params: {} };
+
+    case "list-surfaces":
+      return { method: "surface.list", params: {} };
+    case "new-split":
+      return {
+        method: "surface.split",
+        params: { direction: positional[0] || "right" },
+      };
+    case "close-surface":
+      return {
+        method: "surface.close",
+        params: { surface_id: flags["surface"] },
+      };
+    case "focus-surface":
+      return {
+        method: "surface.focus",
+        params: { surface_id: flags["surface"] },
+      };
+
+    case "send":
+      return {
+        method: "surface.send_text",
+        params: {
+          surface_id: flags["surface"],
+          text: unescapeText(positional[0] || ""),
+        },
+      };
+    case "send-key":
+      return {
+        method: "surface.send_key",
+        params: {
+          surface_id: flags["surface"],
+          key: positional[0],
+        },
+      };
+    case "read-screen":
+      return {
+        method: "surface.read_text",
+        params: {
+          surface_id: flags["surface"],
+          lines: flags["lines"] ? parseInt(flags["lines"]) : undefined,
+          scrollback: flags["scrollback"] === "true",
+        },
+      };
+
+    case "list-panes":
+      return { method: "pane.list", params: {} };
+
+    case "set-status":
+      return {
+        method: "sidebar.set_status",
+        params: {
+          workspace_id: flags["workspace"],
+          key: positional[0],
+          value: positional[1],
+          icon: flags["icon"],
+          color: flags["color"],
+        },
+      };
+    case "clear-status":
+      return {
+        method: "sidebar.clear_status",
+        params: {
+          workspace_id: flags["workspace"],
+          key: positional[0],
+        },
+      };
+    case "set-progress":
+      return {
+        method: "sidebar.set_progress",
+        params: {
+          workspace_id: flags["workspace"],
+          value: parseFloat(positional[0] || "0"),
+          label: flags["label"],
+        },
+      };
+    case "clear-progress":
+      return {
+        method: "sidebar.clear_progress",
+        params: { workspace_id: flags["workspace"] },
+      };
+    case "log":
+      return {
+        method: "sidebar.log",
+        params: {
+          workspace_id: flags["workspace"],
+          level: flags["level"] || "info",
+          message: positional[0],
+          source: flags["source"],
+        },
+      };
+
+    case "notify":
+      return {
+        method: "notification.create",
+        params: {
+          title: flags["title"] || positional[0] || "",
+          subtitle: flags["subtitle"],
+          body: flags["body"] || positional[1] || "",
+        },
+      };
+    case "list-notifications":
+      return { method: "notification.list", params: {} };
+    case "clear-notifications":
+      return { method: "notification.clear", params: {} };
+
+    // tmux compat alias
+    case "capture-pane":
+      return {
+        method: "surface.read_text",
+        params: {
+          surface_id: flags["surface"],
+          lines: flags["lines"] ? parseInt(flags["lines"]) : undefined,
+          scrollback: flags["scrollback"] === "true",
+        },
+      };
+
+    default:
+      console.error(`Unknown command: ${command}`);
+      console.error('Run "ht --help" for usage.');
+      process.exit(1);
+  }
+}
+
+const rpcCall = mapCommand();
+
+// Send to socket
+const payload = JSON.stringify({
+  id: "1",
+  method: rpcCall.method,
+  params: rpcCall.params,
+}) + "\n";
+
+const socket = connect(SOCKET_PATH);
+let response = "";
+
+socket.on("connect", () => {
+  socket.write(payload);
+});
+
+socket.on("data", (chunk) => {
+  response += chunk.toString();
+  // Process complete lines
+  const lines = response.split("\n");
+  for (let i = 0; i < lines.length - 1; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    try {
+      const res = JSON.parse(line);
+      if (res.error) {
+        console.error(`Error: ${res.error}`);
+        process.exit(1);
+      }
+      formatOutput(res.result);
+      process.exit(0);
+    } catch {
+      console.log(line);
+    }
+  }
+  response = lines[lines.length - 1];
+});
+
+// Timeout for async responses
+setTimeout(() => {
+  socket.end();
+  process.exit(0);
+}, 5000);
+
+socket.on("error", (err: Error & { code?: string }) => {
+  if (err.code === "ENOENT" || err.code === "ECONNREFUSED") {
+    console.error("HyperTerm Canvas is not running.");
+    console.error(`Socket not found: ${SOCKET_PATH}`);
+  } else {
+    console.error(`Socket error: ${err.message}`);
+  }
+  process.exit(1);
+});
+
+function formatOutput(result: unknown): void {
+  if (result === "PONG") {
+    console.log("PONG");
+    return;
+  }
+  if (typeof result === "string") {
+    console.log(result);
+    return;
+  }
+  if (flags["json"] === "true" || flags["j"] === "true") {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  // Format specific types
+  if (Array.isArray(result)) {
+    if (result.length === 0) {
+      console.log("(none)");
+      return;
+    }
+    // Workspace list
+    if (result[0]?.name && result[0]?.id) {
+      for (const item of result) {
+        const marker = item.active ? "* " : "  ";
+        const extra = item.active ? " [selected]" : "";
+        console.log(`${marker}${item.id}  ${item.name}${extra}`);
+      }
+      return;
+    }
+  }
+  // Tree output
+  if (Array.isArray(result) && result[0]?.workspace) {
+    for (const ws of result) {
+      const marker = ws.active ? "* " : "  ";
+      console.log(`${marker}${ws.workspace} "${ws.name}"`);
+      for (const s of ws.surfaces || []) {
+        const focus = s.focused ? " [focused]" : "";
+        console.log(`    ${s.id} pid=${s.pid} "${s.title}"${focus}`);
+      }
+    }
+    return;
+  }
+  // Default: JSON
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function printHelp(): void {
+  console.log(`ht — HyperTerm Canvas CLI
+
+Usage: ht <command> [options]
+
+System:
+  ping                              Check if HyperTerm is running
+  version                           Show version
+  identify                          Show focused workspace/surface
+  capabilities                      List available methods
+  tree                              Show workspace/pane/surface tree
+
+Workspaces:
+  list-workspaces                   List all workspaces
+  current-workspace                 Get active workspace
+  new-workspace [--name N] [--cwd P] Create new workspace
+  select-workspace --workspace W    Switch to workspace
+  close-workspace --workspace W     Close workspace
+  rename-workspace [--workspace W] NAME  Rename workspace
+  next-workspace                    Switch to next
+  previous-workspace                Switch to previous
+
+Surfaces & Panes:
+  list-surfaces                     List all surfaces
+  new-split <right|down|left|up>    Split focused pane
+  close-surface [--surface S]       Close surface
+  focus-surface --surface S         Focus surface
+  list-panes                        List panes
+
+I/O:
+  send [--surface S] "text"         Send text to terminal
+  send-key [--surface S] <key>      Send key (enter|tab|escape|...)
+  read-screen [--surface S] [--lines N]  Read terminal content
+
+Sidebar:
+  set-status <key> <value> [--icon I] [--color #hex]
+  clear-status <key>
+  set-progress <0.0-1.0> [--label L]
+  clear-progress
+  log [--level L] [--source S] "message"  Add log entry to sidebar
+
+Notifications:
+  notify [--title T] [--body B]         Create a notification
+  list-notifications                    List notifications
+  clear-notifications                   Clear all notifications
+
+Aliases:
+  capture-pane                          Alias for read-screen (tmux compat)
+
+Environment:
+  HT_SOCKET_PATH   Override socket path (default: /tmp/hyperterm.sock)
+  HT_WORKSPACE_ID  Auto-set in HyperTerm terminals
+  HT_SURFACE_ID    Auto-set in HyperTerm terminals
+
+Add --json to any command for raw JSON output.`);
+}
