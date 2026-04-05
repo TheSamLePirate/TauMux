@@ -3,12 +3,14 @@ import type { Terminal } from "xterm";
 type GLContext = WebGLRenderingContext | WebGL2RenderingContext;
 type Disposable = { dispose(): void };
 
+// The shader is now minimal — the real blur work is done on the CPU canvas.
+// The GPU just samples the pre-blurred texture and applies boost/brightness.
 const VERTEX_SHADER_SOURCE = `
 attribute vec2 a_position;
 varying vec2 v_uv;
 
 void main() {
-  v_uv = a_position * 0.5 + 0.5;
+  v_uv = vec2(a_position.x, -a_position.y) * 0.5 + 0.5;
   gl_Position = vec4(a_position, 0.0, 1.0);
 }
 `;
@@ -19,81 +21,34 @@ precision mediump float;
 varying vec2 v_uv;
 
 uniform sampler2D u_source;
-uniform vec2 u_texel;
 uniform float u_boost;
 uniform float u_focus;
 
-vec4 sampleSource(vec2 uv) {
-  return texture2D(u_source, clamp(uv, vec2(0.0), vec2(1.0)));
-}
-
-vec4 sampleBright(vec2 uv) {
-  vec4 source = sampleSource(uv);
-  float luma = dot(source.rgb, vec3(0.2126, 0.7152, 0.0722));
-  float threshold = mix(0.28, 0.16, u_focus);
-  float gate = smoothstep(threshold - 0.1, threshold + 0.14, max(luma, source.a));
-  return vec4(source.rgb * gate, source.a * gate);
-}
-
-vec4 blurSource(vec2 uv, vec2 radius) {
-  vec4 sum = sampleSource(uv) * 0.16;
-  sum += sampleSource(uv + vec2(radius.x, 0.0)) * 0.12;
-  sum += sampleSource(uv - vec2(radius.x, 0.0)) * 0.12;
-  sum += sampleSource(uv + vec2(0.0, radius.y)) * 0.12;
-  sum += sampleSource(uv - vec2(0.0, radius.y)) * 0.12;
-  sum += sampleSource(uv + vec2(radius.x, radius.y)) * 0.09;
-  sum += sampleSource(uv + vec2(-radius.x, radius.y)) * 0.09;
-  sum += sampleSource(uv + vec2(radius.x, -radius.y)) * 0.09;
-  sum += sampleSource(uv + vec2(-radius.x, -radius.y)) * 0.09;
-  return sum;
-}
-
-vec4 blurBright(vec2 uv, vec2 radius) {
-  vec4 sum = sampleBright(uv) * 0.16;
-  sum += sampleBright(uv + vec2(radius.x, 0.0)) * 0.12;
-  sum += sampleBright(uv - vec2(radius.x, 0.0)) * 0.12;
-  sum += sampleBright(uv + vec2(0.0, radius.y)) * 0.12;
-  sum += sampleBright(uv - vec2(0.0, radius.y)) * 0.12;
-  sum += sampleBright(uv + vec2(radius.x, radius.y)) * 0.09;
-  sum += sampleBright(uv + vec2(-radius.x, radius.y)) * 0.09;
-  sum += sampleBright(uv + vec2(radius.x, -radius.y)) * 0.09;
-  sum += sampleBright(uv + vec2(-radius.x, -radius.y)) * 0.09;
-  return sum;
-}
-
 void main() {
-  vec2 glowRadius = u_texel * (3.4 + u_focus * 1.1 + u_boost * 0.6);
-  vec2 bloomRadius = u_texel * (11.0 + u_focus * 2.5 + u_boost * 1.8);
-
-  vec4 base = sampleSource(v_uv);
-  vec4 glow = blurSource(v_uv, glowRadius);
-  vec4 bloom = blurBright(v_uv, bloomRadius);
-
-  float glowStrength = 1.45 + u_boost * 0.65 + u_focus * 0.3;
-  float bloomStrength = 2.35 + u_boost * 0.95 + u_focus * 0.45;
-  float directStrength = 0.18 + u_focus * 0.08;
-
-  vec3 color =
-    glow.rgb * glow.a * glowStrength +
-    bloom.rgb * bloom.a * bloomStrength +
-    base.rgb * base.a * directStrength;
-
-  float alpha = clamp(
-    glow.a * (0.48 + u_focus * 0.08) +
-    bloom.a * (0.92 + u_boost * 0.16) +
-    base.a * 0.14,
-    0.0,
-    0.98
-  );
-
-  gl_FragColor = vec4(color, alpha);
+  vec4 s = texture2D(u_source, v_uv);
+  float brightness = 1.0 + u_boost * 0.15 + u_focus * 0.05;
+  gl_FragColor = vec4(s.rgb * brightness, s.a);
 }
 `;
+
+// Number of halving passes for each blur layer (more = wider spread)
+const GLOW_BLUR = 3; // 8x — tight neon edge just past the letter
+const BLOOM_BLUR = 5; // 32x — main neon aura visible in dark space
+const HALO_BLUR = 7; // 128x — soft ambient color wash
+
+// Opacity of each layer (additive "lighter" blend)
+const GLOW_ALPHA = 0.12;
+const BLOOM_ALPHA = 0.15;
+const HALO_ALPHA = 0.08;
 
 export class TerminalEffects {
   private readonly canvas: HTMLCanvasElement;
   private readonly sourceCanvas: HTMLCanvasElement;
   private readonly sourceCtx: CanvasRenderingContext2D;
+  private readonly textCanvas: HTMLCanvasElement;
+  private readonly textCtx: CanvasRenderingContext2D;
+  private readonly blurCanvas: HTMLCanvasElement;
+  private readonly blurCtx: CanvasRenderingContext2D;
   private readonly resizeObserver: ResizeObserver;
   private readonly subscriptions: Disposable[] = [];
 
@@ -103,7 +58,6 @@ export class TerminalEffects {
   private sourceTexture: WebGLTexture | null = null;
 
   private positionLocation = -1;
-  private texelLocation: WebGLUniformLocation | null = null;
   private boostLocation: WebGLUniformLocation | null = null;
   private focusLocation: WebGLUniformLocation | null = null;
   private sourceLocation: WebGLUniformLocation | null = null;
@@ -131,33 +85,43 @@ export class TerminalEffects {
     this.canvas.setAttribute("aria-hidden", "true");
 
     this.sourceCanvas = document.createElement("canvas");
+    this.textCanvas = document.createElement("canvas");
+    this.blurCanvas = document.createElement("canvas");
+
     const sourceCtx = this.sourceCanvas.getContext("2d", {
       alpha: true,
       desynchronized: true,
     });
-    if (!sourceCtx) {
+    const textCtx = this.textCanvas.getContext("2d", { alpha: true });
+    const blurCtx = this.blurCanvas.getContext("2d", { alpha: true });
+
+    if (!sourceCtx || !textCtx || !blurCtx) {
       this.available = false;
       this.active = false;
       this.canvas.style.display = "none";
       host.appendChild(this.canvas);
       this.sourceCtx = document.createElement("canvas").getContext("2d")!;
+      this.textCtx = document.createElement("canvas").getContext("2d")!;
+      this.blurCtx = document.createElement("canvas").getContext("2d")!;
       this.resizeObserver = new ResizeObserver(() => {});
       return;
     }
     this.sourceCtx = sourceCtx;
+    this.textCtx = textCtx;
+    this.blurCtx = blurCtx;
 
     host.appendChild(this.canvas);
 
     this.gl =
       (this.canvas.getContext("webgl2", {
         alpha: true,
-        antialias: true,
-        premultipliedAlpha: true,
+        antialias: false,
+        premultipliedAlpha: false,
       }) as GLContext | null) ??
       (this.canvas.getContext("webgl", {
         alpha: true,
-        antialias: true,
-        premultipliedAlpha: true,
+        antialias: false,
+        premultipliedAlpha: false,
       }) as GLContext | null);
 
     if (!this.gl) {
@@ -186,6 +150,7 @@ export class TerminalEffects {
 
     this.subscriptions.push(
       term.onRender(() => this.markDirty()),
+      term.onScroll(() => this.markDirty()),
       term.onCursorMove(() => {
         this.outputBoost = Math.max(this.outputBoost, 0.08);
         this.schedule();
@@ -324,54 +289,145 @@ export class TerminalEffects {
     this.canvas.style.width = `${this.width}px`;
     this.canvas.style.height = `${this.height}px`;
 
-    this.sourceWidth = Math.max(1, Math.round(this.width * 0.5));
-    this.sourceHeight = Math.max(1, Math.round(this.height * 0.5));
+    this.sourceWidth = this.canvas.width;
+    this.sourceHeight = this.canvas.height;
     this.sourceCanvas.width = this.sourceWidth;
     this.sourceCanvas.height = this.sourceHeight;
+    this.textCanvas.width = this.sourceWidth;
+    this.textCanvas.height = this.sourceHeight;
 
     this.gl?.viewport(0, 0, this.canvas.width, this.canvas.height);
   }
 
+  // ── Source capture ──────────────────────────────────────────────────
+  // 1. Rasterise visible terminal text to textCanvas (sharp)
+  // 2. Blur via iterative downsample/upscale (works in all WebKit versions)
+  // 3. Stack 3 blur levels additively onto sourceCanvas
+
   private captureTerminal(): void {
     if (!this.available || !this.active) return;
-    this.sourceCtx.clearRect(0, 0, this.sourceWidth, this.sourceHeight);
-    this.sourceCtx.globalCompositeOperation = "source-over";
 
-    const canvases = this.collectTerminalCanvases();
-    for (const canvas of canvases) {
-      this.sourceCtx.drawImage(canvas, 0, 0, this.sourceWidth, this.sourceHeight);
-    }
+    this.rasteriseText();
 
-    this.sourceCtx.globalCompositeOperation = "lighter";
-    this.sourceCtx.globalAlpha = 0.62 + (this.focused ? 0.08 : 0);
-    this.sourceCtx.filter = `blur(${this.focused ? 1.4 : 1.1}px) brightness(1.18) saturate(1.22)`;
+    const ctx = this.sourceCtx;
+    const w = this.sourceWidth;
+    const h = this.sourceHeight;
 
-    for (const canvas of canvases) {
-      this.sourceCtx.drawImage(canvas, 0, 0, this.sourceWidth, this.sourceHeight);
-    }
+    ctx.clearRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "medium";
+    ctx.globalCompositeOperation = "lighter";
 
-    this.sourceCtx.filter = "none";
-    this.sourceCtx.globalAlpha = 1;
-    this.sourceCtx.globalCompositeOperation = "source-over";
+    // Layer 1 – tight glow (downsample 4x)
+    ctx.globalAlpha = GLOW_ALPHA;
+    this.drawBlurred(ctx, GLOW_BLUR, w, h);
+
+    // Layer 2 – medium bloom (downsample 8x)
+    ctx.globalAlpha = BLOOM_ALPHA;
+    this.drawBlurred(ctx, BLOOM_BLUR, w, h);
+
+    // Layer 3 – wide halo (downsample 16x)
+    ctx.globalAlpha = HALO_ALPHA;
+    this.drawBlurred(ctx, HALO_BLUR, w, h);
+
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
   }
 
-  private collectTerminalCanvases(): HTMLCanvasElement[] {
-    const root = this.term.element;
-    if (!root) return [];
+  // Blur by downsampling to a tiny size then upscaling back.
+  // Bilinear interpolation on both steps produces a soft blur.
+  // `level` = number of halvings → scale = 1 / 2^level.
+  private drawBlurred(
+    dest: CanvasRenderingContext2D,
+    level: number,
+    w: number,
+    h: number,
+  ): void {
+    const scale = Math.pow(0.5, level);
+    const sw = Math.max(1, Math.round(w * scale));
+    const sh = Math.max(1, Math.round(h * scale));
 
-    return Array.from(root.querySelectorAll("canvas")).filter((canvas) => {
-      return (
-        canvas.width > 0 &&
-        canvas.height > 0 &&
-        canvas.getClientRects().length > 0
-      );
-    });
+    this.blurCanvas.width = sw;
+    this.blurCanvas.height = sh;
+    this.blurCtx.imageSmoothingEnabled = true;
+    this.blurCtx.imageSmoothingQuality = "medium";
+    this.blurCtx.drawImage(this.textCanvas, 0, 0, sw, sh);
+
+    dest.imageSmoothingEnabled = true;
+    dest.imageSmoothingQuality = "medium";
+    dest.drawImage(this.blurCanvas, 0, 0, sw, sh, 0, 0, w, h);
   }
+
+  private rasteriseText(): void {
+    const ctx = this.textCtx;
+    const w = this.sourceWidth;
+    const h = this.sourceHeight;
+    ctx.clearRect(0, 0, w, h);
+
+    const buffer = this.term.buffer.active;
+    const cols = this.term.cols;
+    const rows = this.term.rows;
+    if (cols <= 0 || rows <= 0) return;
+
+    // Measure xterm's actual rendering area
+    const hostRect = this.host.getBoundingClientRect();
+    const screen = this.host.querySelector(".xterm-screen") as HTMLElement;
+    const screenRect = screen ? screen.getBoundingClientRect() : hostRect;
+
+    const offsetX = (screenRect.left - hostRect.left) * this.dpr;
+    const offsetY = (screenRect.top - hostRect.top) * this.dpr;
+    const cellW = (screenRect.width * this.dpr) / cols;
+    const cellH = (screenRect.height * this.dpr) / rows;
+
+    const fontSize = this.term.options.fontSize ?? 13;
+    const scaledFontSize = fontSize * this.dpr;
+    const defaultFg = this.term.options.theme?.foreground ?? "#cdd6f4";
+
+    // Use generic monospace — exact glyphs don't matter, everything is blurred.
+    // This avoids Canvas 2D font-matching issues with system Nerd Fonts.
+    ctx.textBaseline = "alphabetic";
+    ctx.font = `${scaledFontSize}px monospace`;
+
+    const metrics = ctx.measureText("M");
+    const ascent = metrics.actualBoundingBoxAscent || scaledFontSize * 0.8;
+    const textOffsetY = (cellH - scaledFontSize) / 2;
+
+    const scrollTop = buffer.viewportY;
+
+    let lastColor = "";
+    for (let y = 0; y < rows; y++) {
+      const line = buffer.getLine(scrollTop + y);
+      if (!line) continue;
+      for (let x = 0; x < cols; x++) {
+        const cell = line.getCell(x);
+        if (!cell) continue;
+        const char = cell.getChars();
+        if (!char || char === " ") continue;
+
+        const color = cell.isFgDefault()
+          ? defaultFg
+          : xtermColorToCSS(cell.getFgColor(), cell.isFgRGB());
+        if (color !== lastColor) {
+          ctx.fillStyle = color;
+          lastColor = color;
+        }
+
+        ctx.fillText(
+          char,
+          offsetX + x * cellW,
+          offsetY + y * cellH + textOffsetY + ascent,
+        );
+      }
+    }
+  }
+
+  // ── GPU draw ────────────────────────────────────────────────────────
 
   private draw(): void {
     if (!this.available || !this.active) return;
     const gl = this.gl;
-    if (!gl || !this.program || !this.sourceTexture || !this.positionBuffer) return;
+    if (!gl || !this.program || !this.sourceTexture || !this.positionBuffer)
+      return;
 
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0);
@@ -395,7 +451,6 @@ export class TerminalEffects {
     );
 
     gl.uniform1i(this.sourceLocation, 0);
-    gl.uniform2f(this.texelLocation, 1 / this.sourceWidth, 1 / this.sourceHeight);
     gl.uniform1f(
       this.boostLocation,
       Math.min(1.6, this.outputBoost * 0.7 + this.inputBoost * 0.45),
@@ -405,11 +460,17 @@ export class TerminalEffects {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
+  // ── WebGL setup ─────────────────────────────────────────────────────
+
   private initGl(): void {
     const gl = this.gl;
     if (!gl) return;
 
-    const vertexShader = createShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE);
+    const vertexShader = createShader(
+      gl,
+      gl.VERTEX_SHADER,
+      VERTEX_SHADER_SOURCE,
+    );
     const fragmentShader = createShader(
       gl,
       gl.FRAGMENT_SHADER,
@@ -418,7 +479,6 @@ export class TerminalEffects {
 
     this.program = createProgram(gl, vertexShader, fragmentShader);
     this.positionLocation = gl.getAttribLocation(this.program, "a_position");
-    this.texelLocation = gl.getUniformLocation(this.program, "u_texel");
     this.boostLocation = gl.getUniformLocation(this.program, "u_boost");
     this.focusLocation = gl.getUniformLocation(this.program, "u_focus");
     this.sourceLocation = gl.getUniformLocation(this.program, "u_source");
@@ -431,12 +491,7 @@ export class TerminalEffects {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
     gl.bufferData(
       gl.ARRAY_BUFFER,
-      new Float32Array([
-        -1, -1,
-        1, -1,
-        -1, 1,
-        1, 1,
-      ]),
+      new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
       gl.STATIC_DRAW,
     );
 
@@ -452,6 +507,8 @@ export class TerminalEffects {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   }
 }
+
+// ── Helpers ─────────────────────────────────────────────────────────
 
 function createShader(
   gl: GLContext,
@@ -499,4 +556,47 @@ function createProgram(
   }
 
   return program;
+}
+
+// xterm 256-color palette (base 16 + 6x6x6 cube + 24 grayscale)
+const XTERM_PALETTE: string[] = (() => {
+  const base16 = [
+    "#000000",
+    "#cd0000",
+    "#00cd00",
+    "#cdcd00",
+    "#0000ee",
+    "#cd00cd",
+    "#00cdcd",
+    "#e5e5e5",
+    "#7f7f7f",
+    "#ff0000",
+    "#00ff00",
+    "#ffff00",
+    "#5c5cff",
+    "#ff00ff",
+    "#00ffff",
+    "#ffffff",
+  ];
+  const palette = [...base16];
+  const vals = [0, 95, 135, 175, 215, 255];
+  for (let r = 0; r < 6; r++)
+    for (let g = 0; g < 6; g++)
+      for (let b = 0; b < 6; b++)
+        palette.push(`rgb(${vals[r]},${vals[g]},${vals[b]})`);
+  for (let i = 0; i < 24; i++) {
+    const v = 8 + i * 10;
+    palette.push(`rgb(${v},${v},${v})`);
+  }
+  return palette;
+})();
+
+function xtermColorToCSS(color: number, isRgb: boolean): string {
+  if (isRgb) {
+    const r = (color >> 16) & 0xff;
+    const g = (color >> 8) & 0xff;
+    const b = color & 0xff;
+    return `rgb(${r},${g},${b})`;
+  }
+  return XTERM_PALETTE[color] ?? "#cdd6f4";
 }

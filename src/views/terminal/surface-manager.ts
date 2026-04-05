@@ -483,7 +483,11 @@ export class SurfaceManager {
   }
 
   private findWorkspaceBySurfaceId(surfaceId: string): Workspace | null {
-    return this.workspaces.find((workspace) => workspace.surfaceIds.has(surfaceId)) ?? null;
+    return (
+      this.workspaces.find((workspace) =>
+        workspace.surfaceIds.has(surfaceId),
+      ) ?? null
+    );
   }
 
   private switchToWorkspace(index: number): void {
@@ -654,7 +658,10 @@ export class SurfaceManager {
       const detail: SurfaceContextMenuRequest = {
         kind: "surface",
         surfaceId,
-        title: this.surfaces.get(surfaceId)?.title ?? barTitle.textContent ?? surfaceId,
+        title:
+          this.surfaces.get(surfaceId)?.title ??
+          barTitle.textContent ??
+          surfaceId,
       };
       window.dispatchEvent(
         new CustomEvent("ht-open-context-menu", {

@@ -253,7 +253,11 @@ export class WebServer {
                 const history = this.sessions.getOutputHistory(surfaceId);
                 if (history) {
                   ws.send(
-                    JSON.stringify({ type: "history", surfaceId, data: history }),
+                    JSON.stringify({
+                      type: "history",
+                      surfaceId,
+                      data: history,
+                    }),
                   );
                 }
                 break;
@@ -277,7 +281,11 @@ export class WebServer {
                   this.sessions.sendEvent(surfaceId, panelEvt);
                   // Broadcast drag/resize/close to all web clients + host
                   const evt = panelEvt.event;
-                  if (evt === "dragend" || evt === "resize" || evt === "close") {
+                  if (
+                    evt === "dragend" ||
+                    evt === "resize" ||
+                    evt === "close"
+                  ) {
                     this.broadcast({
                       type: "panelEvent",
                       surfaceId,
