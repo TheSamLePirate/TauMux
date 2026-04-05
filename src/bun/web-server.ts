@@ -36,6 +36,15 @@ function findProjectRoot(): string {
 
 const PROJECT_ROOT = findProjectRoot();
 
+function readBinaryAsset(relativePath: string): Uint8Array | null {
+  try {
+    const buf = readFileSync(resolve(PROJECT_ROOT, relativePath));
+    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  } catch {
+    return null;
+  }
+}
+
 function readAsset(relativePath: string): string {
   try {
     return readFileSync(resolve(PROJECT_ROOT, relativePath), "utf-8");
@@ -51,6 +60,12 @@ const FIT_ADDON_JS = readAsset(
 );
 const WEB_LINKS_ADDON_JS = readAsset(
   "node_modules/@xterm/addon-web-links/lib/addon-web-links.js",
+);
+const NERD_FONT_REGULAR = readBinaryAsset(
+  "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf",
+);
+const NERD_FONT_BOLD = readBinaryAsset(
+  "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf",
 );
 
 interface ClientData {
@@ -98,7 +113,28 @@ export class WebServer {
         // Main page (all assets inlined)
         if (url.pathname === "/" || url.pathname === "/index.html") {
           return new Response(buildHtmlPage(), {
-            headers: { "content-type": "text/html; charset=utf-8" },
+            headers: {
+              "content-type": "text/html; charset=utf-8",
+              "cache-control": "no-store",
+            },
+          });
+        }
+
+        // Serve Nerd Font files
+        if (url.pathname === "/fonts/nerd-regular.ttf" && NERD_FONT_REGULAR) {
+          return new Response(NERD_FONT_REGULAR.buffer as ArrayBuffer, {
+            headers: {
+              "content-type": "font/ttf",
+              "cache-control": "public, max-age=31536000",
+            },
+          });
+        }
+        if (url.pathname === "/fonts/nerd-bold.ttf" && NERD_FONT_BOLD) {
+          return new Response(NERD_FONT_BOLD.buffer as ArrayBuffer, {
+            headers: {
+              "content-type": "font/ttf",
+              "cache-control": "public, max-age=31536000",
+            },
           });
         }
 
@@ -303,22 +339,6 @@ function buildHtmlPage(): string {
 // ---------------------------------------------------------------------------
 
 const APP_CSS = `\
-@font-face {
-  font-family: 'JetBrains Mono';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: local('JetBrainsMono Nerd Font Mono'), local('JetBrains Mono'), local('JetBrainsMono-Regular'),
-       url(https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'JetBrains Mono';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: local('JetBrainsMono Nerd Font Mono Bold'), local('JetBrains Mono Bold'), local('JetBrainsMono-Bold'),
-       url(https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2) format('woff2');
-}
 :root {
   --bg: #1e1e2e; --surface: #313244; --overlay: #45475a;
   --text: #cdd6f4; --subtext: #a6adc8;
@@ -384,7 +404,11 @@ const APP_HTML = `\
 // Client-side JS — uses only regular strings (no backticks) to be safe
 // inside the concatenated HTML output.
 const APP_JS = [
-  "document.fonts.load('14px \"JetBrains Mono\"').then(function() { return document.fonts.ready; }).then(function() {",
+  "// Load JetBrains Mono Nerd Font from our server (same-origin, works in Safari)",
+  "var fr = new FontFace('JetBrainsMono Nerd Font Mono', 'url(/fonts/nerd-regular.ttf)', { style: 'normal', weight: '400' });",
+  "var fb = new FontFace('JetBrainsMono Nerd Font Mono', 'url(/fonts/nerd-bold.ttf)', { style: 'normal', weight: '700' });",
+  "document.fonts.add(fr); document.fonts.add(fb);",
+  "Promise.all([fr.load(), fb.load()]).then(function() { return document.fonts.ready; }).then(function() {",
   "var term = new Terminal({",
   "  theme: {",
   '    background: "#1e1e2e", foreground: "#cdd6f4",',
