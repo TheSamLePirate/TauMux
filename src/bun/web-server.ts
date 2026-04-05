@@ -3,19 +3,33 @@ import { resolve, dirname } from "node:path";
 import type { SessionManager } from "./session-manager";
 import type { AppState } from "./rpc-handler";
 
-// Read xterm.js assets at module load time. Try multiple candidate roots
-// because Electrobun bundles the code to a different directory.
+// Read xterm.js assets at module load time. In dev mode they live under
+// node_modules in the project root. In a packaged Electrobun app they are
+// copied to the vendor/ directory next to the bun/ bundle via electrobun.config copy.
+
+// Vendor directory inside the packaged .app (app/vendor/ sits next to app/bun/)
+const VENDOR_DIR = resolve(import.meta.dir, "../vendor");
+
+// Map from dev-mode node_modules paths to vendor filenames
+const VENDOR_MAP: Record<string, string> = {
+  "node_modules/xterm/lib/xterm.js": "xterm.js",
+  "node_modules/xterm/css/xterm.css": "xterm.css",
+  "node_modules/@xterm/addon-fit/lib/addon-fit.js": "addon-fit.js",
+  "node_modules/@xterm/addon-web-links/lib/addon-web-links.js":
+    "addon-web-links.js",
+  "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf":
+    "fonts/nerd-regular.ttf",
+  "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf": "fonts/nerd-bold.ttf",
+};
+
 function findProjectRoot(): string {
-  // import.meta.dir is the directory of the *bundled* main.js, which is inside
-  // the .app bundle on macOS. Walk up to find node_modules.
   const startDir = import.meta.dir;
   const candidates = [
-    resolve(startDir, ".."), // source layout: src/bun/ -> project root
-    process.cwd(), // dev mode often sets cwd to project root
-    resolve(startDir, "../.."), // one more level up
-    resolve(startDir, "../../.."), // deeper nesting
+    resolve(startDir, ".."),
+    process.cwd(),
+    resolve(startDir, "../.."),
+    resolve(startDir, "../../.."),
   ];
-  // Also walk up from startDir checking each ancestor
   let dir = startDir;
   for (let i = 0; i < 10; i++) {
     const parent = dirname(dir);
@@ -31,26 +45,41 @@ function findProjectRoot(): string {
       // try next
     }
   }
-  return candidates[0]; // fallback
+  return candidates[0];
 }
 
 const PROJECT_ROOT = findProjectRoot();
 
 function readBinaryAsset(relativePath: string): Uint8Array | null {
+  // Try project root first (dev mode)
   try {
     const buf = readFileSync(resolve(PROJECT_ROOT, relativePath));
     return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-  } catch {
-    return null;
+  } catch {}
+  // Fallback: vendor directory (packaged mode)
+  const vendorName = VENDOR_MAP[relativePath];
+  if (vendorName) {
+    try {
+      const buf = readFileSync(resolve(VENDOR_DIR, vendorName));
+      return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+    } catch {}
   }
+  return null;
 }
 
 function readAsset(relativePath: string): string {
+  // Try project root first (dev mode)
   try {
     return readFileSync(resolve(PROJECT_ROOT, relativePath), "utf-8");
-  } catch {
-    return `/* asset not found: ${relativePath} */`;
+  } catch {}
+  // Fallback: vendor directory (packaged mode)
+  const vendorName = VENDOR_MAP[relativePath];
+  if (vendorName) {
+    try {
+      return readFileSync(resolve(VENDOR_DIR, vendorName), "utf-8");
+    } catch {}
   }
+  return `/* asset not found: ${relativePath} */`;
 }
 
 const XTERM_JS = readAsset("node_modules/xterm/lib/xterm.js");
