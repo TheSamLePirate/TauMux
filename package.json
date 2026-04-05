@@ -9,6 +9,11 @@
   "scripts": {
     "start": "electrobun dev",
     "dev": "electrobun dev --watch",
+    "build": "electrobun build",
+    "build:dev": "electrobun build --env=dev",
+    "build:canary": "electrobun build --env=canary",
+    "build:stable": "electrobun build --env=stable",
+    "package:mac": "electrobun build --env=stable",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
