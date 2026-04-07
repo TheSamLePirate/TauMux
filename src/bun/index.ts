@@ -33,6 +33,7 @@ let focusedSurfaceId: string | null = null;
 let workspaceState: WorkspaceSnapshot[] = [];
 
 let activeWorkspaceId: string | null = null;
+let sidebarVisible = true;
 
 function getAppState(): AppState {
   return {
@@ -110,9 +111,30 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         workspaceState = payload.workspaces;
         activeWorkspaceId = payload.activeWorkspaceId;
         const activeWorkspace =
-          payload.workspaces.find((ws) => ws.id === payload.activeWorkspaceId) ??
-          null;
+          payload.workspaces.find(
+            (ws) => ws.id === payload.activeWorkspaceId,
+          ) ?? null;
         mainWindow.setTitle(formatWindowTitle(activeWorkspace?.name ?? null));
+        webServer?.broadcast({
+          type: "layoutChanged",
+          workspaces: payload.workspaces.map((ws) => ({
+            id: ws.id,
+            name: ws.name,
+            color: ws.color,
+            surfaceIds: ws.surfaceIds,
+            focusedSurfaceId: ws.focusedSurfaceId,
+            layout: ws.layout,
+          })),
+          activeWorkspaceId: payload.activeWorkspaceId,
+          focusedSurfaceId,
+        });
+      },
+      sidebarToggle: (payload) => {
+        sidebarVisible = payload.visible;
+        webServer?.broadcast({
+          type: "sidebarState",
+          visible: payload.visible,
+        });
       },
       clearNotifications: () => {
         socketHandler("notification.clear", {});
@@ -155,11 +177,15 @@ const mainWindow = new BrowserWindow({
 ApplicationMenu.setApplicationMenu(buildApplicationMenu());
 
 ApplicationMenu.on("application-menu-clicked", (event) => {
-  handleMenuAction((event as { data: { action: string; data?: unknown } }).data);
+  handleMenuAction(
+    (event as { data: { action: string; data?: unknown } }).data,
+  );
 });
 
 ContextMenu.on("context-menu-clicked", (event) => {
-  handleMenuAction((event as { data: { action: string; data?: unknown } }).data);
+  handleMenuAction(
+    (event as { data: { action: string; data?: unknown } }).data,
+  );
 });
 
 // Wire session callbacks → RPC → webview + web mirror
@@ -340,7 +366,9 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
       Utils.openExternal(ELECTROBUN_DOCS_URL);
       break;
     case MENU_ACTIONS.openProjectReadme:
-      Utils.openPath(fileURLToPath(new URL("../../README.md", import.meta.url)));
+      Utils.openPath(
+        fileURLToPath(new URL("../../README.md", import.meta.url)),
+      );
       break;
   }
 }
@@ -355,7 +383,9 @@ function toggleWebServer(): void {
         sessions,
         getAppState,
         () => focusedSurfaceId,
+        () => sidebarVisible,
       );
+      setupWebServerCallbacks(webServer);
     }
     webServer.start();
   }
@@ -372,6 +402,28 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     createWorkspaceSurface(80, 24, payload["cwd"] as string | undefined);
   } else if (action === "splitSurface") {
     splitSurface(payload["direction"] as "horizontal" | "vertical");
+  } else if (action === "notification") {
+    // Broadcast notification to web clients
+    const notifications = payload["notifications"] as unknown[];
+    const latest = payload["latest"] as Record<string, unknown> | undefined;
+    if (latest) {
+      webServer?.broadcast({
+        type: "notification",
+        surfaceId: latest["surfaceId"] ?? null,
+        title: latest["title"] ?? "",
+        body: latest["body"] ?? "",
+      });
+    } else if (notifications && notifications.length === 0) {
+      webServer?.broadcast({ type: "notificationClear" });
+    }
+  } else if (
+    action === "setStatus" ||
+    action === "clearStatus" ||
+    action === "setProgress" ||
+    action === "clearProgress" ||
+    action === "log"
+  ) {
+    webServer?.broadcast({ type: "sidebarAction", action, payload });
   }
 }
 
@@ -409,14 +461,8 @@ const socketServer = new SocketServer("/tmp/hyperterm.sock", socketHandler);
 socketServer.start();
 
 // Auto-start web mirror server
-if (webServerPort > 0) {
-  webServer = new WebServer(
-    webServerPort,
-    sessions,
-    getAppState,
-    () => focusedSurfaceId,
-  );
-  webServer.onPanelUpdate = (surfaceId, panelId, fields) => {
+function setupWebServerCallbacks(ws: WebServer) {
+  ws.onPanelUpdate = (surfaceId, panelId, fields) => {
     rpc.send("sidebandMeta", {
       surfaceId,
       id: panelId,
@@ -424,6 +470,29 @@ if (webServerPort > 0) {
       ...fields,
     });
   };
+  ws.onSidebarToggle = (visible) => {
+    sidebarVisible = visible;
+    // Forward to native webview (set-state, not toggle)
+    rpc.send("socketAction", {
+      action: "setSidebar",
+      payload: { visible },
+    });
+  };
+  ws.onClearNotifications = () => {
+    // Clear via the RPC handler which dispatches to native + broadcasts
+    socketHandler("notification.clear", {});
+  };
+}
+
+if (webServerPort > 0) {
+  webServer = new WebServer(
+    webServerPort,
+    sessions,
+    getAppState,
+    () => focusedSurfaceId,
+    () => sidebarVisible,
+  );
+  setupWebServerCallbacks(webServer);
   webServer.start();
 }
 

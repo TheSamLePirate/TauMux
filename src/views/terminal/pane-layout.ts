@@ -1,23 +1,15 @@
-export interface PaneSplit {
-  type: "split";
-  direction: "horizontal" | "vertical";
-  ratio: number;
-  children: [PaneNode, PaneNode];
-}
-
-export interface PaneLeaf {
-  type: "leaf";
-  surfaceId: string;
-}
-
-export type PaneNode = PaneSplit | PaneLeaf;
-
-export interface PaneRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+export type {
+  PaneSplit,
+  PaneLeaf,
+  PaneNode,
+  PaneRect,
+} from "../../shared/types";
+import type {
+  PaneNode,
+  PaneLeaf,
+  PaneSplit,
+  PaneRect,
+} from "../../shared/types";
 
 export type PaneDropPosition = "swap" | "left" | "right" | "top" | "bottom";
 
@@ -144,9 +136,7 @@ export class PaneLayout {
   }
 
   /** Get divider positions for rendering draggable dividers. */
-  getDividers(
-    bounds: PaneRect,
-  ): {
+  getDividers(bounds: PaneRect): {
     x: number;
     y: number;
     w: number;
@@ -211,8 +201,7 @@ export class PaneLayout {
 
       const direction =
         position === "left" || position === "right" ? "horizontal" : "vertical";
-      const placeDraggedFirst =
-        position === "left" || position === "top";
+      const placeDraggedFirst = position === "left" || position === "top";
       const draggedLeaf: PaneLeaf = { type: "leaf", surfaceId };
       const targetLeaf: PaneLeaf = {
         type: "leaf",

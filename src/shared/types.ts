@@ -1,5 +1,28 @@
 import type { ElectrobunRPCSchema } from "electrobun/bun";
 
+// === Pane Layout Types (shared between webview, bun, and web clients) ===
+
+export interface PaneSplit {
+  type: "split";
+  direction: "horizontal" | "vertical";
+  ratio: number;
+  children: [PaneNode, PaneNode];
+}
+
+export interface PaneLeaf {
+  type: "leaf";
+  surfaceId: string;
+}
+
+export type PaneNode = PaneSplit | PaneLeaf;
+
+export interface PaneRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 // === Sideband Protocol Types ===
 
 export type ContentType =
@@ -99,9 +122,13 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
           color: string;
           surfaceIds: string[];
           focusedSurfaceId: string | null;
+          layout: PaneNode;
         }[];
         activeWorkspaceId: string | null;
       };
+
+      // Sidebar
+      sidebarToggle: { visible: boolean };
 
       // Notifications
       clearNotifications: void;

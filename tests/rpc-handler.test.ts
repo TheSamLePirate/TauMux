@@ -16,6 +16,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
         color: "#89b4fa",
         surfaceIds: ["surface:1"],
         focusedSurfaceId: "surface:1",
+        layout: { type: "leaf", surfaceId: "surface:1" },
       },
     ],
     activeWorkspaceId: "ws:1",

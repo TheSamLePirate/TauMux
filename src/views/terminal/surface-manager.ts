@@ -127,8 +127,32 @@ export class SurfaceManager {
 
   toggleSidebar(): void {
     this.sidebar.toggle();
-    // Refit after sidebar animation
-    setTimeout(() => this.applyLayout(), 200);
+    this.scheduleLayoutAfterTransition();
+  }
+
+  setSidebarVisible(visible: boolean): void {
+    if (this.sidebar.isVisible() !== visible) {
+      this.sidebar.toggle();
+      this.scheduleLayoutAfterTransition();
+    }
+  }
+
+  /** Apply layout after the sidebar CSS transition completes. */
+  private scheduleLayoutAfterTransition(): void {
+    const handler = () => {
+      this.terminalContainer.removeEventListener("transitionend", handler);
+      this.applyLayout();
+    };
+    this.terminalContainer.addEventListener("transitionend", handler);
+    // Fallback in case transitionend doesn't fire (e.g. no transition)
+    setTimeout(() => {
+      this.terminalContainer.removeEventListener("transitionend", handler);
+      this.applyLayout();
+    }, 300);
+  }
+
+  isSidebarVisible(): boolean {
+    return this.sidebar.isVisible();
   }
 
   /** Add a surface as a new workspace. */
@@ -150,12 +174,7 @@ export class SurfaceManager {
     this.switchToWorkspace(this.workspaces.length - 1);
     this.updateSidebar();
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        this.applyLayout();
-        view.term.focus();
-      });
-    });
+    this.scheduleLayoutForNewSurface(() => view.term.focus());
   }
 
   /** Add a surface as a split within the active workspace. */
@@ -174,10 +193,24 @@ export class SurfaceManager {
     ws.layout.splitSurface(splitFrom, direction, surfaceId);
     ws.surfaceIds.add(surfaceId);
 
+    this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+  }
+
+  /**
+   * Schedule layout after a new surface is added.
+   * Position containers immediately, then fit terminals after xterm has
+   * rendered into the DOM so fitAddon gets the correct dimensions.
+   */
+  private scheduleLayoutForNewSurface(after?: () => void): void {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        this.applyLayout();
-        this.focusSurface(surfaceId);
+        // First pass: position the containers so xterm can measure
+        this.applyPositions();
+        // Second pass after a tick: fit terminals now that xterm has rendered
+        setTimeout(() => {
+          this.applyLayout();
+          after?.();
+        }, 50);
       });
     });
   }
@@ -225,6 +258,8 @@ export class SurfaceManager {
       v.container.classList.toggle("focused", v.id === surfaceId);
       v.effects.setFocused(v.id === surfaceId);
     }
+    // Clear notification glow when surface becomes selected
+    this.clearGlow(surfaceId);
     this.surfaces.get(surfaceId)?.term.focus();
     const activeWorkspace = this.activeWorkspace();
     if (activeWorkspace?.surfaceIds.has(surfaceId)) {
@@ -433,6 +468,7 @@ export class SurfaceManager {
       color: string;
       surfaceIds: string[];
       focusedSurfaceId: string | null;
+      layout: import("../../shared/types").PaneNode;
     }[];
     activeWorkspaceId: string | null;
   } {
@@ -446,9 +482,36 @@ export class SurfaceManager {
           this.focusedSurfaceId && ws.surfaceIds.has(this.focusedSurfaceId)
             ? this.focusedSurfaceId
             : null,
+        layout: ws.layout.root,
       })),
       activeWorkspaceId: this.workspaces[this.activeWorkspaceIndex]?.id ?? null,
     };
+  }
+
+  /** Start a persistent notification glow on a surface pane. */
+  notifyGlow(surfaceId: string | null): void {
+    if (surfaceId) {
+      const view = this.surfaces.get(surfaceId);
+      if (view) {
+        view.container.classList.add("notify-glow");
+        return;
+      }
+    }
+    // External notification or unknown surface — glow all surfaces
+    for (const view of this.surfaces.values()) {
+      view.container.classList.add("notify-glow");
+    }
+  }
+
+  /** Clear notification glow from a specific surface or all surfaces. */
+  clearGlow(surfaceId?: string): void {
+    if (surfaceId) {
+      this.surfaces.get(surfaceId)?.container.classList.remove("notify-glow");
+    } else {
+      for (const view of this.surfaces.values()) {
+        view.container.classList.remove("notify-glow");
+      }
+    }
   }
 
   private notifyWorkspaceChanged(): void {

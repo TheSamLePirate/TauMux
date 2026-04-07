@@ -69,6 +69,7 @@ export class SessionManager {
       cols,
       rows,
       cwd: surfaceCwd,
+      env: { HT_SURFACE: id },
     });
 
     // Set up sideband channels

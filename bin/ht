@@ -203,6 +203,8 @@ function mapCommand(): RpcCall {
           title: flags["title"] || positional[0] || "",
           subtitle: flags["subtitle"],
           body: flags["body"] || positional[1] || "",
+          surface_id:
+            flags["surface"] || process.env["HT_SURFACE"] || undefined,
         },
       };
     case "list-notifications":

@@ -1,5 +1,8 @@
 import { Electroview } from "electrobun/view";
-import type { HyperTermRPC, NativeContextMenuRequest } from "../../shared/types";
+import type {
+  HyperTermRPC,
+  NativeContextMenuRequest,
+} from "../../shared/types";
 import { SurfaceManager } from "./surface-manager";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
 import { createIcon } from "./icons";
@@ -32,7 +35,8 @@ const workspaceCountLabelEl = document.getElementById(
   "toolbar-workspace-count-label",
 );
 const paneCountLabelEl = document.getElementById("toolbar-pane-count-label");
-const TERMINAL_EFFECTS_STORAGE_KEY = "hyperterm-canvas.terminal-effects.enabled";
+const TERMINAL_EFFECTS_STORAGE_KEY =
+  "hyperterm-canvas.terminal-effects.enabled";
 let typingFocusActive = false;
 
 const rpc = Electroview.defineRPC<HyperTermRPC>({
@@ -96,7 +100,9 @@ new Electroview({ rpc });
 let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
 function mountTitlebarIcons() {
-  const buttons: Array<[HTMLButtonElement | null, Parameters<typeof createIcon>[0]]> = [
+  const buttons: Array<
+    [HTMLButtonElement | null, Parameters<typeof createIcon>[0]]
+  > = [
     [sidebarToggleBtn, "sidebar"],
     [commandPaletteBtn, "command"],
     [newWorkspaceBtn, "plus"],
@@ -310,7 +316,7 @@ function syncToolbarState() {
 function toggleSidebar() {
   surfaceManager.toggleSidebar();
   syncSidebarState();
-  setTimeout(() => surfaceManager.resizeAll(), 200);
+  // Layout refit is handled by SurfaceManager.scheduleLayoutAfterTransition()
 }
 
 function openCommandPalette() {
@@ -361,7 +367,10 @@ function getEditableTarget():
 
 function copySelection() {
   const editableTarget = getEditableTarget();
-  if (editableTarget instanceof HTMLElement && editableTarget.isContentEditable) {
+  if (
+    editableTarget instanceof HTMLElement &&
+    editableTarget.isContentEditable
+  ) {
     document.execCommand("copy");
     return;
   }
@@ -401,7 +410,10 @@ async function pasteClipboard() {
     return;
   }
 
-  if (editableTarget instanceof HTMLElement && editableTarget.isContentEditable) {
+  if (
+    editableTarget instanceof HTMLElement &&
+    editableTarget.isContentEditable
+  ) {
     document.execCommand("insertText", false, text);
     return;
   }
@@ -424,7 +436,10 @@ function selectAll() {
     return;
   }
 
-  if (editableTarget instanceof HTMLElement && editableTarget.isContentEditable) {
+  if (
+    editableTarget instanceof HTMLElement &&
+    editableTarget.isContentEditable
+  ) {
     document.execCommand("selectAll");
     return;
   }
@@ -458,10 +473,16 @@ async function promptRenameSurface(surfaceId: string, title: string) {
   }
 }
 
+let suppressSidebarSync = false;
 window.addEventListener("ht-sidebar-toggle", () => {
   syncSidebarState();
   syncToolbarState();
-  setTimeout(() => surfaceManager.resizeAll(), 200);
+  // Layout refit is handled by SurfaceManager.scheduleLayoutAfterTransition()
+  if (!suppressSidebarSync) {
+    rpc.send("sidebarToggle", {
+      visible: surfaceManager.isSidebarVisible(),
+    });
+  }
 });
 
 window.addEventListener("ht-surface-focused", (e: Event) => {
@@ -681,7 +702,10 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
     }
     case "promptRenameSurface": {
       const id = payload["surfaceId"] as string;
-      const title = (payload["title"] as string) || surfaceManager.getSurfaceTitle(id) || id;
+      const title =
+        (payload["title"] as string) ||
+        surfaceManager.getSurfaceTitle(id) ||
+        id;
       if (id) {
         void promptRenameSurface(id, title);
       }
@@ -702,6 +726,16 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
     case "toggleSidebar":
       toggleSidebar();
       break;
+    case "setSidebar": {
+      const vis = payload["visible"] as boolean;
+      suppressSidebarSync = true;
+      surfaceManager.setSidebarVisible(vis);
+      syncSidebarState();
+      syncToolbarState();
+      // Layout refit is handled by SurfaceManager.scheduleLayoutAfterTransition()
+      suppressSidebarSync = false;
+      break;
+    }
     case "toggleCommandPalette":
       openCommandPalette();
       break;
@@ -771,6 +805,14 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
           time: number;
         }[]) || [];
       surfaceManager.getSidebar().setNotifications(notifs);
+      if (notifs.length === 0) {
+        // Notifications cleared — stop all glows
+        surfaceManager.clearGlow();
+      } else {
+        // Glow the source surface pane
+        const notifSurfaceId = (payload["surfaceId"] as string) ?? null;
+        surfaceManager.notifyGlow(notifSurfaceId);
+      }
       break;
     }
     case "log": {

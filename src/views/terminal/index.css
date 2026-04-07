@@ -777,6 +777,57 @@ textarea {
     0 28px 70px rgba(0, 0, 0, 0.48);
 }
 
+/* ── Notification glow ── */
+
+@keyframes notify-glow-pulse {
+  0% {
+    border-color: rgba(168, 85, 247, 0);
+    box-shadow:
+      0 0 0 0 rgba(168, 85, 247, 0),
+      0 0 0 0 rgba(168, 85, 247, 0);
+  }
+  15% {
+    border-color: rgba(168, 85, 247, 0.7);
+    box-shadow:
+      0 0 16px 2px rgba(168, 85, 247, 0.5),
+      0 0 48px 8px rgba(168, 85, 247, 0.15);
+  }
+  40% {
+    border-color: rgba(103, 232, 249, 0.5);
+    box-shadow:
+      0 0 12px 1px rgba(103, 232, 249, 0.4),
+      0 0 36px 6px rgba(103, 232, 249, 0.1);
+  }
+  65% {
+    border-color: rgba(168, 85, 247, 0.4);
+    box-shadow:
+      0 0 10px 1px rgba(168, 85, 247, 0.3),
+      0 0 28px 4px rgba(168, 85, 247, 0.08);
+  }
+  100% {
+    border-color: rgba(39, 39, 42, 0.96);
+    box-shadow:
+      0 0 0 0 rgba(168, 85, 247, 0),
+      0 0 0 0 rgba(168, 85, 247, 0);
+  }
+}
+
+.surface-container.notify-glow {
+  animation: notify-glow-pulse 2s ease-in-out infinite;
+  z-index: 10;
+}
+
+.surface-container.notify-glow .surface-bar {
+  animation: notify-bar-flash 2s ease-in-out infinite;
+}
+
+@keyframes notify-bar-flash {
+  0% { background: rgba(14, 18, 27, 0.92); }
+  12% { background: rgba(168, 85, 247, 0.15); }
+  40% { background: rgba(103, 232, 249, 0.08); }
+  100% { background: rgba(14, 18, 27, 0.92); }
+}
+
 .surface-bar {
   min-height: 31px;
   display: flex;

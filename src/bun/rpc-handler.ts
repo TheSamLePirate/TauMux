@@ -1,6 +1,68 @@
 import type { SessionManager } from "./session-manager";
+import type { PaneNode, PaneRect } from "../shared/types";
 
 const VERSION = "0.0.1";
+
+/** Compute normalized rects (0-1) from a PaneNode tree. */
+function computeNormalizedRects(node: PaneNode): Map<string, PaneRect> {
+  const result = new Map<string, PaneRect>();
+  const GAP = 0.002; // small normalized gap
+  computeNode(node, { x: 0, y: 0, w: 1, h: 1 }, result, GAP);
+  return result;
+}
+
+function computeNode(
+  node: PaneNode,
+  bounds: PaneRect,
+  result: Map<string, PaneRect>,
+  gap: number,
+): void {
+  if (node.type === "leaf") {
+    result.set(node.surfaceId, bounds);
+    return;
+  }
+  const { direction, ratio, children } = node;
+  const half = gap / 2;
+  if (direction === "horizontal") {
+    const splitX = bounds.x + bounds.w * ratio;
+    computeNode(
+      children[0],
+      { x: bounds.x, y: bounds.y, w: splitX - bounds.x - half, h: bounds.h },
+      result,
+      gap,
+    );
+    computeNode(
+      children[1],
+      {
+        x: splitX + half,
+        y: bounds.y,
+        w: bounds.x + bounds.w - splitX - half,
+        h: bounds.h,
+      },
+      result,
+      gap,
+    );
+  } else {
+    const splitY = bounds.y + bounds.h * ratio;
+    computeNode(
+      children[0],
+      { x: bounds.x, y: bounds.y, w: bounds.w, h: splitY - bounds.y - half },
+      result,
+      gap,
+    );
+    computeNode(
+      children[1],
+      {
+        x: bounds.x,
+        y: splitY + half,
+        w: bounds.w,
+        h: bounds.y + bounds.h - splitY - half,
+      },
+      result,
+      gap,
+    );
+  }
+}
 
 export interface AppState {
   focusedSurfaceId: string | null;
@@ -14,6 +76,7 @@ export interface WorkspaceSnapshot {
   color: string;
   surfaceIds: string[];
   focusedSurfaceId: string | null;
+  layout: PaneNode;
 }
 
 type Handler = (params: Record<string, unknown>) => unknown;
@@ -37,10 +100,11 @@ export function createRpcHandler(
     subtitle?: string;
     body: string;
     time: number;
+    surfaceId?: string;
   }
 
   const notifications: Notification[] = [];
-   
+
   let notifCounter = 0;
 
   const KEY_MAP: Record<string, string> = {
@@ -77,21 +141,30 @@ export function createRpcHandler(
 
     "system.tree": () => {
       const state = getState();
-      return state.workspaces.map((ws) => ({
-        workspace: ws.id,
-        name: ws.name,
-        color: ws.color,
-        active: ws.id === state.activeWorkspaceId,
-        surfaces: ws.surfaceIds.map((sid) => {
-          const surface = sessions.getSurface(sid);
-          return {
-            id: sid,
-            pid: surface?.pty.pid ?? null,
-            title: surface?.title ?? "unknown",
-            focused: sid === state.focusedSurfaceId,
-          };
-        }),
-      }));
+      return state.workspaces.map((ws) => {
+        const rects = computeNormalizedRects(ws.layout);
+        return {
+          workspace: ws.id,
+          name: ws.name,
+          color: ws.color,
+          active: ws.id === state.activeWorkspaceId,
+          layout: ws.layout,
+          surfaces: ws.surfaceIds.map((sid) => {
+            const surface = sessions.getSurface(sid);
+            const rect = rects.get(sid);
+            return {
+              id: sid,
+              pid: surface?.pty.pid ?? null,
+              title: surface?.title ?? "unknown",
+              focused: sid === state.focusedSurfaceId,
+              x: rect?.x ?? 0,
+              y: rect?.y ?? 0,
+              w: rect?.w ?? 1,
+              h: rect?.h ?? 1,
+            };
+          }),
+        };
+      });
     },
 
     // ── Workspaces ──
@@ -277,29 +350,47 @@ export function createRpcHandler(
       const state = getState();
       const ws = state.workspaces.find((w) => w.id === state.activeWorkspaceId);
       if (!ws) return [];
-      return ws.surfaceIds.map((sid) => ({
-        surface_id: sid,
-        focused: sid === state.focusedSurfaceId,
-      }));
+      const rects = computeNormalizedRects(ws.layout);
+      return ws.surfaceIds.map((sid) => {
+        const rect = rects.get(sid);
+        return {
+          surface_id: sid,
+          focused: sid === state.focusedSurfaceId,
+          x: rect?.x ?? 0,
+          y: rect?.y ?? 0,
+          w: rect?.w ?? 1,
+          h: rect?.h ?? 1,
+        };
+      });
     },
 
     // ── Notifications ──
 
     "notification.create": (params) => {
+      const surfaceId = params["surface_id"] as string | undefined;
       const n: Notification = {
         id: `notif:${++notifCounter}`,
         title: (params["title"] as string) ?? "",
         subtitle: params["subtitle"] as string | undefined,
         body: (params["body"] as string) ?? "",
         time: Date.now(),
+        surfaceId,
       };
       notifications.push(n);
       dispatch("notification", {
+        surfaceId: surfaceId ?? null,
+        latest: {
+          id: n.id,
+          title: n.title,
+          body: n.body,
+          surfaceId: surfaceId ?? null,
+        },
         notifications: notifications.map((x) => ({
           id: x.id,
           title: x.title,
           body: x.body,
           time: x.time,
+          surfaceId: x.surfaceId ?? null,
         })),
       });
       return "OK";
