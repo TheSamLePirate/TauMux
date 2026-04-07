@@ -3,8 +3,9 @@ import type { Terminal } from "xterm";
 type GLContext = WebGLRenderingContext | WebGL2RenderingContext;
 type Disposable = { dispose(): void };
 
-// The shader is now minimal — the real blur work is done on the CPU canvas.
-// The GPU just samples the pre-blurred texture and applies boost/brightness.
+const MAX_LIGHTS = 48;
+const SHADOW_STEPS = 32;
+
 const VERTEX_SHADER_SOURCE = `
 attribute vec2 a_position;
 varying vec2 v_uv;
@@ -15,52 +16,132 @@ void main() {
 }
 `;
 
+// Per-light illumination with shadow tracing through occluder texture.
+// Much cheaper than omnidirectional ray marching: only traces toward
+// actual light sources, and produces smooth uniform illumination.
 const FRAGMENT_SHADER_SOURCE = `
 precision mediump float;
 
+#define MAX_LIGHTS ${MAX_LIGHTS}
+#define SHADOW_STEPS ${SHADOW_STEPS}
+
 varying vec2 v_uv;
 
-uniform sampler2D u_source;
+uniform vec2 u_resolution;
+uniform int u_lightCount;
+uniform vec3 u_lightPosRadius[MAX_LIGHTS];   // xy = center (px), z = radius (px)
+uniform vec4 u_lightColorIntensity[MAX_LIGHTS]; // rgb = color, a = intensity
+uniform sampler2D u_occluderTex;
 uniform float u_boost;
-uniform float u_focus;
+
+float hash12(vec2 p) {
+  return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
+}
+
+float occluderAt(vec2 posPx) {
+  return texture2D(u_occluderTex, posPx / u_resolution).a;
+}
+
+// 5-tap cross — good quality, cheap
+float occluderSmooth(vec2 p, float spread) {
+  float c = occluderAt(p) * 0.4;
+  c += occluderAt(p + vec2(spread, 0.0)) * 0.15;
+  c += occluderAt(p - vec2(spread, 0.0)) * 0.15;
+  c += occluderAt(p + vec2(0.0, spread)) * 0.15;
+  c += occluderAt(p - vec2(0.0, spread)) * 0.15;
+  return c;
+}
+
+float traceVisibility(vec2 lightPos, vec2 fragPos, float dist, float jitter) {
+  if (dist < 1.0) return 1.0;
+
+  vec2 dir = (fragPos - lightPos) / dist;
+  float stepSize = max(2.0, dist / float(SHADOW_STEPS));
+  float travel = stepSize * (0.4 + jitter * 0.6);
+  float visibility = 1.0;
+
+  for (int i = 0; i < SHADOW_STEPS; i++) {
+    if (travel >= dist - stepSize) break;
+    vec2 p = lightPos + dir * travel;
+
+    float spread = 1.0 + travel * 0.012;
+    float occ = occluderSmooth(p, spread);
+
+    float t = travel / dist;
+    float harshness = mix(0.95, 0.45, t * t);
+    visibility *= 1.0 - occ * harshness;
+
+    if (visibility < 0.005) return 0.0;
+    travel += stepSize;
+  }
+
+  return visibility;
+}
 
 void main() {
-  vec4 s = texture2D(u_source, v_uv);
-  float brightness = 1.0 + u_boost * 0.15 + u_focus * 0.05;
-  gl_FragColor = vec4(s.rgb * brightness, s.a);
+  vec2 fragPos = v_uv * u_resolution;
+  vec3 color = vec3(0.0);
+  float jitter = hash12(gl_FragCoord.xy);
+
+  for (int i = 0; i < MAX_LIGHTS; i++) {
+    if (i >= u_lightCount) break;
+
+    vec3 posRadius = u_lightPosRadius[i];
+    vec2 lightPos = posRadius.xy;
+    float radius = posRadius.z;
+
+    float dist = length(lightPos - fragPos);
+    if (dist >= radius) continue;
+
+    float visibility = traceVisibility(lightPos, fragPos, dist, jitter);
+    if (visibility <= 0.0) continue;
+
+    float normalized = 1.0 - dist / radius;
+    float falloff = normalized * normalized * normalized;
+    float edgeSoft = smoothstep(0.0, 0.1, normalized);
+    float intensity = u_lightColorIntensity[i].a;
+    vec3 lightColor = u_lightColorIntensity[i].rgb;
+
+    color += lightColor * falloff * edgeSoft * intensity * visibility;
+  }
+
+  color *= 0.6 + u_boost * 0.12;
+  float a = clamp(max(max(color.r, color.g), color.b), 0.0, 1.0);
+  gl_FragColor = vec4(color, a);
 }
 `;
 
-// Number of halving passes for each blur layer (more = wider spread)
-const GLOW_BLUR = 3; // 8x — tight neon edge just past the letter
-const BLOOM_BLUR = 5; // 32x — main neon aura visible in dark space
-const HALO_BLUR = 7; // 128x — soft ambient color wash
-
-// Opacity of each layer (additive "lighter" blend)
-const GLOW_ALPHA = 0.12;
-const BLOOM_ALPHA = 0.15;
-const HALO_ALPHA = 0.08;
+interface LightRect {
+  cx: number; // center x in canvas px
+  cy: number; // center y in canvas px
+  radius: number; // light reach in canvas px
+  r: number;
+  g: number;
+  b: number;
+  intensity: number;
+}
 
 export class TerminalEffects {
   private readonly canvas: HTMLCanvasElement;
-  private readonly sourceCanvas: HTMLCanvasElement;
-  private readonly sourceCtx: CanvasRenderingContext2D;
-  private readonly textCanvas: HTMLCanvasElement;
-  private readonly textCtx: CanvasRenderingContext2D;
-  private readonly blurCanvas: HTMLCanvasElement;
-  private readonly blurCtx: CanvasRenderingContext2D;
+  private readonly occluderCanvas: HTMLCanvasElement;
+  private readonly occluderCtx: CanvasRenderingContext2D;
   private readonly resizeObserver: ResizeObserver;
   private readonly subscriptions: Disposable[] = [];
 
   private gl: GLContext | null = null;
   private program: WebGLProgram | null = null;
   private positionBuffer: WebGLBuffer | null = null;
-  private sourceTexture: WebGLTexture | null = null;
+  private occluderTexture: WebGLTexture | null = null;
 
   private positionLocation = -1;
+  private resolutionLocation: WebGLUniformLocation | null = null;
+  private lightCountLocation: WebGLUniformLocation | null = null;
+  private lightPosRadiusLocation: WebGLUniformLocation | null = null;
+  private lightColorIntensityLocation: WebGLUniformLocation | null = null;
+  private occluderTexLocation: WebGLUniformLocation | null = null;
   private boostLocation: WebGLUniformLocation | null = null;
-  private focusLocation: WebGLUniformLocation | null = null;
-  private sourceLocation: WebGLUniformLocation | null = null;
+
+  private lights: LightRect[] = [];
 
   private rafId: number | null = null;
   private destroyed = false;
@@ -73,8 +154,10 @@ export class TerminalEffects {
   private width = 1;
   private height = 1;
   private dpr = 1;
-  private sourceWidth = 1;
-  private sourceHeight = 1;
+  private canvasW = 1;
+  private canvasH = 1;
+  private mouseX = -1; // CSS px relative to host, -1 = offscreen
+  private mouseY = -1;
 
   constructor(
     private host: HTMLElement,
@@ -84,31 +167,19 @@ export class TerminalEffects {
     this.canvas.className = "terminal-effects-layer";
     this.canvas.setAttribute("aria-hidden", "true");
 
-    this.sourceCanvas = document.createElement("canvas");
-    this.textCanvas = document.createElement("canvas");
-    this.blurCanvas = document.createElement("canvas");
+    this.occluderCanvas = document.createElement("canvas");
+    const occluderCtx = this.occluderCanvas.getContext("2d", { alpha: true });
 
-    const sourceCtx = this.sourceCanvas.getContext("2d", {
-      alpha: true,
-      desynchronized: true,
-    });
-    const textCtx = this.textCanvas.getContext("2d", { alpha: true });
-    const blurCtx = this.blurCanvas.getContext("2d", { alpha: true });
-
-    if (!sourceCtx || !textCtx || !blurCtx) {
+    if (!occluderCtx) {
       this.available = false;
       this.active = false;
       this.canvas.style.display = "none";
       host.appendChild(this.canvas);
-      this.sourceCtx = document.createElement("canvas").getContext("2d")!;
-      this.textCtx = document.createElement("canvas").getContext("2d")!;
-      this.blurCtx = document.createElement("canvas").getContext("2d")!;
+      this.occluderCtx = document.createElement("canvas").getContext("2d")!;
       this.resizeObserver = new ResizeObserver(() => {});
       return;
     }
-    this.sourceCtx = sourceCtx;
-    this.textCtx = textCtx;
-    this.blurCtx = blurCtx;
+    this.occluderCtx = occluderCtx;
 
     host.appendChild(this.canvas);
 
@@ -141,7 +212,7 @@ export class TerminalEffects {
     try {
       this.initGl();
     } catch (error) {
-      console.warn("[terminal-effects] WebGL bloom disabled:", error);
+      console.warn("[terminal-effects] WebGL disabled:", error);
       this.available = false;
       this.active = false;
       this.canvas.style.display = "none";
@@ -158,6 +229,20 @@ export class TerminalEffects {
       term.onWriteParsed(() => this.markDirty()),
     );
 
+    const onMouseMove = (e: MouseEvent): void => {
+      const rect = this.host.getBoundingClientRect();
+      this.mouseX = e.clientX - rect.left;
+      this.mouseY = e.clientY - rect.top;
+      this.markDirty();
+    };
+    const onMouseLeave = (): void => {
+      this.mouseX = -1;
+      this.mouseY = -1;
+      this.markDirty();
+    };
+    host.addEventListener("mousemove", onMouseMove);
+    host.addEventListener("mouseleave", onMouseLeave);
+
     this.resize();
     this.markDirty();
   }
@@ -165,23 +250,25 @@ export class TerminalEffects {
   setFocused(focused: boolean): void {
     if (!this.available) return;
     this.focused = focused;
-    if (focused) {
-      this.outputBoost = Math.max(this.outputBoost, 0.18);
-    }
+    if (focused) this.outputBoost = Math.max(this.outputBoost, 0.18);
     this.schedule();
   }
 
   pulseOutput(size = 0): void {
     if (!this.available || !this.active) return;
-    const boost = Math.min(1.6, 0.16 + size / 180);
-    this.outputBoost = Math.min(2.8, this.outputBoost + boost);
+    this.outputBoost = Math.min(
+      2.8,
+      this.outputBoost + Math.min(1.6, 0.16 + size / 180),
+    );
     this.markDirty();
   }
 
   pulseInput(size = 0): void {
     if (!this.available || !this.active) return;
-    const boost = Math.min(1.1, 0.1 + size / 240);
-    this.inputBoost = Math.min(1.8, this.inputBoost + boost);
+    this.inputBoost = Math.min(
+      1.8,
+      this.inputBoost + Math.min(1.1, 0.1 + size / 240),
+    );
     this.schedule();
   }
 
@@ -203,23 +290,14 @@ export class TerminalEffects {
 
   destroy(): void {
     this.destroyed = true;
-    if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
-    }
-
-    for (const subscription of this.subscriptions) {
-      subscription.dispose();
-    }
-
+    if (this.rafId !== null) cancelAnimationFrame(this.rafId);
+    for (const sub of this.subscriptions) sub.dispose();
     this.resizeObserver.disconnect();
-
     if (this.available && this.gl) {
       if (this.positionBuffer) this.gl.deleteBuffer(this.positionBuffer);
-      if (this.sourceTexture) this.gl.deleteTexture(this.sourceTexture);
+      if (this.occluderTexture) this.gl.deleteTexture(this.occluderTexture);
       if (this.program) this.gl.deleteProgram(this.program);
     }
-
     this.canvas.remove();
   }
 
@@ -236,9 +314,8 @@ export class TerminalEffects {
       this.destroyed ||
       !this.gl ||
       this.rafId !== null
-    ) {
+    )
       return;
-    }
     this.rafId = requestAnimationFrame(() => {
       this.rafId = null;
       this.render();
@@ -246,19 +323,10 @@ export class TerminalEffects {
   }
 
   private render(): void {
-    if (
-      !this.available ||
-      !this.active ||
-      this.destroyed ||
-      !this.gl ||
-      !this.program ||
-      !this.sourceTexture
-    ) {
-      return;
-    }
+    if (!this.available || !this.active || this.destroyed || !this.gl) return;
 
     if (this.dirty) {
-      this.captureTerminal();
+      this.rasterise();
       this.dirty = false;
     }
 
@@ -284,92 +352,36 @@ export class TerminalEffects {
     this.height = Math.max(1, Math.round(rect.height));
     this.dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
-    this.canvas.width = Math.round(this.width * this.dpr);
-    this.canvas.height = Math.round(this.height * this.dpr);
+    this.canvasW = Math.round(this.width * this.dpr);
+    this.canvasH = Math.round(this.height * this.dpr);
+    this.canvas.width = this.canvasW;
+    this.canvas.height = this.canvasH;
     this.canvas.style.width = `${this.width}px`;
     this.canvas.style.height = `${this.height}px`;
 
-    this.sourceWidth = this.canvas.width;
-    this.sourceHeight = this.canvas.height;
-    this.sourceCanvas.width = this.sourceWidth;
-    this.sourceCanvas.height = this.sourceHeight;
-    this.textCanvas.width = this.sourceWidth;
-    this.textCanvas.height = this.sourceHeight;
+    this.occluderCanvas.width = this.canvasW;
+    this.occluderCanvas.height = this.canvasH;
 
-    this.gl?.viewport(0, 0, this.canvas.width, this.canvas.height);
+    this.gl?.viewport(0, 0, this.canvasW, this.canvasH);
   }
 
-  // ── Source capture ──────────────────────────────────────────────────
-  // 1. Rasterise visible terminal text to textCanvas (sharp)
-  // 2. Blur via iterative downsample/upscale (works in all WebKit versions)
-  // 3. Stack 3 blur levels additively onto sourceCanvas
+  // ── Rasterise: collect light rects + draw occluder blocks ───────────
+  // Lights → grouped into rectangles (uniform array for GPU).
+  // Occluders → per-cell blocks slightly narrower than cell width,
+  //   giving character-level shadow definition without fillText cost.
 
-  private captureTerminal(): void {
-    if (!this.available || !this.active) return;
-
-    this.rasteriseText();
-
-    const ctx = this.sourceCtx;
-    const w = this.sourceWidth;
-    const h = this.sourceHeight;
-
-    ctx.clearRect(0, 0, w, h);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "medium";
-    ctx.globalCompositeOperation = "lighter";
-
-    // Layer 1 – tight glow (downsample 4x)
-    ctx.globalAlpha = GLOW_ALPHA;
-    this.drawBlurred(ctx, GLOW_BLUR, w, h);
-
-    // Layer 2 – medium bloom (downsample 8x)
-    ctx.globalAlpha = BLOOM_ALPHA;
-    this.drawBlurred(ctx, BLOOM_BLUR, w, h);
-
-    // Layer 3 – wide halo (downsample 16x)
-    ctx.globalAlpha = HALO_ALPHA;
-    this.drawBlurred(ctx, HALO_BLUR, w, h);
-
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = "source-over";
-  }
-
-  // Blur by downsampling to a tiny size then upscaling back.
-  // Bilinear interpolation on both steps produces a soft blur.
-  // `level` = number of halvings → scale = 1 / 2^level.
-  private drawBlurred(
-    dest: CanvasRenderingContext2D,
-    level: number,
-    w: number,
-    h: number,
-  ): void {
-    const scale = Math.pow(0.5, level);
-    const sw = Math.max(1, Math.round(w * scale));
-    const sh = Math.max(1, Math.round(h * scale));
-
-    this.blurCanvas.width = sw;
-    this.blurCanvas.height = sh;
-    this.blurCtx.imageSmoothingEnabled = true;
-    this.blurCtx.imageSmoothingQuality = "medium";
-    this.blurCtx.drawImage(this.textCanvas, 0, 0, sw, sh);
-
-    dest.imageSmoothingEnabled = true;
-    dest.imageSmoothingQuality = "medium";
-    dest.drawImage(this.blurCanvas, 0, 0, sw, sh, 0, 0, w, h);
-  }
-
-  private rasteriseText(): void {
-    const ctx = this.textCtx;
-    const w = this.sourceWidth;
-    const h = this.sourceHeight;
-    ctx.clearRect(0, 0, w, h);
+  private rasterise(): void {
+    const oc = this.occluderCtx;
+    const w = this.canvasW;
+    const h = this.canvasH;
+    oc.clearRect(0, 0, w, h);
+    this.lights = [];
 
     const buffer = this.term.buffer.active;
     const cols = this.term.cols;
     const rows = this.term.rows;
     if (cols <= 0 || rows <= 0) return;
 
-    // Measure xterm's actual rendering area
     const hostRect = this.host.getBoundingClientRect();
     const screen = this.host.querySelector(".xterm-screen") as HTMLElement;
     const screenRect = screen ? screen.getBoundingClientRect() : hostRect;
@@ -378,46 +390,168 @@ export class TerminalEffects {
     const offsetY = (screenRect.top - hostRect.top) * this.dpr;
     const cellW = (screenRect.width * this.dpr) / cols;
     const cellH = (screenRect.height * this.dpr) / rows;
-
-    const fontSize = this.term.options.fontSize ?? 13;
-    const scaledFontSize = fontSize * this.dpr;
-    const defaultFg = this.term.options.theme?.foreground ?? "#cdd6f4";
-
-    // Use generic monospace — exact glyphs don't matter, everything is blurred.
-    // This avoids Canvas 2D font-matching issues with system Nerd Fonts.
-    ctx.textBaseline = "alphabetic";
-    ctx.font = `${scaledFontSize}px monospace`;
-
-    const metrics = ctx.measureText("M");
-    const ascent = metrics.actualBoundingBoxAscent || scaledFontSize * 0.8;
-    const textOffsetY = (cellH - scaledFontSize) / 2;
+    const padY = cellH * 0.12;
 
     const scrollTop = buffer.viewportY;
 
-    let lastColor = "";
+    const EMPTY = 0;
+    const LIGHT = 1;
+    const OCCLUDER = 2;
+
     for (let y = 0; y < rows; y++) {
       const line = buffer.getLine(scrollTop + y);
       if (!line) continue;
+
+      let runStart = -1;
+      let runLen = 0;
+      let runType = EMPTY;
+      let runColor = "";
+      let runR = 0;
+      let runG = 0;
+      let runB = 0;
+
+      let lastOccColor = "";
+
+      const flushLightRun = (endX: number): void => {
+        if (runStart < 0) return;
+        const rx = offsetX + runStart * cellW;
+        const ry = offsetY + y * cellH + padY;
+        const rw = (endX - runStart) * cellW;
+        const rh = cellH - padY * 2;
+        if (this.lights.length < MAX_LIGHTS) {
+          this.lights.push({
+            cx: rx + rw * 0.5,
+            cy: ry + rh * 0.5,
+            radius: Math.max(cellH * 12, Math.sqrt(rw * rw + rh * rh) * 7),
+            r: runR / 255,
+            g: runG / 255,
+            b: runB / 255,
+            intensity: 1 / Math.sqrt(runLen),
+          });
+        }
+      };
+
+      const drawOccluder = (x: number, char: string, color: string): void => {
+        if (color !== lastOccColor) {
+          oc.fillStyle = color;
+          lastOccColor = color;
+        }
+        const cx = offsetX + x * cellW + cellW * 0.5;
+        const cy = offsetY + y * cellH + cellH * 0.5;
+        const shape = charShape(char);
+        switch (shape) {
+          case Shape.CIRCLE: {
+            const r = Math.min(cellW, cellH) * 0.38;
+            oc.beginPath();
+            oc.arc(cx, cy, r, 0, 6.2832);
+            oc.fill();
+            break;
+          }
+          case Shape.THIN: {
+            const tw = cellW * 0.2;
+            oc.fillRect(cx - tw * 0.5, cy - cellH * 0.4, tw, cellH * 0.8);
+            break;
+          }
+          case Shape.NARROW: {
+            const nw = cellW * 0.45;
+            oc.fillRect(cx - nw * 0.5, cy - cellH * 0.38, nw, cellH * 0.76);
+            break;
+          }
+          case Shape.WIDE: {
+            oc.fillRect(
+              offsetX + x * cellW,
+              cy - cellH * 0.4,
+              cellW,
+              cellH * 0.8,
+            );
+            break;
+          }
+          default: {
+            // MEDIUM — default block
+            const mw = cellW * 0.7;
+            oc.fillRect(cx - mw * 0.5, cy - cellH * 0.38, mw, cellH * 0.76);
+          }
+        }
+      };
+
       for (let x = 0; x < cols; x++) {
         const cell = line.getCell(x);
         if (!cell) continue;
         const char = cell.getChars();
-        if (!char || char === " ") continue;
 
-        const color = cell.isFgDefault()
-          ? defaultFg
-          : xtermColorToCSS(cell.getFgColor(), cell.isFgRGB());
-        if (color !== lastColor) {
-          ctx.fillStyle = color;
-          lastColor = color;
+        let cellType = EMPTY;
+        let cellColor = "";
+        let cr = 0;
+        let cg = 0;
+        let cb = 0;
+
+        if (char && char !== " ") {
+          if (cell.isFgDefault()) {
+            cellType = OCCLUDER;
+            cellColor = this.term.options.theme?.foreground ?? "#cdd6f4";
+          } else {
+            const fg = cell.getFgColor();
+            const isRgb = cell.isFgRGB();
+            const colored = isRgb ? isRGBColored(fg) : isPaletteColored(fg);
+
+            if (colored) {
+              cellType = LIGHT;
+              if (isRgb) {
+                cr = (fg >> 16) & 0xff;
+                cg = (fg >> 8) & 0xff;
+                cb = fg & 0xff;
+              } else {
+                const rgb = XTERM_PALETTE_RGB[fg];
+                if (rgb) {
+                  cr = rgb[0];
+                  cg = rgb[1];
+                  cb = rgb[2];
+                }
+              }
+              cellColor = `rgb(${cr},${cg},${cb})`;
+            } else {
+              cellType = OCCLUDER;
+              cellColor = xtermColorToCSS(fg, isRgb);
+            }
+          }
         }
 
-        ctx.fillText(
-          char,
-          offsetX + x * cellW,
-          offsetY + y * cellH + textOffsetY + ascent,
-        );
+        // Draw occluder shape immediately per character
+        if (cellType === OCCLUDER) {
+          drawOccluder(x, char!, cellColor);
+        }
+
+        // Light run tracking
+        if (cellType === LIGHT && runType === LIGHT && cellColor === runColor) {
+          runLen++;
+          continue;
+        }
+        if (runType === LIGHT) flushLightRun(x);
+        if (cellType === LIGHT) {
+          runStart = x;
+          runLen = 1;
+          runType = LIGHT;
+          runColor = cellColor;
+          runR = cr;
+          runG = cg;
+          runB = cb;
+        } else {
+          runStart = -1;
+          runLen = 0;
+          runType = EMPTY;
+          runColor = "";
+        }
       }
+      if (runType === LIGHT) flushLightRun(cols);
+    }
+
+    // Draw mouse cursor as an occluder box
+    if (this.mouseX >= 0 && this.mouseY >= 0) {
+      const mx = this.mouseX * this.dpr;
+      const my = this.mouseY * this.dpr;
+      const boxSize = cellH * 1.2;
+      oc.fillStyle = "#ffffff";
+      oc.fillRect(mx - boxSize * 0.5, my - boxSize * 0.5, boxSize, boxSize);
     }
   }
 
@@ -426,10 +560,10 @@ export class TerminalEffects {
   private draw(): void {
     if (!this.available || !this.active) return;
     const gl = this.gl;
-    if (!gl || !this.program || !this.sourceTexture || !this.positionBuffer)
+    if (!gl || !this.program || !this.occluderTexture || !this.positionBuffer)
       return;
 
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.viewport(0, 0, this.canvasW, this.canvasH);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
@@ -439,23 +573,42 @@ export class TerminalEffects {
     gl.enableVertexAttribArray(this.positionLocation);
     gl.vertexAttribPointer(this.positionLocation, 2, gl.FLOAT, false, 0, 0);
 
+    // Upload occluder texture
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.sourceTexture);
+    gl.bindTexture(gl.TEXTURE_2D, this.occluderTexture);
     gl.texImage2D(
       gl.TEXTURE_2D,
       0,
       gl.RGBA,
       gl.RGBA,
       gl.UNSIGNED_BYTE,
-      this.sourceCanvas,
+      this.occluderCanvas,
     );
+    gl.uniform1i(this.occluderTexLocation, 0);
 
-    gl.uniform1i(this.sourceLocation, 0);
+    // Upload light uniforms
+    gl.uniform2f(this.resolutionLocation, this.canvasW, this.canvasH);
+    gl.uniform1i(this.lightCountLocation, this.lights.length);
+
+    const posRadiusData = new Float32Array(MAX_LIGHTS * 3);
+    const colorIntData = new Float32Array(MAX_LIGHTS * 4);
+    for (let i = 0; i < this.lights.length; i++) {
+      const l = this.lights[i];
+      posRadiusData[i * 3] = l.cx;
+      posRadiusData[i * 3 + 1] = l.cy;
+      posRadiusData[i * 3 + 2] = l.radius;
+      colorIntData[i * 4] = l.r;
+      colorIntData[i * 4 + 1] = l.g;
+      colorIntData[i * 4 + 2] = l.b;
+      colorIntData[i * 4 + 3] = l.intensity;
+    }
+    gl.uniform3fv(this.lightPosRadiusLocation, posRadiusData);
+    gl.uniform4fv(this.lightColorIntensityLocation, colorIntData);
+
     gl.uniform1f(
       this.boostLocation,
       Math.min(1.6, this.outputBoost * 0.7 + this.inputBoost * 0.45),
     );
-    gl.uniform1f(this.focusLocation, this.focused ? 1 : 0);
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
@@ -466,28 +619,36 @@ export class TerminalEffects {
     const gl = this.gl;
     if (!gl) return;
 
-    const vertexShader = createShader(
-      gl,
-      gl.VERTEX_SHADER,
-      VERTEX_SHADER_SOURCE,
-    );
-    const fragmentShader = createShader(
-      gl,
-      gl.FRAGMENT_SHADER,
-      FRAGMENT_SHADER_SOURCE,
-    );
+    const vs = createShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE);
+    const fs = createShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE);
 
-    this.program = createProgram(gl, vertexShader, fragmentShader);
+    this.program = createProgram(gl, vs, fs);
     this.positionLocation = gl.getAttribLocation(this.program, "a_position");
+    this.resolutionLocation = gl.getUniformLocation(
+      this.program,
+      "u_resolution",
+    );
+    this.lightCountLocation = gl.getUniformLocation(
+      this.program,
+      "u_lightCount",
+    );
+    this.lightPosRadiusLocation = gl.getUniformLocation(
+      this.program,
+      "u_lightPosRadius",
+    );
+    this.lightColorIntensityLocation = gl.getUniformLocation(
+      this.program,
+      "u_lightColorIntensity",
+    );
+    this.occluderTexLocation = gl.getUniformLocation(
+      this.program,
+      "u_occluderTex",
+    );
     this.boostLocation = gl.getUniformLocation(this.program, "u_boost");
-    this.focusLocation = gl.getUniformLocation(this.program, "u_focus");
-    this.sourceLocation = gl.getUniformLocation(this.program, "u_source");
 
     this.positionBuffer = gl.createBuffer();
-    if (!this.positionBuffer) {
-      throw new Error("Failed to allocate terminal effect vertex buffer.");
-    }
-
+    if (!this.positionBuffer)
+      throw new Error("Failed to allocate vertex buffer.");
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
     gl.bufferData(
       gl.ARRAY_BUFFER,
@@ -495,12 +656,10 @@ export class TerminalEffects {
       gl.STATIC_DRAW,
     );
 
-    this.sourceTexture = gl.createTexture();
-    if (!this.sourceTexture) {
-      throw new Error("Failed to allocate terminal effect texture.");
-    }
-
-    gl.bindTexture(gl.TEXTURE_2D, this.sourceTexture);
+    this.occluderTexture = gl.createTexture();
+    if (!this.occluderTexture)
+      throw new Error("Failed to allocate occluder texture.");
+    gl.bindTexture(gl.TEXTURE_2D, this.occluderTexture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -516,77 +675,80 @@ function createShader(
   source: string,
 ): WebGLShader {
   const shader = gl.createShader(type);
-  if (!shader) {
-    throw new Error("Failed to allocate WebGL shader.");
-  }
-
+  if (!shader) throw new Error("Failed to allocate WebGL shader.");
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
-
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const info = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+    const info = gl.getShaderInfoLog(shader) || "Unknown shader error";
     gl.deleteShader(shader);
     throw new Error(info);
   }
-
   return shader;
 }
 
 function createProgram(
   gl: GLContext,
-  vertexShader: WebGLShader,
-  fragmentShader: WebGLShader,
+  vs: WebGLShader,
+  fs: WebGLShader,
 ): WebGLProgram {
   const program = gl.createProgram();
-  if (!program) {
-    throw new Error("Failed to allocate WebGL program.");
-  }
-
-  gl.attachShader(program, vertexShader);
-  gl.attachShader(program, fragmentShader);
+  if (!program) throw new Error("Failed to allocate WebGL program.");
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
   gl.linkProgram(program);
-
-  gl.deleteShader(vertexShader);
-  gl.deleteShader(fragmentShader);
-
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const info = gl.getProgramInfoLog(program) || "Unknown program link error";
+    const info = gl.getProgramInfoLog(program) || "Unknown link error";
     gl.deleteProgram(program);
     throw new Error(info);
   }
-
   return program;
 }
 
-// xterm 256-color palette (base 16 + 6x6x6 cube + 24 grayscale)
-const XTERM_PALETTE: string[] = (() => {
-  const base16 = [
-    "#000000",
-    "#cd0000",
-    "#00cd00",
-    "#cdcd00",
-    "#0000ee",
-    "#cd00cd",
-    "#00cdcd",
-    "#e5e5e5",
-    "#7f7f7f",
-    "#ff0000",
-    "#00ff00",
-    "#ffff00",
-    "#5c5cff",
-    "#ff00ff",
-    "#00ffff",
-    "#ffffff",
+// ── Color classification ────────────────────────────────────────────
+
+function isRGBColored(packed: number): boolean {
+  const r = (packed >> 16) & 0xff;
+  const g = (packed >> 8) & 0xff;
+  const b = packed & 0xff;
+  return Math.max(r, g, b) - Math.min(r, g, b) > 30;
+}
+
+function isPaletteColored(idx: number): boolean {
+  if (idx === 0 || idx === 7 || idx === 8 || idx === 15) return false;
+  if (idx >= 232) return false;
+  return true;
+}
+
+// xterm 256-color palette as RGB triples
+const XTERM_PALETTE_RGB: [number, number, number][] = (() => {
+  const base16: [number, number, number][] = [
+    [0, 0, 0],
+    [205, 0, 0],
+    [0, 205, 0],
+    [205, 205, 0],
+    [0, 0, 238],
+    [205, 0, 205],
+    [0, 205, 205],
+    [229, 229, 229],
+    [127, 127, 127],
+    [255, 0, 0],
+    [0, 255, 0],
+    [255, 255, 0],
+    [92, 92, 255],
+    [255, 0, 255],
+    [0, 255, 255],
+    [255, 255, 255],
   ];
   const palette = [...base16];
   const vals = [0, 95, 135, 175, 215, 255];
   for (let r = 0; r < 6; r++)
     for (let g = 0; g < 6; g++)
-      for (let b = 0; b < 6; b++)
-        palette.push(`rgb(${vals[r]},${vals[g]},${vals[b]})`);
+      for (let b = 0; b < 6; b++) palette.push([vals[r], vals[g], vals[b]]);
   for (let i = 0; i < 24; i++) {
     const v = 8 + i * 10;
-    palette.push(`rgb(${v},${v},${v})`);
+    palette.push([v, v, v]);
   }
   return palette;
 })();
@@ -598,5 +760,34 @@ function xtermColorToCSS(color: number, isRgb: boolean): string {
     const b = color & 0xff;
     return `rgb(${r},${g},${b})`;
   }
-  return XTERM_PALETTE[color] ?? "#cdd6f4";
+  const rgb = XTERM_PALETTE_RGB[color];
+  return rgb ? `rgb(${rgb[0]},${rgb[1]},${rgb[2]})` : "#cdd6f4";
+}
+
+// ── Character shape classification ──────────────────────────────────
+
+const enum Shape {
+  MEDIUM, // default block ~70% width
+  CIRCLE, // round letters
+  THIN, // narrow vertical strokes
+  NARROW, // half-width chars
+  WIDE, // full-width chars
+}
+
+const SHAPE_MAP: Record<string, Shape> = {};
+
+// Round letters → circle
+for (const c of "oOcCaAeEdDbBpPqQgG09@°") SHAPE_MAP[c] = Shape.CIRCLE;
+
+// Thin strokes → narrow vertical line
+for (const c of "lLiIjJ|!1:;.,'`\"") SHAPE_MAP[c] = Shape.THIN;
+
+// Narrow chars → half-width block
+for (const c of "rRtTfF()[]{}/<>\\^") SHAPE_MAP[c] = Shape.NARROW;
+
+// Wide/full chars → full cell width
+for (const c of "mMwWHNUK#=_~—─━▪■□%&+*") SHAPE_MAP[c] = Shape.WIDE;
+
+function charShape(ch: string): Shape {
+  return SHAPE_MAP[ch.charAt(0)] ?? Shape.MEDIUM;
 }
