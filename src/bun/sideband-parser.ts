@@ -32,9 +32,7 @@ export class SidebandParser {
 
   private initDataReader(): void {
     try {
-      const stream = Bun.file(this.dataFd)
-        .stream() as unknown as ReadableStream<Uint8Array>;
-      this.dataReader = stream.getReader();
+      this.dataReader = this.openReader(this.dataFd);
     } catch {
       this.dataReader = null;
     }
@@ -42,9 +40,7 @@ export class SidebandParser {
 
   private async readMetaLoop(): Promise<void> {
     try {
-      const stream = Bun.file(this.metaFd)
-        .stream() as unknown as ReadableStream<Uint8Array>;
-      this.metaReader = stream.getReader();
+      this.metaReader = this.openReader(this.metaFd);
     } catch {
       return;
     }
@@ -142,5 +138,10 @@ export class SidebandParser {
       offset += chunk.byteLength;
     }
     return result;
+  }
+
+  private openReader(fd: number): ReadableStreamDefaultReader<Uint8Array> {
+    const stream = Bun.file(fd).stream() as unknown as ReadableStream<Uint8Array>;
+    return stream.getReader();
   }
 }
