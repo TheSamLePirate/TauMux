@@ -19,6 +19,8 @@ export interface PaneRect {
   h: number;
 }
 
+export type PaneDropPosition = "swap" | "left" | "right" | "top" | "bottom";
+
 const GAP = 2; // pixels between panes
 
 export class PaneLayout {
@@ -35,6 +37,47 @@ export class PaneLayout {
     newSurfaceId: string,
   ): void {
     this.root = this.splitNode(this.root, surfaceId, direction, newSurfaceId);
+  }
+
+  /** Move an existing surface relative to another surface, or swap their positions. */
+  moveSurface(
+    surfaceId: string,
+    targetSurfaceId: string,
+    position: PaneDropPosition,
+  ): boolean {
+    if (
+      surfaceId === targetSurfaceId ||
+      !this.hasSurface(this.root, surfaceId) ||
+      !this.hasSurface(this.root, targetSurfaceId)
+    ) {
+      return false;
+    }
+
+    if (position === "swap") {
+      const [nextRoot, swapped] = this.swapLeaves(
+        this.root,
+        surfaceId,
+        targetSurfaceId,
+      );
+      if (!swapped) return false;
+      this.root = nextRoot;
+      return true;
+    }
+
+    const prunedRoot = this.removeNode(this.root, surfaceId);
+    if (!prunedRoot) return false;
+
+    const [nextRoot, inserted] = this.insertRelative(
+      prunedRoot,
+      targetSurfaceId,
+      position,
+      surfaceId,
+    );
+
+    if (!inserted) return false;
+
+    this.root = nextRoot;
+    return true;
   }
 
   /** Remove a surface. Its parent split collapses to the sibling. */
@@ -155,6 +198,63 @@ export class PaneLayout {
     };
   }
 
+  private insertRelative(
+    node: PaneNode,
+    targetSurfaceId: string,
+    position: Exclude<PaneDropPosition, "swap">,
+    surfaceId: string,
+  ): [PaneNode, boolean] {
+    if (node.type === "leaf") {
+      if (node.surfaceId !== targetSurfaceId) {
+        return [node, false];
+      }
+
+      const direction =
+        position === "left" || position === "right" ? "horizontal" : "vertical";
+      const placeDraggedFirst =
+        position === "left" || position === "top";
+      const draggedLeaf: PaneLeaf = { type: "leaf", surfaceId };
+      const targetLeaf: PaneLeaf = {
+        type: "leaf",
+        surfaceId: targetSurfaceId,
+      };
+
+      return [
+        {
+          type: "split",
+          direction,
+          ratio: 0.5,
+          children: placeDraggedFirst
+            ? [draggedLeaf, targetLeaf]
+            : [targetLeaf, draggedLeaf],
+        },
+        true,
+      ];
+    }
+
+    const [left, leftInserted] = this.insertRelative(
+      node.children[0],
+      targetSurfaceId,
+      position,
+      surfaceId,
+    );
+    if (leftInserted) {
+      return [{ ...node, children: [left, node.children[1]] }, true];
+    }
+
+    const [right, rightInserted] = this.insertRelative(
+      node.children[1],
+      targetSurfaceId,
+      position,
+      surfaceId,
+    );
+    if (rightInserted) {
+      return [{ ...node, children: [node.children[0], right] }, true];
+    }
+
+    return [node, false];
+  }
+
   private removeNode(node: PaneNode, surfaceId: string): PaneNode | null {
     if (node.type === "leaf") {
       return node.surfaceId === surfaceId ? null : node;
@@ -167,6 +267,39 @@ export class PaneLayout {
     if (right === null) return left;
 
     return { ...node, children: [left, right] };
+  }
+
+  private swapLeaves(
+    node: PaneNode,
+    firstSurfaceId: string,
+    secondSurfaceId: string,
+  ): [PaneNode, boolean] {
+    if (node.type === "leaf") {
+      if (node.surfaceId === firstSurfaceId) {
+        return [{ ...node, surfaceId: secondSurfaceId }, true];
+      }
+      if (node.surfaceId === secondSurfaceId) {
+        return [{ ...node, surfaceId: firstSurfaceId }, true];
+      }
+      return [node, false];
+    }
+
+    const [left, leftChanged] = this.swapLeaves(
+      node.children[0],
+      firstSurfaceId,
+      secondSurfaceId,
+    );
+    const [right, rightChanged] = this.swapLeaves(
+      node.children[1],
+      firstSurfaceId,
+      secondSurfaceId,
+    );
+
+    if (!leftChanged && !rightChanged) {
+      return [node, false];
+    }
+
+    return [{ ...node, children: [left, right] }, true];
   }
 
   private computeNode(
@@ -226,6 +359,17 @@ export class PaneLayout {
       this.collectIds(node.children[0], ids);
       this.collectIds(node.children[1], ids);
     }
+  }
+
+  private hasSurface(node: PaneNode, surfaceId: string): boolean {
+    if (node.type === "leaf") {
+      return node.surfaceId === surfaceId;
+    }
+
+    return (
+      this.hasSurface(node.children[0], surfaceId) ||
+      this.hasSurface(node.children[1], surfaceId)
+    );
   }
 
   private collectDividers(

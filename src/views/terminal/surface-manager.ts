@@ -2,7 +2,11 @@ import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { PanelManager } from "./panel-manager";
-import { PaneLayout } from "./pane-layout";
+import {
+  PaneLayout,
+  type PaneDropPosition,
+  type PaneRect,
+} from "./pane-layout";
 import { Sidebar } from "./sidebar";
 import { showContextMenu, promptInput } from "./context-menu";
 import type { SidebandMetaMessage, PanelEvent } from "../../shared/types";
@@ -43,6 +47,8 @@ const WORKSPACE_COLORS = [
   "#cba6f7",
 ];
 
+const PANE_DRAG_THRESHOLD = 8;
+
 interface SurfaceView {
   id: string;
   term: Terminal;
@@ -64,6 +70,20 @@ interface Workspace {
   logs: { level: string; message: string; source?: string; time: number }[];
 }
 
+interface PaneDragHover {
+  targetId: string;
+  position: PaneDropPosition;
+  bounds: PaneRect;
+}
+
+interface PaneDragState {
+  surfaceId: string;
+  offsetX: number;
+  offsetY: number;
+  ghostEl: HTMLDivElement;
+  hover: PaneDragHover | null;
+}
+
 export class SurfaceManager {
   private surfaces = new Map<string, SurfaceView>();
   private workspaces: Workspace[] = [];
@@ -72,6 +92,10 @@ export class SurfaceManager {
   private dividerEls: HTMLDivElement[] = [];
   private sidebar: Sidebar;
   private wsCounter = 0;
+  private activePaneDrag: PaneDragState | null = null;
+  private dropOverlayEl: HTMLDivElement | null = null;
+  private dropOverlayLabelEl: HTMLSpanElement | null = null;
+  private highlightedDropTargetId: string | null = null;
 
   constructor(
     private terminalContainer: HTMLElement,
@@ -186,6 +210,13 @@ export class SurfaceManager {
   removeSurface(surfaceId: string): void {
     const view = this.surfaces.get(surfaceId);
     if (!view) return;
+
+    if (
+      this.activePaneDrag?.surfaceId === surfaceId ||
+      this.highlightedDropTargetId === surfaceId
+    ) {
+      this.cleanupPaneDrag();
+    }
 
     const wsIndex = this.workspaces.findIndex((w) =>
       w.surfaceIds.has(surfaceId),
@@ -377,8 +408,11 @@ export class SurfaceManager {
         id: ws.id,
         name: ws.name,
         color: ws.color,
-        surfaceIds: [...ws.surfaceIds],
-        focusedSurfaceId: this.focusedSurfaceId,
+        surfaceIds: ws.layout.getAllSurfaceIds(),
+        focusedSurfaceId:
+          this.focusedSurfaceId && ws.surfaceIds.has(this.focusedSurfaceId)
+            ? this.focusedSurfaceId
+            : null,
       })),
       activeWorkspaceId: this.workspaces[this.activeWorkspaceIndex]?.id ?? null,
     };
@@ -450,6 +484,7 @@ export class SurfaceManager {
   }
 
   private switchToWorkspace(index: number): void {
+    this.cleanupPaneDrag();
     this.activeWorkspaceIndex = index;
     const activeWs = this.workspaces[index];
 
@@ -600,6 +635,7 @@ export class SurfaceManager {
     barActions.appendChild(closeBtn);
 
     bar.appendChild(barActions);
+    this.setupSurfaceDrag(surfaceId, bar);
 
     // Right-click context menu on surface bar
     bar.addEventListener("contextmenu", (e) => {
@@ -709,6 +745,349 @@ export class SurfaceManager {
       panelsEl,
       title,
     };
+  }
+
+  private setupSurfaceDrag(surfaceId: string, bar: HTMLDivElement): void {
+    bar.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement).closest(".surface-bar-btn")) return;
+
+      const ws = this.activeWorkspace();
+      if (!ws || !ws.surfaceIds.has(surfaceId)) return;
+
+      this.focusSurface(surfaceId);
+
+      if (ws.surfaceIds.size < 2) return;
+
+      const view = this.surfaces.get(surfaceId);
+      if (!view) return;
+
+      e.preventDefault();
+
+      const rect = view.container.getBoundingClientRect();
+      const offsetX = e.clientX - rect.left;
+      const offsetY = e.clientY - rect.top;
+      let dragStarted = false;
+
+      const onMove = (moveEvent: MouseEvent) => {
+        if (!dragStarted) {
+          const distance = Math.hypot(
+            moveEvent.clientX - e.clientX,
+            moveEvent.clientY - e.clientY,
+          );
+          if (distance < PANE_DRAG_THRESHOLD) return;
+          dragStarted = true;
+          this.startPaneDrag(surfaceId, offsetX, offsetY);
+        }
+
+        this.updatePaneDrag(moveEvent.clientX, moveEvent.clientY);
+      };
+
+      const onUp = (upEvent: MouseEvent) => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+
+        if (!dragStarted) return;
+        this.finishPaneDrag(upEvent.clientX, upEvent.clientY);
+      };
+
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  }
+
+  private startPaneDrag(
+    surfaceId: string,
+    offsetX: number,
+    offsetY: number,
+  ): void {
+    this.cleanupPaneDrag();
+
+    const view = this.surfaces.get(surfaceId);
+    if (!view) return;
+
+    const ghostEl = document.createElement("div");
+    ghostEl.className = "surface-drag-ghost";
+    ghostEl.style.width = `${view.container.offsetWidth}px`;
+    ghostEl.style.height = `${view.container.offsetHeight}px`;
+
+    const header = document.createElement("div");
+    header.className = "surface-drag-ghost-header";
+
+    const title = document.createElement("span");
+    title.className = "surface-drag-ghost-title";
+    title.textContent = view.title;
+    header.appendChild(title);
+
+    const badge = document.createElement("span");
+    badge.className = "surface-drag-ghost-badge";
+    badge.textContent = "Move pane";
+    header.appendChild(badge);
+
+    ghostEl.appendChild(header);
+    this.terminalContainer.appendChild(ghostEl);
+    view.container.classList.add("drag-origin");
+    this.terminalContainer.classList.add("pane-drag-active");
+    document.body.classList.add("pane-dragging");
+
+    this.activePaneDrag = {
+      surfaceId,
+      offsetX,
+      offsetY,
+      ghostEl,
+      hover: null,
+    };
+  }
+
+  private updatePaneDrag(clientX: number, clientY: number): void {
+    const drag = this.activePaneDrag;
+    if (!drag) return;
+
+    const containerRect = this.terminalContainer.getBoundingClientRect();
+    const maxX = Math.max(
+      0,
+      containerRect.width - drag.ghostEl.offsetWidth,
+    );
+    const maxY = Math.max(
+      0,
+      containerRect.height - drag.ghostEl.offsetHeight,
+    );
+    const nextX = clientX - containerRect.left - drag.offsetX;
+    const nextY = clientY - containerRect.top - drag.offsetY;
+
+    drag.ghostEl.style.left = `${Math.max(-24, Math.min(maxX + 24, nextX))}px`;
+    drag.ghostEl.style.top = `${Math.max(-24, Math.min(maxY + 24, nextY))}px`;
+
+    drag.hover = this.resolvePaneDropHover(drag.surfaceId, clientX, clientY);
+    this.renderPaneDropOverlay(drag.hover);
+  }
+
+  private finishPaneDrag(clientX: number, clientY: number): void {
+    if (!this.activePaneDrag) return;
+
+    this.updatePaneDrag(clientX, clientY);
+
+    const drag = this.activePaneDrag;
+    const ws = this.activeWorkspace();
+    const hover = drag.hover;
+
+    this.cleanupPaneDrag();
+
+    if (!ws || !hover) return;
+
+    const changed = ws.layout.moveSurface(
+      drag.surfaceId,
+      hover.targetId,
+      hover.position,
+    );
+
+    if (!changed) return;
+
+    this.applyLayout();
+    this.focusSurface(drag.surfaceId);
+    this.updateSidebar();
+  }
+
+  private cleanupPaneDrag(): void {
+    if (this.activePaneDrag) {
+      this.surfaces
+        .get(this.activePaneDrag.surfaceId)
+        ?.container.classList.remove("drag-origin");
+      this.activePaneDrag.ghostEl.remove();
+      this.activePaneDrag = null;
+    }
+
+    this.terminalContainer.classList.remove("pane-drag-active");
+    document.body.classList.remove("pane-dragging");
+    this.renderPaneDropOverlay(null);
+  }
+
+  private resolvePaneDropHover(
+    sourceId: string,
+    clientX: number,
+    clientY: number,
+  ): PaneDragHover | null {
+    const ws = this.activeWorkspace();
+    if (!ws || !ws.surfaceIds.has(sourceId)) return null;
+
+    const targetEl = document
+      .elementFromPoint(clientX, clientY)
+      ?.closest(".surface-container") as HTMLDivElement | null;
+    const targetId = targetEl?.dataset["surfaceId"];
+
+    if (!targetEl || !targetId || targetId === sourceId) {
+      return null;
+    }
+
+    if (!ws.surfaceIds.has(targetId)) {
+      return null;
+    }
+
+    const containerRect = this.terminalContainer.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+
+    return {
+      targetId,
+      position: this.resolvePaneDropPosition(
+        clientX - targetRect.left,
+        clientY - targetRect.top,
+        targetRect.width,
+        targetRect.height,
+      ),
+      bounds: {
+        x: targetRect.left - containerRect.left,
+        y: targetRect.top - containerRect.top,
+        w: targetRect.width,
+        h: targetRect.height,
+      },
+    };
+  }
+
+  private resolvePaneDropPosition(
+    localX: number,
+    localY: number,
+    width: number,
+    height: number,
+  ): PaneDropPosition {
+    const thresholdForSize = (size: number) =>
+      Math.min(Math.max(size * 0.24, 24), Math.max(16, size / 2 - 16));
+
+    const xThreshold = thresholdForSize(width);
+    const yThreshold = thresholdForSize(height);
+    const candidates: { position: PaneDropPosition; distance: number }[] = [];
+
+    if (localX <= xThreshold) {
+      candidates.push({ position: "left", distance: localX });
+    }
+    if (width - localX <= xThreshold) {
+      candidates.push({ position: "right", distance: width - localX });
+    }
+    if (localY <= yThreshold) {
+      candidates.push({ position: "top", distance: localY });
+    }
+    if (height - localY <= yThreshold) {
+      candidates.push({ position: "bottom", distance: height - localY });
+    }
+
+    if (candidates.length === 0) {
+      return "swap";
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    return candidates[0].position;
+  }
+
+  private renderPaneDropOverlay(hover: PaneDragHover | null): void {
+    if (!hover) {
+      this.dropOverlayEl?.classList.remove("visible");
+      this.clearDropTargetHighlight();
+      return;
+    }
+
+    const overlay = this.ensurePaneDropOverlay();
+    const bounds = this.getPaneDropOverlayBounds(hover.bounds, hover.position);
+
+    overlay.dataset["dropPosition"] = hover.position;
+    overlay.style.left = `${bounds.x}px`;
+    overlay.style.top = `${bounds.y}px`;
+    overlay.style.width = `${bounds.w}px`;
+    overlay.style.height = `${bounds.h}px`;
+    overlay.classList.add("visible");
+
+    if (this.dropOverlayLabelEl) {
+      this.dropOverlayLabelEl.textContent = this.getPaneDropOverlayLabel(
+        hover.position,
+      );
+    }
+
+    if (this.highlightedDropTargetId !== hover.targetId) {
+      this.clearDropTargetHighlight();
+      this.surfaces.get(hover.targetId)?.container.classList.add("drop-target");
+      this.highlightedDropTargetId = hover.targetId;
+    }
+  }
+
+  private ensurePaneDropOverlay(): HTMLDivElement {
+    if (this.dropOverlayEl) {
+      return this.dropOverlayEl;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "surface-drop-overlay";
+
+    const label = document.createElement("span");
+    label.className = "surface-drop-label";
+    overlay.appendChild(label);
+
+    this.terminalContainer.appendChild(overlay);
+    this.dropOverlayEl = overlay;
+    this.dropOverlayLabelEl = label;
+    return overlay;
+  }
+
+  private getPaneDropOverlayBounds(
+    rect: PaneRect,
+    position: PaneDropPosition,
+  ): PaneRect {
+    const padding = 12;
+    const inner = {
+      x: rect.x + padding,
+      y: rect.y + padding,
+      w: Math.max(28, rect.w - padding * 2),
+      h: Math.max(28, rect.h - padding * 2),
+    };
+
+    if (position === "swap") {
+      return inner;
+    }
+
+    const splitWidth = Math.min(inner.w, Math.max(24, inner.w * 0.38));
+    const splitHeight = Math.min(inner.h, Math.max(24, inner.h * 0.38));
+
+    switch (position) {
+      case "left":
+        return { ...inner, w: splitWidth };
+      case "right":
+        return {
+          ...inner,
+          x: inner.x + inner.w - splitWidth,
+          w: splitWidth,
+        };
+      case "top":
+        return { ...inner, h: splitHeight };
+      case "bottom":
+        return {
+          ...inner,
+          y: inner.y + inner.h - splitHeight,
+          h: splitHeight,
+        };
+      default:
+        return inner;
+    }
+  }
+
+  private getPaneDropOverlayLabel(position: PaneDropPosition): string {
+    switch (position) {
+      case "left":
+        return "Split left";
+      case "right":
+        return "Split right";
+      case "top":
+        return "Split up";
+      case "bottom":
+        return "Split down";
+      case "swap":
+      default:
+        return "Move here";
+    }
+  }
+
+  private clearDropTargetHighlight(): void {
+    if (!this.highlightedDropTargetId) return;
+    this.surfaces
+      .get(this.highlightedDropTargetId)
+      ?.container.classList.remove("drop-target");
+    this.highlightedDropTargetId = null;
   }
 
   private applyLayout(): void {

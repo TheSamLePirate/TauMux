@@ -446,6 +446,16 @@ body {
     filter var(--transition-fast);
 }
 
+.pane-dragging,
+.pane-dragging * {
+  cursor: grabbing !important;
+}
+
+.surface-container.drag-origin {
+  opacity: 0.34;
+  transform: scale(0.985);
+}
+
 .surface-container:not(.focused) {
   filter: saturate(0.88);
 }
@@ -454,6 +464,19 @@ body {
   border-color: color-mix(in srgb, var(--workspace-accent) 34%, rgba(255, 255, 255, 0.08));
   box-shadow:
     0 12px 32px rgba(0, 0, 0, 0.22),
+    inset 2px 0 0 color-mix(in srgb, var(--workspace-accent) 72%, transparent);
+}
+
+.surface-container.drag-origin,
+.surface-container.drag-origin:not(.focused) {
+  filter: saturate(0.68);
+}
+
+.surface-container.drop-target {
+  border-color: color-mix(in srgb, var(--workspace-accent) 58%, rgba(255, 255, 255, 0.14));
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.24),
+    inset 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 24%, transparent),
     inset 2px 0 0 color-mix(in srgb, var(--workspace-accent) 72%, transparent);
 }
 
@@ -472,6 +495,7 @@ body {
   color: color-mix(in srgb, var(--workspace-accent) 58%, var(--text-dim));
   user-select: none;
   flex-shrink: 0;
+  cursor: grab;
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--workspace-accent) 10%, rgba(255, 255, 255, 0.06)),
     inset 0 -1px 0 rgba(0, 0, 0, 0.24);
@@ -514,6 +538,7 @@ body {
   background: transparent;
   color: color-mix(in srgb, var(--workspace-accent) 44%, var(--text-dim));
   border-left: 1px solid transparent;
+  cursor: pointer;
 }
 
 .surface-bar-btn:hover {
@@ -542,6 +567,100 @@ body {
   inset: 0;
   pointer-events: none;
   z-index: 10;
+}
+
+.surface-drag-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--workspace-accent) 42%, rgba(255, 255, 255, 0.16));
+  background:
+    linear-gradient(180deg, rgba(17, 22, 31, 0.92), rgba(10, 14, 21, 0.88));
+  box-shadow:
+    0 22px 54px rgba(0, 0, 0, 0.34),
+    0 0 0 1px color-mix(in srgb, var(--workspace-accent) 14%, transparent);
+  pointer-events: none;
+  z-index: 40;
+  backdrop-filter: blur(16px);
+}
+
+.surface-drag-ghost-header {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--workspace-accent) 22%, rgba(32, 36, 46, 0.96)), rgba(16, 20, 28, 0.9));
+}
+
+.surface-drag-ghost-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.surface-drag-ghost-badge {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--workspace-accent) 18%, rgba(255, 255, 255, 0.03));
+  color: color-mix(in srgb, var(--workspace-accent) 24%, var(--text-main));
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.surface-drop-overlay {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px dashed color-mix(in srgb, var(--workspace-accent) 62%, rgba(255, 255, 255, 0.18));
+  background: color-mix(in srgb, var(--workspace-accent) 16%, rgba(255, 255, 255, 0.04));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 10%, transparent),
+    0 0 0 1px rgba(255, 255, 255, 0.02);
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast),
+    background var(--transition-fast);
+  pointer-events: none;
+  z-index: 35;
+}
+
+.surface-drop-overlay.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.surface-drop-overlay[data-drop-position="swap"] {
+  background: color-mix(in srgb, var(--workspace-accent) 12%, rgba(255, 255, 255, 0.03));
+}
+
+.surface-drop-label {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(7, 10, 15, 0.82);
+  color: var(--text-main);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
 }
 
 .pane-divider {

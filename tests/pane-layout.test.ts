@@ -134,4 +134,29 @@ describe("PaneLayout", () => {
     const dividers = layout.getDividers({ x: 0, y: 0, w: 800, h: 600 });
     expect(dividers.length).toBe(2);
   });
+
+  test("moveSurface swaps pane positions when dropped on center", () => {
+    const layout = new PaneLayout("s1");
+    layout.splitSurface("s1", "horizontal", "s2");
+
+    expect(layout.moveSurface("s1", "s2", "swap")).toBe(true);
+    expect(layout.getAllSurfaceIds()).toEqual(["s2", "s1"]);
+  });
+
+  test("moveSurface inserts dragged pane as a new split against the target", () => {
+    const layout = new PaneLayout("s1");
+    layout.splitSurface("s1", "horizontal", "s2");
+    layout.splitSurface("s2", "vertical", "s3");
+
+    expect(layout.moveSurface("s1", "s3", "top")).toBe(true);
+    expect(layout.getAllSurfaceIds()).toEqual(["s2", "s1", "s3"]);
+
+    const rects = layout.computeRects({ x: 0, y: 0, w: 900, h: 600 });
+    const s1 = rects.get("s1")!;
+    const s3 = rects.get("s3")!;
+
+    expect(s1.y).toBeLessThan(s3.y);
+    expect(s1.x).toBe(s3.x);
+    expect(s1.w).toBe(s3.w);
+  });
 });
