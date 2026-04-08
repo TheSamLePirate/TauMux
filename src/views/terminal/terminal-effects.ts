@@ -3,8 +3,13 @@ import type { Terminal } from "xterm";
 type GLContext = WebGLRenderingContext | WebGL2RenderingContext;
 type Disposable = { dispose(): void };
 
-const MAX_LIGHTS = 48;
-const SHADOW_STEPS = 32;
+const MAX_PULSES = 24;
+const MAX_LIGHTS = 12; // static lights for the input line glow
+const SHADOW_STEPS = 24;
+const PULSE_DURATION = 1.8; // seconds
+const PULSE_SPEED = 550; // px/sec (in canvas px)
+const RING_WIDTH_INPUT = 60; // px
+const RING_WIDTH_OUTPUT = 90; // px
 
 const VERTEX_SHADER_SOURCE = `
 attribute vec2 a_position;
@@ -16,23 +21,26 @@ void main() {
 }
 `;
 
-// Per-light illumination with shadow tracing through occluder texture.
-// Much cheaper than omnidirectional ray marching: only traces toward
-// actual light sources, and produces smooth uniform illumination.
+// Ring-pulse illumination + static input-line lights with shadow tracing.
+// Pulses are expanding rings from keystrokes/output events.
+// Static lights illuminate the current input line persistently.
 const FRAGMENT_SHADER_SOURCE = `
 precision mediump float;
 
+#define MAX_PULSES ${MAX_PULSES}
 #define MAX_LIGHTS ${MAX_LIGHTS}
 #define SHADOW_STEPS ${SHADOW_STEPS}
 
 varying vec2 v_uv;
 
 uniform vec2 u_resolution;
+uniform int u_pulseCount;
+uniform vec4 u_pulseData[MAX_PULSES];   // xy = center (px), z = currentRadius (px), w = intensity
+uniform vec4 u_pulseColor[MAX_PULSES];  // rgb = color, a = ringWidth (px)
 uniform int u_lightCount;
-uniform vec3 u_lightPosRadius[MAX_LIGHTS];   // xy = center (px), z = radius (px)
-uniform vec4 u_lightColorIntensity[MAX_LIGHTS]; // rgb = color, a = intensity
+uniform vec3 u_lightPosRadius[MAX_LIGHTS];      // xy = center (px), z = radius (px)
+uniform vec4 u_lightColorIntensity[MAX_LIGHTS];  // rgb = color, a = intensity
 uniform sampler2D u_occluderTex;
-uniform float u_boost;
 
 float hash12(vec2 p) {
   return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
@@ -42,7 +50,6 @@ float occluderAt(vec2 posPx) {
   return texture2D(u_occluderTex, posPx / u_resolution).a;
 }
 
-// 5-tap cross — good quality, cheap
 float occluderSmooth(vec2 p, float spread) {
   float c = occluderAt(p) * 0.4;
   c += occluderAt(p + vec2(spread, 0.0)) * 0.15;
@@ -68,7 +75,7 @@ float traceVisibility(vec2 lightPos, vec2 fragPos, float dist, float jitter) {
     float occ = occluderSmooth(p, spread);
 
     float t = travel / dist;
-    float harshness = mix(0.95, 0.45, t * t);
+    float harshness = mix(0.85, 0.35, t * t);
     visibility *= 1.0 - occ * harshness;
 
     if (visibility < 0.005) return 0.0;
@@ -83,6 +90,7 @@ void main() {
   vec3 color = vec3(0.0);
   float jitter = hash12(gl_FragCoord.xy);
 
+  // ── Static lights (input line glow) ──
   for (int i = 0; i < MAX_LIGHTS; i++) {
     if (i >= u_lightCount) break;
 
@@ -105,7 +113,37 @@ void main() {
     color += lightColor * falloff * edgeSoft * intensity * visibility;
   }
 
-  color *= 0.6 + u_boost * 0.12;
+  // ── Pulse rings (ripples) ──
+  for (int i = 0; i < MAX_PULSES; i++) {
+    if (i >= u_pulseCount) break;
+
+    vec2 center = u_pulseData[i].xy;
+    float radius = u_pulseData[i].z;
+    float intensity = u_pulseData[i].w;
+    float ringWidth = u_pulseColor[i].a;
+    vec3 pulseColor = u_pulseColor[i].rgb;
+
+    float dist = length(fragPos - center);
+
+    // Skip pixels far beyond the ring
+    if (dist > radius + ringWidth) continue;
+
+    // Ring shape: bright at currentRadius, smooth falloff on both sides
+    float ringDist = abs(dist - radius);
+    float ring = smoothstep(ringWidth, 0.0, ringDist);
+
+    // Soft fill inside the ring (dimmer, gives inner glow)
+    float innerFill = smoothstep(radius * 0.9, 0.0, dist) * 0.15;
+
+    float brightness = (ring + innerFill) * intensity;
+    if (brightness <= 0.001) continue;
+
+    // Shadow trace from pulse origin
+    float visibility = traceVisibility(center, fragPos, dist, jitter);
+
+    color += pulseColor * brightness * visibility;
+  }
+
   float a = clamp(max(max(color.r, color.g), color.b), 0.0, 1.0);
   gl_FragColor = vec4(color, a);
 }
@@ -119,6 +157,13 @@ interface LightRect {
   g: number;
   b: number;
   intensity: number;
+}
+
+interface PulseEvent {
+  cx: number; // center x in canvas px
+  cy: number; // center y in canvas px
+  startTime: number; // performance.now() in ms
+  type: "input" | "output";
 }
 
 export class TerminalEffects {
@@ -135,12 +180,15 @@ export class TerminalEffects {
 
   private positionLocation = -1;
   private resolutionLocation: WebGLUniformLocation | null = null;
+  private pulseCountLocation: WebGLUniformLocation | null = null;
+  private pulseDataLocation: WebGLUniformLocation | null = null;
+  private pulseColorLocation: WebGLUniformLocation | null = null;
   private lightCountLocation: WebGLUniformLocation | null = null;
   private lightPosRadiusLocation: WebGLUniformLocation | null = null;
   private lightColorIntensityLocation: WebGLUniformLocation | null = null;
   private occluderTexLocation: WebGLUniformLocation | null = null;
-  private boostLocation: WebGLUniformLocation | null = null;
 
+  private pulses: PulseEvent[] = [];
   private lights: LightRect[] = [];
 
   private rafId: number | null = null;
@@ -148,15 +196,12 @@ export class TerminalEffects {
   private available = true;
   private active = true;
   private dirty = true;
-  private focused = false;
-  private outputBoost = 0;
-  private inputBoost = 0;
   private width = 1;
   private height = 1;
   private dpr = 1;
   private canvasW = 1;
   private canvasH = 1;
-  private mouseX = -1; // CSS px relative to host, -1 = offscreen
+  private mouseX = -1;
   private mouseY = -1;
 
   constructor(
@@ -222,10 +267,6 @@ export class TerminalEffects {
     this.subscriptions.push(
       term.onRender(() => this.markDirty()),
       term.onScroll(() => this.markDirty()),
-      term.onCursorMove(() => {
-        this.outputBoost = Math.max(this.outputBoost, 0.08);
-        this.schedule();
-      }),
       term.onWriteParsed(() => this.markDirty()),
     );
 
@@ -247,29 +288,22 @@ export class TerminalEffects {
     this.markDirty();
   }
 
-  setFocused(focused: boolean): void {
-    if (!this.available) return;
-    this.focused = focused;
-    if (focused) this.outputBoost = Math.max(this.outputBoost, 0.18);
-    this.schedule();
+  setFocused(_focused: boolean): void {
+    // Ripple system doesn't need focus state — kept for API compat
   }
 
-  pulseOutput(size = 0): void {
+  pulseOutput(_size = 0): void {
     if (!this.available || !this.active) return;
-    this.outputBoost = Math.min(
-      2.8,
-      this.outputBoost + Math.min(1.6, 0.16 + size / 180),
-    );
-    this.markDirty();
+    const pos = this.cursorCanvasPos();
+    if (!pos) return;
+    this.addPulse(pos.x, pos.y, "output");
   }
 
-  pulseInput(size = 0): void {
+  pulseInput(_size = 0): void {
     if (!this.available || !this.active) return;
-    this.inputBoost = Math.min(
-      1.8,
-      this.inputBoost + Math.min(1.1, 0.1 + size / 240),
-    );
-    this.schedule();
+    const pos = this.cursorCanvasPos();
+    if (!pos) return;
+    this.addPulse(pos.x, pos.y, "input");
   }
 
   setEnabled(enabled: boolean): void {
@@ -301,6 +335,42 @@ export class TerminalEffects {
     this.canvas.remove();
   }
 
+  // ── Pulse management ────────────────────────────────────────────────
+
+  private addPulse(cx: number, cy: number, type: "input" | "output"): void {
+    this.pulses.push({ cx, cy, startTime: performance.now(), type });
+    if (this.pulses.length > MAX_PULSES) {
+      this.pulses.shift();
+    }
+    this.markDirty();
+  }
+
+  private cursorCanvasPos(): { x: number; y: number } | null {
+    const buffer = this.term.buffer.active;
+    const cols = this.term.cols;
+    const rows = this.term.rows;
+    if (cols <= 0 || rows <= 0) return null;
+
+    const hostRect = this.host.getBoundingClientRect();
+    const screen = this.host.querySelector(".xterm-screen") as HTMLElement;
+    const screenRect = screen ? screen.getBoundingClientRect() : hostRect;
+
+    const offsetX = (screenRect.left - hostRect.left) * this.dpr;
+    const offsetY = (screenRect.top - hostRect.top) * this.dpr;
+    const cellW = (screenRect.width * this.dpr) / cols;
+    const cellH = (screenRect.height * this.dpr) / rows;
+
+    const cursorX = buffer.cursorX;
+    const cursorY = buffer.cursorY;
+
+    return {
+      x: offsetX + (cursorX + 0.5) * cellW,
+      y: offsetY + (cursorY + 0.5) * cellH,
+    };
+  }
+
+  // ── Scheduling ──────────────────────────────────────────────────────
+
   private markDirty(): void {
     if (!this.available || !this.active) return;
     this.dirty = true;
@@ -325,22 +395,21 @@ export class TerminalEffects {
   private render(): void {
     if (!this.available || !this.active || this.destroyed || !this.gl) return;
 
+    // Prune expired pulses
+    const now = performance.now();
+    this.pulses = this.pulses.filter(
+      (p) => (now - p.startTime) / 1000 < PULSE_DURATION,
+    );
+
     if (this.dirty) {
       this.rasterise();
       this.dirty = false;
     }
 
-    this.outputBoost *= this.focused ? 0.93 : 0.87;
-    this.inputBoost *= 0.84;
-
     this.draw();
 
-    if (
-      this.focused ||
-      this.dirty ||
-      this.outputBoost > 0.012 ||
-      this.inputBoost > 0.02
-    ) {
+    // Keep animating while there are active pulses
+    if (this.pulses.length > 0 || this.dirty) {
       this.schedule();
     }
   }
@@ -365,10 +434,9 @@ export class TerminalEffects {
     this.gl?.viewport(0, 0, this.canvasW, this.canvasH);
   }
 
-  // ── Rasterise: collect light rects + draw occluder blocks ───────────
-  // Lights → grouped into rectangles (uniform array for GPU).
-  // Occluders → per-cell blocks slightly narrower than cell width,
-  //   giving character-level shadow definition without fillText cost.
+  // ── Rasterise: draw occluder blocks + collect input-line lights ──────
+  // All text is an occluder. The cursor row also emits static warm lights
+  // so the input line glows persistently.
 
   private rasterise(): void {
     const oc = this.occluderCtx;
@@ -390,112 +458,80 @@ export class TerminalEffects {
     const offsetY = (screenRect.top - hostRect.top) * this.dpr;
     const cellW = (screenRect.width * this.dpr) / cols;
     const cellH = (screenRect.height * this.dpr) / rows;
-    const padY = cellH * 0.12;
 
     const scrollTop = buffer.viewportY;
+    const cursorRow = buffer.cursorY;
+    const padY = cellH * 0.12;
 
-    const EMPTY = 0;
-    const LIGHT = 1;
-    const OCCLUDER = 2;
+    // Input-line light run tracking (colored chars only)
+    let runStart = -1;
+    let runLen = 0;
+    let runColor = "";
+    let runR = 0;
+    let runG = 0;
+    let runB = 0;
+
+    const flushInputRun = (endX: number): void => {
+      if (runStart < 0 || this.lights.length >= MAX_LIGHTS) return;
+      const rx = offsetX + runStart * cellW;
+      const ry = offsetY + cursorRow * cellH + padY;
+      const rw = (endX - runStart) * cellW;
+      const rh = cellH - padY * 2;
+      this.lights.push({
+        cx: rx + rw * 0.5,
+        cy: ry + rh * 0.5,
+        radius: Math.max(cellH * 10, Math.sqrt(rw * rw + rh * rh) * 6),
+        r: runR / 255,
+        g: runG / 255,
+        b: runB / 255,
+        intensity: 1 / Math.sqrt(runLen),
+      });
+    };
 
     for (let y = 0; y < rows; y++) {
       const line = buffer.getLine(scrollTop + y);
       if (!line) continue;
 
-      let runStart = -1;
-      let runLen = 0;
-      let runType = EMPTY;
-      let runColor = "";
-      let runR = 0;
-      let runG = 0;
-      let runB = 0;
-
+      const isInputRow = y === cursorRow;
       let lastOccColor = "";
-
-      const flushLightRun = (endX: number): void => {
-        if (runStart < 0) return;
-        const rx = offsetX + runStart * cellW;
-        const ry = offsetY + y * cellH + padY;
-        const rw = (endX - runStart) * cellW;
-        const rh = cellH - padY * 2;
-        if (this.lights.length < MAX_LIGHTS) {
-          this.lights.push({
-            cx: rx + rw * 0.5,
-            cy: ry + rh * 0.5,
-            radius: Math.max(cellH * 12, Math.sqrt(rw * rw + rh * rh) * 7),
-            r: runR / 255,
-            g: runG / 255,
-            b: runB / 255,
-            intensity: 1 / Math.sqrt(runLen),
-          });
-        }
-      };
-
-      const drawOccluder = (x: number, char: string, color: string): void => {
-        if (color !== lastOccColor) {
-          oc.fillStyle = color;
-          lastOccColor = color;
-        }
-        const cx = offsetX + x * cellW + cellW * 0.5;
-        const cy = offsetY + y * cellH + cellH * 0.5;
-        const shape = charShape(char);
-        switch (shape) {
-          case Shape.CIRCLE: {
-            const r = Math.min(cellW, cellH) * 0.38;
-            oc.beginPath();
-            oc.arc(cx, cy, r, 0, 6.2832);
-            oc.fill();
-            break;
-          }
-          case Shape.THIN: {
-            const tw = cellW * 0.2;
-            oc.fillRect(cx - tw * 0.5, cy - cellH * 0.4, tw, cellH * 0.8);
-            break;
-          }
-          case Shape.NARROW: {
-            const nw = cellW * 0.45;
-            oc.fillRect(cx - nw * 0.5, cy - cellH * 0.38, nw, cellH * 0.76);
-            break;
-          }
-          case Shape.WIDE: {
-            oc.fillRect(
-              offsetX + x * cellW,
-              cy - cellH * 0.4,
-              cellW,
-              cellH * 0.8,
-            );
-            break;
-          }
-          default: {
-            // MEDIUM — default block
-            const mw = cellW * 0.7;
-            oc.fillRect(cx - mw * 0.5, cy - cellH * 0.38, mw, cellH * 0.76);
-          }
-        }
-      };
+      runStart = -1;
+      runLen = 0;
+      runColor = "";
 
       for (let x = 0; x < cols; x++) {
         const cell = line.getCell(x);
         if (!cell) continue;
         const char = cell.getChars();
+        const hasChar = char !== undefined && char !== "" && char !== " ";
 
-        let cellType = EMPTY;
-        let cellColor = "";
+        if (!hasChar) {
+          // Empty cell — break any light run on input row
+          if (isInputRow && runStart >= 0) {
+            flushInputRun(x);
+            runStart = -1;
+            runLen = 0;
+            runColor = "";
+          }
+          continue;
+        }
+
+        // Classify: on the input row, colored chars are lights; everything else is an occluder
+        let isLight = false;
         let cr = 0;
         let cg = 0;
         let cb = 0;
+        let cellColorCSS: string;
 
-        if (char && char !== " ") {
-          if (cell.isFgDefault()) {
-            cellType = OCCLUDER;
-            cellColor = this.term.options.theme?.foreground ?? "#cdd6f4";
-          } else {
-            const fg = cell.getFgColor();
-            const isRgb = cell.isFgRGB();
+        if (cell.isFgDefault()) {
+          cellColorCSS = this.term.options.theme?.foreground ?? "#cdd6f4";
+        } else {
+          const fg = cell.getFgColor();
+          const isRgb = cell.isFgRGB();
+
+          if (isInputRow) {
             const colored = isRgb ? isRGBColored(fg) : isPaletteColored(fg);
-
             if (colored) {
-              cellType = LIGHT;
+              isLight = true;
               if (isRgb) {
                 cr = (fg >> 16) & 0xff;
                 cg = (fg >> 8) & 0xff;
@@ -508,44 +544,82 @@ export class TerminalEffects {
                   cb = rgb[2];
                 }
               }
-              cellColor = `rgb(${cr},${cg},${cb})`;
-            } else {
-              cellType = OCCLUDER;
-              cellColor = xtermColorToCSS(fg, isRgb);
+            }
+          }
+
+          cellColorCSS = xtermColorToCSS(fg, isRgb);
+        }
+
+        if (isLight) {
+          // Colored char on input row → light (no occluder drawn)
+          const colorKey = `${cr},${cg},${cb}`;
+          if (runStart >= 0 && colorKey === runColor) {
+            runLen++;
+          } else {
+            if (runStart >= 0) flushInputRun(x);
+            runStart = x;
+            runLen = 1;
+            runColor = colorKey;
+            runR = cr;
+            runG = cg;
+            runB = cb;
+          }
+        } else {
+          // Occluder — break any light run on input row
+          if (isInputRow && runStart >= 0) {
+            flushInputRun(x);
+            runStart = -1;
+            runLen = 0;
+            runColor = "";
+          }
+
+          if (cellColorCSS !== lastOccColor) {
+            oc.fillStyle = cellColorCSS;
+            lastOccColor = cellColorCSS;
+          }
+
+          const cx = offsetX + x * cellW + cellW * 0.5;
+          const cy = offsetY + y * cellH + cellH * 0.5;
+          const shape = charShape(char!);
+          switch (shape) {
+            case Shape.CIRCLE: {
+              const r = Math.min(cellW, cellH) * 0.38;
+              oc.beginPath();
+              oc.arc(cx, cy, r, 0, 6.2832);
+              oc.fill();
+              break;
+            }
+            case Shape.THIN: {
+              const tw = cellW * 0.2;
+              oc.fillRect(cx - tw * 0.5, cy - cellH * 0.4, tw, cellH * 0.8);
+              break;
+            }
+            case Shape.NARROW: {
+              const nw = cellW * 0.45;
+              oc.fillRect(cx - nw * 0.5, cy - cellH * 0.38, nw, cellH * 0.76);
+              break;
+            }
+            case Shape.WIDE: {
+              oc.fillRect(
+                offsetX + x * cellW,
+                cy - cellH * 0.4,
+                cellW,
+                cellH * 0.8,
+              );
+              break;
+            }
+            default: {
+              const mw = cellW * 0.7;
+              oc.fillRect(cx - mw * 0.5, cy - cellH * 0.38, mw, cellH * 0.76);
             }
           }
         }
-
-        // Draw occluder shape immediately per character
-        if (cellType === OCCLUDER) {
-          drawOccluder(x, char!, cellColor);
-        }
-
-        // Light run tracking
-        if (cellType === LIGHT && runType === LIGHT && cellColor === runColor) {
-          runLen++;
-          continue;
-        }
-        if (runType === LIGHT) flushLightRun(x);
-        if (cellType === LIGHT) {
-          runStart = x;
-          runLen = 1;
-          runType = LIGHT;
-          runColor = cellColor;
-          runR = cr;
-          runG = cg;
-          runB = cb;
-        } else {
-          runStart = -1;
-          runLen = 0;
-          runType = EMPTY;
-          runColor = "";
-        }
       }
-      if (runType === LIGHT) flushLightRun(cols);
+
+      if (isInputRow && runStart >= 0) flushInputRun(cols);
     }
 
-    // Draw mouse cursor as an occluder box
+    // Mouse cursor occluder
     if (this.mouseX >= 0 && this.mouseY >= 0) {
       const mx = this.mouseX * this.dpr;
       const my = this.mouseY * this.dpr;
@@ -567,6 +641,8 @@ export class TerminalEffects {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
+    if (this.pulses.length === 0 && this.lights.length === 0) return;
+
     gl.useProgram(this.program);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
@@ -586,10 +662,10 @@ export class TerminalEffects {
     );
     gl.uniform1i(this.occluderTexLocation, 0);
 
-    // Upload light uniforms
     gl.uniform2f(this.resolutionLocation, this.canvasW, this.canvasH);
-    gl.uniform1i(this.lightCountLocation, this.lights.length);
 
+    // Upload static lights (input line glow)
+    gl.uniform1i(this.lightCountLocation, this.lights.length);
     const posRadiusData = new Float32Array(MAX_LIGHTS * 3);
     const colorIntData = new Float32Array(MAX_LIGHTS * 4);
     for (let i = 0; i < this.lights.length; i++) {
@@ -605,10 +681,41 @@ export class TerminalEffects {
     gl.uniform3fv(this.lightPosRadiusLocation, posRadiusData);
     gl.uniform4fv(this.lightColorIntensityLocation, colorIntData);
 
-    gl.uniform1f(
-      this.boostLocation,
-      Math.min(1.6, this.outputBoost * 0.7 + this.inputBoost * 0.45),
-    );
+    // Upload pulse uniforms (ripples)
+    gl.uniform1i(this.pulseCountLocation, this.pulses.length);
+    const now = performance.now();
+    const dataArr = new Float32Array(MAX_PULSES * 4);
+    const colorArr = new Float32Array(MAX_PULSES * 4);
+
+    for (let i = 0; i < this.pulses.length; i++) {
+      const p = this.pulses[i];
+      const age = (now - p.startTime) / 1000;
+      const t = age / PULSE_DURATION;
+      const currentRadius = age * PULSE_SPEED;
+
+      const fade = 1.0 - t;
+      const intensity = fade * fade * 0.8;
+
+      dataArr[i * 4] = p.cx;
+      dataArr[i * 4 + 1] = p.cy;
+      dataArr[i * 4 + 2] = currentRadius;
+      dataArr[i * 4 + 3] = intensity;
+
+      if (p.type === "input") {
+        colorArr[i * 4] = 1.0;
+        colorArr[i * 4 + 1] = 0.7;
+        colorArr[i * 4 + 2] = 0.25;
+        colorArr[i * 4 + 3] = RING_WIDTH_INPUT;
+      } else {
+        colorArr[i * 4] = 0.3;
+        colorArr[i * 4 + 1] = 0.75;
+        colorArr[i * 4 + 2] = 1.0;
+        colorArr[i * 4 + 3] = RING_WIDTH_OUTPUT;
+      }
+    }
+
+    gl.uniform4fv(this.pulseDataLocation, dataArr);
+    gl.uniform4fv(this.pulseColorLocation, colorArr);
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
@@ -628,6 +735,15 @@ export class TerminalEffects {
       this.program,
       "u_resolution",
     );
+    this.pulseCountLocation = gl.getUniformLocation(
+      this.program,
+      "u_pulseCount",
+    );
+    this.pulseDataLocation = gl.getUniformLocation(this.program, "u_pulseData");
+    this.pulseColorLocation = gl.getUniformLocation(
+      this.program,
+      "u_pulseColor",
+    );
     this.lightCountLocation = gl.getUniformLocation(
       this.program,
       "u_lightCount",
@@ -644,7 +760,6 @@ export class TerminalEffects {
       this.program,
       "u_occluderTex",
     );
-    this.boostLocation = gl.getUniformLocation(this.program, "u_boost");
 
     this.positionBuffer = gl.createBuffer();
     if (!this.positionBuffer)
@@ -706,20 +821,7 @@ function createProgram(
   return program;
 }
 
-// ── Color classification ────────────────────────────────────────────
-
-function isRGBColored(packed: number): boolean {
-  const r = (packed >> 16) & 0xff;
-  const g = (packed >> 8) & 0xff;
-  const b = packed & 0xff;
-  return Math.max(r, g, b) - Math.min(r, g, b) > 30;
-}
-
-function isPaletteColored(idx: number): boolean {
-  if (idx === 0 || idx === 7 || idx === 8 || idx === 15) return false;
-  if (idx >= 232) return false;
-  return true;
-}
+// ── Color helpers ───────────────────────────────────────────────────
 
 // xterm 256-color palette as RGB triples
 const XTERM_PALETTE_RGB: [number, number, number][] = (() => {
@@ -753,6 +855,19 @@ const XTERM_PALETTE_RGB: [number, number, number][] = (() => {
   return palette;
 })();
 
+function isRGBColored(packed: number): boolean {
+  const r = (packed >> 16) & 0xff;
+  const g = (packed >> 8) & 0xff;
+  const b = packed & 0xff;
+  return Math.max(r, g, b) - Math.min(r, g, b) > 30;
+}
+
+function isPaletteColored(idx: number): boolean {
+  if (idx === 0 || idx === 7 || idx === 8 || idx === 15) return false;
+  if (idx >= 232) return false;
+  return true;
+}
+
 function xtermColorToCSS(color: number, isRgb: boolean): string {
   if (isRgb) {
     const r = (color >> 16) & 0xff;
@@ -767,25 +882,18 @@ function xtermColorToCSS(color: number, isRgb: boolean): string {
 // ── Character shape classification ──────────────────────────────────
 
 const enum Shape {
-  MEDIUM, // default block ~70% width
-  CIRCLE, // round letters
-  THIN, // narrow vertical strokes
-  NARROW, // half-width chars
-  WIDE, // full-width chars
+  MEDIUM,
+  CIRCLE,
+  THIN,
+  NARROW,
+  WIDE,
 }
 
 const SHAPE_MAP: Record<string, Shape> = {};
 
-// Round letters → circle
 for (const c of "oOcCaAeEdDbBpPqQgG09@°") SHAPE_MAP[c] = Shape.CIRCLE;
-
-// Thin strokes → narrow vertical line
 for (const c of "lLiIjJ|!1:;.,'`\"") SHAPE_MAP[c] = Shape.THIN;
-
-// Narrow chars → half-width block
 for (const c of "rRtTfF()[]{}/<>\\^") SHAPE_MAP[c] = Shape.NARROW;
-
-// Wide/full chars → full cell width
 for (const c of "mMwWHNUK#=_~—─━▪■□%&+*") SHAPE_MAP[c] = Shape.WIDE;
 
 function charShape(ch: string): Shape {
