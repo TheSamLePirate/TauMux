@@ -33,6 +33,7 @@ To display a graphical element, you must tell the terminal *what* to display (me
 
 - **`float`**: The element floats over the terminal at an absolute screen coordinate (`x`, `y`). It stays fixed on the screen even when the terminal text scrolls.
 - **`inline`**: The element is anchored to the specific line of text where it was created. If you print 50 lines of text and the terminal scrolls, the inline element scrolls up with the text.
+- **`fixed`**: Like `float` but with zero UI chrome — no title bar, drag handle, resize handle, or close button. The raw content is rendered directly. Perfect for HUD overlays like clocks or status indicators.
 
 ### Example: Displaying a Floating SVG (Bash)
 
@@ -170,7 +171,7 @@ When writing to `HYPERTERM_META_FD`, the JSON object supports the following prop
 |-------|------|----------|-------------|
 | `id` | `string` | **Yes** | Unique identifier for the panel. |
 | `type` | `enum` | **Yes** | `image`, `svg`, `html`, `canvas2d`, `update`, `clear`. |
-| `position` | `enum` | No | `float` (default) or `inline`. |
+| `position` | `enum` | No | `float` (default), `inline`, `overlay`, or `fixed`. |
 | `x` | `number` | No | X coordinate (pixels) for floating panels. |
 | `y` | `number` | No | Y coordinate (pixels) for floating panels. |
 | `width` | `number` \| `"auto"` | No | Width in pixels. |

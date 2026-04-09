@@ -7,6 +7,7 @@ export class Panel {
   readonly id: string;
   readonly el: HTMLDivElement;
   readonly isInline: boolean;
+  readonly isFixed: boolean;
   anchorRow: number;
   private contentEl: HTMLDivElement;
   private dragHandle: HTMLDivElement;
@@ -25,6 +26,7 @@ export class Panel {
     this.meta = meta;
     this.onEvent = onEvent;
     this.isInline = meta.position === "inline";
+    this.isFixed = meta.position === "fixed";
     this.anchorRow = 0;
 
     this.el = document.createElement("div");
@@ -62,9 +64,13 @@ export class Panel {
     this.resizeHandle = document.createElement("div");
     this.resizeHandle.className = "panel-resize-handle";
 
-    this.el.appendChild(this.dragHandle);
+    if (!this.isFixed) {
+      this.el.appendChild(this.dragHandle);
+    }
     this.el.appendChild(this.contentEl);
-    this.el.appendChild(this.resizeHandle);
+    if (!this.isFixed) {
+      this.el.appendChild(this.resizeHandle);
+    }
 
     this.syncClasses();
     this.applyMeta(meta);
@@ -204,6 +210,10 @@ export class Panel {
       this.meta.position === "overlay",
     );
     this.el.classList.toggle(
+      "panel-position-fixed",
+      this.meta.position === "fixed",
+    );
+    this.el.classList.toggle(
       "panel-interactive",
       Boolean(this.meta.interactive),
     );
@@ -228,10 +238,11 @@ export class Panel {
     if (m.borderRadius !== undefined) s.borderRadius = `${m.borderRadius}px`;
     if (this.isInline && m.x === undefined) s.left = "12px";
 
-    const draggable = m.draggable ?? m.position === "float";
+    const isFixed = m.position === "fixed";
+    const draggable = isFixed ? false : (m.draggable ?? m.position === "float");
     this.dragHandle.style.display = draggable ? "flex" : "none";
 
-    const resizable = m.resizable ?? m.position === "float";
+    const resizable = isFixed ? false : (m.resizable ?? m.position === "float");
     this.resizeHandle.style.display = resizable ? "block" : "none";
   }
 

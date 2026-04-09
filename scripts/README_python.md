@@ -52,7 +52,7 @@ Display an SVG string as a floating panel.
 | `y` | `int` | `100` | Y position (px) |
 | `width` | `int` | `400` | Panel width (px) |
 | `height` | `int` | `300` | Panel height (px) |
-| `position` | `str` | `"float"` | `"float"`, `"inline"`, or `"overlay"` |
+| `position` | `str` | `"float"` | `"float"`, `"inline"`, `"overlay"`, or `"fixed"` |
 | `**kwargs` | | | Any additional panel options (see below) |
 
 Returns the panel ID (`str`).
@@ -68,7 +68,7 @@ Display an HTML string as a floating panel.
 | `y` | `int` | `100` | Y position (px) |
 | `width` | `int` | `400` | Panel width (px) |
 | `height` | `int` | `300` | Panel height (px) |
-| `position` | `str` | `"float"` | `"float"`, `"inline"`, or `"overlay"` |
+| `position` | `str` | `"float"` | `"float"`, `"inline"`, `"overlay"`, or `"fixed"` |
 | `interactive` | `bool` | `False` | Forward mouse events to fd 5 |
 | `**kwargs` | | | Any additional panel options (see below) |
 
@@ -85,7 +85,7 @@ Display an image file (PNG, JPEG, WebP, GIF) as a floating panel.
 | `y` | `int` | `100` | Y position (px) |
 | `width` | `int\|str` | `"auto"` | Panel width (px or `"auto"`) |
 | `height` | `int\|str` | `"auto"` | Panel height (px or `"auto"`) |
-| `position` | `str` | `"float"` | `"float"`, `"inline"`, or `"overlay"` |
+| `position` | `str` | `"float"` | `"float"`, `"inline"`, `"overlay"`, or `"fixed"` |
 | `draggable` | `bool` | `True` | Allow drag |
 | `resizable` | `bool` | `True` | Allow resize |
 | `interactive` | `bool` | `False` | Forward mouse events to fd 5 |

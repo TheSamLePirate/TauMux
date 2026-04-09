@@ -584,6 +584,8 @@ body.fullscreen-mode #back-btn { display: grid; }
   -webkit-user-select: none;
   user-select: none;
 }
+.web-panel.fixed { border: none; background: transparent; backdrop-filter: none; pointer-events: none; }
+.web-panel.fixed.interactive { pointer-events: auto; }
 .web-panel.draggable, .web-panel.resizable { pointer-events: auto; touch-action: none; }
 .web-panel-drag {
   height: 22px; display: flex; align-items: center; justify-content: space-between;
@@ -1002,15 +1004,16 @@ const APP_JS = [
   "    return;",
   "  }",
   "  var existing = panels[id]; if (existing) existing.el.remove();",
-  '  var el = document.createElement("div"); el.className = "web-panel";',
+  "  var isFixed = msg.position === 'fixed';",
+  '  var el = document.createElement("div"); el.className = "web-panel" + (isFixed ? " fixed" : "");',
   '  if (msg.x !== undefined) el.style.left = msg.x + "px";',
   '  if (msg.y !== undefined) el.style.top = msg.y + "px";',
   '  if (msg.width !== undefined && msg.width !== "auto") el.style.width = msg.width + "px";',
   '  if (msg.height !== undefined && msg.height !== "auto") el.style.height = msg.height + "px";',
   "  if (msg.opacity !== undefined) el.style.opacity = msg.opacity;",
   "  if (msg.zIndex !== undefined) el.style.zIndex = msg.zIndex;",
-  "  var draggable = msg.draggable !== undefined ? msg.draggable : (msg.position === 'float');",
-  "  var resizable = msg.resizable !== undefined ? msg.resizable : (msg.position === 'float');",
+  "  var draggable = isFixed ? false : (msg.draggable !== undefined ? msg.draggable : (msg.position === 'float'));",
+  "  var resizable = isFixed ? false : (msg.resizable !== undefined ? msg.resizable : (msg.position === 'float'));",
   "  if (draggable) {",
   '    el.classList.add("draggable");',
   '    var dragH = document.createElement("div"); dragH.className = "web-panel-drag";',

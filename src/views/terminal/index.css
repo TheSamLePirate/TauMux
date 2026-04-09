@@ -345,7 +345,8 @@ textarea {
 
 .sidebar-header,
 .sidebar-notifications,
-.sidebar-logs {
+.sidebar-logs,
+.sidebar-footer {
   width: calc(var(--sidebar-width) - 24px);
 }
 
@@ -409,6 +410,58 @@ textarea {
 .sidebar-new-btn:hover {
   opacity: 1;
   color: var(--text-strong);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.sidebar-server-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.sidebar-server-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.sidebar-server-dot.online {
+  background: #a6e3a1;
+  box-shadow: 0 0 6px rgba(166, 227, 161, 0.5);
+}
+
+.sidebar-server-dot.offline {
+  background: var(--text-dim);
+  opacity: 0.4;
+}
+
+.sidebar-server-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.sidebar-server-url {
+  margin-left: auto;
+  font-size: 10px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
+.sidebar-server-dot.online ~ .sidebar-server-url {
+  color: #a6e3a1;
+  opacity: 0.8;
 }
 
 .sidebar-workspaces,
@@ -1154,10 +1207,40 @@ textarea {
   min-height: 26px;
 }
 
+.panel-position-fixed {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  border-radius: 0;
+  pointer-events: none;
+}
+
+.panel-position-fixed::before,
+.panel-position-fixed::after {
+  display: none;
+}
+
+.panel-position-fixed .panel-content {
+  pointer-events: none;
+}
+
+.panel-position-fixed.panel-interactive {
+  pointer-events: auto;
+}
+
+.panel-position-fixed.panel-interactive .panel-content {
+  pointer-events: auto;
+}
+
 .panel-position-float:hover,
 .panel-position-overlay:hover,
 .panel-interactive {
   transform: translateY(-2px);
+}
+
+.panel-position-fixed.panel-interactive {
+  transform: none;
 }
 
 .panel-interactive {

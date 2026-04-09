@@ -373,6 +373,15 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
   }
 }
 
+function sendWebServerStatus(): void {
+  const running = webServer?.running ?? false;
+  rpc.send("webServerStatus", {
+    running,
+    port: webServerPort,
+    url: running ? `http://localhost:${webServerPort}` : undefined,
+  });
+}
+
 function toggleWebServer(): void {
   if (webServer?.running) {
     webServer.stop();
@@ -389,6 +398,7 @@ function toggleWebServer(): void {
     }
     webServer.start();
   }
+  sendWebServerStatus();
 }
 
 // ── Socket API ──
@@ -495,6 +505,7 @@ if (webServerPort > 0) {
   setupWebServerCallbacks(webServer);
   webServer.start();
 }
+sendWebServerStatus();
 
 // Clean up on exit
 process.on("SIGINT", () => {

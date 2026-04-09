@@ -70,6 +70,11 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
           payload.data,
         );
       },
+      webServerStatus: (payload) => {
+        surfaceManager
+          .getSidebar()
+          .setWebServerStatus(payload.running, payload.port, payload.url);
+      },
       socketAction: (payload) => {
         handleSocketAction(payload.action, payload.payload);
       },

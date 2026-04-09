@@ -26,6 +26,15 @@ Inline panels act like they are printed into the terminal history.
 - As new text is printed and the terminal scrolls down, the inline panel **scrolls up** along with the text it was anchored to.
 - *Note: Inline panels cannot be dragged vertically, as they are locked to their row.*
 
+### `position: "fixed"`
+Fixed panels are raw visual overlays with zero chrome.
+- Positioned using absolute screen coordinates (`x` and `y` in pixels) relative to the top-left of the terminal pane — just like `float`.
+- **No title bar, no drag handle, no resize handle, no close button.** The panel renders only the content itself.
+- Not draggable and not resizable — the panel stays exactly where it was placed.
+- Ideal for HUD-style overlays (clocks, status indicators, watermarks) that should appear as part of the terminal environment rather than as separate windows.
+- If `interactive: true` is set, mouse events are still forwarded to FD 5.
+- To remove a fixed panel, the script must send a `clear` message — there is no close button for the user to click.
+
 ---
 
 ## 2. Rendering Types

@@ -117,7 +117,7 @@ Scripts can render structured content via extra file descriptors:
 |-------|------|-------------|
 | `id` | string | Unique panel identifier |
 | `type` | enum | `image`, `svg`, `html`, `canvas2d`, `update`, `clear` |
-| `position` | enum | `float` (fixed in viewport), `inline` (scrolls with content) |
+| `position` | enum | `float` (fixed in viewport), `inline` (scrolls with content), `fixed` (no chrome, raw overlay) |
 | `x`, `y` | number | Position in pixels |
 | `width`, `height` | number or `"auto"` | Dimensions |
 | `draggable` | boolean | Allow drag (default: true for float) |

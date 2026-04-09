@@ -24,7 +24,7 @@ export interface PanelOptions {
   y?: number;
   width?: number | "auto";
   height?: number | "auto";
-  position?: "float" | "inline" | "overlay";
+  position?: "float" | "inline" | "overlay" | "fixed";
   anchor?: "cursor" | { row: number };
   draggable?: boolean;
   resizable?: boolean;

@@ -37,6 +37,10 @@ export class Sidebar {
   private listEl: HTMLElement;
   private notificationsEl: HTMLElement;
   private logsEl: HTMLElement;
+  private footerEl: HTMLElement;
+  private serverDotEl: HTMLElement;
+  private serverLabelEl: HTMLElement;
+  private serverUrlEl: HTMLElement;
   private callbacks: SidebarCallbacks;
   private visible = true;
 
@@ -84,6 +88,30 @@ export class Sidebar {
     this.logsEl = document.createElement("div");
     this.logsEl.className = "sidebar-logs";
     container.appendChild(this.logsEl);
+
+    // Server status footer — always at bottom
+    this.footerEl = document.createElement("div");
+    this.footerEl.className = "sidebar-footer";
+
+    const serverRow = document.createElement("div");
+    serverRow.className = "sidebar-server-row";
+
+    this.serverDotEl = document.createElement("div");
+    this.serverDotEl.className = "sidebar-server-dot offline";
+
+    this.serverLabelEl = document.createElement("span");
+    this.serverLabelEl.className = "sidebar-server-label";
+    this.serverLabelEl.textContent = "Web Mirror";
+
+    this.serverUrlEl = document.createElement("span");
+    this.serverUrlEl.className = "sidebar-server-url";
+    this.serverUrlEl.textContent = "Offline";
+
+    serverRow.appendChild(this.serverDotEl);
+    serverRow.appendChild(this.serverLabelEl);
+    serverRow.appendChild(this.serverUrlEl);
+    this.footerEl.appendChild(serverRow);
+    container.appendChild(this.footerEl);
   }
 
   setWorkspaces(workspaces: WorkspaceInfo[]): void {
@@ -309,6 +337,18 @@ export class Sidebar {
       time.textContent = new Date(n.time).toLocaleTimeString();
       el.appendChild(time);
       list.appendChild(el);
+    }
+  }
+
+  setWebServerStatus(running: boolean, port: number, url?: string): void {
+    this.serverDotEl.classList.toggle("online", running);
+    this.serverDotEl.classList.toggle("offline", !running);
+    if (running && url) {
+      this.serverUrlEl.textContent = `:${port}`;
+      this.serverUrlEl.title = url;
+    } else {
+      this.serverUrlEl.textContent = "Offline";
+      this.serverUrlEl.title = "";
     }
   }
 

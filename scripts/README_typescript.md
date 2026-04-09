@@ -125,7 +125,7 @@ interface PanelOptions {
   y?: number;                           // Y position (px), default: 100
   width?: number | "auto";              // Panel width, default: 400 (or "auto" for images)
   height?: number | "auto";             // Panel height, default: 300 (or "auto" for images)
-  position?: "float" | "inline" | "overlay"; // Default: "float"
+  position?: "float" | "inline" | "overlay" | "fixed"; // Default: "float"
   anchor?: "cursor" | { row: number };  // For inline panels
   draggable?: boolean;                  // Default: true
   resizable?: boolean;                  // Default: true

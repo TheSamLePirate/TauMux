@@ -32,7 +32,7 @@ export type ContentType =
   | "canvas2d"
   | "update"
   | "clear";
-export type PositionType = "inline" | "float" | "overlay";
+export type PositionType = "inline" | "float" | "overlay" | "fixed";
 
 export interface SidebandMetaMessage {
   id: string;
@@ -170,6 +170,9 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       // Sideband (routed by surfaceId)
       sidebandMeta: SidebandMetaMessage & { surfaceId: string };
       sidebandData: { surfaceId: string; id: string; data: string };
+
+      // Web server status
+      webServerStatus: { running: boolean; port: number; url?: string };
 
       // Socket API dispatched actions (bun → webview)
       socketAction: { action: string; payload: Record<string, unknown> };
