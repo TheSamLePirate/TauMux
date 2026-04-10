@@ -23,6 +23,7 @@ export const MENU_ACTIONS = {
   pasteClipboard: "edit.paste-clipboard",
   selectAll: "edit.select-all",
   openElectrobunDocs: "help.open-electrobun-docs",
+  openSettings: "view.open-settings",
   openProjectReadme: "help.open-project-readme",
   setWorkspaceColor: "workspace.set-color",
 } as const;
@@ -33,6 +34,12 @@ export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
       label: APP_NAME,
       submenu: [
         { role: "about" },
+        { type: "divider" },
+        {
+          label: "Settings\u2026",
+          action: MENU_ACTIONS.openSettings,
+          accelerator: "CmdOrCtrl+,",
+        },
         { type: "divider" },
         {
           label: "Project README",

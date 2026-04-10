@@ -18,6 +18,7 @@ import type {
   SurfaceContextMenuRequest,
 } from "../../shared/types";
 import { WORKSPACE_COLORS } from "../../shared/workspace-colors";
+import { type AppSettings, hexToRgb } from "../../shared/settings";
 
 const obsidianGlassTheme = {
   background: "rgba(9, 9, 11, 0)",
@@ -402,6 +403,76 @@ export class SurfaceManager {
 
   getSurfaceTitle(surfaceId: string): string | null {
     return this.surfaces.get(surfaceId)?.title ?? null;
+  }
+
+  // ── Settings ──
+
+  applySettings(s: AppSettings): void {
+    this.fontSize = s.fontSize;
+    this.terminalEffectsEnabled = s.terminalBloom;
+
+    const bg = s.bgBase;
+    const secRgb = hexToRgb(s.secondaryColor);
+    const accRgb = hexToRgb(s.accentColor);
+
+    // Build xterm theme from settings
+    const theme = {
+      background: `rgba(${bg}, 0)`,
+      foreground: s.foregroundColor,
+      cursor: s.accentColor,
+      cursorAccent: `rgb(${bg})`,
+      selectionBackground: `rgba(${secRgb}, 0.28)`,
+      selectionForeground: s.foregroundColor,
+      ...s.ansiColors,
+    };
+
+    for (const view of this.surfaces.values()) {
+      const t = view.term;
+      t.options.fontSize = s.fontSize;
+      t.options.fontFamily = s.fontFamily;
+      t.options.lineHeight = s.lineHeight;
+      t.options.cursorBlink = s.cursorBlink;
+      t.options.cursorStyle = s.cursorStyle;
+      t.options.scrollback = s.scrollbackLines;
+      t.options.theme = theme;
+      // Force xterm to re-render with new colors
+      t.refresh(0, t.rows - 1);
+      view.fitAddon.fit();
+      view.effects.setEnabled(s.terminalBloom);
+      view.effects.setFocused(view.id === this.focusedSurfaceId);
+    }
+
+    // Update CSS custom properties — bgBase drives the entire UI chrome
+    const root = document.documentElement;
+    root.style.setProperty("--accent-primary", s.accentColor);
+    root.style.setProperty("--accent-primary-soft", `rgba(${accRgb}, 0.18)`);
+    root.style.setProperty("--accent-primary-strong", `rgba(${accRgb}, 0.52)`);
+    root.style.setProperty("--accent-secondary", s.secondaryColor);
+    root.style.setProperty("--accent-secondary-soft", `rgba(${secRgb}, 0.22)`);
+    root.style.setProperty("--accent-secondary-strong", `rgba(${secRgb}, 0.5)`);
+    root.style.setProperty("--glow-gold", `rgba(${accRgb}, 0.42)`);
+    root.style.setProperty("--glow-gold-strong", `rgba(${accRgb}, 0.72)`);
+    root.style.setProperty("--glow-purple", `rgba(${secRgb}, 0.42)`);
+    root.style.setProperty("--glow-purple-strong", `rgba(${secRgb}, 0.68)`);
+    root.style.setProperty("--text-strong", s.foregroundColor);
+    root.style.setProperty("--sidebar-width", `${s.sidebarWidth}px`);
+    root.style.setProperty("--bg-shell", `rgba(${bg}, ${s.terminalBgOpacity})`);
+    root.style.setProperty("--bg-title", `rgba(${bg}, 0.44)`);
+    root.style.setProperty("--bg-sidebar", `rgba(${bg}, 0.66)`);
+    root.style.setProperty("--bg-terminal", `rgb(${bg})`);
+    root.style.setProperty("--bg-terminal-muted", `rgba(${bg}, 0.94)`);
+    root.style.setProperty("--bg-glass", `rgba(${bg}, 0.7)`);
+    root.style.setProperty("--bg-glass-strong", `rgba(${bg}, 0.9)`);
+
+    // Re-report size for active surface
+    const active = this.focusedSurfaceId
+      ? this.surfaces.get(this.focusedSurfaceId)
+      : null;
+    if (active) {
+      this.onResize(active.id, active.term.cols, active.term.rows);
+    }
+
+    this.applyLayout();
   }
 
   // ── Font size ──

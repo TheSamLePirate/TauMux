@@ -24,6 +24,11 @@ import {
   formatWindowTitle,
   MENU_ACTIONS,
 } from "./native-menus";
+import { SettingsManager } from "./settings-manager";
+
+const configDir = join(Utils.paths.config, "hyperterm-canvas");
+const settingsFile = join(configDir, "settings.json");
+const settingsManager = new SettingsManager(configDir, settingsFile);
 
 const sessions = new SessionManager();
 let initialResizeReceived = false;
@@ -68,6 +73,8 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       resize: (payload) => {
         if (!initialResizeReceived) {
           initialResizeReceived = true;
+          // Send settings now that the webview is ready
+          rpc.send("restoreSettings", { settings: settingsManager.get() });
           if (!tryRestoreLayout(payload.cols, payload.rows)) {
             createWorkspaceSurface(payload.cols, payload.rows);
           }
@@ -162,6 +169,10 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       },
       toggleWebServer: () => {
         toggleWebServer();
+      },
+      updateSettings: (payload) => {
+        const updated = settingsManager.update(payload.settings);
+        rpc.send("settingsChanged", { settings: updated });
       },
       toggleMaximize: () => {
         if (mainWindow.isMaximized()) {
@@ -382,6 +393,9 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
       break;
     case MENU_ACTIONS.openElectrobunDocs:
       Utils.openExternal(ELECTROBUN_DOCS_URL);
+      break;
+    case MENU_ACTIONS.openSettings:
+      sendWebviewAction("openSettings");
       break;
     case MENU_ACTIONS.openProjectReadme:
       Utils.openPath(
@@ -668,12 +682,14 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
 // Clean up on exit
 process.on("SIGINT", () => {
   saveLayout();
+  settingsManager.saveNow();
   webServer?.stop();
   socketServer.stop();
   process.exit(0);
 });
 process.on("SIGTERM", () => {
   saveLayout();
+  settingsManager.saveNow();
   webServer?.stop();
   socketServer.stop();
   process.exit(0);

@@ -3,10 +3,16 @@ import type {
   HyperTermRPC,
   NativeContextMenuRequest,
 } from "../../shared/types";
+import {
+  type AppSettings,
+  DEFAULT_SETTINGS,
+  mergeSettings,
+} from "../../shared/settings";
 import { SurfaceManager } from "./surface-manager";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
 import { createIcon } from "./icons";
 import { showPromptDialog } from "./prompt-dialog";
+import { SettingsPanel } from "./settings-panel";
 
 // Declared before rpc so handlers can reference it; assigned after rpc is created.
 // eslint-disable-next-line prefer-const
@@ -79,6 +85,12 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
           .getSidebar()
           .setWebServerStatus(payload.running, payload.port, payload.url);
       },
+      restoreSettings: (payload) => {
+        applySettings(payload.settings);
+      },
+      settingsChanged: (payload) => {
+        applySettings(payload.settings);
+      },
       restoreLayout: (payload) => {
         surfaceManager.restoreLayout(payload.layout, payload.surfaceMapping);
       },
@@ -107,6 +119,29 @@ surfaceManager = new SurfaceManager(
   loadFontSize(),
 );
 surfaceManager.setTerminalEffectsEnabled(loadTerminalEffectsEnabled());
+
+let currentSettings: AppSettings | null = null;
+
+const settingsPanel = new SettingsPanel((partial) => {
+  // Apply eagerly on the webview side — don't wait for bun roundtrip
+  const base = currentSettings ?? DEFAULT_SETTINGS;
+  const merged = mergeSettings(base, partial);
+  applySettings(merged);
+  // Send to bun for persistence
+  rpc.send("updateSettings", { settings: partial });
+});
+
+function applySettings(settings: AppSettings): void {
+  currentSettings = settings;
+  surfaceManager.applySettings(settings);
+  if (settingsPanel.isVisible()) settingsPanel.updateSettings(settings);
+  syncPaletteCommands();
+}
+
+function openSettings(): void {
+  clearTypingFocusMode();
+  settingsPanel.show(currentSettings ?? DEFAULT_SETTINGS);
+}
 
 new Electroview({ rpc });
 
@@ -356,6 +391,14 @@ function buildPaletteCommands(): PaletteCommand[] {
       shortcut: "\u2318F",
       action: () => surfaceManager.toggleSearchBar(),
     },
+    {
+      id: "open-settings",
+      category: "View",
+      label: "Settings",
+      description: "Open application settings.",
+      shortcut: "\u2318,",
+      action: () => openSettings(),
+    },
   ];
 }
 
@@ -593,6 +636,21 @@ document.addEventListener("keydown", (e) => {
     setTypingFocusMode();
   }
 
+  // Settings panel takes priority
+  if (settingsPanel.isVisible()) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      settingsPanel.hide();
+    }
+    return;
+  }
+
+  if (e.metaKey && e.key === ",") {
+    e.preventDefault();
+    openSettings();
+    return;
+  }
+
   if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "p") {
     e.preventDefault();
     openCommandPalette();
@@ -827,6 +885,9 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
     }
     case "toggleCommandPalette":
       openCommandPalette();
+      break;
+    case "openSettings":
+      openSettings();
       break;
     case "focusSurface": {
       const id = payload["surfaceId"] as string;

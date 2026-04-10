@@ -131,45 +131,34 @@ export class Sidebar {
       item.dataset["workspaceId"] = ws.id;
       item.style.setProperty("--workspace-accent", ws.color || "#89b4fa");
 
+      // ── Row 1: header ──
       const header = document.createElement("div");
       header.className = "workspace-card-header";
-
-      const railIcon = document.createElement("div");
-      railIcon.className = "workspace-rail-icon";
-      railIcon.append(createIcon(ws.active ? "terminal" : "pane", "", 14));
-      header.appendChild(railIcon);
-
-      const identity = document.createElement("div");
-      identity.className = "workspace-identity";
 
       const dot = document.createElement("div");
       dot.className = "workspace-dot";
       dot.style.background = ws.color || "#89b4fa";
-      identity.appendChild(dot);
-
-      const indexBadge = document.createElement("span");
-      indexBadge.className = "workspace-index";
-      indexBadge.textContent = String(index + 1).padStart(2, "0");
-      identity.appendChild(indexBadge);
-
-      const titleWrap = document.createElement("div");
-      titleWrap.className = "workspace-title-wrap";
+      header.appendChild(dot);
 
       const name = document.createElement("span");
       name.className = "workspace-name";
       name.textContent = ws.name;
-      titleWrap.appendChild(name);
+      header.appendChild(name);
 
-      const meta = document.createElement("div");
-      meta.className = "workspace-meta";
-      meta.textContent =
-        ws.focusedSurfaceTitle && ws.focusedSurfaceTitle !== ws.name
-          ? `Focused on ${ws.focusedSurfaceTitle}`
-          : `${ws.paneCount} pane${ws.paneCount > 1 ? "s" : ""}`;
-      titleWrap.appendChild(meta);
+      const indexBadge = document.createElement("span");
+      indexBadge.className = "workspace-index";
+      indexBadge.textContent = String(index + 1).padStart(2, "0");
+      header.appendChild(indexBadge);
 
-      identity.appendChild(titleWrap);
-      header.appendChild(identity);
+      const headerRight = document.createElement("div");
+      headerRight.className = "workspace-header-right";
+
+      if (ws.paneCount > 1) {
+        const paneBadge = document.createElement("span");
+        paneBadge.className = "workspace-pane-count";
+        paneBadge.textContent = String(ws.paneCount);
+        headerRight.appendChild(paneBadge);
+      }
 
       const closeBtn = document.createElement("button");
       closeBtn.className = "workspace-close";
@@ -181,38 +170,47 @@ export class Sidebar {
         e.stopPropagation();
         this.callbacks.onCloseWorkspace(ws.id);
       });
-      header.appendChild(closeBtn);
+      headerRight.appendChild(closeBtn);
+      header.appendChild(headerRight);
       item.appendChild(header);
 
-      const badges = document.createElement("div");
-      badges.className = "workspace-badges";
+      // ── Row 2: meta (only if active or has useful info) ──
+      const hasExtra =
+        ws.surfaceTitles.length > 1 ||
+        ws.statusPills.length > 0 ||
+        ws.progress !== null;
 
-      const stateBadge = document.createElement("span");
-      stateBadge.className = `workspace-badge ${ws.active ? "active" : "idle"}`;
-      stateBadge.append(createIcon(ws.active ? "sparkles" : "moon", "", 12));
-      stateBadge.append(ws.active ? "Active" : "Standby");
-      badges.appendChild(stateBadge);
+      if (ws.active || hasExtra) {
+        const meta = document.createElement("div");
+        meta.className = "workspace-meta-row";
 
-      const paneBadge = document.createElement("span");
-      paneBadge.className = "workspace-badge";
-      paneBadge.append(createIcon("pane", "", 12));
-      paneBadge.append(`${ws.paneCount} pane${ws.paneCount > 1 ? "s" : ""}`);
-      badges.appendChild(paneBadge);
-
-      item.appendChild(badges);
-
-      if (ws.surfaceTitles.length > 0) {
-        const surfaces = document.createElement("div");
-        surfaces.className = "workspace-surfaces";
-        for (const title of ws.surfaceTitles.slice(0, 4)) {
-          const chip = document.createElement("span");
-          chip.className = "workspace-surface-chip";
-          chip.textContent = title;
-          surfaces.appendChild(chip);
+        if (ws.focusedSurfaceTitle && ws.focusedSurfaceTitle !== ws.name) {
+          const focused = document.createElement("span");
+          focused.className = "workspace-meta";
+          focused.textContent = ws.focusedSurfaceTitle;
+          meta.appendChild(focused);
         }
-        item.appendChild(surfaces);
+
+        // Inline surface chips (only if >1 pane)
+        if (ws.surfaceTitles.length > 1) {
+          for (const title of ws.surfaceTitles.slice(0, 3)) {
+            const chip = document.createElement("span");
+            chip.className = "workspace-surface-chip";
+            chip.textContent = title;
+            meta.appendChild(chip);
+          }
+          if (ws.surfaceTitles.length > 3) {
+            const more = document.createElement("span");
+            more.className = "workspace-surface-chip workspace-chip-more";
+            more.textContent = `+${ws.surfaceTitles.length - 3}`;
+            meta.appendChild(more);
+          }
+        }
+
+        if (meta.childElementCount > 0) item.appendChild(meta);
       }
 
+      // ── Row 3: status pills (compact) ──
       if (ws.statusPills.length > 0) {
         const statusContainer = document.createElement("div");
         statusContainer.className = "workspace-status";
@@ -220,7 +218,7 @@ export class Sidebar {
           const pillEl = document.createElement("span");
           pillEl.className = "status-pill";
           if (pill.icon && pill.icon in ICON_TEMPLATES) {
-            pillEl.append(createIcon(pill.icon as IconName, "", 11));
+            pillEl.append(createIcon(pill.icon as IconName, "", 10));
           }
           const text = document.createElement("span");
           text.textContent = `${pill.key}: ${pill.value}`;
@@ -231,28 +229,20 @@ export class Sidebar {
         item.appendChild(statusContainer);
       }
 
+      // ── Row 4: progress bar (minimal) ──
       if (ws.progress) {
-        const progressMeta = document.createElement("div");
-        progressMeta.className = "workspace-progress-meta";
-
-        const label = document.createElement("span");
-        label.className = "progress-label";
-        label.textContent = ws.progress.label || "Progress";
-        progressMeta.appendChild(label);
-
-        const value = document.createElement("span");
-        value.className = "progress-value";
-        value.textContent = `${Math.round(ws.progress.value * 100)}%`;
-        progressMeta.appendChild(value);
-
-        item.appendChild(progressMeta);
-
         const progressWrap = document.createElement("div");
         progressWrap.className = "workspace-progress";
         const fill = document.createElement("div");
         fill.className = "progress-fill";
         fill.style.width = `${Math.round(ws.progress.value * 100)}%`;
         progressWrap.appendChild(fill);
+
+        const progressLabel = document.createElement("span");
+        progressLabel.className = "progress-inline-label";
+        progressLabel.textContent = `${ws.progress.label || "Progress"} ${Math.round(ws.progress.value * 100)}%`;
+        progressWrap.appendChild(progressLabel);
+
         item.appendChild(progressWrap);
       }
 

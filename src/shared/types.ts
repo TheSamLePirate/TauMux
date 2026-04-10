@@ -1,4 +1,5 @@
 import type { ElectrobunRPCSchema } from "electrobun/bun";
+import type { AppSettings } from "./settings";
 
 // === Pane Layout Types (shared between webview, bun, and web clients) ===
 
@@ -160,6 +161,9 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
 
       // Window
       toggleMaximize: void;
+
+      // Settings
+      updateSettings: { settings: Partial<AppSettings> };
     };
   };
   webview: {
@@ -198,6 +202,10 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
         layout: PersistedLayout;
         surfaceMapping: Record<string, string>;
       };
+
+      // Settings
+      restoreSettings: { settings: AppSettings };
+      settingsChanged: { settings: AppSettings };
 
       // Socket API dispatched actions (bun → webview)
       socketAction: { action: string; payload: Record<string, unknown> };
