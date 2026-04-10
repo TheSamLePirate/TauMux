@@ -6,7 +6,9 @@ import {
   Utils,
 } from "electrobun/bun";
 import { fileURLToPath } from "node:url";
-import type { HyperTermRPC } from "../shared/types";
+import { join } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import type { HyperTermRPC, PersistedLayout, PaneNode } from "../shared/types";
 import { SessionManager } from "./session-manager";
 import { SocketServer } from "./socket-server";
 import { WebServer } from "./web-server";
@@ -47,13 +49,28 @@ function getAppState(): AppState {
 const rpc = BrowserView.defineRPC<HyperTermRPC>({
   handlers: {
     messages: {
+      clipboardWrite: (payload) => {
+        try {
+          Utils.clipboardWriteText(payload.text);
+        } catch {
+          const proc = Bun.spawn(["pbcopy"], { stdin: "pipe" });
+          proc.stdin.write(payload.text);
+          proc.stdin.end();
+        }
+      },
+      clipboardPaste: (payload) => {
+        focusedSurfaceId = payload.surfaceId;
+        void handlePaste();
+      },
       writeStdin: (payload) => {
         sessions.writeStdin(payload.surfaceId, payload.data);
       },
       resize: (payload) => {
         if (!initialResizeReceived) {
           initialResizeReceived = true;
-          createWorkspaceSurface(payload.cols, payload.rows);
+          if (!tryRestoreLayout(payload.cols, payload.rows)) {
+            createWorkspaceSurface(payload.cols, payload.rows);
+          }
         } else {
           sessions.resize(payload.surfaceId, payload.cols, payload.rows);
           webServer?.broadcast({
@@ -128,6 +145,7 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
           activeWorkspaceId: payload.activeWorkspaceId,
           focusedSurfaceId,
         });
+        scheduleLayoutSave();
       },
       sidebarToggle: (payload) => {
         sidebarVisible = payload.visible;
@@ -357,7 +375,7 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
       sendWebviewAction("copySelection");
       break;
     case MENU_ACTIONS.pasteClipboard:
-      sendWebviewAction("pasteClipboard");
+      handlePaste();
       break;
     case MENU_ACTIONS.selectAll:
       sendWebviewAction("selectAll");
@@ -370,6 +388,29 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
         fileURLToPath(new URL("../../README.md", import.meta.url)),
       );
       break;
+  }
+}
+
+async function handlePaste(): Promise<void> {
+  const surfaceId = focusedSurfaceId;
+  if (!surfaceId) return;
+
+  let text: string | null = null;
+  try {
+    text = Utils.clipboardReadText();
+  } catch {
+    // Native FFI may not be available
+  }
+  if (text === null || text === undefined) {
+    try {
+      const proc = Bun.spawn(["pbpaste"], { stdout: "pipe" });
+      text = await new Response(proc.stdout).text();
+    } catch {
+      /* ignore */
+    }
+  }
+  if (text) {
+    sessions.writeStdin(surfaceId, text);
   }
 }
 
@@ -507,13 +548,132 @@ if (webServerPort > 0) {
 }
 sendWebServerStatus();
 
+// ── Layout Persistence ──
+
+const layoutDir = join(Utils.paths.config, "hyperterm-canvas");
+const layoutFile = join(layoutDir, "layout.json");
+
+function saveLayout(): void {
+  if (workspaceState.length === 0) return;
+  try {
+    const persisted: PersistedLayout = {
+      activeWorkspaceIndex: workspaceState.findIndex(
+        (ws) => ws.id === activeWorkspaceId,
+      ),
+      workspaces: workspaceState.map((ws) => ({
+        name: ws.name,
+        color: ws.color,
+        layout: ws.layout,
+        focusedSurfaceId: ws.focusedSurfaceId,
+      })),
+      sidebarVisible,
+    };
+    if (!existsSync(layoutDir)) mkdirSync(layoutDir, { recursive: true });
+    writeFileSync(layoutFile, JSON.stringify(persisted));
+  } catch {
+    /* ignore write failures */
+  }
+}
+
+function loadLayout(): PersistedLayout | null {
+  try {
+    if (!existsSync(layoutFile)) return null;
+    const raw = readFileSync(layoutFile, "utf-8");
+    const parsed = JSON.parse(raw) as PersistedLayout;
+    if (!Array.isArray(parsed.workspaces) || parsed.workspaces.length === 0) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function collectLeafIds(node: PaneNode): string[] {
+  if (node.type === "leaf") return [node.surfaceId];
+  return [
+    ...collectLeafIds(node.children[0]),
+    ...collectLeafIds(node.children[1]),
+  ];
+}
+
+function remapPaneNode(
+  node: PaneNode,
+  mapping: Record<string, string>,
+): PaneNode {
+  if (node.type === "leaf") {
+    return {
+      type: "leaf",
+      surfaceId: mapping[node.surfaceId] ?? node.surfaceId,
+    };
+  }
+  return {
+    type: "split",
+    direction: node.direction,
+    ratio: node.ratio,
+    children: [
+      remapPaneNode(node.children[0], mapping),
+      remapPaneNode(node.children[1], mapping),
+    ],
+  };
+}
+
+let layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleLayoutSave(): void {
+  if (layoutSaveTimer) clearTimeout(layoutSaveTimer);
+  layoutSaveTimer = setTimeout(saveLayout, 500);
+}
+
+function tryRestoreLayout(cols: number, rows: number): boolean {
+  const persisted = loadLayout();
+  if (!persisted) return false;
+
+  const surfaceMapping: Record<string, string> = {};
+
+  for (const ws of persisted.workspaces) {
+    const leafIds = collectLeafIds(ws.layout);
+    for (const oldId of leafIds) {
+      const newId = sessions.createSurface(cols, rows);
+      surfaceMapping[oldId] = newId;
+      const title = sessions.getSurface(newId)?.title ?? "shell";
+      rpc.send("surfaceCreated", { surfaceId: newId, title });
+      broadcastSurfaceCreated(newId, title);
+    }
+  }
+
+  // Remap the layout trees
+  const remappedLayout: PersistedLayout = {
+    ...persisted,
+    workspaces: persisted.workspaces.map((ws) => ({
+      ...ws,
+      layout: remapPaneNode(ws.layout, surfaceMapping),
+      focusedSurfaceId: ws.focusedSurfaceId
+        ? (surfaceMapping[ws.focusedSurfaceId] ?? null)
+        : null,
+    })),
+  };
+
+  // Small delay to let webview process surfaceCreated messages first
+  setTimeout(() => {
+    rpc.send("restoreLayout", {
+      layout: remappedLayout,
+      surfaceMapping,
+    });
+  }, 200);
+
+  focusedSurfaceId = Object.values(surfaceMapping)[0] ?? null;
+  return true;
+}
+
 // Clean up on exit
 process.on("SIGINT", () => {
+  saveLayout();
   webServer?.stop();
   socketServer.stop();
   process.exit(0);
 });
 process.on("SIGTERM", () => {
+  saveLayout();
   webServer?.stop();
   socketServer.stop();
   process.exit(0);

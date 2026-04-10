@@ -23,6 +23,21 @@ export interface PaneRect {
   h: number;
 }
 
+// === Layout Persistence Types ===
+
+export interface PersistedWorkspace {
+  name: string;
+  color: string;
+  layout: PaneNode;
+  focusedSurfaceId: string | null;
+}
+
+export interface PersistedLayout {
+  activeWorkspaceIndex: number;
+  workspaces: PersistedWorkspace[];
+  sidebarVisible: boolean;
+}
+
 // === Sideband Protocol Types ===
 
 export type ContentType =
@@ -98,6 +113,10 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
   bun: {
     requests: Record<string, never>;
     messages: {
+      // Clipboard (webview → bun)
+      clipboardWrite: { text: string };
+      clipboardPaste: { surfaceId: string };
+
       // Terminal I/O (routed by surfaceId)
       writeStdin: { surfaceId: string; data: string };
       resize: { surfaceId: string; cols: number; rows: number };
@@ -173,6 +192,12 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
 
       // Web server status
       webServerStatus: { running: boolean; port: number; url?: string };
+
+      // Layout persistence
+      restoreLayout: {
+        layout: PersistedLayout;
+        surfaceMapping: Record<string, string>;
+      };
 
       // Socket API dispatched actions (bun → webview)
       socketAction: { action: string; payload: Record<string, unknown> };

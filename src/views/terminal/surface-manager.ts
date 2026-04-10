@@ -1,6 +1,7 @@
 import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { SearchAddon } from "@xterm/addon-search";
 import { PanelManager } from "./panel-manager";
 import {
   PaneLayout,
@@ -12,6 +13,7 @@ import { createIcon } from "./icons";
 import { TerminalEffects } from "./terminal-effects";
 import type {
   PanelEvent,
+  PersistedLayout,
   SidebandMetaMessage,
   SurfaceContextMenuRequest,
 } from "../../shared/types";
@@ -48,6 +50,7 @@ interface SurfaceView {
   id: string;
   term: Terminal;
   fitAddon: FitAddon;
+  searchAddon: SearchAddon;
   effects: TerminalEffects;
   panelManager: PanelManager;
   container: HTMLDivElement;
@@ -94,6 +97,10 @@ export class SurfaceManager {
   private dropOverlayEl: HTMLDivElement | null = null;
   private dropOverlayLabelEl: HTMLSpanElement | null = null;
   private highlightedDropTargetId: string | null = null;
+  private fontSize: number;
+  private searchBarEl: HTMLDivElement | null = null;
+  private searchInputEl: HTMLInputElement | null = null;
+  private searchVisible = false;
 
   constructor(
     private terminalContainer: HTMLElement,
@@ -101,7 +108,9 @@ export class SurfaceManager {
     private onStdin: (surfaceId: string, data: string) => void,
     private onResize: (surfaceId: string, cols: number, rows: number) => void,
     private onPanelEvent: (surfaceId: string, event: PanelEvent) => void,
+    initialFontSize = 13,
   ) {
+    this.fontSize = initialFontSize;
     this.sidebar = new Sidebar(sidebarContainer, {
       onSelectWorkspace: (id) => {
         const idx = this.workspaces.findIndex((w) => w.id === id);
@@ -194,6 +203,47 @@ export class SurfaceManager {
     ws.surfaceIds.add(surfaceId);
 
     this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+  }
+
+  restoreLayout(
+    layout: PersistedLayout,
+    _surfaceMapping: Record<string, string>,
+  ): void {
+    // Clear any default workspace that was auto-created
+    // (surfaces were already created by bun and added via surfaceCreated)
+    this.workspaces = [];
+    this.activeWorkspaceIndex = -1;
+
+    for (const ws of layout.workspaces) {
+      const leafIds = PaneLayout.fromNode(ws.layout).getAllSurfaceIds();
+      const paneLayout = PaneLayout.fromNode(ws.layout);
+
+      const workspace: Workspace = {
+        id: `ws:${++this.wsCounter}`,
+        layout: paneLayout,
+        surfaceIds: new Set(leafIds),
+        name: ws.name,
+        color: ws.color,
+        status: new Map(),
+        progress: null,
+        logs: [],
+      };
+      this.workspaces.push(workspace);
+    }
+
+    const targetIdx = Math.max(
+      0,
+      Math.min(layout.activeWorkspaceIndex, this.workspaces.length - 1),
+    );
+    this.switchToWorkspace(targetIdx);
+
+    if (!layout.sidebarVisible && this.sidebar.isVisible()) {
+      this.sidebar.toggle();
+    }
+
+    this.updateSidebar();
+    this.scheduleLayoutForNewSurface();
+    this.notifyWorkspaceChanged();
   }
 
   /**
@@ -352,6 +402,137 @@ export class SurfaceManager {
 
   getSurfaceTitle(surfaceId: string): string | null {
     return this.surfaces.get(surfaceId)?.title ?? null;
+  }
+
+  // ── Font size ──
+
+  getFontSize(): number {
+    return this.fontSize;
+  }
+
+  setFontSize(size: number): void {
+    this.fontSize = size;
+    for (const view of this.surfaces.values()) {
+      view.term.options.fontSize = size;
+      view.fitAddon.fit();
+    }
+    // Re-report size to bun for the active surface
+    const active = this.focusedSurfaceId
+      ? this.surfaces.get(this.focusedSurfaceId)
+      : null;
+    if (active) {
+      this.onResize(active.id, active.term.cols, active.term.rows);
+    }
+  }
+
+  // ── Terminal search ──
+
+  toggleSearchBar(): void {
+    if (this.searchVisible) {
+      this.hideSearchBar();
+    } else {
+      this.showSearchBar();
+    }
+  }
+
+  private showSearchBar(): void {
+    if (this.searchVisible) {
+      this.searchInputEl?.focus();
+      return;
+    }
+    this.searchVisible = true;
+
+    if (!this.searchBarEl) {
+      this.searchBarEl = document.createElement("div");
+      this.searchBarEl.className = "search-bar";
+
+      this.searchInputEl = document.createElement("input");
+      this.searchInputEl.className = "search-bar-input";
+      this.searchInputEl.type = "text";
+      this.searchInputEl.placeholder = "Find in terminal\u2026";
+      this.searchInputEl.setAttribute("aria-label", "Search terminal");
+
+      const prevBtn = document.createElement("button");
+      prevBtn.className = "search-bar-btn";
+      prevBtn.title = "Previous (Shift+Enter)";
+      prevBtn.setAttribute("aria-label", "Previous match");
+      prevBtn.append(createIcon("chevronUp", "", 14));
+      prevBtn.addEventListener("click", () => this.searchPrevious());
+
+      const nextBtn = document.createElement("button");
+      nextBtn.className = "search-bar-btn";
+      nextBtn.title = "Next (Enter)";
+      nextBtn.setAttribute("aria-label", "Next match");
+      nextBtn.append(createIcon("chevronDown", "", 14));
+      nextBtn.addEventListener("click", () => this.searchNext());
+
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "search-bar-btn search-bar-close";
+      closeBtn.title = "Close (Escape)";
+      closeBtn.setAttribute("aria-label", "Close search");
+      closeBtn.append(createIcon("close", "", 12));
+      closeBtn.addEventListener("click", () => this.hideSearchBar());
+
+      this.searchInputEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && e.shiftKey) {
+          e.preventDefault();
+          this.searchPrevious();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          this.searchNext();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          this.hideSearchBar();
+        }
+      });
+
+      this.searchInputEl.addEventListener("input", () => {
+        this.searchNext();
+      });
+
+      this.searchBarEl.appendChild(this.searchInputEl);
+      this.searchBarEl.appendChild(prevBtn);
+      this.searchBarEl.appendChild(nextBtn);
+      this.searchBarEl.appendChild(closeBtn);
+      this.terminalContainer.appendChild(this.searchBarEl);
+    }
+
+    this.searchBarEl.classList.add("search-bar-visible");
+    this.searchInputEl!.value = "";
+    this.searchInputEl!.focus();
+  }
+
+  private hideSearchBar(): void {
+    if (!this.searchVisible) return;
+    this.searchVisible = false;
+    this.searchBarEl?.classList.remove("search-bar-visible");
+
+    // Clear search highlighting
+    const view = this.focusedSurfaceId
+      ? this.surfaces.get(this.focusedSurfaceId)
+      : null;
+    if (view) {
+      view.searchAddon.clearDecorations();
+      view.term.focus();
+    }
+  }
+
+  private searchNext(): void {
+    const query = this.searchInputEl?.value;
+    if (!query) return;
+    const view = this.focusedSurfaceId
+      ? this.surfaces.get(this.focusedSurfaceId)
+      : null;
+    view?.searchAddon.findNext(query);
+  }
+
+  private searchPrevious(): void {
+    const query = this.searchInputEl?.value;
+    if (!query) return;
+    const view = this.focusedSurfaceId
+      ? this.surfaces.get(this.focusedSurfaceId)
+      : null;
+    view?.searchAddon.findPrevious(query);
   }
 
   readScreen(surfaceId: string, lines?: number, scrollback?: boolean): string {
@@ -788,7 +969,7 @@ export class SurfaceManager {
       theme: obsidianGlassTheme,
       fontFamily:
         "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Berkeley Mono', 'SF Mono', 'Menlo', monospace",
-      fontSize: 13,
+      fontSize: this.fontSize,
       lineHeight: 1.2,
       cursorBlink: true,
       cursorStyle: "block",
@@ -799,8 +980,10 @@ export class SurfaceManager {
 
     const fitAddon = new FitAddon();
     const webLinksAddon = new WebLinksAddon();
+    const searchAddon = new SearchAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(webLinksAddon);
+    term.loadAddon(searchAddon);
     term.open(termLayerEl);
 
     const effects = new TerminalEffects(termEl, term);
@@ -825,6 +1008,7 @@ export class SurfaceManager {
       id: surfaceId,
       term,
       fitAddon,
+      searchAddon,
       effects,
       panelManager,
       container,

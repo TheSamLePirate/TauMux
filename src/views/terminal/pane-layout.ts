@@ -22,6 +22,18 @@ export class PaneLayout {
     this.root = { type: "leaf", surfaceId };
   }
 
+  static fromNode(node: PaneNode): PaneLayout {
+    const firstLeaf = PaneLayout.firstLeafId(node);
+    const layout = new PaneLayout(firstLeaf);
+    layout.root = node;
+    return layout;
+  }
+
+  private static firstLeafId(node: PaneNode): string {
+    if (node.type === "leaf") return node.surfaceId;
+    return PaneLayout.firstLeafId(node.children[0]);
+  }
+
   /** Split the pane containing surfaceId. Original stays first, new surface second. */
   splitSurface(
     surfaceId: string,

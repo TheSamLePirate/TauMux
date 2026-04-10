@@ -1,4 +1,5 @@
 import type { Terminal } from "xterm";
+import { showToast } from "./toast";
 
 type GLContext = WebGLRenderingContext | WebGL2RenderingContext;
 type Disposable = { dispose(): void };
@@ -258,6 +259,10 @@ export class TerminalEffects {
       this.initGl();
     } catch (error) {
       console.warn("[terminal-effects] WebGL disabled:", error);
+      showToast(
+        "Terminal bloom unavailable — WebGL failed to initialize.",
+        "warning",
+      );
       this.available = false;
       this.active = false;
       this.canvas.style.display = "none";

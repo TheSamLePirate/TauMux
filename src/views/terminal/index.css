@@ -1742,3 +1742,131 @@ body.terminal-typing .panel {
     left: min(82vw, var(--sidebar-width));
   }
 }
+
+/* ── Toast notifications ── */
+
+.toast-container {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  pointer-events: none;
+  max-width: 380px;
+}
+
+.toast {
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-main);
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--accent-primary);
+  box-shadow: var(--shadow-strong);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+  transition:
+    opacity var(--transition-medium),
+    transform var(--transition-medium);
+}
+
+.toast-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.toast-exit {
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+}
+
+.toast-success {
+  border-left-color: #4ade80;
+}
+
+.toast-warning {
+  border-left-color: #eab308;
+}
+
+.toast-error {
+  border-left-color: #f87171;
+}
+
+.toast-info {
+  border-left-color: var(--accent-primary);
+}
+
+/* ── Search bar ── */
+
+.search-bar {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-strong);
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.search-bar-visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.search-bar-input {
+  width: 200px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-main);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+
+.search-bar-input::placeholder {
+  color: var(--text-dim);
+}
+
+.search-bar-input:focus {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.search-bar-btn {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.search-bar-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.search-bar-close:hover {
+  color: #f87171;
+}

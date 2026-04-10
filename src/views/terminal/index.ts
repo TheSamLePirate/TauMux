@@ -37,6 +37,10 @@ const workspaceCountLabelEl = document.getElementById(
 const paneCountLabelEl = document.getElementById("toolbar-pane-count-label");
 const TERMINAL_EFFECTS_STORAGE_KEY =
   "hyperterm-canvas.terminal-effects.enabled";
+const FONT_SIZE_STORAGE_KEY = "hyperterm-canvas.font-size";
+const DEFAULT_FONT_SIZE = 13;
+const MIN_FONT_SIZE = 8;
+const MAX_FONT_SIZE = 32;
 let typingFocusActive = false;
 
 const rpc = Electroview.defineRPC<HyperTermRPC>({
@@ -75,6 +79,9 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
           .getSidebar()
           .setWebServerStatus(payload.running, payload.port, payload.url);
       },
+      restoreLayout: (payload) => {
+        surfaceManager.restoreLayout(payload.layout, payload.surfaceMapping);
+      },
       socketAction: (payload) => {
         handleSocketAction(payload.action, payload.payload);
       },
@@ -97,6 +104,7 @@ surfaceManager = new SurfaceManager(
   (surfaceId, data) => rpc.send("writeStdin", { surfaceId, data }),
   (surfaceId, cols, rows) => rpc.send("resize", { surfaceId, cols, rows }),
   (surfaceId, event) => rpc.send("panelEvent", { ...event, surfaceId }),
+  loadFontSize(),
 );
 surfaceManager.setTerminalEffectsEnabled(loadTerminalEffectsEnabled());
 
@@ -157,6 +165,43 @@ function toggleTerminalEffects(): void {
   const enabled = surfaceManager.toggleTerminalEffects();
   persistTerminalEffectsEnabled(enabled);
   syncPaletteCommands();
+}
+
+function loadFontSize(): number {
+  try {
+    const stored = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+    if (stored) {
+      const n = parseInt(stored, 10);
+      if (n >= MIN_FONT_SIZE && n <= MAX_FONT_SIZE) return n;
+    }
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_FONT_SIZE;
+}
+
+function persistFontSize(size: number): void {
+  try {
+    localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(size));
+  } catch {
+    /* ignore */
+  }
+}
+
+function changeFontSize(delta: number): void {
+  const current = surfaceManager.getFontSize();
+  const next = Math.max(
+    MIN_FONT_SIZE,
+    Math.min(MAX_FONT_SIZE, current + delta),
+  );
+  if (next === current) return;
+  surfaceManager.setFontSize(next);
+  persistFontSize(next);
+}
+
+function resetFontSize(): void {
+  surfaceManager.setFontSize(DEFAULT_FONT_SIZE);
+  persistFontSize(DEFAULT_FONT_SIZE);
 }
 
 function buildPaletteCommands(): PaletteCommand[] {
@@ -279,6 +324,38 @@ function buildPaletteCommands(): PaletteCommand[] {
       description: "Start or stop the web terminal mirror server.",
       action: () => rpc.send("toggleWebServer"),
     },
+    {
+      id: "font-increase",
+      category: "View",
+      label: "Increase Font Size",
+      description: "Make terminal text larger.",
+      shortcut: "\u2318+",
+      action: () => changeFontSize(1),
+    },
+    {
+      id: "font-decrease",
+      category: "View",
+      label: "Decrease Font Size",
+      description: "Make terminal text smaller.",
+      shortcut: "\u2318\u2212",
+      action: () => changeFontSize(-1),
+    },
+    {
+      id: "font-reset",
+      category: "View",
+      label: "Reset Font Size",
+      description: "Reset terminal text to default size.",
+      shortcut: "\u23180",
+      action: () => resetFontSize(),
+    },
+    {
+      id: "find-in-terminal",
+      category: "Terminal",
+      label: "Find in Terminal",
+      description: "Search text in the active terminal.",
+      shortcut: "\u2318F",
+      action: () => surfaceManager.toggleSearchBar(),
+    },
   ];
 }
 
@@ -386,47 +463,28 @@ function copySelection() {
   const selection = term.getSelection();
   if (!selection) return;
 
-  navigator.clipboard.writeText(selection);
+  rpc.send("clipboardWrite", { text: selection });
   term.clearSelection();
 }
 
-function insertTextAtCursor(
-  input: HTMLInputElement | HTMLTextAreaElement,
-  text: string,
-) {
-  const start = input.selectionStart ?? input.value.length;
-  const end = input.selectionEnd ?? input.value.length;
-  input.setRangeText(text, start, end, "end");
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-async function pasteClipboard() {
-  const text = await navigator.clipboard.readText();
-  if (!text) return;
-
+/**
+ * Paste into the terminal via bun-side native clipboard read.
+ * Returns true if handled (terminal paste), false if the caller
+ * should let the native paste event through (editable input).
+ */
+function pasteClipboard(): boolean {
   const editableTarget = getEditableTarget();
-  if (editableTarget instanceof HTMLInputElement) {
-    insertTextAtCursor(editableTarget, text);
-    return;
-  }
-
-  if (editableTarget instanceof HTMLTextAreaElement) {
-    insertTextAtCursor(editableTarget, text);
-    return;
-  }
-
-  if (
-    editableTarget instanceof HTMLElement &&
-    editableTarget.isContentEditable
-  ) {
-    document.execCommand("insertText", false, text);
-    return;
+  if (editableTarget) {
+    // Let the native paste event handle input fields
+    return false;
   }
 
   const id = surfaceManager.getActiveSurfaceId();
   if (id) {
-    rpc.send("writeStdin", { surfaceId: id, data: text });
+    // Bun reads clipboard natively and writes directly to stdin
+    rpc.send("clipboardPaste", { surfaceId: id });
   }
+  return true;
 }
 
 function selectAll() {
@@ -620,14 +678,40 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
+  // Font size: Cmd+= (increase), Cmd+- (decrease), Cmd+0 (reset)
+  if (e.metaKey && !e.shiftKey && (e.key === "=" || e.key === "+")) {
+    e.preventDefault();
+    changeFontSize(1);
+    return;
+  }
+  if (e.metaKey && !e.shiftKey && e.key === "-") {
+    e.preventDefault();
+    changeFontSize(-1);
+    return;
+  }
+  if (e.metaKey && !e.shiftKey && e.key === "0") {
+    e.preventDefault();
+    resetFontSize();
+    return;
+  }
+
+  // Terminal search: Cmd+F
+  if (e.metaKey && !e.shiftKey && e.key === "f") {
+    e.preventDefault();
+    surfaceManager.toggleSearchBar();
+    return;
+  }
+
   if (e.metaKey && e.key === "c") {
     copySelection();
     return;
   }
 
   if (e.metaKey && e.key === "v") {
-    e.preventDefault();
-    void pasteClipboard();
+    if (pasteClipboard()) {
+      e.preventDefault();
+    }
+    // else: let native paste handle editable inputs
   }
 });
 
@@ -753,7 +837,7 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
       copySelection();
       break;
     case "pasteClipboard":
-      void pasteClipboard();
+      pasteClipboard();
       break;
     case "selectAll":
       selectAll();
