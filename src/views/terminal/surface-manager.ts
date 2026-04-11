@@ -1032,7 +1032,7 @@ export class SurfaceManager {
 
     const panelsEl = document.createElement("div");
     panelsEl.className = "surface-panels";
-    container.appendChild(panelsEl);
+    termEl.appendChild(panelsEl);
 
     this.terminalContainer.appendChild(container);
 

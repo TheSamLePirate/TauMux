@@ -1,11 +1,13 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — Git Branch Graph Visualizer
+ * HyperTerm Canvas — Git Branch Graph
  *
- * Renders the commit history of the current git repository as a colored
- * branch graph in a floating SVG panel. Commits are laid out on rails
- * (columns), with merge edges curving between rails. Supports wheel
- * scrolling, click-to-inspect, and resize.
+ * Fullscreen interactive git commit graph with:
+ * - colored branch rail visualization with merge edges
+ * - commit list with hash, author, time, message, branch/tag badges
+ * - keyboard and mouse navigation
+ * - click-to-inspect commit detail panel
+ * - live auto-refresh, close button
  *
  * Usage:
  *   bun scripts/demo_gitgraph.ts
@@ -36,6 +38,31 @@ if (!hasHyperTerm) {
 }
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const PANEL_ID = "gitgraph";
+const POLL_INTERVAL = 5000;
+const HEADER_H = 44;
+const SUMMARY_H = 34;
+const FOOTER_H = 30;
+const DETAIL_H = 68;
+const ROW_H = 30;
+const RAIL_W = 18;
+const GRAPH_PAD = 10;
+const NODE_R = 5;
+const REFRESH_BTN_W = 88;
+const REFRESH_BTN_H = 28;
+const MAX_COMMITS = 200;
+const ESTIMATED_CELL_W = 8.4;
+const ESTIMATED_CELL_H = 17;
+
+let viewportW = 1180;
+let viewportH = 760;
+let panelW = 1180;
+let panelH = 760;
+
+// ---------------------------------------------------------------------------
 // Low-level fd helpers
 // ---------------------------------------------------------------------------
 
@@ -58,7 +85,7 @@ function writeData(str: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Catppuccin Mocha palette
+// Palette — Catppuccin Mocha
 // ---------------------------------------------------------------------------
 
 const C = {
@@ -82,34 +109,22 @@ const C = {
   peach: "#fab387",
   mauve: "#cba6f7",
   pink: "#f5c2e7",
+  sky: "#89dceb",
 } as const;
 
-// Branch colors — assigned round-robin per rail
 const RAIL_COLORS = [
   C.blue,
   C.green,
-  C.yellow,
-  C.red,
+  C.mauve,
+  C.peach,
   C.pink,
   C.teal,
-  C.peach,
-  C.mauve,
+  C.yellow,
+  C.red,
 ];
 
 // ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const PANEL_ID = "gitgraph";
-const ROW_H = 30;
-const HEADER_H = 36;
-const DETAIL_H = 50;
-const RAIL_W = 20;
-const GRAPH_LEFT = 12;
-const NODE_R = 5;
-
-// ---------------------------------------------------------------------------
-// State
+// Types
 // ---------------------------------------------------------------------------
 
 interface Commit {
@@ -119,130 +134,236 @@ interface Commit {
   author: string;
   message: string;
   decorations: string[];
+  relTime: string;
   rail: number;
 }
 
+type HoveredControl = "close" | "refresh" | null;
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
 let commits: Commit[] = [];
 let branchName = "";
-let scrollOffset = 0;
-let selectedCommit: number | null = null;
-let panelW = 750;
-let panelH = 550;
 let maxRail = 0;
 
+let firstRender = true;
+let scrollOffset = 0;
+let selectedCommit: number | null = null;
+let hoveredRowIndex: number | null = null;
+let hoveredControl: HoveredControl = null;
+let lastSignature = "";
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+let refreshInFlight = false;
+let stdinHandler: ((data: Buffer) => void) | null = null;
+let hasRealPixelSize = false;
+
 // ---------------------------------------------------------------------------
-// Git data collection
+// Layout helpers
 // ---------------------------------------------------------------------------
 
-async function isGitRepo(): Promise<boolean> {
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function graphW(): number {
+  return GRAPH_PAD + (maxRail + 1) * RAIL_W + GRAPH_PAD;
+}
+
+function bodyH(): number {
+  return Math.max(120, panelH - HEADER_H - SUMMARY_H - DETAIL_H - FOOTER_H);
+}
+
+function visibleCount(): number {
+  return Math.max(1, Math.floor(bodyH() / ROW_H));
+}
+
+function railX(rail: number): number {
+  return GRAPH_PAD + rail * RAIL_W + RAIL_W / 2;
+}
+
+function railColor(rail: number): string {
+  return RAIL_COLORS[rail % RAIL_COLORS.length];
+}
+
+function clampScroll(): void {
+  const max = Math.max(0, commits.length - visibleCount());
+  scrollOffset = clamp(scrollOffset, 0, max);
+}
+
+// ---------------------------------------------------------------------------
+// Viewport management (pixel-perfect, same pattern as gitdiff)
+// ---------------------------------------------------------------------------
+
+function applyViewportSize(nextW: number, nextH: number): boolean {
+  const safeW = Math.max(360, Math.round(nextW));
+  const safeH = Math.max(220, Math.round(nextH));
+  const changed =
+    safeW !== viewportW ||
+    safeH !== viewportH ||
+    safeW !== panelW ||
+    safeH !== panelH;
+  viewportW = safeW;
+  viewportH = safeH;
+  panelW = safeW;
+  panelH = safeH;
+  clampScroll();
+  return changed;
+}
+
+function syncPanelSizeFromTerminal(): boolean {
+  if (hasRealPixelSize) return false;
+  const cols = process.stdout.isTTY ? (process.stdout.columns ?? 0) : 0;
+  const rows = process.stdout.isTTY ? (process.stdout.rows ?? 0) : 0;
+  const nextW = cols > 0 ? cols * ESTIMATED_CELL_W : 1180;
+  const nextH = rows > 0 ? rows * ESTIMATED_CELL_H : 760;
+  return applyViewportSize(nextW, nextH);
+}
+
+function syncPanelSizeFromEvent(event: Record<string, unknown>): boolean {
+  const pxW = event["pxWidth"];
+  const pxH = event["pxHeight"];
+  const hasPx = typeof pxW === "number" && typeof pxH === "number";
+  if (!hasPx && hasRealPixelSize) return false;
+  if (hasPx) hasRealPixelSize = true;
+  const cols = event["cols"];
+  const rows = event["rows"];
+  const nextW = hasPx
+    ? (pxW as number)
+    : typeof cols === "number"
+      ? cols * ESTIMATED_CELL_W
+      : viewportW;
+  const nextH = hasPx
+    ? (pxH as number)
+    : typeof rows === "number"
+      ? rows * ESTIMATED_CELL_H
+      : viewportH;
+  return applyViewportSize(nextW, nextH);
+}
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatTime(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max - 1) + "\u2026";
+}
+
+function hashString(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+// ---------------------------------------------------------------------------
+// Git helpers
+// ---------------------------------------------------------------------------
+
+async function runGit(
+  args: string[],
+): Promise<{ stdout: string; code: number }> {
   try {
-    const proc = Bun.spawn(["git", "rev-parse", "--is-inside-work-tree"], {
+    const proc = Bun.spawn(["git", ...args], {
       stdout: "pipe",
       stderr: "pipe",
     });
-    const text = await new Response(proc.stdout).text();
-    await proc.exited;
-    return text.trim() === "true";
+    const [stdout, , code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { stdout, code };
   } catch {
-    return false;
+    return { stdout: "", code: 1 };
   }
+}
+
+async function isGitRepo(): Promise<boolean> {
+  const r = await runGit(["rev-parse", "--is-inside-work-tree"]);
+  return r.code === 0 && r.stdout.trim() === "true";
 }
 
 async function getCurrentBranch(): Promise<string> {
-  try {
-    const proc = Bun.spawn(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const text = await new Response(proc.stdout).text();
-    await proc.exited;
-    return text.trim();
-  } catch {
-    return "unknown";
-  }
+  const r = await runGit(["rev-parse", "--abbrev-ref", "HEAD"]);
+  return r.code === 0 ? r.stdout.trim() : "unknown";
 }
 
-async function fetchCommits(): Promise<void> {
-  try {
-    const proc = Bun.spawn(
-      ["git", "log", "--all", "--format=%H|%h|%P|%an|%s|%d", "-50"],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    const text = await new Response(proc.stdout).text();
-    await proc.exited;
+async function fetchCommits(): Promise<string> {
+  const SEP = "\x1f"; // unit separator, safe delimiter
+  const fmt = `%H${SEP}%h${SEP}%P${SEP}%an${SEP}%s${SEP}%d${SEP}%ar`;
+  const r = await runGit([
+    "log",
+    "--all",
+    `--format=${fmt}`,
+    `-${MAX_COMMITS}`,
+  ]);
 
-    const lines = text
-      .trim()
-      .split("\n")
-      .filter((l) => l.length > 0);
-    const rawCommits: Commit[] = [];
+  const lines = r.stdout
+    .trim()
+    .split("\n")
+    .filter((l) => l.length > 0);
+  const list: Commit[] = [];
 
-    for (const line of lines) {
-      // Format: fullHash|shortHash|parentHashes|author|message|decorations
-      const parts = line.split("|");
-      if (parts.length < 6) continue;
+  for (const line of lines) {
+    const parts = line.split(SEP);
+    if (parts.length < 7) continue;
 
-      const hash = parts[0];
-      const shortHash = parts[1];
-      const parentStr = parts[2];
-      const author = parts[3];
-      const message = parts[4];
-      // Decorations might contain | in branch names, rejoin the rest
-      const decoRaw = parts.slice(5).join("|").trim();
-
-      const parents = parentStr.length > 0 ? parentStr.split(" ") : [];
-
-      // Parse decorations: " (HEAD -> main, origin/main)"
-      const decorations: string[] = [];
-      if (decoRaw.length > 0) {
-        const inner = decoRaw.replace(/^\s*\(\s*/, "").replace(/\s*\)\s*$/, "");
-        if (inner.length > 0) {
-          for (const d of inner.split(",")) {
-            const trimmed = d.trim();
-            if (trimmed.length > 0) {
-              decorations.push(trimmed);
-            }
-          }
+    const parents = parts[2].length > 0 ? parts[2].split(" ") : [];
+    const decoRaw = parts[5].trim();
+    const decorations: string[] = [];
+    if (decoRaw.length > 0) {
+      const inner = decoRaw.replace(/^\s*\(\s*/, "").replace(/\s*\)\s*$/, "");
+      if (inner.length > 0) {
+        for (const d of inner.split(",")) {
+          const t = d.trim();
+          if (t.length > 0) decorations.push(t);
         }
       }
-
-      rawCommits.push({
-        hash,
-        shortHash,
-        parents,
-        author,
-        message,
-        decorations,
-        rail: 0,
-      });
     }
 
-    // Assign rails using a lane allocation algorithm
-    assignRails(rawCommits);
-    commits = rawCommits;
-  } catch {
-    commits = [];
+    list.push({
+      hash: parts[0],
+      shortHash: parts[1],
+      parents,
+      author: parts[3],
+      message: parts[4],
+      decorations,
+      relTime: parts[6],
+      rail: 0,
+    });
   }
+
+  assignRails(list);
+  commits = list;
+
+  const sig = hashString(lines.join("\n"));
+  return sig;
 }
 
-/**
- * Assign each commit to a rail (column) in the graph.
- *
- * We process commits top-to-bottom (newest first, as git log outputs them).
- * Each commit occupies a rail. When a commit has multiple parents (merge),
- * the second parent gets assigned to a new or reused rail. Rails are freed
- * when a commit's last child has been processed.
- */
-function assignRails(list: Commit[]): void {
-  // Build lookup: hash -> index
-  const hashToIdx = new Map<string, number>();
-  for (let i = 0; i < list.length; i++) {
-    hashToIdx.set(list[i].hash, i);
-  }
+// ---------------------------------------------------------------------------
+// Rail assignment (lane allocation algorithm)
+// ---------------------------------------------------------------------------
 
-  // Track which rail each hash is expected to appear on
+function assignRails(list: Commit[]): void {
   const hashToRail = new Map<string, number>();
-  // Track which rails are currently active (occupied)
   const activeRails = new Set<number>();
   maxRail = 0;
 
@@ -252,438 +373,704 @@ function assignRails(list: Commit[]): void {
     return r;
   }
 
-  for (let i = 0; i < list.length; i++) {
-    const commit = list[i];
-
-    // If this commit was already assigned a rail (by a child), use it
+  for (const commit of list) {
     if (hashToRail.has(commit.hash)) {
       commit.rail = hashToRail.get(commit.hash)!;
     } else {
-      // First commit or unreferenced: assign next free rail
       commit.rail = nextFreeRail();
       activeRails.add(commit.rail);
     }
-
     if (commit.rail > maxRail) maxRail = commit.rail;
 
-    // Process parents
     if (commit.parents.length === 0) {
-      // Root commit: free the rail
       activeRails.delete(commit.rail);
     } else if (commit.parents.length === 1) {
-      const parentHash = commit.parents[0];
-      if (hashToRail.has(parentHash)) {
-        // Parent already assigned by another child — free our rail if different
-        const parentRail = hashToRail.get(parentHash)!;
-        if (parentRail !== commit.rail) {
-          activeRails.delete(commit.rail);
-        }
+      const ph = commit.parents[0];
+      if (hashToRail.has(ph)) {
+        if (hashToRail.get(ph) !== commit.rail) activeRails.delete(commit.rail);
       } else {
-        // Pass our rail to the parent
-        hashToRail.set(parentHash, commit.rail);
+        hashToRail.set(ph, commit.rail);
       }
     } else {
-      // Merge commit: first parent inherits our rail, second parent gets a new rail
-      const firstParent = commit.parents[0];
-      const secondParent = commit.parents[1];
-
-      if (!hashToRail.has(firstParent)) {
-        hashToRail.set(firstParent, commit.rail);
-      } else {
-        // First parent already has a rail from another child
-        const existingRail = hashToRail.get(firstParent)!;
-        if (existingRail !== commit.rail) {
-          activeRails.delete(commit.rail);
-        }
+      const [first, second] = commit.parents;
+      if (!hashToRail.has(first)) {
+        hashToRail.set(first, commit.rail);
+      } else if (hashToRail.get(first) !== commit.rail) {
+        activeRails.delete(commit.rail);
       }
-
-      if (!hashToRail.has(secondParent)) {
-        const newRail = nextFreeRail();
-        hashToRail.set(secondParent, newRail);
-        activeRails.add(newRail);
-        if (newRail > maxRail) maxRail = newRail;
+      if (second && !hashToRail.has(second)) {
+        const nr = nextFreeRail();
+        hashToRail.set(second, nr);
+        activeRails.add(nr);
+        if (nr > maxRail) maxRail = nr;
       }
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// SVG helpers
+// Stats
 // ---------------------------------------------------------------------------
 
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function railColor(rail: number): string {
-  return RAIL_COLORS[rail % RAIL_COLORS.length];
-}
-
-function railX(rail: number): number {
-  return GRAPH_LEFT + rail * RAIL_W + RAIL_W / 2;
-}
-
-// ---------------------------------------------------------------------------
-// Visible range
-// ---------------------------------------------------------------------------
-
-function graphAreaH(): number {
-  return panelH - HEADER_H - DETAIL_H;
-}
-
-function visibleCount(): number {
-  return Math.floor(graphAreaH() / ROW_H);
-}
-
-function clampScroll(): void {
-  const maxOffset = Math.max(0, commits.length - visibleCount());
-  scrollOffset = Math.max(0, Math.min(scrollOffset, maxOffset));
-}
-
-function commitY(visibleIdx: number): number {
-  return HEADER_H + visibleIdx * ROW_H + ROW_H / 2;
+function computeStats(): { branches: number; tags: number; merges: number } {
+  const branchSet = new Set<string>();
+  let tags = 0;
+  let merges = 0;
+  for (const c of commits) {
+    if (c.parents.length > 1) merges++;
+    for (const d of c.decorations) {
+      if (d.startsWith("tag: ")) tags++;
+      else if (d !== "HEAD" && !d.startsWith("HEAD ->")) {
+        branchSet.add(d.replace("HEAD -> ", "").replace(/^origin\//, ""));
+      }
+    }
+  }
+  return { branches: branchSet.size, tags, merges };
 }
 
 // ---------------------------------------------------------------------------
-// Text area start (after the graph rails)
+// Decoration styling
 // ---------------------------------------------------------------------------
 
-function textStartX(): number {
-  return GRAPH_LEFT + (maxRail + 1) * RAIL_W + 14;
+function decoStyle(deco: string): { label: string; color: string } {
+  if (deco.startsWith("HEAD -> "))
+    return { label: deco.replace("HEAD -> ", ""), color: C.yellow };
+  if (deco === "HEAD") return { label: "HEAD", color: C.yellow };
+  if (deco.startsWith("tag: "))
+    return { label: deco.replace("tag: ", ""), color: C.peach };
+  if (deco.startsWith("origin/")) return { label: deco, color: C.teal };
+  return { label: deco, color: C.green };
 }
 
 // ---------------------------------------------------------------------------
-// SVG rendering
+// Rendering — buttons
 // ---------------------------------------------------------------------------
 
-function renderSvg(): string {
-  clampScroll();
+function renderButton(label: string, accent: string, hovered: boolean): string {
+  const bg = hovered ? `${accent}26` : "rgba(49,50,68,0.88)";
+  const border = hovered ? `${accent}88` : C.surface1;
+  const color = hovered ? accent : C.text;
+  const shadow = hovered
+    ? `0 0 0 1px ${accent}22 inset, 0 8px 24px ${accent}18`
+    : "none";
+  return `<div style="width:${REFRESH_BTN_W}px;height:${REFRESH_BTN_H}px;background:${bg};border:1px solid ${border};border-radius:9px;display:flex;align-items:center;justify-content:center;color:${color};font-size:11px;font-weight:700;letter-spacing:0.02em;box-shadow:${shadow};cursor:pointer;">${label}</div>`;
+}
+
+function renderCloseButton(hovered: boolean): string {
+  const size = REFRESH_BTN_H;
+  const bg = hovered ? `${C.red}26` : "rgba(49,50,68,0.88)";
+  const border = hovered ? `${C.red}88` : C.surface1;
+  const color = hovered ? C.red : C.overlay0;
+  const shadow = hovered
+    ? `0 0 0 1px ${C.red}22 inset, 0 8px 24px ${C.red}18`
+    : "none";
+  return `<div style="width:${size}px;height:${size}px;background:${bg};border:1px solid ${border};border-radius:9px;display:flex;align-items:center;justify-content:center;color:${color};font-size:14px;font-weight:700;box-shadow:${shadow};cursor:pointer;line-height:1;">&times;</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Rendering — graph SVG
+// ---------------------------------------------------------------------------
+
+function renderGraphSvg(): string {
   const count = visibleCount();
   const visible = commits.slice(scrollOffset, scrollOffset + count);
+  const gW = graphW();
+  const gH = count * ROW_H;
 
-  // Build a hash->row map for the full commit list for edge drawing
   const hashToGlobalIdx = new Map<string, number>();
-  for (let i = 0; i < commits.length; i++) {
+  for (let i = 0; i < commits.length; i++)
     hashToGlobalIdx.set(commits[i].hash, i);
+
+  // Rail guides
+  const guides: string[] = [];
+  for (let r = 0; r <= maxRail; r++) {
+    const rx = railX(r);
+    guides.push(
+      `<line x1="${rx}" y1="0" x2="${rx}" y2="${gH}" stroke="${railColor(r)}" stroke-width="1" stroke-opacity="0.1"/>`,
+    );
   }
 
-  // --- Header ---
-  const decorations =
-    commits.length > 0 ? commits.flatMap((c) => c.decorations) : [];
-  const branchCount = new Set(
-    decorations
-      .filter((d) => !d.startsWith("tag:") && d !== "HEAD")
-      .map((d) => d.replace("HEAD -> ", "").replace(/^origin\//, "")),
-  ).size;
-
-  const headerSvg = `
-    <rect x="0" y="0" width="${panelW}" height="${HEADER_H}" fill="${C.surface0}"/>
-    <line x1="0" y1="${HEADER_H}" x2="${panelW}" y2="${HEADER_H}" stroke="${C.surface1}" stroke-width="1"/>
-    <text x="12" y="${HEADER_H / 2 + 4}" fill="${C.text}" font-size="13" font-family="monospace" font-weight="700">Git Graph</text>
-    <text x="100" y="${HEADER_H / 2 + 4}" fill="${C.blue}" font-size="12" font-family="monospace">${escapeXml(branchName)}</text>
-    <text x="${panelW - 12}" y="${HEADER_H / 2 + 4}" text-anchor="end" fill="${C.overlay0}" font-size="11" font-family="monospace">${commits.length} commits${branchCount > 0 ? ` \u00b7 ${branchCount} branches` : ""}</text>
-  `;
-
-  // --- Edges ---
-  // Draw lines from each visible commit to its parents (if also visible or
-  // just off-screen). We draw edges before nodes so nodes are on top.
-  const edgesSvg: string[] = [];
-
+  // Edges
+  const edges: string[] = [];
   for (let vi = 0; vi < visible.length; vi++) {
     const commit = visible[vi];
-    const cy = commitY(vi);
+    const cy = vi * ROW_H + ROW_H / 2;
     const cx = railX(commit.rail);
     const color = railColor(commit.rail);
 
     for (const parentHash of commit.parents) {
-      const parentGlobalIdx = hashToGlobalIdx.get(parentHash);
-      if (parentGlobalIdx === undefined) continue;
+      const pIdx = hashToGlobalIdx.get(parentHash);
+      if (pIdx === undefined) continue;
+      const parent = commits[pIdx];
+      const pvi = pIdx - scrollOffset;
+      if (pvi < -1 || pvi > count + 1) continue;
 
-      const parentCommit = commits[parentGlobalIdx];
-      const parentVi = parentGlobalIdx - scrollOffset;
-
-      // Only draw if parent is in or near the visible window
-      if (parentVi < -1 || parentVi > count + 1) continue;
-
-      const parentCy =
-        parentVi >= 0 && parentVi < count
-          ? commitY(parentVi)
-          : parentVi < 0
-            ? HEADER_H - ROW_H / 2
-            : HEADER_H + graphAreaH() + ROW_H / 2;
-
-      const parentCx = railX(parentCommit.rail);
-      const edgeColor =
+      const pcy =
+        pvi >= 0 && pvi < count
+          ? pvi * ROW_H + ROW_H / 2
+          : pvi < 0
+            ? -ROW_H / 2
+            : gH + ROW_H / 2;
+      const pcx = railX(parent.rail);
+      const eColor =
         commit.parents.indexOf(parentHash) === 0
           ? color
-          : railColor(parentCommit.rail);
+          : railColor(parent.rail);
 
-      if (commit.rail === parentCommit.rail) {
-        // Straight vertical line
-        edgesSvg.push(
-          `<line x1="${cx}" y1="${cy}" x2="${parentCx}" y2="${parentCy}" stroke="${edgeColor}" stroke-width="2" stroke-opacity="0.6"/>`,
+      if (commit.rail === parent.rail) {
+        edges.push(
+          `<line x1="${cx}" y1="${cy}" x2="${pcx}" y2="${pcy}" stroke="${eColor}" stroke-width="2" stroke-opacity="0.5"/>`,
         );
       } else {
-        // Curved edge between rails
-        const midY = (cy + parentCy) / 2;
-        edgesSvg.push(
-          `<path d="M${cx},${cy} C${cx},${midY} ${parentCx},${midY} ${parentCx},${parentCy}" fill="none" stroke="${edgeColor}" stroke-width="2" stroke-opacity="0.5"/>`,
+        const midY = (cy + pcy) / 2;
+        edges.push(
+          `<path d="M${cx},${cy} C${cx},${midY} ${pcx},${midY} ${pcx},${pcy}" fill="none" stroke="${eColor}" stroke-width="2" stroke-opacity="0.4"/>`,
         );
       }
     }
   }
 
-  // --- Active rail lines (faint vertical guides) ---
-  const railGuides: string[] = [];
-  for (let r = 0; r <= maxRail; r++) {
-    const rx = railX(r);
-    railGuides.push(
-      `<line x1="${rx}" y1="${HEADER_H}" x2="${rx}" y2="${HEADER_H + graphAreaH()}" stroke="${railColor(r)}" stroke-width="1" stroke-opacity="0.1"/>`,
-    );
-  }
-
-  // --- Nodes + text ---
-  const nodesSvg: string[] = [];
-  const tX = textStartX();
-
+  // Nodes
+  const nodes: string[] = [];
   for (let vi = 0; vi < visible.length; vi++) {
     const commit = visible[vi];
     const globalIdx = scrollOffset + vi;
-    const cy = commitY(vi);
+    const cy = vi * ROW_H + ROW_H / 2;
     const cx = railX(commit.rail);
     const color = railColor(commit.rail);
-    const isSelected = selectedCommit === globalIdx;
+    const isSel = selectedCommit === globalIdx;
+    const isHov = hoveredRowIndex === globalIdx;
     const isMerge = commit.parents.length > 1;
-
-    // Row highlight on selection
-    if (isSelected) {
-      nodesSvg.push(
-        `<rect x="0" y="${cy - ROW_H / 2}" width="${panelW}" height="${ROW_H}" fill="${C.surface0}" opacity="0.6"/>`,
-      );
-    }
-
-    // Node circle
-    const nodeR = isMerge ? NODE_R + 1 : NODE_R;
-    const strokeW = isSelected ? 2.5 : 1.5;
-    const fillColor = isSelected ? color : C.base;
-    nodesSvg.push(
-      `<circle cx="${cx}" cy="${cy}" r="${nodeR}" fill="${fillColor}" stroke="${color}" stroke-width="${strokeW}"/>`,
-    );
-
-    // HEAD indicator
     const isHead = commit.decorations.some((d) => d.startsWith("HEAD"));
+
+    const nr = isMerge ? NODE_R + 1.5 : NODE_R;
+    const sw = isSel ? 2.5 : isHov ? 2 : 1.5;
+    const fill = isSel ? color : C.base;
+
     if (isHead) {
-      nodesSvg.push(
-        `<circle cx="${cx}" cy="${cy}" r="${nodeR + 4}" fill="none" stroke="${C.yellow}" stroke-width="1.5" stroke-dasharray="3,2"/>`,
+      nodes.push(
+        `<circle cx="${cx}" cy="${cy}" r="${nr + 4}" fill="none" stroke="${C.yellow}" stroke-width="1.5" stroke-dasharray="3,2" stroke-opacity="0.7"/>`,
       );
     }
-
-    // Text: short hash
-    const hashColor = isSelected ? C.blue : C.lavender;
-    nodesSvg.push(
-      `<text x="${tX}" y="${cy + 4}" fill="${hashColor}" font-size="11" font-family="monospace" font-weight="600">${escapeXml(commit.shortHash)}</text>`,
+    nodes.push(
+      `<circle cx="${cx}" cy="${cy}" r="${nr}" fill="${fill}" stroke="${color}" stroke-width="${sw}"/>`,
     );
+  }
 
-    // Text: author (truncated)
-    const authorTrunc =
-      commit.author.length > 12
-        ? commit.author.slice(0, 11) + "\u2026"
-        : commit.author;
-    nodesSvg.push(
-      `<text x="${tX + 68}" y="${cy + 4}" fill="${C.subtext0}" font-size="10" font-family="monospace">${escapeXml(authorTrunc)}</text>`,
-    );
+  return `<svg width="${gW}" height="${gH}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+    <defs><clipPath id="gc"><rect x="0" y="0" width="${gW}" height="${gH}"/></clipPath></defs>
+    <g clip-path="url(#gc)">${guides.join("")}${edges.join("")}${nodes.join("")}</g>
+  </svg>`;
+}
 
-    // Text: message (truncated to fit)
-    const msgX = tX + 170;
-    const decoWidth =
-      commit.decorations.length > 0
-        ? estimateDecoWidth(commit.decorations) + 8
-        : 0;
-    const availMsgW = panelW - msgX - 12 - decoWidth;
-    const maxMsgChars = Math.max(8, Math.floor(availMsgW / 7));
-    const msgTrunc =
-      commit.message.length > maxMsgChars
-        ? commit.message.slice(0, maxMsgChars - 1) + "\u2026"
-        : commit.message;
-    nodesSvg.push(
-      `<text x="${msgX}" y="${cy + 4}" fill="${C.text}" font-size="10" font-family="monospace">${escapeXml(msgTrunc)}</text>`,
-    );
+// ---------------------------------------------------------------------------
+// Rendering — commit rows
+// ---------------------------------------------------------------------------
 
-    // Decoration badges (branches, tags)
-    if (commit.decorations.length > 0) {
-      let badgeX = panelW - 12;
-      for (let di = commit.decorations.length - 1; di >= 0; di--) {
-        const deco = commit.decorations[di];
-        const { label, badgeColor } = decoStyle(deco);
-        const labelW = label.length * 6.5 + 10;
-        badgeX -= labelW + 4;
-        nodesSvg.push(
-          `<rect x="${badgeX}" y="${cy - 8}" width="${labelW}" height="16" rx="4" fill="${badgeColor}" opacity="0.2"/>`,
-        );
-        nodesSvg.push(
-          `<text x="${badgeX + 5}" y="${cy + 3}" fill="${badgeColor}" font-size="9" font-family="monospace">${escapeXml(label)}</text>`,
-        );
+function renderCommitRows(): string {
+  const count = visibleCount();
+  const visible = commits.slice(scrollOffset, scrollOffset + count);
+  const textW = panelW - graphW() - 12;
+
+  if (visible.length === 0) {
+    return `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;opacity:0.6;">
+      <div style="font-size:28px;">&#x2B2C;</div>
+      <div style="font-size:13px;color:${C.subtext0};font-weight:600;">No commits to display</div>
+    </div>`;
+  }
+
+  return visible
+    .map((commit, vi) => {
+      const globalIdx = scrollOffset + vi;
+      const isSel = selectedCommit === globalIdx;
+      const isHov = hoveredRowIndex === globalIdx;
+      const color = railColor(commit.rail);
+
+      const bg = isSel
+        ? `linear-gradient(90deg, ${color}22, ${color}08)`
+        : isHov
+          ? "rgba(137,180,250,0.08)"
+          : globalIdx % 2 === 0
+            ? "transparent"
+            : "rgba(17,17,27,0.3)";
+      const leftBorder = isSel
+        ? `box-shadow:inset 3px 0 0 ${color};`
+        : isHov
+          ? `box-shadow:inset 2px 0 0 ${C.mauve};`
+          : "";
+
+      const hashColor = isSel ? C.blue : C.lavender;
+      const authorMax = Math.max(8, Math.floor((textW * 0.15) / 7));
+      const msgMax = Math.max(12, Math.floor((textW - 300) / 7));
+
+      // Decoration badges
+      let badges = "";
+      if (commit.decorations.length > 0) {
+        badges = commit.decorations
+          .map((d) => {
+            const s = decoStyle(d);
+            return `<span style="font-size:9px;color:${s.color};background:${s.color}18;border:1px solid ${s.color}44;border-radius:999px;padding:1px 6px;white-space:nowrap;">${escapeHtml(s.label)}</span>`;
+          })
+          .join("");
       }
-    }
-  }
 
-  // --- Scroll indicator ---
-  const scrollBarSvg = renderScrollBar();
-
-  // --- Detail area ---
-  const detailSvg = renderDetail();
-
-  return `<svg width="${panelW}" height="${panelH}" xmlns="http://www.w3.org/2000/svg">
-  <rect width="${panelW}" height="${panelH}" rx="8" fill="${C.base}"/>
-  <rect x="0.5" y="0.5" width="${panelW - 1}" height="${panelH - 1}" rx="8" fill="none" stroke="${C.surface1}" stroke-width="1"/>
-  <!-- Clip graph area -->
-  <defs>
-    <clipPath id="graphClip">
-      <rect x="0" y="${HEADER_H}" width="${panelW}" height="${graphAreaH()}"/>
-    </clipPath>
-  </defs>
-  ${headerSvg}
-  <g clip-path="url(#graphClip)">
-    ${railGuides.join("\n    ")}
-    ${edgesSvg.join("\n    ")}
-    ${nodesSvg.join("\n    ")}
-  </g>
-  ${scrollBarSvg}
-  ${detailSvg}
-</svg>`;
+      return `<div style="height:${ROW_H}px;display:flex;align-items:center;gap:10px;padding:0 10px;background:${bg};${leftBorder}cursor:pointer;overflow:hidden;font-family:'SF Mono',Monaco,Consolas,monospace;font-size:11px;">
+      <span style="color:${hashColor};font-weight:600;flex-shrink:0;width:62px;">${escapeHtml(commit.shortHash)}</span>
+      <span style="color:${C.subtext0};flex-shrink:0;width:${Math.max(60, authorMax * 7)}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(truncate(commit.author, authorMax))}</span>
+      <span style="color:${C.overlay0};flex-shrink:0;width:70px;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(commit.relTime)}</span>
+      <span style="color:${C.text};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(truncate(commit.message, msgMax))}</span>
+      <span style="display:flex;gap:4px;flex-shrink:0;align-items:center;">${badges}</span>
+    </div>`;
+    })
+    .join("");
 }
 
-function estimateDecoWidth(decorations: string[]): number {
-  let w = 0;
-  for (const d of decorations) {
-    const { label } = decoStyle(d);
-    w += label.length * 6.5 + 14;
-  }
-  return w;
-}
+// ---------------------------------------------------------------------------
+// Rendering — scrollbar
+// ---------------------------------------------------------------------------
 
-function decoStyle(deco: string): { label: string; badgeColor: string } {
-  if (deco.startsWith("HEAD -> ")) {
-    return { label: deco.replace("HEAD -> ", ""), badgeColor: C.yellow };
-  }
-  if (deco === "HEAD") {
-    return { label: "HEAD", badgeColor: C.yellow };
-  }
-  if (deco.startsWith("tag: ")) {
-    return { label: deco.replace("tag: ", ""), badgeColor: C.peach };
-  }
-  if (deco.startsWith("origin/")) {
-    return { label: deco, badgeColor: C.teal };
-  }
-  // Local branch
-  return { label: deco, badgeColor: C.green };
-}
-
-function renderScrollBar(): string {
+function renderScrollbar(): string {
   if (commits.length <= visibleCount()) return "";
-
-  const barX = panelW - 6;
-  const trackY = HEADER_H + 2;
-  const trackH = graphAreaH() - 4;
-
+  const trackH = bodyH() - 16;
   const ratio = visibleCount() / commits.length;
-  const thumbH = Math.max(16, Math.round(trackH * ratio));
-  const scrollRange = commits.length - visibleCount();
-  const thumbY =
-    trackY + Math.round((scrollOffset / scrollRange) * (trackH - thumbH));
+  const thumbH = Math.max(20, Math.round(trackH * ratio));
+  const scrollRange = Math.max(1, commits.length - visibleCount());
+  const thumbY = Math.round((scrollOffset / scrollRange) * (trackH - thumbH));
 
-  return `
-    <rect x="${barX}" y="${trackY}" width="4" height="${trackH}" rx="2" fill="${C.surface0}" opacity="0.5"/>
-    <rect x="${barX}" y="${thumbY}" width="4" height="${thumbH}" rx="2" fill="${C.overlay0}" opacity="0.6"/>
-  `;
+  return `<div style="position:absolute;right:4px;top:8px;width:5px;height:${trackH}px;background:${C.surface0};border-radius:999px;opacity:0.5;">
+    <div style="position:absolute;left:0;right:0;top:${thumbY}px;height:${thumbH}px;background:${C.blue};border-radius:999px;opacity:0.7;"></div>
+  </div>`;
 }
+
+// ---------------------------------------------------------------------------
+// Rendering — detail panel
+// ---------------------------------------------------------------------------
 
 function renderDetail(): string {
-  const detailY = panelH - DETAIL_H;
-
-  let content: string;
   if (
     selectedCommit !== null &&
     selectedCommit >= 0 &&
     selectedCommit < commits.length
   ) {
     const c = commits[selectedCommit];
-    const decoStr = c.decorations.length > 0 ? c.decorations.join(", ") : "";
-    content = `
-      <text x="12" y="${detailY + 18}" fill="${C.blue}" font-size="11" font-family="monospace" font-weight="600">${escapeXml(c.hash)}</text>
-      <text x="12" y="${detailY + 34}" fill="${C.text}" font-size="10" font-family="monospace">${escapeXml(c.author)} \u2014 ${escapeXml(c.message)}</text>
-      ${decoStr.length > 0 ? `<text x="${panelW - 12}" y="${detailY + 18}" text-anchor="end" fill="${C.peach}" font-size="10" font-family="monospace">${escapeXml(decoStr)}</text>` : ""}
-    `;
-  } else {
-    content = `
-      <text x="12" y="${detailY + 24}" fill="${C.overlay0}" font-size="10" font-family="monospace">Click a commit to inspect</text>
-    `;
+    const color = railColor(c.rail);
+    const isMerge = c.parents.length > 1;
+    const parentStr = c.parents.map((p) => p.slice(0, 7)).join(", ");
+    const decoStr = c.decorations
+      .map((d) => {
+        const s = decoStyle(d);
+        return `<span style="color:${s.color};font-weight:600;">${escapeHtml(s.label)}</span>`;
+      })
+      .join(`<span style="color:${C.surface2};"> · </span>`);
+
+    return `<div style="height:${DETAIL_H}px;background:linear-gradient(180deg, rgba(24,24,37,0.98), rgba(17,17,27,0.96));border-top:1px solid ${C.surface1};padding:10px 16px;overflow:hidden;display:flex;flex-direction:column;gap:4px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:8px;height:8px;border-radius:999px;background:${color};flex-shrink:0;"></div>
+        <span style="font-family:monospace;font-size:12px;color:${C.blue};font-weight:700;">${escapeHtml(c.hash)}</span>
+        ${isMerge ? `<span style="font-size:10px;color:${C.mauve};background:${C.mauve}18;border:1px solid ${C.mauve}44;border-radius:999px;padding:1px 6px;">merge</span>` : ""}
+        <span style="font-size:10px;color:${C.overlay0};margin-left:auto;">${escapeHtml(c.relTime)}</span>
+      </div>
+      <div style="font-size:12px;color:${C.text};font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.message)}</div>
+      <div style="display:flex;align-items:center;gap:12px;font-size:10px;color:${C.overlay0};overflow:hidden;">
+        <span>${escapeHtml(c.author)}</span>
+        <span style="color:${C.surface2};">|</span>
+        <span>parents: <span style="color:${C.lavender};">${parentStr || "none (root)"}</span></span>
+        ${decoStr ? `<span style="color:${C.surface2};">|</span>${decoStr}` : ""}
+      </div>
+    </div>`;
   }
 
-  return `
-    <rect x="0" y="${detailY}" width="${panelW}" height="${DETAIL_H}" fill="${C.surface0}"/>
-    <line x1="0" y1="${detailY}" x2="${panelW}" y2="${detailY}" stroke="${C.surface1}" stroke-width="1"/>
-    ${content}
-  `;
+  return `<div style="height:${DETAIL_H}px;background:linear-gradient(180deg, rgba(24,24,37,0.98), rgba(17,17,27,0.96));border-top:1px solid ${C.surface1};display:flex;align-items:center;justify-content:center;">
+    <span style="font-size:11px;color:${C.overlay0};">Click a commit or press Enter to inspect</span>
+  </div>`;
 }
 
 // ---------------------------------------------------------------------------
-// Panel rendering
+// Rendering — footer
 // ---------------------------------------------------------------------------
 
-let firstRender = true;
+function footerStatusText(): string {
+  if (hoveredControl === "close") return "Close Git Graph";
+  if (hoveredControl === "refresh") return "Refresh commit history";
 
-function render(): void {
-  const svg = renderSvg();
-  const svgBytes = encoder.encode(svg);
+  if (
+    hoveredRowIndex !== null &&
+    hoveredRowIndex >= 0 &&
+    hoveredRowIndex < commits.length
+  ) {
+    const c = commits[hoveredRowIndex];
+    const decos =
+      c.decorations.length > 0 ? ` · ${c.decorations.join(", ")}` : "";
+    return `${c.shortHash} · ${c.author} · ${c.relTime}${decos}`;
+  }
+
+  if (commits.length > 0) {
+    const total = commits.length;
+    const pos = `${scrollOffset + 1}–${Math.min(scrollOffset + visibleCount(), total)} of ${total}`;
+    const pct = `${Math.round(((scrollOffset + visibleCount()) / total) * 100)}%`;
+    return `${pos} (${pct})`;
+  }
+
+  return "j/k navigate · Enter inspect · space/b page · g/G top/bottom · r refresh · q quit";
+}
+
+// ---------------------------------------------------------------------------
+// Rendering — main page
+// ---------------------------------------------------------------------------
+
+function buildPage(): string {
+  clampScroll();
+  const stats = computeStats();
+
+  const summaryParts = [
+    `${commits.length} commits`,
+    stats.branches > 0 ? `${stats.branches} branches` : "",
+    stats.tags > 0 ? `${stats.tags} tags` : "",
+    stats.merges > 0 ? `${stats.merges} merges` : "",
+  ]
+    .filter(Boolean)
+    .join(` <span style="color:${C.surface2};">·</span> `);
+
+  return `<div style="width:${panelW}px;height:${panelH}px;background:${C.base};color:${C.text};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;overflow:hidden;display:flex;flex-direction:column;user-select:none;">
+    <style>* { box-sizing: border-box; }</style>
+
+    <div style="height:${HEADER_H}px;background:linear-gradient(180deg, rgba(49,50,68,0.98), rgba(30,30,46,0.98));border-bottom:1px solid ${C.surface1};display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0;box-shadow:0 10px 30px rgba(0,0,0,0.16);">
+      <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+        <div style="width:12px;height:12px;border-radius:999px;background:${C.mauve};box-shadow:0 0 18px ${C.mauve}88;"></div>
+        <div style="display:flex;flex-direction:column;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:15px;font-weight:800;color:${C.text};">Git Graph</span>
+            <span style="font-size:11px;color:${C.blue};background:${C.blue}18;border:1px solid ${C.blue}44;border-radius:999px;padding:2px 8px;flex-shrink:0;">${escapeHtml(branchName)}</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        ${renderButton("Refresh", C.blue, hoveredControl === "refresh")}
+        ${renderCloseButton(hoveredControl === "close")}
+      </div>
+    </div>
+
+    <div style="height:${SUMMARY_H}px;background:linear-gradient(90deg, rgba(203,166,247,0.12), rgba(137,180,250,0.06));border-bottom:1px solid ${C.surface1};display:flex;align-items:center;padding:0 16px;flex-shrink:0;font-size:11px;">
+      <span>${summaryParts}</span>
+    </div>
+
+    <div style="position:relative;height:${bodyH()}px;display:flex;overflow:hidden;background:linear-gradient(180deg, rgba(30,30,46,0.98), rgba(17,17,27,0.98));">
+      <div style="flex-shrink:0;overflow:hidden;">${renderGraphSvg()}</div>
+      <div style="flex:1;overflow:hidden;">${renderCommitRows()}</div>
+      ${renderScrollbar()}
+    </div>
+
+    ${renderDetail()}
+
+    <div style="height:${FOOTER_H}px;background:linear-gradient(180deg, rgba(49,50,68,0.96), rgba(49,50,68,1));border-top:1px solid ${C.surface1};display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:10px;color:${C.overlay0};flex-shrink:0;gap:16px;">
+      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(footerStatusText())}</span>
+      <span style="flex-shrink:0;">updated ${formatTime(new Date())}</span>
+    </div>
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Rendering — panel output
+// ---------------------------------------------------------------------------
+
+function render(force = false): void {
+  syncPanelSizeFromTerminal();
+  const html = buildPage();
+  const bytes = encoder.encode(html);
+  const panelX = Math.max(0, Math.round((viewportW - panelW) / 2));
 
   if (firstRender) {
     writeMeta({
       id: PANEL_ID,
-      type: "svg",
-      position: "float",
-      x: 50,
-      y: 20,
+      type: "html",
+      position: "fixed",
+      x: panelX,
+      y: 0,
       width: panelW,
       height: panelH,
-      draggable: true,
-      resizable: true,
       interactive: true,
-      byteLength: svgBytes.byteLength,
+      draggable: false,
+      resizable: false,
+      borderRadius: 0,
+      byteLength: bytes.byteLength,
     });
     firstRender = false;
   } else {
     writeMeta({
       id: PANEL_ID,
       type: "update",
-      byteLength: svgBytes.byteLength,
+      byteLength: bytes.byteLength,
+      ...(force ? { x: panelX, y: 0, width: panelW, height: panelH } : {}),
     });
   }
 
-  writeData(svg);
+  writeData(html);
 }
 
 // ---------------------------------------------------------------------------
 // Hit testing
 // ---------------------------------------------------------------------------
 
-function hitTest(
-  x: number,
-  y: number,
-): { area: "header" | "graph" | "detail"; rowIdx?: number } {
-  if (y < HEADER_H) return { area: "header" };
-  if (y >= panelH - DETAIL_H) return { area: "detail" };
+type HitResult =
+  | { area: "close" }
+  | { area: "refresh" }
+  | { area: "commit-row"; index: number }
+  | { area: "graph" }
+  | { area: "none" };
 
-  const relY = y - HEADER_H;
-  const rowIdx = Math.floor(relY / ROW_H);
-  if (rowIdx >= 0 && rowIdx < visibleCount()) {
-    return { area: "graph", rowIdx: scrollOffset + rowIdx };
+function hitTest(x: number, y: number): HitResult {
+  // Header buttons
+  if (y < HEADER_H) {
+    const closeSize = REFRESH_BTN_H;
+    const closeX = panelW - 16 - closeSize;
+    const closeY = Math.round((HEADER_H - closeSize) / 2);
+    if (
+      y >= closeY &&
+      y < closeY + closeSize &&
+      x >= closeX &&
+      x < closeX + closeSize
+    ) {
+      return { area: "close" };
+    }
+    const refreshX = closeX - 8 - REFRESH_BTN_W;
+    const refreshY = Math.round((HEADER_H - REFRESH_BTN_H) / 2);
+    if (
+      y >= refreshY &&
+      y < refreshY + REFRESH_BTN_H &&
+      x >= refreshX &&
+      x < refreshX + REFRESH_BTN_W
+    ) {
+      return { area: "refresh" };
+    }
+    return { area: "none" };
   }
-  return { area: "graph" };
+
+  // Body area (after header + summary)
+  const bodyTop = HEADER_H + SUMMARY_H;
+  const bodyBottom = bodyTop + bodyH();
+  if (y >= bodyTop && y < bodyBottom) {
+    const localY = y - bodyTop;
+    const rowIdx = scrollOffset + Math.floor(localY / ROW_H);
+    if (rowIdx >= 0 && rowIdx < commits.length) {
+      return { area: "commit-row", index: rowIdx };
+    }
+    return { area: "graph" };
+  }
+
+  return { area: "none" };
+}
+
+function updateHoverState(hit: HitResult): boolean {
+  const before = `${hoveredRowIndex ?? ""}|${hoveredControl ?? ""}`;
+  hoveredRowIndex = null;
+  hoveredControl = null;
+
+  switch (hit.area) {
+    case "close":
+    case "refresh":
+      hoveredControl = hit.area;
+      break;
+    case "commit-row":
+      if (hit.index >= 0 && hit.index < commits.length)
+        hoveredRowIndex = hit.index;
+      break;
+  }
+
+  return before !== `${hoveredRowIndex ?? ""}|${hoveredControl ?? ""}`;
+}
+
+// ---------------------------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------------------------
+
+function selectCommit(index: number | null): void {
+  selectedCommit = index;
+  render(true);
+}
+
+function moveSelection(delta: number): void {
+  if (commits.length === 0) return;
+
+  if (selectedCommit === null) {
+    selectedCommit = scrollOffset;
+  } else {
+    selectedCommit = clamp(selectedCommit + delta, 0, commits.length - 1);
+  }
+
+  // Ensure visible
+  if (selectedCommit < scrollOffset) scrollOffset = selectedCommit;
+  else if (selectedCommit >= scrollOffset + visibleCount())
+    scrollOffset = selectedCommit - visibleCount() + 1;
+  clampScroll();
+  render(true);
+}
+
+function scrollBy(delta: number): void {
+  scrollOffset += delta;
+  clampScroll();
+  render(true);
+}
+
+function pageScroll(direction: 1 | -1): void {
+  scrollBy(direction * Math.max(1, visibleCount() - 2));
+}
+
+function jumpToDecorated(direction: 1 | -1): void {
+  const start = selectedCommit ?? scrollOffset;
+  let i = start + direction;
+  while (i >= 0 && i < commits.length) {
+    if (commits[i].decorations.length > 0) {
+      selectedCommit = i;
+      if (i < scrollOffset) scrollOffset = i;
+      else if (i >= scrollOffset + visibleCount())
+        scrollOffset = i - visibleCount() + 1;
+      clampScroll();
+      render(true);
+      return;
+    }
+    i += direction;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Refresh
+// ---------------------------------------------------------------------------
+
+async function refreshModel(forceRender = false): Promise<void> {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
+
+  try {
+    const sizeChanged = syncPanelSizeFromTerminal();
+    const previousHash =
+      selectedCommit !== null ? commits[selectedCommit]?.hash : null;
+    branchName = await getCurrentBranch();
+    const sig = await fetchCommits();
+
+    if (previousHash) {
+      const newIdx = commits.findIndex((c) => c.hash === previousHash);
+      selectedCommit = newIdx >= 0 ? newIdx : null;
+    }
+    clampScroll();
+
+    if (forceRender || sizeChanged || sig !== lastSignature) {
+      lastSignature = sig;
+      render(true);
+    }
+  } catch {
+    /* refresh failed */
+  } finally {
+    refreshInFlight = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup
+// ---------------------------------------------------------------------------
+
+function cleanup(): void {
+  if (refreshTimer !== null) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  if (stdinHandler) {
+    process.stdin.off("data", stdinHandler);
+    stdinHandler = null;
+  }
+  try {
+    if (process.stdin.isTTY) process.stdin.setRawMode(false);
+  } catch {
+    /* ignore */
+  }
+  writeMeta({ id: PANEL_ID, type: "clear" });
+  console.log("\nGit Graph closed.");
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard handling
+// ---------------------------------------------------------------------------
+
+function handleKeyByte(byte: number): boolean {
+  switch (byte) {
+    case 0x03: // Ctrl+C
+    case 0x71: // q
+      cleanup();
+      return true;
+    case 0x6a: // j
+      moveSelection(1);
+      return true;
+    case 0x6b: // k
+      moveSelection(-1);
+      return true;
+    case 0x0d: // Enter — toggle selection
+      if (selectedCommit !== null) selectCommit(null);
+      else if (commits.length > 0) selectCommit(scrollOffset);
+      return true;
+    case 0x6e: // n
+      jumpToDecorated(1);
+      return true;
+    case 0x70: // p
+      jumpToDecorated(-1);
+      return true;
+    case 0x72: // r
+      refreshModel(true);
+      return true;
+    case 0x20: // space
+      pageScroll(1);
+      return true;
+    case 0x62: // b
+      pageScroll(-1);
+      return true;
+    case 0x67: // g
+      scrollOffset = 0;
+      clampScroll();
+      render(true);
+      return true;
+    case 0x47: // G
+      scrollOffset = Number.MAX_SAFE_INTEGER;
+      clampScroll();
+      render(true);
+      return true;
+    case 0x1b:
+      return true; // Esc
+  }
+  return false;
+}
+
+function startStdinReader(): void {
+  if (!process.stdin.isTTY) return;
+  try {
+    process.stdin.setRawMode(true);
+  } catch {
+    return;
+  }
+
+  stdinHandler = (data: Buffer) => {
+    for (let i = 0; i < data.length; i++) {
+      const byte = data[i];
+
+      // Arrow keys: ESC [ A/B
+      if (byte === 0x1b && i + 2 < data.length && data[i + 1] === 0x5b) {
+        const arrow = data[i + 2];
+        i += 2;
+        if (arrow === 0x41) {
+          moveSelection(-1);
+          continue;
+        } // Up
+        if (arrow === 0x42) {
+          moveSelection(1);
+          continue;
+        } // Down
+        continue;
+      }
+
+      handleKeyByte(byte);
+    }
+  };
+
+  process.stdin.resume();
+  process.stdin.on("data", stdinHandler);
 }
 
 // ---------------------------------------------------------------------------
@@ -694,64 +1081,65 @@ function handleEvent(event: Record<string, unknown>): void {
   const evtId = event["id"] as string;
   const evtType = event["event"] as string;
 
+  if (evtId === "__terminal__" && evtType === "resize") {
+    if (syncPanelSizeFromEvent(event)) render(true);
+    return;
+  }
+
   if (evtId !== PANEL_ID) return;
 
-  const ex = (event["x"] as number) ?? 0;
-  const ey = (event["y"] as number) ?? 0;
+  const x = (event["x"] as number) ?? 0;
+  const y = (event["y"] as number) ?? 0;
 
   switch (evtType) {
-    case "close": {
-      writeMeta({ id: PANEL_ID, type: "clear" });
-      console.log("\nGit graph closed.");
-      process.exit(0);
+    case "click": {
+      const hit = hitTest(x, y);
+      updateHoverState(hit);
+      if (hit.area === "close") {
+        cleanup();
+        return;
+      }
+      if (hit.area === "refresh") {
+        refreshModel(true);
+        return;
+      }
+      if (hit.area === "commit-row") {
+        selectedCommit = selectedCommit === hit.index ? null : hit.index;
+        render(true);
+        return;
+      }
       break;
     }
 
-    case "click": {
-      const hit = hitTest(ex, ey);
-      if (hit.area === "graph" && hit.rowIdx !== undefined) {
-        if (hit.rowIdx >= 0 && hit.rowIdx < commits.length) {
-          selectedCommit = selectedCommit === hit.rowIdx ? null : hit.rowIdx;
-          render();
-        }
-      }
+    case "mousemove":
+    case "mouseenter": {
+      const hit = hitTest(x, y);
+      if (updateHoverState(hit)) render();
+      break;
+    }
+
+    case "mouseleave": {
+      hoveredRowIndex = null;
+      hoveredControl = null;
+      render();
       break;
     }
 
     case "wheel": {
       const deltaY = (event["deltaY"] as number) ?? 0;
       const step = deltaY > 0 ? 3 : -3;
-      const maxOffset = Math.max(0, commits.length - visibleCount());
-      scrollOffset = Math.max(0, Math.min(scrollOffset + step, maxOffset));
-      render();
-      break;
-    }
-
-    case "resize": {
-      const newW = (event["width"] as number) ?? panelW;
-      const newH = (event["height"] as number) ?? panelH;
-      if (newW !== panelW || newH !== panelH) {
-        panelW = newW;
-        panelH = newH;
-        render();
-      }
-      break;
-    }
-
-    case "dragend": {
-      // Position updated, no re-render needed
+      scrollBy(step);
       break;
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Event loop
+// Event reader
 // ---------------------------------------------------------------------------
 
 async function readEvents(): Promise<void> {
   if (EVENT_FD === null) return;
-
   try {
     const stream = Bun.file(EVENT_FD).stream();
     const reader = stream.getReader();
@@ -771,12 +1159,12 @@ async function readEvents(): Promise<void> {
         try {
           handleEvent(JSON.parse(line));
         } catch {
-          // invalid JSON
+          /* invalid */
         }
       }
     }
   } catch {
-    // fd closed
+    /* fd closed */
   }
 }
 
@@ -784,43 +1172,45 @@ async function readEvents(): Promise<void> {
 // Startup
 // ---------------------------------------------------------------------------
 
-// Check we are in a git repo
 if (!(await isGitRepo())) {
   console.error("Error: not inside a git repository.");
   process.exit(1);
 }
 
+syncPanelSizeFromTerminal();
+void readEvents();
+
 branchName = await getCurrentBranch();
-await fetchCommits();
+const sig = await fetchCommits();
+lastSignature = sig;
 
 if (commits.length === 0) {
-  console.error("Error: no commits found in this repository.");
+  console.error("No commits found.");
   process.exit(1);
 }
 
-// Count unique branches
-const allDecorations = commits.flatMap((c) => c.decorations);
-const branchNames = new Set(
-  allDecorations
-    .filter((d) => !d.startsWith("tag:") && d !== "HEAD")
-    .map((d) => d.replace("HEAD -> ", "").replace(/^origin\//, "")),
-);
-
+const initStats = computeStats();
+console.log("Git Graph");
 console.log(
-  `Loaded ${commits.length} commits from ${branchNames.size} branches.`,
+  `${commits.length} commits · ${initStats.branches} branches · ${initStats.tags} tags`,
 );
-console.log("Scroll with mouse wheel. Click a commit to inspect.");
-console.log("Press Ctrl+C to exit.\n");
+console.log(
+  "j/k or arrows navigate · Enter inspect · n/p jump branches · space/b page · q quit\n",
+);
 
-// Initial render
-render();
+render(true);
+startStdinReader();
+refreshTimer = setInterval(() => {
+  refreshModel();
+}, POLL_INTERVAL);
 
-// Start event loop
-readEvents();
-
-// Cleanup on SIGINT
-process.on("SIGINT", () => {
-  writeMeta({ id: PANEL_ID, type: "clear" });
-  console.log("\nGit graph closed.");
-  process.exit(0);
+process.on("SIGWINCH", () => {
+  if (syncPanelSizeFromTerminal()) render(true);
 });
+if (process.stdout.isTTY) {
+  process.stdout.on("resize", () => {
+    if (syncPanelSizeFromTerminal()) render(true);
+  });
+}
+process.on("SIGINT", cleanup);
+process.on("SIGTERM", cleanup);
