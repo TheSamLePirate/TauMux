@@ -108,6 +108,7 @@ export class WebServer {
   private server: ReturnType<typeof Bun.serve> | null = null;
   private clients = new Set<WS>();
   private clientCounter = 0;
+  private nativeViewport: { width: number; height: number } | null = null;
 
   // Called when a web client toggles the sidebar
   onSidebarToggle: ((visible: boolean) => void) | null = null;
@@ -215,6 +216,7 @@ export class WebServer {
                 focusedSurfaceId,
                 activeWorkspaceId: state.activeWorkspaceId,
                 sidebarVisible: this.getSidebarVisible(),
+                nativeViewport: this.nativeViewport,
                 workspaces: state.workspaces.map((w) => ({
                   id: w.id,
                   name: w.name,
@@ -423,6 +425,11 @@ export class WebServer {
     }
   }
 
+  setNativeViewport(width: number, height: number): void {
+    this.nativeViewport = { width, height };
+    this.broadcast({ type: "nativeViewport", width, height });
+  }
+
   broadcast(msg: Record<string, unknown>): void {
     const json = JSON.stringify(msg);
     for (const ws of this.clients) {
@@ -612,16 +619,16 @@ body.fullscreen-mode #back-btn { display: grid; }
 .web-panel-content { overflow: hidden; }
 .web-panel-content img { width: 100%; height: 100%; object-fit: contain; display: block; }
 #sidebar {
-  position: absolute; top: 36px; right: 0; bottom: 0; width: 260px;
+  position: absolute; top: 36px; left: 0; bottom: 0; width: 260px;
   background: linear-gradient(180deg, rgba(30,30,46,0.95), rgba(24,24,37,0.98));
-  border-left: 1px solid var(--overlay); overflow-y: auto; overflow-x: hidden;
+  border-right: 1px solid var(--overlay); overflow-y: auto; overflow-x: hidden;
   transition: width 0.2s ease, opacity 0.2s ease;
   backdrop-filter: blur(16px); z-index: 20; user-select: none;
   padding: 10px 0;
 }
-#sidebar.collapsed { width: 0; opacity: 0; pointer-events: none; padding: 0; border-left: none; }
-body:not(.sidebar-open) #pane-container { right: 0; }
-body.sidebar-open #pane-container { right: 260px; transition: right 0.2s ease; }
+#sidebar.collapsed { width: 0; opacity: 0; pointer-events: none; padding: 0; border-right: none; }
+body:not(.sidebar-open) #pane-container { left: 0; }
+body.sidebar-open #pane-container { left: 260px; transition: left 0.2s ease; }
 .sb-section { padding: 6px 12px; }
 .sb-section-title {
   font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
@@ -669,23 +676,23 @@ body.sidebar-open #pane-container { right: 260px; transition: right 0.2s ease; }
   #toolbar-title { display: none; }
   #pane-container { top: 32px; }
   #sidebar { top: 32px; width: 220px; }
-  body.sidebar-open #pane-container { right: 220px; }
+  body.sidebar-open #pane-container { left: 220px; }
   body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 }`;
 
 const APP_HTML = `\
 <div id="toolbar">
+  <button class="toolbar-btn" id="sidebar-toggle-btn" title="Toggle Sidebar">&#x2261;</button>
   <button class="toolbar-btn" id="back-btn" title="Back to split view">&#x2190;</button>
   <select id="workspace-select"></select>
   <span id="toolbar-title">HyperTerm Remote</span>
   <span class="toolbar-spacer"></span>
   <span id="client-count"></span>
-  <button class="toolbar-btn" id="sidebar-toggle-btn" title="Toggle Sidebar">&#x2261;</button>
   <button class="toolbar-btn" id="fullscreen-btn" title="Fullscreen">&#x26F6;</button>
   <div id="status-dot"></div>
 </div>
-<div id="pane-container"></div>
-<div id="sidebar" class="collapsed"></div>`;
+<div id="sidebar" class="collapsed"></div>
+<div id="pane-container"></div>`;
 
 // Client-side JS — uses only regular strings (no backticks) to be safe
 // inside the concatenated HTML output.
@@ -729,6 +736,7 @@ const APP_JS = [
   "var focusedSurfaceId = null;",
   "var fullscreenSurfaceId = null;",
   "var panels = {};",
+  "var nativeViewport = null;", // { width, height } from native webview
   "var sidebarOpen = false;",
   "var sidebarNotifs = [];",
   "var sidebarLogs = [];",
@@ -900,11 +908,32 @@ const APP_JS = [
   "  if (fullscreenSurfaceId === surfaceId) exitFullscreen();",
   "}",
   "",
+  "function applyMirrorScale() {",
+  "  if (!nativeViewport) { container.style.transform = ''; container.style.width = ''; container.style.height = ''; container.style.transformOrigin = ''; container.style.left = ''; container.style.top = ''; container.style.right = '0'; container.style.bottom = '0'; return; }",
+  "  var toolbarH = 36;",
+  "  var sidebarW = sidebarOpen ? (sidebarEl.offsetWidth || 260) : 0;",
+  "  var availW = document.documentElement.clientWidth - sidebarW;",
+  "  var availH = document.documentElement.clientHeight - toolbarH;",
+  "  if (availW <= 0 || availH <= 0) return;",
+  "  var scale = Math.min(availW / nativeViewport.width, availH / nativeViewport.height);",
+  "  var scaledW = nativeViewport.width * scale;",
+  "  var scaledH = nativeViewport.height * scale;",
+  "  container.style.right = 'auto';",
+  "  container.style.bottom = 'auto';",
+  "  container.style.width = nativeViewport.width + 'px';",
+  "  container.style.height = nativeViewport.height + 'px';",
+  "  container.style.transformOrigin = 'top left';",
+  "  container.style.transform = 'scale(' + scale + ')';",
+  "  container.style.left = Math.round(sidebarW + (availW - scaledW) / 2) + 'px';",
+  "  container.style.top = Math.round(toolbarH + (availH - scaledH) / 2) + 'px';",
+  "}",
+  "",
   "function applyLayout() {",
+  "  applyMirrorScale();",
   "  var ws = workspaces.find(function(w) { return w.id === activeWorkspaceId; });",
   "  if (!ws) return;",
-  "  var cw = container.offsetWidth;",
-  "  var ch = container.offsetHeight;",
+  "  var cw = nativeViewport ? nativeViewport.width : container.offsetWidth;",
+  "  var ch = nativeViewport ? nativeViewport.height : container.offsetHeight;",
   "  if (!cw || !ch) return;",
   "  var rects = computeRects(ws.layout, { x: 0, y: 0, w: cw, h: ch });",
   "  // Track which surfaces are in the layout",
@@ -1036,12 +1065,14 @@ const APP_JS = [
   "  pane.termEl.appendChild(el);",
   "  if (msg.interactive) { el.classList.add('interactive'); setupPanelMouse(contentEl, id, msg.surfaceId); }",
   "  panels[id] = { el: el, contentEl: contentEl, meta: msg };",
-  "  // Send terminal resize with pixel dimensions so scripts can size panels accurately",
-  "  var rect = pane.termEl.getBoundingClientRect();",
-  "  var pxW = Math.round(rect.width); var pxH = Math.round(rect.height);",
-  "  if (pxW > 0 && pxH > 0 && pane.term) {",
-  "    sendMsg({ type: 'panelMouseEvent', surfaceId: msg.surfaceId, id: '__terminal__', event: 'resize',",
-  "      cols: pane.term.cols, rows: pane.term.rows, pxWidth: pxW, pxHeight: pxH });",
+  "  // Send terminal resize with pixel dimensions when not mirroring native app",
+  "  if (!nativeViewport) {",
+  "    var rect = pane.termEl.getBoundingClientRect();",
+  "    var pxW = Math.round(rect.width); var pxH = Math.round(rect.height);",
+  "    if (pxW > 0 && pxH > 0 && pane.term) {",
+  "      sendMsg({ type: 'panelMouseEvent', surfaceId: msg.surfaceId, id: '__terminal__', event: 'resize',",
+  "        cols: pane.term.cols, rows: pane.term.rows, pxWidth: pxW, pxHeight: pxH });",
+  "    }",
   "  }",
   "}",
   "",
@@ -1183,6 +1214,7 @@ const APP_JS = [
   "          surfaceTitles[s.id] = s.title;",
   "          surfaceSizes[s.id] = { cols: s.cols, rows: s.rows };",
   "        });",
+  "        if (msg.nativeViewport) nativeViewport = msg.nativeViewport;",
   "        if (msg.sidebarVisible !== undefined) setSidebarOpen(msg.sidebarVisible);",
   "        updateWorkspaceSelect();",
   "        updatePaneTitles();",
@@ -1211,6 +1243,10 @@ const APP_JS = [
   "        break;",
   '      case "surfaceClosed":',
   "        removePane(msg.surfaceId);",
+  "        break;",
+  '      case "nativeViewport":',
+  "        nativeViewport = { width: msg.width, height: msg.height };",
+  "        applyLayout();",
   "        break;",
   '      case "layoutChanged":',
   "        workspaces = msg.workspaces || [];",
@@ -1273,15 +1309,6 @@ const APP_JS = [
   "  if (resizeTimer) clearTimeout(resizeTimer);",
   "  resizeTimer = setTimeout(function() {",
   "    if (!fullscreenSurfaceId) applyLayout();",
-  "    for (var sid in panes) {",
-  "      var rp = panes[sid];",
-  "      var rect = rp.termEl.getBoundingClientRect();",
-  "      var pxW = Math.round(rect.width); var pxH = Math.round(rect.height);",
-  "      if (pxW > 0 && pxH > 0 && rp.term) {",
-  "        sendMsg({ type: 'panelMouseEvent', surfaceId: sid, id: '__terminal__', event: 'resize',",
-  "          cols: rp.term.cols, rows: rp.term.rows, pxWidth: pxW, pxHeight: pxH });",
-  "      }",
-  "    }",
   "  }, 100);",
   "});",
   "",

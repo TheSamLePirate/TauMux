@@ -166,7 +166,16 @@ function mountTitlebarIcons() {
 
 function handleResize() {
   if (resizeTimer) clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => surfaceManager.resizeAll(), 200);
+  resizeTimer = setTimeout(() => {
+    surfaceManager.resizeAll();
+    const rect = terminalContainerEl.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      rpc.send("viewportSize", {
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      });
+    }
+  }, 200);
 }
 
 const resizeObserver = new ResizeObserver(handleResize);
@@ -175,6 +184,13 @@ mountTitlebarIcons();
 
 setTimeout(() => {
   rpc.send("resize", { surfaceId: "__init__", cols: 80, rows: 24 });
+  const rect = terminalContainerEl.getBoundingClientRect();
+  if (rect.width > 0 && rect.height > 0) {
+    rpc.send("viewportSize", {
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    });
+  }
 }, 300);
 
 const palette = new CommandPalette();

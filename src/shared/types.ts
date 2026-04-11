@@ -121,6 +121,7 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       // Terminal I/O (routed by surfaceId)
       writeStdin: { surfaceId: string; data: string };
       resize: { surfaceId: string; cols: number; rows: number };
+      viewportSize: { width: number; height: number };
 
       // Surface lifecycle
       createSurface: { cwd?: string };

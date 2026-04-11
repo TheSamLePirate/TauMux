@@ -70,6 +70,9 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       writeStdin: (payload) => {
         sessions.writeStdin(payload.surfaceId, payload.data);
       },
+      viewportSize: (payload) => {
+        webServer?.setNativeViewport(payload.width, payload.height);
+      },
       resize: (payload) => {
         if (!initialResizeReceived) {
           initialResizeReceived = true;
