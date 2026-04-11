@@ -5,6 +5,12 @@ import { Panel } from "./panel";
 export class PanelManager {
   private panels = new Map<string, Panel>();
   private pendingData = new Map<string, Uint8Array>();
+  private lastTerminalResize: {
+    cols: number;
+    rows: number;
+    pxWidth: number;
+    pxHeight: number;
+  } | null = null;
 
   constructor(
     private container: HTMLElement,
@@ -13,6 +19,7 @@ export class PanelManager {
   ) {
     // Update inline panels on scroll
     term.onScroll(() => this.updateInlinePanels());
+    term.onResize(() => this.updateInlinePanels());
   }
 
   handleMeta(msg: SidebandMetaMessage): void {
@@ -47,6 +54,8 @@ export class PanelManager {
       this.onEvent(event);
     });
     this.panels.set(msg.id, panel);
+    this.lastTerminalResize = null;
+    this.emitTerminalResizeIfNeeded();
 
     // Resolve anchor row for inline panels
     if (panel.isInline) {
@@ -85,6 +94,37 @@ export class PanelManager {
         panel.updateInlinePosition(viewportY, cellHeight, visibleRows);
       }
     }
+
+    this.emitTerminalResizeIfNeeded();
+  }
+
+  private emitTerminalResizeIfNeeded(): void {
+    const rect = this.container.getBoundingClientRect();
+    const pxWidth = Math.round(rect.width);
+    const pxHeight = Math.round(rect.height);
+    const cols = this.term.cols;
+    const rows = this.term.rows;
+
+    if (pxWidth <= 0 || pxHeight <= 0 || cols <= 0 || rows <= 0) return;
+
+    if (
+      this.lastTerminalResize?.cols === cols &&
+      this.lastTerminalResize?.rows === rows &&
+      this.lastTerminalResize?.pxWidth === pxWidth &&
+      this.lastTerminalResize?.pxHeight === pxHeight
+    ) {
+      return;
+    }
+
+    this.lastTerminalResize = { cols, rows, pxWidth, pxHeight };
+    this.onEvent({
+      id: "__terminal__",
+      event: "resize",
+      cols,
+      rows,
+      pxWidth,
+      pxHeight,
+    });
   }
 
   private resolveAnchorRow(msg: SidebandMetaMessage): number {
