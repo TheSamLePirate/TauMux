@@ -63,6 +63,7 @@ export class SessionManager {
       this.closeSurface(id);
     };
 
+    console.log(`[session] spawning ${id} with shell ${this.shell} at cwd ${surfaceCwd}`);
     // Spawn the PTY
     pty.spawn({
       shell: this.shell,

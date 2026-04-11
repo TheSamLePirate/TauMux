@@ -113,6 +113,9 @@ export class WebServer {
   // Called when a web client toggles the sidebar
   onSidebarToggle: ((visible: boolean) => void) | null = null;
 
+  // Called when a web client selects/focuses a surface
+  onFocusSurface: ((surfaceId: string) => void) | null = null;
+
   // Called when a web client clears notifications
   onClearNotifications: (() => void) | null = null;
 
@@ -270,6 +273,11 @@ export class WebServer {
               case "sidebarToggle": {
                 const visible = msg["visible"] as boolean;
                 this.onSidebarToggle?.(visible);
+                break;
+              }
+              case "focusSurface": {
+                const surfaceId = msg["surfaceId"] as string;
+                if (surfaceId) this.onFocusSurface?.(surfaceId);
                 break;
               }
               case "clearNotifications": {
@@ -559,10 +567,10 @@ html, body {
 .pane.notify-glow { animation: notify-glow-pulse 2s ease-in-out infinite; z-index: 10; }
 .pane.notify-glow .pane-bar { animation: notify-bar-flash 2s ease-in-out infinite; }
 .pane-bar {
-  position: relative; top: 0; left: 0; right: 0; height: 24px; z-index: 5;
-  display: flex; align-items: center; padding: 0 8px; gap: 6px;
+  position: relative; top: 0; left: 0; right: 0; height: 31px; z-index: 5;
+  display: flex; align-items: center; padding: 0 10px 0 12px; gap: 6px;
   background: var(--surface); border-bottom: 1px solid var(--overlay);
-  font-size: 11px; color: var(--subtext); user-select: none; flex-shrink: 0;
+  font-size: 10px; color: var(--subtext); user-select: none; flex-shrink: 0;
 }
 .pane-bar-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pane-bar-btn {
@@ -571,7 +579,7 @@ html, body {
   transition: background 0.15s, color 0.15s; padding: 0; flex-shrink: 0;
 }
 .pane-bar-btn:hover { background: var(--overlay); color: var(--text); }
-.pane-term { position: absolute; top: 24px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+.pane-term { position: absolute; top: 31px; left: 0; right: 0; bottom: 0; overflow: hidden; }
 .pane .xterm { height: 100%; }
 .xterm-viewport { background-color: transparent !important; }
 body.fullscreen-mode #pane-container .pane { display: none; }
@@ -717,7 +725,7 @@ const APP_JS = [
   "var TERM_OPTS = {",
   "  theme: TERM_THEME,",
   "  fontFamily: \"'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Fira Code', monospace\",",
-  "  fontSize: 14, lineHeight: 1.2,",
+  "  fontSize: 13, lineHeight: 1.2,",
   '  cursorBlink: true, cursorStyle: "bar",',
   "  scrollback: 10000",
   "};",
@@ -807,12 +815,14 @@ const APP_JS = [
   "}",
   "",
   "function selectPane(surfaceId) {",
+  "  if (focusedSurfaceId === surfaceId) return;",
   "  focusedSurfaceId = surfaceId;",
   "  for (var fid in panes) {",
   "    if (fid === surfaceId) { panes[fid].el.classList.add('focused'); panes[fid].term.focus(); }",
   "    else panes[fid].el.classList.remove('focused');",
   "  }",
   "  clearGlow(surfaceId);",
+  "  sendMsg({ type: 'focusSurface', surfaceId: surfaceId });",
   "}",
   "",
   "function triggerGlow(surfaceId) {",
@@ -1009,6 +1019,29 @@ const APP_JS = [
   "      try { p.term.resize(sz.cols, sz.rows); } catch(e) {}",
   "    }",
   "  }",
+  "  scaleTerminals();",
+  "}",
+  "",
+  "function scaleTerminals() {",
+  "  if (!nativeViewport) return;",
+  "  requestAnimationFrame(function() {",
+  "    for (var sid in panes) {",
+  "      var p = panes[sid];",
+  "      if (!p.term || !p.termEl) continue;",
+  "      var xtermEl = p.termEl.querySelector('.xterm');",
+  "      if (!xtermEl) continue;",
+  "      xtermEl.style.transform = '';",
+  "      var cw = p.termEl.clientWidth;",
+  "      var ch = p.termEl.clientHeight;",
+  "      var screen = xtermEl.querySelector('.xterm-screen');",
+  "      if (!screen || cw <= 0 || ch <= 0) continue;",
+  "      var sw = screen.offsetWidth;",
+  "      var sh = screen.offsetHeight;",
+  "      if (sw <= 0 || sh <= 0) continue;",
+  "      xtermEl.style.transformOrigin = 'top left';",
+  "      xtermEl.style.transform = 'scale(' + (cw / sw) + ',' + (ch / sh) + ')';",
+  "    }",
+  "  });",
   "}",
   "",
   "wsSelectEl.addEventListener('change', function() {",
@@ -1235,6 +1268,7 @@ const APP_JS = [
   "          surfaceSizes[msg.surfaceId] = { cols: msg.cols, rows: msg.rows };",
   "          var rp = panes[msg.surfaceId];",
   "          if (rp) { try { rp.term.resize(msg.cols, msg.rows); } catch(e) {} }",
+  "          scaleTerminals();",
   "        }",
   "        break;",
   '      case "surfaceCreated":',
@@ -1247,6 +1281,7 @@ const APP_JS = [
   '      case "nativeViewport":',
   "        nativeViewport = { width: msg.width, height: msg.height };",
   "        applyLayout();",
+  "        scaleTerminals();",
   "        break;",
   '      case "layoutChanged":',
   "        workspaces = msg.workspaces || [];",
@@ -1254,6 +1289,7 @@ const APP_JS = [
   "        focusedSurfaceId = msg.focusedSurfaceId || focusedSurfaceId;",
   "        updateWorkspaceSelect();",
   "        applyLayout();",
+  "        applySizes();",
   "        renderSidebar();",
   "        break;",
   '      case "focusChanged":',
@@ -1309,6 +1345,7 @@ const APP_JS = [
   "  if (resizeTimer) clearTimeout(resizeTimer);",
   "  resizeTimer = setTimeout(function() {",
   "    if (!fullscreenSurfaceId) applyLayout();",
+  "    scaleTerminals();",
   "  }, 100);",
   "});",
   "",

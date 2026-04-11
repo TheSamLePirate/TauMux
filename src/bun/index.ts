@@ -546,6 +546,13 @@ function setupWebServerCallbacks(ws: WebServer) {
       payload: { visible },
     });
   };
+  ws.onFocusSurface = (surfaceId) => {
+    focusedSurfaceId = surfaceId;
+    // Tell native webview to focus this surface
+    sendWebviewAction("focusSurface", { surfaceId });
+    // Broadcast to all web clients
+    ws.broadcast({ type: "focusChanged", surfaceId });
+  };
   ws.onClearNotifications = () => {
     // Clear via the RPC handler which dispatches to native + broadcasts
     socketHandler("notification.clear", {});
