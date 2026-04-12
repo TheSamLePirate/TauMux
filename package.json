@@ -13,6 +13,7 @@
     "build:dev": "electrobun build --env=dev",
     "build:canary": "electrobun build --env=canary",
     "build:stable": "electrobun build --env=stable",
+    "build:cli": "bun scripts/build-cli.ts",
     "package:mac": "electrobun build --env=stable",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

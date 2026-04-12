@@ -13,6 +13,7 @@ import { CommandPalette, type PaletteCommand } from "./command-palette";
 import { createIcon } from "./icons";
 import { showPromptDialog } from "./prompt-dialog";
 import { SettingsPanel } from "./settings-panel";
+import { showToast } from "./toast";
 
 // Declared before rpc so handlers can reference it; assigned after rpc is created.
 // eslint-disable-next-line prefer-const
@@ -995,6 +996,18 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
         (payload["message"] as string) || "",
         payload["source"] as string | undefined,
       );
+      break;
+    }
+    case "showToast": {
+      const message = (payload["message"] as string) || "";
+      const level =
+        (payload["level"] as
+          | "info"
+          | "success"
+          | "warning"
+          | "error"
+          | undefined) ?? "info";
+      if (message) showToast(message, level);
       break;
     }
   }

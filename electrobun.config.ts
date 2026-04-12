@@ -45,4 +45,7 @@ export default {
       bundleCEF: false,
     },
   },
+  scripts: {
+    postWrap: "scripts/post-wrap.ts",
+  },
 } satisfies ElectrobunConfig;

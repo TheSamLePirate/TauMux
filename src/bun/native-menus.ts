@@ -26,6 +26,7 @@ export const MENU_ACTIONS = {
   openSettings: "view.open-settings",
   openProjectReadme: "help.open-project-readme",
   setWorkspaceColor: "workspace.set-color",
+  installHtCli: "app.install-ht-cli",
 } as const;
 
 export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
@@ -39,6 +40,11 @@ export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
           label: "Settings\u2026",
           action: MENU_ACTIONS.openSettings,
           accelerator: "CmdOrCtrl+,",
+        },
+        { type: "divider" },
+        {
+          label: "Install 'ht' Command in PATH",
+          action: MENU_ACTIONS.installHtCli,
         },
         { type: "divider" },
         {

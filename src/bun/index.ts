@@ -6,8 +6,14 @@ import {
   Utils,
 } from "electrobun/bun";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  writeFileSync,
+} from "node:fs";
 import type { HyperTermRPC, PersistedLayout, PaneNode } from "../shared/types";
 import { SessionManager } from "./session-manager";
 import { SocketServer } from "./socket-server";
@@ -412,7 +418,75 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
         fileURLToPath(new URL("../../README.md", import.meta.url)),
       );
       break;
+    case MENU_ACTIONS.installHtCli:
+      void installHtCli();
+      break;
   }
+}
+
+function toast(
+  message: string,
+  level: "info" | "success" | "warning" | "error" = "info",
+): void {
+  sendWebviewAction("showToast", { message, level });
+}
+
+function resolveBundledHtBinary(): string {
+  // process.execPath inside the wrapped app points at Contents/MacOS/<launcher>
+  // dirname(dirname(...)) → Contents/
+  return join(dirname(dirname(process.execPath)), "MacOS", "ht");
+}
+
+async function installHtCli(): Promise<void> {
+  const bundled = resolveBundledHtBinary();
+  const target = "/usr/local/bin/ht";
+
+  if (!existsSync(bundled)) {
+    toast(
+      `ht CLI binary not found at ${bundled}. Build a packaged release first.`,
+      "error",
+    );
+    return;
+  }
+
+  // Already installed and pointing at us? No-op.
+  try {
+    const current = readlinkSync(target);
+    if (current === bundled) {
+      toast("ht CLI is already installed.", "info");
+      return;
+    }
+  } catch {
+    // Not a symlink (or missing) — fall through to install.
+  }
+
+  // Fast path: try ln -sf directly (works if /usr/local/bin exists and is writable).
+  const plain = Bun.spawnSync(["/bin/ln", "-sf", bundled, target]);
+  if (plain.exitCode === 0) {
+    toast(`Installed ht → ${target}`, "success");
+    return;
+  }
+
+  // Fallback: request administrator privileges via osascript.
+  const quoted = bundled.replaceAll('"', '\\"');
+  const shellCmd = `mkdir -p /usr/local/bin && ln -sf \\"${quoted}\\" /usr/local/bin/ht`;
+  const appleScript = `do shell script "${shellCmd}" with administrator privileges`;
+  const sudo = Bun.spawnSync(["/usr/bin/osascript", "-e", appleScript], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  if (sudo.exitCode === 0) {
+    toast(`Installed ht → ${target}`, "success");
+    return;
+  }
+
+  const stderr = new TextDecoder().decode(sudo.stderr).trim();
+  if (/User canceled|cancelled|(-128)/i.test(stderr)) {
+    toast("ht CLI installation cancelled.", "warning");
+    return;
+  }
+  toast(`Failed to install ht CLI${stderr ? `: ${stderr}` : ""}`, "error");
 }
 
 async function handlePaste(): Promise<void> {
