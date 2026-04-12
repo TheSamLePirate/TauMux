@@ -1,3 +1,5 @@
+import type { ChannelDescriptor, ChannelMap } from "../shared/types";
+
 interface BunTerminal {
   write(data: string | Uint8Array): void;
   resize(cols: number, rows: number): void;
@@ -18,6 +20,8 @@ export interface PtySpawnOptions {
   rows: number;
   env?: Record<string, string>;
   cwd?: string;
+  /** Extra sideband channels beyond the default meta/data/events */
+  extraChannels?: ChannelDescriptor[];
 }
 
 export interface SidebandFds {
@@ -25,6 +29,13 @@ export interface SidebandFds {
   dataFd: number | null; // fd4: child writes binary data → parent reads
   eventFd: number | null; // fd5: parent writes event JSONL → child reads
 }
+
+/** Default channels: meta (fd3), data (fd4), events (fd5) */
+const DEFAULT_CHANNELS: ChannelDescriptor[] = [
+  { name: "meta", fd: 3, direction: "out", encoding: "jsonl" },
+  { name: "data", fd: 4, direction: "out", encoding: "binary" },
+  { name: "events", fd: 5, direction: "in", encoding: "jsonl" },
+];
 
 export class PtyManager {
   private proc: BunSubprocess | null = null;
@@ -37,6 +48,7 @@ export class PtyManager {
     dataFd: null,
     eventFd: null,
   };
+  private _channels: ChannelDescriptor[] = [];
 
   // Current terminal dimensions
   private _cols = 80;
@@ -64,8 +76,14 @@ export class PtyManager {
     return this._exitCode;
   }
 
+  /** Backward-compat getter for the 3 default fds */
   get sidebandFds(): SidebandFds {
     return { ...this._sidebandFds };
+  }
+
+  /** Full channel list (default + extra) */
+  get channels(): readonly ChannelDescriptor[] {
+    return this._channels;
   }
 
   spawn(opts: PtySpawnOptions): number {
@@ -75,6 +93,24 @@ export class PtyManager {
     this._rows = opts.rows;
     this._sidebandFds = { metaFd: null, dataFd: null, eventFd: null };
 
+    // Build channel list: defaults + any extras
+    const allChannels = [...DEFAULT_CHANNELS, ...(opts.extraChannels ?? [])];
+
+    // Build stdio array: slots 0-2 = stdin/stdout/stderr, 3+ = pipes for channels
+    const maxFd = Math.max(...allChannels.map((c) => c.fd));
+    const stdioArr: [
+      undefined,
+      undefined,
+      undefined,
+      ...(undefined | "pipe")[],
+    ] = [undefined, undefined, undefined];
+    for (let i = 3; i <= maxFd; i++) {
+      stdioArr[i] = allChannels.some((c) => c.fd === i) ? "pipe" : undefined;
+    }
+
+    // Build channel map for HYPERTERM_CHANNELS env var
+    const channelMap: ChannelMap = { version: 1, channels: allChannels };
+
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
       ...opts.env,
@@ -82,9 +118,14 @@ export class PtyManager {
       COLORTERM: "truecolor",
       LANG: process.env["LANG"] || "en_US.UTF-8",
       LC_ALL: process.env["LC_ALL"] || "",
+      // Protocol version
+      HYPERTERM_PROTOCOL_VERSION: "1",
+      // Legacy env vars for backward compat
       HYPERTERM_META_FD: "3",
       HYPERTERM_DATA_FD: "4",
       HYPERTERM_EVENT_FD: "5",
+      // New structured channel map
+      HYPERTERM_CHANNELS: JSON.stringify(channelMap),
       HT_SOCKET_PATH: "/tmp/hyperterm.sock",
     };
 
@@ -106,23 +147,38 @@ export class PtyManager {
           if (str) this.onStdout?.(str);
         },
       },
-      stdio: [undefined, undefined, undefined, "pipe", "pipe", "pipe"],
+      stdio: stdioArr,
     }) as unknown as BunSubprocess;
 
     this._pid = this.proc.pid;
 
-    // Capture extra fd numbers from parent side
+    // Capture parent-side fd numbers and populate channel descriptors
     const stdio = (this.proc as unknown as { stdio: unknown[] }).stdio;
+    this._channels = [];
     if (stdio) {
+      for (const ch of allChannels) {
+        const parentFd =
+          typeof stdio[ch.fd] === "number" ? (stdio[ch.fd] as number) : null;
+        if (parentFd !== null) {
+          this._channels.push({ ...ch, fd: parentFd });
+        }
+      }
+
+      // Backward-compat: populate legacy SidebandFds from channel list
       this._sidebandFds = {
-        metaFd: typeof stdio[3] === "number" ? stdio[3] : null,
-        dataFd: typeof stdio[4] === "number" ? stdio[4] : null,
-        eventFd: typeof stdio[5] === "number" ? stdio[5] : null,
+        metaFd: this.getChannelFd("meta"),
+        dataFd: this.getChannelFd("data"),
+        eventFd: this.getChannelFd("events"),
       };
     }
 
     this.trackExit();
     return this.proc.pid;
+  }
+
+  /** Look up a channel's parent-side fd by name */
+  getChannelFd(name: string): number | null {
+    return this._channels.find((c) => c.name === name)?.fd ?? null;
   }
 
   write(data: string): void {

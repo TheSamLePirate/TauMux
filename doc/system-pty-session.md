@@ -33,6 +33,9 @@ When HyperTerm spawns a new shell (e.g., `zsh` or `bash`), it injects a specific
 | `HYPERTERM_META_FD` | The File Descriptor number mapped to the Sideband Meta channel (usually `3`). |
 | `HYPERTERM_DATA_FD` | The File Descriptor number mapped to the Sideband Binary channel (usually `4`). |
 | `HYPERTERM_EVENT_FD`| The File Descriptor number mapped to the Sideband Event channel (usually `5`). |
+| `HYPERTERM_CHANNELS` | JSON-encoded channel map describing all available sideband channels (names, fds, directions, encodings). |
+| `HYPERTERM_PROTOCOL_VERSION` | Sideband protocol version (currently `"1"`). |
+| `HYPERTERM_DEBUG` | Set to `"1"` to enable debug logging in client libraries. |
 
 ---
 

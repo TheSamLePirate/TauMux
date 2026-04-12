@@ -39,27 +39,33 @@ Fixed panels are raw visual overlays with zero chrome.
 
 ## 2. Rendering Types
 
-The UI supports four different ways of rendering binary data sent from your scripts.
+The `type` field in sideband metadata is an open string. The panel system uses a **content renderer registry** to dispatch rendering. Four renderers are built-in, and custom renderers can be registered at runtime (see `content-renderers.ts`).
 
-### 1. Images (`"type": "image"`)
+### Built-in Renderers
+
+#### 1. Images (`"type": "image"`)
 - Renders `png`, `jpeg`, `webp`, or `gif` formats.
 - The UI takes the raw bytes, creates an isolated `Blob URL`, and mounts it in a standard HTML `<img>` tag.
 - Images automatically scale to fit the width/height of the panel while maintaining their aspect ratio (`object-fit: contain`).
 
-### 2. SVG (`"type": "svg"`)
+#### 2. SVG (`"type": "svg"`)
 - Expects a raw XML/SVG string.
 - Injected directly into the DOM.
 - Perfect for rendering crisp, scalable charts (e.g., via Matplotlib or D3.js) without pixelation.
 
-### 3. HTML (`"type": "html"`)
+#### 3. HTML (`"type": "html"`)
 - Expects a raw HTML string.
 - Injected directly into the DOM.
 - Allows you to build full graphical interfaces (buttons, sliders, forms) inside the terminal.
 
-### 4. Canvas2D (`"type": "canvas2d"`)
+#### 4. Canvas2D (`"type": "canvas2d"`)
 - Expects raw image bytes (usually PNG).
 - Instead of using an `<img>` tag, the UI decodes the image via `createImageBitmap` and paints it onto an HTML5 `<canvas>` element using `ctx.drawImage()`.
 - Useful for high-performance visual updates where manipulating DOM nodes is too slow.
+
+### Custom Renderers
+
+Any string is a valid `type`. To add support for a new type, register a `ContentRenderer` in the webview via `registerRenderer(type, renderer)`. The renderer provides `mount()`, `update()`, and optional `destroy()` methods. Unknown types with no registered renderer are silently ignored.
 
 ---
 

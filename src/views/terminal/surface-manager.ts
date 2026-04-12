@@ -344,6 +344,22 @@ export class SurfaceManager {
     this.surfaces.get(surfaceId)?.panelManager.handleData(id, base64);
   }
 
+  handleSidebandBinary(
+    surfaceId: string,
+    id: string,
+    binary: Uint8Array,
+  ): void {
+    this.surfaces.get(surfaceId)?.panelManager.handleBinary(id, binary);
+  }
+
+  handleSidebandDataFailed(
+    surfaceId: string,
+    id: string,
+    reason: string,
+  ): void {
+    this.surfaces.get(surfaceId)?.panelManager.handleDataFailed(id, reason);
+  }
+
   resizeAll(): void {
     this.applyLayout();
   }

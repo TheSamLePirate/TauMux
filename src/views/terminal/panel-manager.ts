@@ -2,9 +2,18 @@ import type { Terminal } from "xterm";
 import type { SidebandMetaMessage, PanelEvent } from "../../shared/types";
 import { Panel } from "./panel";
 
+interface PendingEntry {
+  data: Uint8Array;
+  timestamp: number;
+}
+
+const PENDING_TTL_MS = 60_000;
+const PENDING_PRUNE_INTERVAL_MS = 30_000;
+
 export class PanelManager {
   private panels = new Map<string, Panel>();
-  private pendingData = new Map<string, Uint8Array>();
+  private pendingData = new Map<string, PendingEntry>();
+  private pendingPruneTimer: ReturnType<typeof setInterval> | null = null;
   private lastTerminalResize: {
     cols: number;
     rows: number;
@@ -20,6 +29,16 @@ export class PanelManager {
     // Update inline panels on scroll
     term.onScroll(() => this.updateInlinePanels());
     term.onResize(() => this.updateInlinePanels());
+
+    // Prune stale pending data entries
+    this.pendingPruneTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [id, entry] of this.pendingData) {
+        if (now - entry.timestamp > PENDING_TTL_MS) {
+          this.pendingData.delete(id);
+        }
+      }
+    }, PENDING_PRUNE_INTERVAL_MS);
   }
 
   handleMeta(msg: SidebandMetaMessage): void {
@@ -66,20 +85,46 @@ export class PanelManager {
     // Check for pending data
     const pending = this.pendingData.get(msg.id);
     if (pending) {
-      panel.setContent(pending);
+      panel.setContent(pending.data);
       this.pendingData.delete(msg.id);
     }
   }
 
   handleData(id: string, base64: string): void {
-    const binary = base64ToUint8Array(base64);
+    this.handleBinary(id, base64ToUint8Array(base64));
+  }
 
+  handleBinary(id: string, binary: Uint8Array): void {
     const panel = this.panels.get(id);
     if (panel) {
       panel.setContent(binary);
     } else {
-      this.pendingData.set(id, binary);
+      this.pendingData.set(id, { data: binary, timestamp: Date.now() });
     }
+  }
+
+  /** Binary read failed — remove the panel that was created for this id (it has no content) */
+  handleDataFailed(id: string, _reason: string): void {
+    // Remove pending data if any was buffered
+    this.pendingData.delete(id);
+    // Remove the panel — it was created by handleMeta but will never receive content
+    const panel = this.panels.get(id);
+    if (panel) {
+      panel.remove();
+      this.panels.delete(id);
+    }
+  }
+
+  destroy(): void {
+    if (this.pendingPruneTimer !== null) {
+      clearInterval(this.pendingPruneTimer);
+      this.pendingPruneTimer = null;
+    }
+    this.pendingData.clear();
+    for (const panel of this.panels.values()) {
+      panel.remove();
+    }
+    this.panels.clear();
   }
 
   /** Call after terminal resize to reposition inline panels */

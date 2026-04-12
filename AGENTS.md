@@ -24,12 +24,13 @@ If a tradeoff is required, choose correctness and simplicity over feature comple
 ```
 Bun Main Process (src/bun/)
   ├── Spawns shell via Bun.spawn with terminal option (real PTY)
-  ├── Manages extra fds: fd3 (metadata), fd4 (binary data), fd5 (events)
+  ├── Extensible sideband channels: default fd3/fd4/fd5, configurable via HYPERTERM_CHANNELS
+  ├── Multi-channel SidebandParser reads metadata + binary from named data channels
   └── Communicates with webview via Electrobun RPC
 
 Electrobun Webview (src/views/terminal/)
   ├── xterm.js renders PTY output
-  ├── Canvas panels float above xterm.js
+  ├── Canvas panels float above xterm.js (content renderer registry for extensible types)
   └── Keyboard always goes to xterm.js → stdin
 ```
 

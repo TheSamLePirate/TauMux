@@ -40,6 +40,18 @@ ht.onEvent((event) => console.log(event));
 
 `boolean` — `true` when running inside HyperTerm Canvas (fd 3 and fd 4 are open).
 
+### `ht.debug`
+
+`boolean` — `true` when `HYPERTERM_DEBUG=1` is set. Enables error logging to stderr.
+
+### `ht.protocolVersion`
+
+`number` — Protocol version from `HYPERTERM_PROTOCOL_VERSION` (default: `1`).
+
+### `ht.channelMap`
+
+`ChannelMap | null` — Parsed channel map from `HYPERTERM_CHANNELS` env var, or `null` if not available.
+
 ### `ht.showSvg(svg, opts?)`
 
 Display an SVG string as a floating panel. Returns the panel ID (`string`).
@@ -101,6 +113,22 @@ ht.update(id, { opacity: 0.5 });
 
 Remove a panel from the terminal.
 
+### `ht.sendMeta(meta)`
+
+Send raw metadata JSON to the meta channel. Use for custom content types.
+
+```typescript
+ht.sendMeta({ id: "md1", type: "markdown", position: "float", byteLength: data.byteLength });
+```
+
+### `ht.sendData(data, channelName?)`
+
+Send raw binary data to a data channel. Defaults to the `"data"` channel (fd 4).
+
+### `ht.getChannelFd(name)`
+
+Get the file descriptor for a named channel from the channel map. Returns `number | null`.
+
 ### `ht.onEvent(callback)`
 
 Listen for events asynchronously. Returns `Promise<void>` that resolves when the event fd closes.
@@ -112,6 +140,16 @@ await ht.onEvent((event) => {
   } else if (event.event === 'close') {
     process.exit(0);
   }
+});
+```
+
+### `ht.onError(callback)`
+
+Listen only for system error events from the terminal. The callback receives `(code, message, ref?)`.
+
+```typescript
+await ht.onError((code, message, ref) => {
+  console.error(`Protocol error [${code}]: ${message}`, ref);
 });
 ```
 
@@ -133,6 +171,7 @@ interface PanelOptions {
   zIndex?: number;                      // Stacking order
   opacity?: number;                     // 0.0 - 1.0
   borderRadius?: number;               // Border radius in px
+  dataChannel?: string;                 // Named data channel (default: "data")
 }
 ```
 
@@ -142,13 +181,16 @@ Events received via `onEvent`:
 
 ```typescript
 interface HyperTermEvent {
-  id: string;        // Panel ID
-  event: string;     // "dragend", "resize", "click", "close"
+  id: string;        // Panel ID (or "__system__" for protocol events)
+  event: string;     // "dragend", "resize", "click", "close", "error"
   x?: number;        // Position or click coordinates
   y?: number;
   width?: number;    // New dimensions (resize)
   height?: number;
   button?: number;   // Mouse button (click)
+  code?: string;     // Error code (system events)
+  message?: string;  // Error message (system events)
+  ref?: string;      // Reference panel ID (system events)
 }
 ```
 
@@ -158,16 +200,19 @@ interface HyperTermEvent {
 | `resize` | `width`, `height` | Panel was resized |
 | `click` | `x`, `y`, `button` | Mouse click (interactive panels only) |
 | `close` | | Panel was closed by the user |
+| `error` | `code`, `message`, `ref` | Protocol error (id=`__system__`) |
 
 ## How It Works
 
-HyperTerm Canvas spawns scripts with three extra file descriptors:
+HyperTerm Canvas spawns scripts with sideband channels (extensible via `HYPERTERM_CHANNELS`). Default channels:
 
 - **fd 3** (`HYPERTERM_META_FD`) — metadata channel (script -> terminal, JSONL)
 - **fd 4** (`HYPERTERM_DATA_FD`) — binary data channel (script -> terminal, raw bytes)
 - **fd 5** (`HYPERTERM_EVENT_FD`) — event channel (terminal -> script, JSONL)
 
-The library writes panel metadata as JSON lines to fd 3 via `Bun.write()`, binary content to fd 4, and reads events from fd 5 via `Bun.file().stream()`. The `byteLength` field in the metadata tells the terminal how many bytes to read from fd 4.
+The library writes panel metadata as JSON lines to fd 3 via `Bun.write()`, binary content to fd 4, and reads events from fd 5 via `Bun.file().stream()`. The `byteLength` field in the metadata tells the terminal how many bytes to read from the data channel. The `dataChannel` field can route binary data to named channels beyond the default.
+
+The library first checks `HYPERTERM_CHANNELS` for the structured channel map, falling back to the legacy individual env vars.
 
 ## Singleton vs Class
 

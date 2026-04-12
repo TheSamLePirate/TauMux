@@ -41,6 +41,18 @@ for event in ht.events():
 
 `bool` — `True` when running inside HyperTerm Canvas (fd 3 and fd 4 are open).
 
+### `ht.debug`
+
+`bool` — `True` when `HYPERTERM_DEBUG=1` is set. Enables error logging to stderr.
+
+### `ht.protocol_version`
+
+`int` — Protocol version from `HYPERTERM_PROTOCOL_VERSION` (default: `1`).
+
+### `ht.channel_map`
+
+`dict | None` — Parsed channel map from `HYPERTERM_CHANNELS` env var, or `None` if not available.
+
 ### `ht.show_svg(svg, ...)`
 
 Display an SVG string as a floating panel.
@@ -133,6 +145,33 @@ for event in ht.events():
         break
 ```
 
+### `ht.send_meta(meta)`
+
+Send raw metadata dict to the meta channel. Use for custom content types.
+
+```python
+ht.send_meta({"id": "md1", "type": "markdown", "position": "float", "byteLength": len(data)})
+```
+
+### `ht.send_data(data)`
+
+Send raw binary data (bytes) to the data channel.
+
+### `ht.get_channel_fd(name)`
+
+Get the fd for a named channel from the channel map. Returns `int | None`.
+
+### `ht.on_error(callback)`
+
+Listen only for system error events. Blocks until the event stream closes.
+
+```python
+def handle_error(code, message, ref):
+    print(f"Protocol error [{code}]: {message}", file=sys.stderr)
+
+ht.on_error(handle_error)
+```
+
 ## Panel Options (kwargs)
 
 These can be passed to any `show_*` method or to `update()`:
@@ -157,16 +196,19 @@ Events arrive as JSON dicts on fd 5:
 | `resize` | `width`, `height` | Panel was resized |
 | `click` | `x`, `y` | Mouse click (interactive panels only) |
 | `close` | | Panel was closed by the user |
+| `error` | `code`, `message`, `ref` | Protocol error (id=`__system__`) |
 
 ## How It Works
 
-HyperTerm Canvas spawns scripts with three extra file descriptors:
+HyperTerm Canvas spawns scripts with sideband channels (extensible via `HYPERTERM_CHANNELS`). Default channels:
 
 - **fd 3** (`HYPERTERM_META_FD`) — metadata channel (script -> terminal, JSONL)
 - **fd 4** (`HYPERTERM_DATA_FD`) — binary data channel (script -> terminal, raw bytes)
 - **fd 5** (`HYPERTERM_EVENT_FD`) — event channel (terminal -> script, JSONL)
 
-The library writes panel metadata as JSON lines to fd 3, binary content (SVG, HTML, image bytes) to fd 4, and reads events from fd 5. The `byteLength` field in the metadata tells the terminal how many bytes to read from fd 4.
+The library writes panel metadata as JSON lines to fd 3, binary content (SVG, HTML, image bytes) to fd 4, and reads events from fd 5. The `byteLength` field in the metadata tells the terminal how many bytes to read from the data channel.
+
+The library first checks `HYPERTERM_CHANNELS` for the structured channel map, falling back to the legacy individual env vars. Set `HYPERTERM_DEBUG=1` to enable error logging to stderr.
 
 ## Examples
 

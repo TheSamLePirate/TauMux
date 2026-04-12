@@ -29,6 +29,9 @@ export class SessionManager {
   onSidebandData:
     | ((surfaceId: string, id: string, data: Uint8Array) => void)
     | null = null;
+  onSidebandDataFailed:
+    | ((surfaceId: string, id: string, reason: string) => void)
+    | null = null;
   onSurfaceClosed: ((surfaceId: string) => void) | null = null;
 
   constructor(shell?: string) {
@@ -63,10 +66,13 @@ export class SessionManager {
       this.closeSurface(id);
     };
 
-    console.log(`[session] spawning ${id} with shell ${this.shell} at cwd ${surfaceCwd}`);
+    console.log(
+      `[session] spawning ${id} with shell ${this.shell} at cwd ${surfaceCwd}`,
+    );
     // Spawn the PTY
     pty.spawn({
       shell: this.shell,
+      args: ["-l"], 
       cols,
       rows,
       cwd: surfaceCwd,
@@ -78,8 +84,28 @@ export class SessionManager {
     let parser: SidebandParser | null = null;
     let eventWriter: EventWriter | null = null;
 
-    if (fds.metaFd !== null && fds.dataFd !== null) {
-      parser = new SidebandParser(fds.metaFd, fds.dataFd);
+    // Create event writer first so parser errors can be sent to the child
+    if (fds.eventFd !== null) {
+      eventWriter = new EventWriter(fds.eventFd);
+      eventWriter.onError = (source, error) => {
+        console.error(`[sideband] ${id} ${source}: ${error.message}`);
+      };
+    }
+
+    if (fds.metaFd !== null) {
+      // Build data channel map from all "out" binary channels
+      const dataChannels = new Map<string, number>();
+      for (const ch of pty.channels) {
+        if (ch.direction === "out" && ch.encoding === "binary") {
+          dataChannels.set(ch.name, ch.fd);
+        }
+      }
+      // Fallback: if no channels detected but legacy dataFd exists, use it
+      if (dataChannels.size === 0 && fds.dataFd !== null) {
+        dataChannels.set("data", fds.dataFd);
+      }
+
+      parser = new SidebandParser(fds.metaFd, dataChannels);
 
       parser.onMeta = (msg) => {
         this.onSidebandMeta?.(id, msg);
@@ -89,11 +115,33 @@ export class SessionManager {
         this.onSidebandData?.(id, contentId, data);
       };
 
-      parser.start();
-    }
+      parser.onError = (source, error) => {
+        console.error(`[sideband] ${id} ${source}: ${error.message}`);
+        // Send error feedback to the child process via fd5
+        eventWriter?.send({
+          id: "__system__",
+          event: "error",
+          code: source,
+          message: error.message,
+        });
+      };
 
-    if (fds.eventFd !== null) {
-      eventWriter = new EventWriter(fds.eventFd);
+      parser.onDataFailed = (contentId, reason) => {
+        console.error(
+          `[sideband] ${id} data-failed for "${contentId}": ${reason}`,
+        );
+        this.onSidebandDataFailed?.(id, contentId, reason);
+        // Also notify the child script via fd5
+        eventWriter?.send({
+          id: "__system__",
+          event: "error",
+          code: "data-timeout",
+          message: reason,
+          ref: contentId,
+        });
+      };
+
+      parser.start();
     }
 
     const surface: Surface = {

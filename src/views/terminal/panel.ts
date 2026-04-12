@@ -1,7 +1,10 @@
 import type { SidebandMetaMessage, PanelEvent } from "../../shared/types";
 import { createIcon } from "./icons";
-
-const decoder = new TextDecoder();
+import {
+  getRenderer,
+  getRendererIcon,
+  getRendererCssClass,
+} from "./content-renderers";
 
 export class Panel {
   readonly id: string;
@@ -15,7 +18,8 @@ export class Panel {
   private resizeHandle: HTMLDivElement;
   private meta: SidebandMetaMessage;
   private onEvent: (e: PanelEvent) => void;
-  private blobUrl: string | null = null;
+  private hasContent = false;
+  private currentTypeCssClass: string | null = null;
 
   constructor(
     meta: SidebandMetaMessage,
@@ -47,7 +51,7 @@ export class Panel {
     const titleGroup = document.createElement("div");
     titleGroup.className = "panel-title-group";
     titleGroup.append(
-      createIcon(resolvePanelIcon(meta.type), "panel-title-icon", 12),
+      createIcon(getRendererIcon(meta.type), "panel-title-icon", 12),
     );
 
     const titleEl = document.createElement("span");
@@ -109,67 +113,14 @@ export class Panel {
   }
 
   setContent(data: Uint8Array): void {
-    const type = this.meta.type;
+    const renderer = getRenderer(this.meta.type);
+    if (!renderer) return;
 
-    if (type === "image") {
-      const mimeMap: Record<string, string> = {
-        png: "image/png",
-        jpeg: "image/jpeg",
-        jpg: "image/jpeg",
-        webp: "image/webp",
-        gif: "image/gif",
-      };
-      const mime = mimeMap[this.meta.format ?? "png"] ?? "image/png";
-      const blob = new Blob([data.buffer as ArrayBuffer], { type: mime });
-      const newUrl = URL.createObjectURL(blob);
-      const oldUrl = this.blobUrl;
-      this.blobUrl = newUrl;
-
-      // Reuse existing <img> element to avoid blank flash between frames
-      let img = this.contentEl.querySelector("img");
-      if (img) {
-        img.src = newUrl;
-        if (oldUrl) URL.revokeObjectURL(oldUrl);
-      } else {
-        if (oldUrl) URL.revokeObjectURL(oldUrl);
-        img = document.createElement("img");
-        img.src = newUrl;
-        img.style.width = "100%";
-        img.style.height = "100%";
-        img.style.objectFit = "contain";
-        img.draggable = false;
-        this.contentEl.innerHTML = "";
-        this.contentEl.appendChild(img);
-      }
-    } else if (type === "svg") {
-      if (this.blobUrl) {
-        URL.revokeObjectURL(this.blobUrl);
-        this.blobUrl = null;
-      }
-      this.contentEl.innerHTML = decoder.decode(data);
-    } else if (type === "html") {
-      if (this.blobUrl) {
-        URL.revokeObjectURL(this.blobUrl);
-        this.blobUrl = null;
-      }
-      this.contentEl.innerHTML = decoder.decode(data);
-    } else if (type === "canvas2d") {
-      if (this.blobUrl) {
-        URL.revokeObjectURL(this.blobUrl);
-        this.blobUrl = null;
-      }
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d")!;
-      const blob = new Blob([data.buffer as ArrayBuffer], {
-        type: "image/png",
-      });
-      createImageBitmap(blob).then((bitmap) => {
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        ctx.drawImage(bitmap, 0, 0);
-      });
-      this.contentEl.innerHTML = "";
-      this.contentEl.appendChild(canvas);
+    if (this.hasContent) {
+      renderer.update(this.contentEl, data, this.meta);
+    } else {
+      renderer.mount(this.contentEl, data, this.meta);
+      this.hasContent = true;
     }
   }
 
@@ -189,9 +140,9 @@ export class Panel {
   }
 
   remove(): void {
-    if (this.blobUrl) {
-      URL.revokeObjectURL(this.blobUrl);
-      this.blobUrl = null;
+    if (this.hasContent) {
+      const renderer = getRenderer(this.meta.type);
+      renderer?.destroy?.(this.contentEl);
     }
     this.el.remove();
   }
@@ -217,13 +168,18 @@ export class Panel {
       "panel-interactive",
       Boolean(this.meta.interactive),
     );
-    this.el.classList.toggle("panel-type-image", this.meta.type === "image");
-    this.el.classList.toggle("panel-type-html", this.meta.type === "html");
-    this.el.classList.toggle("panel-type-svg", this.meta.type === "svg");
-    this.el.classList.toggle(
-      "panel-type-canvas",
-      this.meta.type === "canvas2d",
-    );
+
+    // Remove previous type class, apply current from renderer registry
+    if (this.currentTypeCssClass) {
+      this.el.classList.remove(`panel-type-${this.currentTypeCssClass}`);
+    }
+    const cssClass = getRendererCssClass(this.meta.type);
+    if (cssClass) {
+      this.el.classList.add(`panel-type-${cssClass}`);
+      this.currentTypeCssClass = cssClass;
+    } else {
+      this.currentTypeCssClass = null;
+    }
   }
 
   private applyMeta(m: SidebandMetaMessage): void {
@@ -389,19 +345,4 @@ export class Panel {
       buttons: e.buttons,
     });
   };
-}
-
-function resolvePanelIcon(type: SidebandMetaMessage["type"]) {
-  switch (type) {
-    case "image":
-      return "eye";
-    case "svg":
-      return "globe";
-    case "html":
-      return "window";
-    case "canvas2d":
-      return "chart";
-    default:
-      return "sparkles";
-  }
 }

@@ -8,13 +8,31 @@ This guide will teach you how to write scripts that spawn rich UI elements, upda
 
 ---
 
-## The Three Extra File Descriptors (FDs)
+## Channels & File Descriptors
 
-When a script is executed inside HyperTerm Canvas, it is granted access to three special file descriptors via environment variables:
+When a script is executed inside HyperTerm Canvas, it is granted access to sideband channels via extra file descriptors. The default channels are:
 
 1. **`HYPERTERM_META_FD` (default: `3`)**: **Metadata Channel**. Your script writes JSONL (JSON Lines) here. This instructs the terminal to create, update, or clear UI panels.
 2. **`HYPERTERM_DATA_FD` (default: `4`)**: **Binary Data Channel**. Your script writes raw bytes (like PNG image data or raw HTML strings) here immediately after sending a metadata message that expects binary content.
 3. **`HYPERTERM_EVENT_FD` (default: `5`)**: **Event Channel**. Your script reads JSONL from here. The terminal sends user interactions (mouse clicks, dragging, window resizes) over this pipe.
+
+### Channel Discovery
+
+Scripts can discover all available channels via the `HYPERTERM_CHANNELS` environment variable, which contains a JSON-encoded channel map:
+
+```json
+{"version":1,"channels":[
+  {"name":"meta","fd":3,"direction":"out","encoding":"jsonl"},
+  {"name":"data","fd":4,"direction":"out","encoding":"binary"},
+  {"name":"events","fd":5,"direction":"in","encoding":"jsonl"}
+]}
+```
+
+The legacy `HYPERTERM_META_FD`, `HYPERTERM_DATA_FD`, and `HYPERTERM_EVENT_FD` variables remain set for backward compatibility.
+
+Additional environment variables:
+- **`HYPERTERM_PROTOCOL_VERSION`**: Current protocol version (currently `"1"`).
+- **`HYPERTERM_DEBUG`**: Set to `"1"` to enable debug logging in client libraries.
 
 ---
 
@@ -24,10 +42,14 @@ To display a graphical element, you must tell the terminal *what* to display (me
 
 ### Supported Content Types (`type`)
 
+The `type` field is an open string — any value is accepted. The terminal uses a **content renderer registry** to look up how to render the type. Built-in types:
+
 - **`image`**: Displays an image (PNG, JPEG, WebP, GIF).
 - **`svg`**: Renders raw SVG strings.
 - **`html`**: Renders raw HTML strings.
 - **`canvas2d`**: Draws image data onto an HTML5 Canvas context.
+
+Custom types can be registered in the webview via `registerRenderer(type, renderer)` (see `content-renderers.ts`). Unknown types are silently ignored.
 
 ### Positioning (`position`)
 
@@ -170,7 +192,7 @@ When writing to `HYPERTERM_META_FD`, the JSON object supports the following prop
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `id` | `string` | **Yes** | Unique identifier for the panel. |
-| `type` | `enum` | **Yes** | `image`, `svg`, `html`, `canvas2d`, `update`, `clear`. |
+| `type` | `string` | **Yes** | Content type or protocol operation. Built-in: `image`, `svg`, `html`, `canvas2d`, `update`, `clear`. Any string is valid — custom types are dispatched to the renderer registry. |
 | `position` | `enum` | No | `float` (default), `inline`, `overlay`, or `fixed`. |
 | `x` | `number` | No | X coordinate (pixels) for floating panels. |
 | `y` | `number` | No | Y coordinate (pixels) for floating panels. |
@@ -182,7 +204,49 @@ When writing to `HYPERTERM_META_FD`, the JSON object supports the following prop
 | `opacity` | `number` | No | Opacity from `0.0` to `1.0`. |
 | `zIndex` | `number` | No | CSS z-index stacking order. |
 | `borderRadius`| `number` | No | CSS border-radius in pixels. |
-| `byteLength` | `number` | **Yes** | Number of bytes the terminal MUST read from FD 4 immediately after processing this message. |
+| `byteLength` | `number` | **Yes** | Number of bytes the terminal MUST read from the data channel immediately after processing this message. |
+| `dataChannel` | `string` | No | Named data channel for the binary payload (default: `"data"`, which is fd 4). Allows routing binary data to different channels. |
+
+---
+
+## 5. Error Feedback
+
+The terminal sends protocol-level error events back to your script on FD 5 using the reserved `__system__` panel ID. These events fire when the terminal detects issues with your metadata or binary data.
+
+```json
+{"id":"__system__","event":"error","code":"meta-validate","message":"Missing or empty \"id\" field","ref":""}
+{"id":"__system__","event":"error","code":"data-incomplete","message":"Expected 4096 bytes for id=\"img1\", got EOF"}
+```
+
+| Field | Description |
+|-------|-------------|
+| `id` | Always `"__system__"` for protocol events. |
+| `event` | `"error"` for error events. |
+| `code` | Error source: `meta-parse`, `meta-validate`, `data-incomplete`, `data-channel`. |
+| `message` | Human-readable error description. |
+| `ref` | The panel ID that caused the error (when available). |
+
+Error events are informational — the terminal does not crash. Invalid messages are skipped.
+
+---
+
+## 6. Adding Custom Content Types
+
+To add a new content type (e.g., `"markdown"`), register a renderer in the webview:
+
+```typescript
+// In src/views/terminal/content-renderers.ts (or a new file)
+import { registerRenderer } from "./content-renderers";
+
+registerRenderer("markdown", {
+  icon: "document",
+  cssClass: "markdown",
+  mount(el, data) { el.innerHTML = parseMarkdown(new TextDecoder().decode(data)); },
+  update(el, data) { el.innerHTML = parseMarkdown(new TextDecoder().decode(data)); },
+});
+```
+
+No changes to the parser, RPC, or pty-manager are needed. Scripts can immediately use `type: "markdown"` in their metadata.
 
 ---
 

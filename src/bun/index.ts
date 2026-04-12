@@ -232,9 +232,16 @@ sessions.onSidebandMeta = (surfaceId, msg) => {
 };
 
 sessions.onSidebandData = (surfaceId, id, data) => {
+  // Native webview: base64 over Electrobun RPC (JSON transport requires it)
   const base64 = Buffer.from(data).toString("base64");
   rpc.send("sidebandData", { surfaceId, id, data: base64 });
-  webServer?.broadcast({ type: "sidebandData", surfaceId, id, data: base64 });
+  // Web mirror: native binary WebSocket frames (zero base64 overhead)
+  webServer?.broadcastSidebandBinary(surfaceId, id, data);
+};
+
+sessions.onSidebandDataFailed = (surfaceId, id, reason) => {
+  rpc.send("sidebandDataFailed", { surfaceId, id, reason });
+  webServer?.broadcast({ type: "sidebandDataFailed", surfaceId, id, reason });
 };
 
 sessions.onSurfaceClosed = (surfaceId) => {

@@ -39,15 +39,33 @@ export interface PersistedLayout {
   sidebarVisible: boolean;
 }
 
+// === Sideband Channel Types ===
+
+export interface ChannelDescriptor {
+  /** Channel name, e.g. "meta", "data", "events" */
+  name: string;
+  /** File descriptor number */
+  fd: number;
+  /** "out" = script writes / parent reads, "in" = parent writes / script reads */
+  direction: "out" | "in";
+  /** How to parse the stream */
+  encoding: "jsonl" | "binary";
+}
+
+export interface ChannelMap {
+  version: 1;
+  channels: ChannelDescriptor[];
+}
+
 // === Sideband Protocol Types ===
 
-export type ContentType =
-  | "image"
-  | "svg"
-  | "html"
-  | "canvas2d"
-  | "update"
-  | "clear";
+/** Protocol operations handled by core (not content renderers) */
+export type ProtocolOp = "update" | "clear" | "flush";
+/** Built-in content types that ship with default renderers */
+export type BuiltinContentType = "image" | "svg" | "html" | "canvas2d";
+/** Any string is a valid content type — renderers are registered at runtime */
+export type ContentType = ProtocolOp | BuiltinContentType | (string & {});
+
 export type PositionType = "inline" | "float" | "overlay" | "fixed";
 
 export interface SidebandMetaMessage {
@@ -68,6 +86,10 @@ export interface SidebandMetaMessage {
   opacity?: number;
   borderRadius?: number;
   data?: string;
+  /** Named data channel for binary payload (default: "data" = fd4) */
+  dataChannel?: string;
+  /** Timeout in ms for the binary read (default: 5000) */
+  timeout?: number;
 }
 
 export interface PanelEvent {
@@ -85,6 +107,12 @@ export interface PanelEvent {
   cols?: number;
   rows?: number;
   pxWidth?: number;
+  /** Error code for system error events (id="__system__", event="error") */
+  code?: string;
+  /** Human-readable message for system error events */
+  message?: string;
+  /** Reference panel id that triggered the error or ack */
+  ref?: string;
   pxHeight?: number;
 }
 
@@ -194,6 +222,12 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       // Sideband (routed by surfaceId)
       sidebandMeta: SidebandMetaMessage & { surfaceId: string };
       sidebandData: { surfaceId: string; id: string; data: string };
+      /** Binary read failed (timeout, EOF, abort) after meta was already dispatched */
+      sidebandDataFailed: {
+        surfaceId: string;
+        id: string;
+        reason: string;
+      };
 
       // Web server status
       webServerStatus: { running: boolean; port: number; url?: string };

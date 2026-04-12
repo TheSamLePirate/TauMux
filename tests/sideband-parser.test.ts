@@ -71,7 +71,7 @@ describe("SidebandParser", () => {
     cleanup = child.cleanup;
 
     const received: SidebandMetaMessage[] = [];
-    parser = new SidebandParser(child.metaFd, child.dataFd);
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
     parser.onMeta = (msg) => received.push(msg);
     parser.start();
 
@@ -91,7 +91,7 @@ describe("SidebandParser", () => {
     cleanup = child.cleanup;
 
     const received: SidebandMetaMessage[] = [];
-    parser = new SidebandParser(child.metaFd, child.dataFd);
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
     parser.onMeta = (msg) => received.push(msg);
     parser.start();
 
@@ -115,7 +115,7 @@ describe("SidebandParser", () => {
     const receivedMeta: SidebandMetaMessage[] = [];
     const receivedData: { id: string; data: Uint8Array }[] = [];
 
-    parser = new SidebandParser(child.metaFd, child.dataFd);
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
     parser.onMeta = (msg) => receivedMeta.push(msg);
     parser.onData = (id, data) => receivedData.push({ id, data });
     parser.start();
@@ -137,7 +137,7 @@ describe("SidebandParser", () => {
     cleanup = child.cleanup;
 
     const receivedData: { id: string; data: Uint8Array }[] = [];
-    parser = new SidebandParser(child.metaFd, child.dataFd);
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
     parser.onMeta = () => {};
     parser.onData = (id, data) => receivedData.push({ id, data });
     parser.start();
@@ -162,7 +162,7 @@ describe("SidebandParser", () => {
     const receivedMeta: SidebandMetaMessage[] = [];
     const receivedData: string[] = [];
 
-    parser = new SidebandParser(child.metaFd, child.dataFd);
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
     parser.onMeta = (msg) => receivedMeta.push(msg);
     parser.onData = (id) => receivedData.push(id);
     parser.start();
@@ -182,7 +182,7 @@ describe("SidebandParser", () => {
     cleanup = child.cleanup;
 
     const receivedMeta: SidebandMetaMessage[] = [];
-    parser = new SidebandParser(child.metaFd, child.dataFd);
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
     parser.onMeta = (msg) => receivedMeta.push(msg);
     parser.start();
 
@@ -192,9 +192,204 @@ describe("SidebandParser", () => {
 
   test("stop cancels readers", () => {
     // Use dummy fds — parser won't actually read
-    parser = new SidebandParser(999, 998);
+    parser = SidebandParser.fromFds(999, 998);
     parser.start();
     expect(() => parser!.stop()).not.toThrow();
     expect(() => parser!.stop()).not.toThrow();
+  });
+
+  test("onError fires for invalid JSON", async () => {
+    const lines = [
+      "NOT_VALID_JSON",
+      JSON.stringify({ id: "ok", type: "clear" }),
+    ];
+    const child = spawnWriter(lines);
+    cleanup = child.cleanup;
+
+    const errors: { source: string; message: string }[] = [];
+    const receivedMeta: SidebandMetaMessage[] = [];
+
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
+    parser.onMeta = (msg) => receivedMeta.push(msg);
+    parser.onError = (source, err) =>
+      errors.push({ source, message: err.message });
+    parser.start();
+
+    await waitFor(() => receivedMeta.length >= 1);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect(errors[0].source).toBe("meta-parse");
+    expect(errors[0].message).toContain("Invalid JSON");
+  });
+
+  test("onError fires for missing id field", async () => {
+    const lines = [
+      JSON.stringify({ type: "svg" }), // missing id
+      JSON.stringify({ id: "ok", type: "clear" }),
+    ];
+    const child = spawnWriter(lines);
+    cleanup = child.cleanup;
+
+    const errors: { source: string; message: string }[] = [];
+    const receivedMeta: SidebandMetaMessage[] = [];
+
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
+    parser.onMeta = (msg) => receivedMeta.push(msg);
+    parser.onError = (source, err) =>
+      errors.push({ source, message: err.message });
+    parser.start();
+
+    await waitFor(() => receivedMeta.length >= 1);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect(errors[0].source).toBe("meta-validate");
+    expect(errors[0].message).toContain("id");
+  });
+
+  test("onError fires for missing type field", async () => {
+    const lines = [
+      JSON.stringify({ id: "no-type" }), // missing type
+      JSON.stringify({ id: "ok", type: "clear" }),
+    ];
+    const child = spawnWriter(lines);
+    cleanup = child.cleanup;
+
+    const errors: { source: string; message: string }[] = [];
+    const receivedMeta: SidebandMetaMessage[] = [];
+
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
+    parser.onMeta = (msg) => receivedMeta.push(msg);
+    parser.onError = (source, err) =>
+      errors.push({ source, message: err.message });
+    parser.start();
+
+    await waitFor(() => receivedMeta.length >= 1);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect(errors[0].source).toBe("meta-validate");
+    expect(errors[0].message).toContain("type");
+  });
+
+  test("accepts custom content type strings", async () => {
+    const meta = JSON.stringify({
+      id: "md1",
+      type: "markdown",
+      position: "float",
+    });
+    const child = spawnWriter([meta]);
+    cleanup = child.cleanup;
+
+    const received: SidebandMetaMessage[] = [];
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
+    parser.onMeta = (msg) => received.push(msg);
+    parser.start();
+
+    await waitFor(() => received.length >= 1);
+    expect(received[0].id).toBe("md1");
+    expect(received[0].type).toBe("markdown");
+  });
+
+  test("multi-channel constructor works with named data channels", async () => {
+    // Uses fromFds which creates a "data" named channel — verify it works
+    const payload = new TextEncoder().encode("CHANNEL_TEST");
+    const meta = JSON.stringify({
+      id: "ch1",
+      type: "image",
+      byteLength: payload.byteLength,
+    });
+    const child = spawnWriter([meta], [payload]);
+    cleanup = child.cleanup;
+
+    const receivedData: { id: string; data: Uint8Array }[] = [];
+    // Explicitly use the Map constructor
+    parser = new SidebandParser(
+      child.metaFd,
+      new Map([["data", child.dataFd]]),
+    );
+    parser.onMeta = () => {};
+    parser.onData = (id, data) => receivedData.push({ id, data });
+    parser.start();
+
+    await waitFor(() => receivedData.length >= 1);
+    expect(new TextDecoder().decode(receivedData[0].data)).toBe("CHANNEL_TEST");
+  });
+
+  test("meta dispatches before data arrives (non-blocking)", async () => {
+    const payload = new TextEncoder().encode("DELAYED");
+    const meta = JSON.stringify({
+      id: "nb1",
+      type: "image",
+      byteLength: payload.byteLength,
+    });
+    const child = spawnWriter([meta], [payload]);
+    cleanup = child.cleanup;
+
+    const metaOrder: string[] = [];
+    const dataOrder: string[] = [];
+
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
+    parser.onMeta = (msg) => metaOrder.push(msg.id);
+    parser.onData = (id) => dataOrder.push(id);
+    parser.start();
+
+    // Meta should arrive first since reads are non-blocking
+    await waitFor(() => metaOrder.length >= 1);
+    expect(metaOrder[0]).toBe("nb1");
+
+    // Data arrives async from the queue
+    await waitFor(() => dataOrder.length >= 1);
+    expect(dataOrder[0]).toBe("nb1");
+  });
+
+  test("onDataFailed fires on timeout", async () => {
+    // Send metadata that expects 9999 bytes but never write any data
+    const meta = JSON.stringify({
+      id: "timeout1",
+      type: "image",
+      byteLength: 9999,
+      timeout: 500, // 500ms timeout for fast test
+    });
+    const child = spawnWriter([meta]); // no data payloads!
+    cleanup = child.cleanup;
+
+    const failed: { id: string; reason: string }[] = [];
+    const receivedMeta: SidebandMetaMessage[] = [];
+
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
+    parser.onMeta = (msg) => receivedMeta.push(msg);
+    parser.onData = () => {};
+    parser.onDataFailed = (id, reason) => failed.push({ id, reason });
+    parser.onError = () => {};
+    parser.start();
+
+    // Meta should arrive immediately (non-blocking)
+    await waitFor(() => receivedMeta.length >= 1);
+    expect(receivedMeta[0].id).toBe("timeout1");
+
+    // onDataFailed should fire after the timeout
+    await waitFor(() => failed.length >= 1, 3000);
+    expect(failed[0].id).toBe("timeout1");
+    expect(failed[0].reason).toContain("Timeout");
+  });
+
+  test("flush command resets channel state", async () => {
+    // Send a flush command — should not throw or produce errors
+    const meta = JSON.stringify({
+      id: "__system__",
+      type: "flush",
+      dataChannel: "data",
+    });
+    const child = spawnWriter([
+      meta,
+      JSON.stringify({ id: "after-flush", type: "clear" }),
+    ]);
+    cleanup = child.cleanup;
+
+    const receivedMeta: SidebandMetaMessage[] = [];
+
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
+    parser.onMeta = (msg) => receivedMeta.push(msg);
+    parser.start();
+
+    // The flush should be consumed silently, then "after-flush" dispatched
+    await waitFor(() => receivedMeta.length >= 1);
+    expect(receivedMeta[0].id).toBe("after-flush");
   });
 });

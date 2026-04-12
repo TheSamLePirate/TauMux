@@ -86,11 +86,13 @@ Add `--json` to any command for raw JSON output.
 
 ## Sideband Protocol (fd 3/4/5)
 
-Scripts can render structured content via extra file descriptors:
+Scripts can render structured content via extra file descriptors (extensible channel system):
 
 - **fd 3** — metadata channel (script -> terminal, JSONL)
 - **fd 4** — binary data channel (script -> terminal, raw bytes)
 - **fd 5** — event channel (terminal -> script, JSONL)
+
+Channels are discoverable via `HYPERTERM_CHANNELS` env var. Additional channels can be configured at spawn time.
 
 ### Metadata (fd 3)
 
@@ -98,11 +100,14 @@ Scripts can render structured content via extra file descriptors:
 {"id":"img1","type":"image","format":"png","x":100,"y":100,"byteLength":4096}
 {"id":"chart","type":"svg","position":"float","width":400,"height":300,"byteLength":2048}
 {"id":"widget","type":"html","interactive":true,"byteLength":512}
+{"id":"doc","type":"markdown","byteLength":1024}
 {"id":"img1","type":"update","x":200,"y":200}
 {"id":"img1","type":"clear"}
 ```
 
 ### Content Types
+
+The `type` field is an open string — any value is valid. Built-in renderers:
 
 | Type | Rendering |
 |------|-----------|
@@ -111,19 +116,22 @@ Scripts can render structured content via extra file descriptors:
 | `html` | HTML string as innerHTML |
 | `canvas2d` | `<canvas>` with drawImage |
 
+Custom types can be added via `registerRenderer()` in `content-renderers.ts`.
+
 ### Panel Options
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string | Unique panel identifier |
-| `type` | enum | `image`, `svg`, `html`, `canvas2d`, `update`, `clear` |
+| `type` | string | Any content type or protocol op (`update`, `clear`) |
 | `position` | enum | `float` (fixed in viewport), `inline` (scrolls with content), `fixed` (no chrome, raw overlay) |
 | `x`, `y` | number | Position in pixels |
 | `width`, `height` | number or `"auto"` | Dimensions |
 | `draggable` | boolean | Allow drag (default: true for float) |
 | `resizable` | boolean | Allow resize (default: true for float) |
 | `interactive` | boolean | Forward mouse events to fd 5 |
-| `byteLength` | number | Size of binary payload on fd 4 |
+| `byteLength` | number | Size of binary payload on data channel |
+| `dataChannel` | string | Named data channel (default: `"data"` = fd 4) |
 | `opacity` | number | 0.0-1.0 |
 | `zIndex` | number | Stacking order |
 
@@ -134,6 +142,7 @@ Scripts can render structured content via extra file descriptors:
 {"id":"img1","event":"resize","width":600,"height":400}
 {"id":"widget","event":"click","x":42,"y":87}
 {"id":"img1","event":"close"}
+{"id":"__system__","event":"error","code":"meta-validate","message":"Missing id"}
 ```
 
 ## Client Libraries
@@ -216,8 +225,8 @@ src/
     index.ts                    # Entry: BrowserWindow, RPC, socket server
     session-manager.ts          # Multi-surface PTY manager
     pty-manager.ts              # Single PTY with terminal option
-    sideband-parser.ts          # fd3/fd4 JSONL + binary reader
-    event-writer.ts             # fd5 JSONL event writer
+    sideband-parser.ts          # Multi-channel JSONL + binary reader
+    event-writer.ts             # fd5 JSONL event writer (incl. system error events)
     socket-server.ts            # Unix socket server (JSON-RPC)
     rpc-handler.ts              # 30 RPC method implementations
   shared/
@@ -230,12 +239,13 @@ src/
     pane-layout.ts              # Binary tree split computation
     panel-manager.ts            # Canvas panel lifecycle
     panel.ts                    # Single panel (drag, resize, render)
+    content-renderers.ts        # Extensible content renderer registry
     sidebar.ts                  # Sidebar UI (workspaces, status, logs)
     command-palette.ts          # Cmd+Shift+P command palette
     context-menu.ts             # Right-click context menus
 bin/ht                          # CLI tool
 scripts/                        # Client libraries + demos
-tests/                          # 89 tests across 7 files
+tests/                          # 109 tests across 9 files
 ```
 
 ## Development
@@ -244,7 +254,7 @@ tests/                          # 89 tests across 7 files
 bun install           # Install dependencies
 bun start             # Build + run (dev mode)
 bun dev               # Build + run with watch
-bun test              # Run tests (89 tests)
+bun test              # Run tests (109 tests)
 bun run typecheck     # TypeScript check
 ```
 

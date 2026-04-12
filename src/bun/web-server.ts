@@ -102,7 +102,11 @@ interface ClientData {
   subscribedSurfaceIds: Set<string>;
 }
 
-type WS = { data: ClientData; send(data: string): void; close(): void };
+type WS = {
+  data: ClientData;
+  send(data: string | BufferSource): void;
+  close(): void;
+};
 
 export class WebServer {
   private server: ReturnType<typeof Bun.serve> | null = null;
@@ -443,6 +447,38 @@ export class WebServer {
     for (const ws of this.clients) {
       try {
         ws.send(json);
+      } catch {
+        /* client gone */
+      }
+    }
+  }
+
+  /**
+   * Send sideband binary data as a native WebSocket binary frame.
+   * Format: [4-byte header length (BE)] [JSON header bytes] [binary payload]
+   * This avoids the 33% base64 overhead for web clients.
+   */
+  broadcastSidebandBinary(
+    surfaceId: string,
+    id: string,
+    data: Uint8Array,
+  ): void {
+    const header = JSON.stringify({
+      type: "sidebandData",
+      surfaceId,
+      id,
+    });
+    const headerBytes = new TextEncoder().encode(header);
+    // 4-byte big-endian header length + header + payload
+    const frame = new Uint8Array(4 + headerBytes.byteLength + data.byteLength);
+    const view = new DataView(frame.buffer);
+    view.setUint32(0, headerBytes.byteLength, false); // big-endian
+    frame.set(headerBytes, 4);
+    frame.set(data, 4 + headerBytes.byteLength);
+
+    for (const ws of this.clients) {
+      try {
+        ws.send(frame);
       } catch {
         /* client gone */
       }
@@ -1188,19 +1224,49 @@ const APP_JS = [
   "  handle.addEventListener('touchstart', startResize, { passive: false });",
   "}",
   "",
+  "// --- Content renderer registry (extensible, mirrors native webview pattern) ---",
+  "// Renderers: fn(contentEl, data, meta, isBinary)",
+  "//   isBinary=true: data is Uint8Array (from WebSocket binary frame)",
+  "//   isBinary=false/undefined: data is base64 string",
+  "var contentRenderers = {};",
+  "function registerWebRenderer(type, fn) { contentRenderers[type] = fn; }",
+  "function decodeB64(data, isBinary) {",
+  "  if (isBinary) return data;",
+  "  var binary = atob(data); var bytes = new Uint8Array(binary.length);",
+  "  for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);",
+  "  return bytes;",
+  "}",
+  "function decodeB64Text(data, isBinary) {",
+  "  if (isBinary) return new TextDecoder().decode(data);",
+  "  return atob(data);",
+  "}",
+  "registerWebRenderer('image', function(contentEl, data, meta, isBinary) {",
+  '  var fmtMap = { png: "image/png", jpeg: "image/jpeg", jpg: "image/jpeg", webp: "image/webp", gif: "image/gif" };',
+  '  var mime = fmtMap[meta.format || "png"] || "image/png";',
+  "  var bytes = decodeB64(data, isBinary);",
+  "  var blob = new Blob([bytes.buffer], { type: mime });",
+  "  var url = URL.createObjectURL(blob);",
+  '  var img = contentEl.querySelector("img");',
+  "  if (img) { img.src = url; } else { contentEl.innerHTML = '<img src=\"' + url + '\" style=\"width:100%;height:100%;object-fit:contain\">'; }",
+  "});",
+  "registerWebRenderer('svg', function(contentEl, data, meta, isBinary) { contentEl.innerHTML = decodeB64Text(data, isBinary); });",
+  "registerWebRenderer('html', function(contentEl, data, meta, isBinary) { contentEl.innerHTML = decodeB64Text(data, isBinary); });",
+  "registerWebRenderer('canvas2d', function(contentEl, data, meta, isBinary) {",
+  "  var bytes = decodeB64(data, isBinary);",
+  '  var canvas = contentEl.querySelector("canvas");',
+  '  if (!canvas) { canvas = document.createElement("canvas"); contentEl.innerHTML = ""; contentEl.appendChild(canvas); }',
+  '  var blob = new Blob([bytes.buffer], { type: "image/png" });',
+  "  createImageBitmap(blob).then(function(bitmap) {",
+  "    if (canvas.width !== bitmap.width) canvas.width = bitmap.width;",
+  "    if (canvas.height !== bitmap.height) canvas.height = bitmap.height;",
+  '    canvas.getContext("2d").drawImage(bitmap, 0, 0);',
+  "  });",
+  "});",
+  "",
   "function handleSidebandData(msg) {",
   "  var p = panels[msg.id]; if (!p) return;",
-  "  var meta = p.meta;",
-  '  if (meta.type === "image") {',
-  '    var fmtMap = { png: "image/png", jpeg: "image/jpeg", jpg: "image/jpeg", webp: "image/webp", gif: "image/gif" };',
-  '    var mime = fmtMap[meta.format || "png"] || "image/png";',
-  "    var binary = atob(msg.data); var bytes = new Uint8Array(binary.length);",
-  "    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);",
-  "    var blob = new Blob([bytes.buffer], { type: mime });",
-  "    var url = URL.createObjectURL(blob);",
-  "    p.contentEl.innerHTML = '<img src=\"' + url + '\">';",
-  '  } else if (meta.type === "svg") { p.contentEl.innerHTML = atob(msg.data); }',
-  '  else if (meta.type === "html") { p.contentEl.innerHTML = atob(msg.data); }',
+  "  var renderer = contentRenderers[p.meta.type];",
+  "  if (renderer) renderer(p.contentEl, msg.data, p.meta, false);",
   "}",
   "",
   "function clearPanels() { for (var id in panels) { panels[id].el.remove(); } panels = {}; }",
@@ -1236,7 +1302,23 @@ const APP_JS = [
   '  ws = new WebSocket(proto + "//" + location.host);',
   '  setStatus("reconnecting");',
   '  ws.onopen = function() { setStatus("connected"); reconnectDelay = 1000; };',
+  "  ws.binaryType = 'arraybuffer';",
   "  ws.onmessage = function(event) {",
+  "    // Binary frame: [4-byte header len (BE)] [JSON header] [binary payload]",
+  "    if (event.data instanceof ArrayBuffer) {",
+  "      var buf = new Uint8Array(event.data);",
+  "      var dv = new DataView(event.data);",
+  "      var hLen = dv.getUint32(0, false);",
+  "      var hdr = JSON.parse(new TextDecoder().decode(buf.subarray(4, 4 + hLen)));",
+  "      var payload = buf.subarray(4 + hLen);",
+  "      if (hdr.type === 'sidebandData') {",
+  "        var p = panels[hdr.id]; if (p) {",
+  "          var renderer = contentRenderers[p.meta.type];",
+  "          if (renderer) renderer(p.contentEl, payload, p.meta, true);",
+  "        }",
+  "      }",
+  "      return;",
+  "    }",
   "    var msg; try { msg = JSON.parse(event.data); } catch(e) { return; }",
   "    switch (msg.type) {",
   '      case "welcome":',
@@ -1318,6 +1400,8 @@ const APP_JS = [
   '      case "sidebandMeta":',
   "        handleSidebandMeta(Object.assign({}, msg.meta, { surfaceId: msg.surfaceId })); break;",
   '      case "sidebandData": handleSidebandData(msg); break;',
+  '      case "sidebandDataFailed":',
+  "        var fp = panels[msg.id]; if (fp) { fp.el.remove(); delete panels[msg.id]; } break;",
   '      case "panelEvent":',
   "        var pe = panels[msg.id];",
   '        if (pe && msg.event === "dragend") {',

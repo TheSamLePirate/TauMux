@@ -80,6 +80,13 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
           payload.data,
         );
       },
+      sidebandDataFailed: (payload) => {
+        surfaceManager.handleSidebandDataFailed(
+          payload.surfaceId,
+          payload.id,
+          payload.reason,
+        );
+      },
       webServerStatus: (payload) => {
         surfaceManager
           .getSidebar()
