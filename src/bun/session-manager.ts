@@ -38,6 +38,11 @@ export class SessionManager {
     this.shell = shell || process.env["SHELL"] || "/bin/zsh";
   }
 
+  /** Update the shell used for new surfaces. Does not affect existing PTYs. */
+  setShell(shell: string): void {
+    this.shell = shell || process.env["SHELL"] || "/bin/zsh";
+  }
+
   createSurface(cols: number, rows: number, cwd?: string): string {
     const id = `surface:${++this.counter}`;
     const surfaceCwd = cwd || process.env["HOME"] || "/";
@@ -72,7 +77,7 @@ export class SessionManager {
     // Spawn the PTY
     pty.spawn({
       shell: this.shell,
-      args: ["-l"], 
+      args: ["-l"],
       cols,
       rows,
       cwd: surfaceCwd,

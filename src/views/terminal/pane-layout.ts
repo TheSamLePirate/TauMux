@@ -13,7 +13,11 @@ import type {
 
 export type PaneDropPosition = "swap" | "left" | "right" | "top" | "bottom";
 
-const GAP = 2; // pixels between panes
+let paneGap = 2; // pixels between panes; mutable via setPaneGap()
+
+export function setPaneGap(value: number): void {
+  paneGap = Math.max(0, value);
+}
 
 export class PaneLayout {
   root: PaneNode;
@@ -314,7 +318,7 @@ export class PaneLayout {
     }
 
     const { direction, ratio, children } = node;
-    const half = GAP / 2;
+    const half = paneGap / 2;
 
     if (direction === "horizontal") {
       const splitX = bounds.x + bounds.w * ratio;
@@ -388,14 +392,14 @@ export class PaneLayout {
     if (node.type === "leaf") return;
 
     const { direction, ratio, children } = node;
-    const half = GAP / 2;
+    const half = paneGap / 2;
 
     if (direction === "horizontal") {
       const splitX = bounds.x + bounds.w * ratio;
       dividers.push({
         x: splitX - half,
         y: bounds.y,
-        w: GAP,
+        w: paneGap,
         h: bounds.h,
         direction,
         node,
@@ -421,7 +425,7 @@ export class PaneLayout {
         x: bounds.x,
         y: splitY - half,
         w: bounds.w,
-        h: GAP,
+        h: paneGap,
         direction,
         node,
       });

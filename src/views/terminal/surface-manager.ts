@@ -5,6 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { PanelManager } from "./panel-manager";
 import {
   PaneLayout,
+  setPaneGap,
   type PaneDropPosition,
   type PaneRect,
 } from "./pane-layout";
@@ -442,6 +443,8 @@ export class SurfaceManager {
       ...s.ansiColors,
     };
 
+    setPaneGap(s.paneGap);
+
     for (const view of this.surfaces.values()) {
       const t = view.term;
       t.options.fontSize = s.fontSize;
@@ -455,6 +458,7 @@ export class SurfaceManager {
       t.refresh(0, t.rows - 1);
       view.fitAddon.fit();
       view.effects.setEnabled(s.terminalBloom);
+      view.effects.setIntensity(s.bloomIntensity);
       view.effects.setFocused(view.id === this.focusedSurfaceId);
     }
 

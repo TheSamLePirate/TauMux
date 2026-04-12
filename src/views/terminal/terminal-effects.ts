@@ -196,6 +196,7 @@ export class TerminalEffects {
   private destroyed = false;
   private available = true;
   private active = true;
+  private intensity = 1;
   private dirty = true;
   private width = 1;
   private height = 1;
@@ -325,6 +326,13 @@ export class TerminalEffects {
 
   isEnabled(): boolean {
     return this.available && this.active;
+  }
+
+  setIntensity(value: number): void {
+    const next = Math.max(0, value);
+    if (next === this.intensity) return;
+    this.intensity = next;
+    if (this.available && this.active) this.markDirty();
   }
 
   destroy(): void {
@@ -681,7 +689,7 @@ export class TerminalEffects {
       colorIntData[i * 4] = l.r;
       colorIntData[i * 4 + 1] = l.g;
       colorIntData[i * 4 + 2] = l.b;
-      colorIntData[i * 4 + 3] = l.intensity;
+      colorIntData[i * 4 + 3] = l.intensity * this.intensity;
     }
     gl.uniform3fv(this.lightPosRadiusLocation, posRadiusData);
     gl.uniform4fv(this.lightColorIntensityLocation, colorIntData);
@@ -699,7 +707,7 @@ export class TerminalEffects {
       const currentRadius = age * PULSE_SPEED;
 
       const fade = 1.0 - t;
-      const intensity = fade * fade * 0.8;
+      const intensity = fade * fade * 0.8 * this.intensity;
 
       dataArr[i * 4] = p.cx;
       dataArr[i * 4 + 1] = p.cy;

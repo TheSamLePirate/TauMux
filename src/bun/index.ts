@@ -36,7 +36,7 @@ const configDir = join(Utils.paths.config, "hyperterm-canvas");
 const settingsFile = join(configDir, "settings.json");
 const settingsManager = new SettingsManager(configDir, settingsFile);
 
-const sessions = new SessionManager();
+const sessions = new SessionManager(settingsManager.get().shellPath);
 let initialResizeReceived = false;
 
 let focusedSurfaceId: string | null = null;
@@ -180,7 +180,14 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         toggleWebServer();
       },
       updateSettings: (payload) => {
+        const previous = settingsManager.get();
         const updated = settingsManager.update(payload.settings);
+        if (updated.shellPath !== previous.shellPath) {
+          sessions.setShell(updated.shellPath);
+        }
+        if (updated.webMirrorPort !== previous.webMirrorPort) {
+          applyWebMirrorPort(updated.webMirrorPort);
+        }
         rpc.send("settingsChanged", { settings: updated });
       },
       toggleMaximize: () => {
@@ -260,7 +267,12 @@ sessions.onSurfaceClosed = (surfaceId) => {
 
 // ── Web Mirror ──
 
-const webServerPort = parseInt(process.env["HYPERTERM_WEB_PORT"] ?? "3000", 10);
+// Env var HYPERTERM_WEB_PORT overrides the user setting so the dev/test
+// workflow (custom port via env) keeps working.
+const webServerPortEnv = process.env["HYPERTERM_WEB_PORT"];
+let webServerPort = webServerPortEnv
+  ? parseInt(webServerPortEnv, 10)
+  : settingsManager.get().webMirrorPort;
 let webServer: WebServer | null = null;
 
 function broadcastSurfaceCreated(surfaceId: string, title: string): void {
@@ -640,7 +652,12 @@ function setupWebServerCallbacks(ws: WebServer) {
   };
 }
 
-if (webServerPort > 0) {
+// Env var (if set) implies explicit opt-in; otherwise honor the user setting.
+const autoStartWebMirror = webServerPortEnv
+  ? webServerPort > 0
+  : settingsManager.get().autoStartWebMirror && webServerPort > 0;
+
+if (autoStartWebMirror) {
   webServer = new WebServer(
     webServerPort,
     sessions,
@@ -652,6 +669,27 @@ if (webServerPort > 0) {
   webServer.start();
 }
 sendWebServerStatus();
+
+/** Rebuild the web mirror on a new port. Restarts if it was running. */
+function applyWebMirrorPort(newPort: number): void {
+  if (webServerPortEnv) return; // env var wins, ignore setting change
+  const wasRunning = webServer?.running ?? false;
+  webServer?.stop();
+  webServer = null;
+  webServerPort = newPort;
+  if (wasRunning && newPort > 0) {
+    webServer = new WebServer(
+      webServerPort,
+      sessions,
+      getAppState,
+      () => focusedSurfaceId,
+      () => sidebarVisible,
+    );
+    setupWebServerCallbacks(webServer);
+    webServer.start();
+  }
+  sendWebServerStatus();
+}
 
 // ── Layout Persistence ──
 
