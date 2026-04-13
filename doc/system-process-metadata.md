@@ -24,6 +24,17 @@ interface ListeningPort {
   address: string;       // "*", "127.0.0.1", "::1", etc.
 }
 
+interface PackageInfo {
+  path: string;          // absolute path to package.json
+  directory: string;     // absolute path to the containing dir
+  name?: string;
+  version?: string;
+  type?: string;         // "module" | "commonjs" | ...
+  description?: string;
+  bin?: string | Record<string, string>;
+  scripts?: Record<string, string>;
+}
+
 interface GitInfo {
   branch: string;        // "main"; "(detached)" when HEAD is detached
   head: string;          // abbrev commit hash, "" when repo has no commits yet
@@ -46,6 +57,7 @@ interface SurfaceMetadata {
   tree: ProcessNode[];    // pre-order, rooted at pid
   listeningPorts: ListeningPort[];
   git: GitInfo | null;    // null when cwd is not inside a git repo
+  packageJson: PackageInfo | null; // nearest package.json walking up from cwd
   updatedAt: number;      // wall-clock ms
 }
 ```
@@ -193,6 +205,14 @@ Handles all four shapes lsof emits:
 | `[::1]:443` | `{ "::1", 443 }` |
 
 Returns `null` for malformed input.
+
+### `parsePackageJson(text, path) / findPackageJson(start)`
+
+`findPackageJson(cwd)` walks up from `cwd` looking for `package.json`, stopping at `/` or `$HOME` (whichever comes first). `parsePackageJson(text, path)` reads a subset of `package.json` — `name`, `version`, `type`, `description`, `bin` (string or map), `scripts` — and skips anything else. Array payloads and non-object roots are rejected (return `null`), matching npm's own validity rules.
+
+The poller owns a per-cwd cache keyed on the *resolved* path + mtime. `package.json` reads are synchronous (`readFileSync`) but skipped entirely when cache is fresh (3 s TTL) AND the file's mtime hasn't changed. Editing a script in the file triggers a re-parse on the next tick.
+
+The sidebar aggregates one `packageJson` per workspace: prefers the focused surface's, falls back to any other surface's. Matches the "a workspace should have one package.json" convention.
 
 ### `parseGitStatusV2(output: string): GitInfo | null`
 

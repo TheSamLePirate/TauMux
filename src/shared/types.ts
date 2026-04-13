@@ -31,6 +31,12 @@ export interface PersistedWorkspace {
   color: string;
   layout: PaneNode;
   focusedSurfaceId: string | null;
+  /** Live cwd of each surface at save-time, so restored shells can spawn at
+   *  the same directory they were running in. Derived from the metadata
+   *  poller; entries without a known cwd are omitted. */
+  surfaceCwds?: Record<string, string>;
+  /** User-pinned cwd for the workspace (drives the package.json card). */
+  selectedCwd?: string;
 }
 
 export interface PersistedLayout {
@@ -90,6 +96,21 @@ export interface GitInfo {
   detached: boolean;
 }
 
+/** Subset of package.json we surface in the UI. */
+export interface PackageInfo {
+  /** Absolute path to the package.json file; unique key per workspace. */
+  path: string;
+  /** Absolute path to the directory containing package.json. */
+  directory: string;
+  name?: string;
+  version?: string;
+  type?: string;
+  description?: string;
+  /** String or map form as it appears in package.json. */
+  bin?: string | Record<string, string>;
+  scripts?: Record<string, string>;
+}
+
 /** Live, polled view of what a surface's shell and its descendants are doing. */
 export interface SurfaceMetadata {
   /** Shell pid (same as pty.pid). */
@@ -109,6 +130,8 @@ export interface SurfaceMetadata {
   listeningPorts: ListeningPort[];
   /** Git status for the cwd, or null when cwd is not inside a git repo. */
   git: GitInfo | null;
+  /** Nearest package.json walking up from cwd, or null when none found. */
+  packageJson: PackageInfo | null;
   /** Wall-clock ms when this snapshot was produced. */
   updatedAt: number;
 }
@@ -246,6 +269,10 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
           surfaceIds: string[];
           focusedSurfaceId: string | null;
           layout: PaneNode;
+          /** Live cwd per surface so restart can reopen shells in place. */
+          surfaceCwds?: Record<string, string>;
+          /** User-pinned workspace cwd (drives package.json card). */
+          selectedCwd?: string;
         }[];
         activeWorkspaceId: string | null;
       };
@@ -276,6 +303,17 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
 
       // Kill an arbitrary pid (used by the process manager panel)
       killPid: { pid: number; signal?: string };
+
+      // Launch a package.json script in a fresh surface inside a workspace.
+      // Bun creates the surface, echoes the command into its stdin after the
+      // shell is ready, and marks the returned surfaceCreated message with
+      // launchFor so the webview can track running/errored state.
+      runScript: {
+        workspaceId: string;
+        cwd: string;
+        command: string;
+        scriptKey: string;
+      };
     };
   };
   webview: {
@@ -299,8 +337,16 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
         title: string;
         splitFrom?: string;
         direction?: "horizontal" | "vertical";
+        /** Set when this surface was spawned by runScript — webview uses it
+         *  to place the surface in the target workspace and to register
+         *  script-status tracking. */
+        launchFor?: { workspaceId: string; scriptKey: string };
       };
       surfaceClosed: { surfaceId: string };
+      /** Emitted when a surface's PTY exits. exitCode is whatever the shell
+       *  returned to us (often 0 for clean Ctrl-D, non-zero on kill or script
+       *  failure). The webview uses this to color script status dots red. */
+      surfaceExited: { surfaceId: string; exitCode: number };
 
       // Sideband (routed by surfaceId)
       sidebandMeta: SidebandMetaMessage & { surfaceId: string };

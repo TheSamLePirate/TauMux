@@ -204,13 +204,6 @@ export class ProcessManagerPanel {
 
     if (s.metadata?.git) {
       const g = s.metadata.git;
-      const parts = ["\u2387 " + g.branch];
-      if (g.ahead > 0) parts.push(`\u2191${g.ahead}`);
-      if (g.behind > 0) parts.push(`\u2193${g.behind}`);
-      if (g.conflicts > 0) parts.push(`!${g.conflicts}`);
-      if (g.staged > 0) parts.push(`+${g.staged}`);
-      if (g.unstaged > 0) parts.push(`*${g.unstaged}`);
-      if (g.untracked > 0) parts.push(`?${g.untracked}`);
       const dirty =
         g.staged +
           g.unstaged +
@@ -221,10 +214,21 @@ export class ProcessManagerPanel {
         0;
       const chip = document.createElement("span");
       chip.className = `process-manager-git${dirty ? " dirty" : ""}`;
-      chip.textContent = parts.join(" ");
+      chip.appendChild(gitMgrSpan("branch", "\u2387 " + g.branch));
+      if (g.ahead > 0)
+        chip.appendChild(gitMgrSpan("ahead", `\u2191${g.ahead}`));
+      if (g.behind > 0)
+        chip.appendChild(gitMgrSpan("behind", `\u2193${g.behind}`));
+      if (g.conflicts > 0)
+        chip.appendChild(gitMgrSpan("conflicts", `!${g.conflicts}`));
+      if (g.insertions > 0)
+        chip.appendChild(gitMgrSpan("add", `+${g.insertions}`));
+      if (g.deletions > 0)
+        chip.appendChild(gitMgrSpan("del", `\u2212${g.deletions}`));
       const tip = [
         `branch: ${g.branch}${g.head ? " @ " + g.head : ""}`,
         g.upstream ? `upstream: ${g.upstream}` : "",
+        `files: ${g.staged} staged · ${g.unstaged} unstaged · ${g.untracked} untracked${g.conflicts ? " · " + g.conflicts + " conflicts" : ""}`,
         g.insertions || g.deletions
           ? `diff vs HEAD: +${g.insertions} -${g.deletions}`
           : "",
@@ -360,6 +364,13 @@ export class ProcessManagerPanel {
 
     return row;
   }
+}
+
+function gitMgrSpan(kind: string, text: string): HTMLSpanElement {
+  const s = document.createElement("span");
+  s.className = `process-manager-git-${kind}`;
+  s.textContent = text;
+  return s;
 }
 
 function formatMem(kb: number): string {

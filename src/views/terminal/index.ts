@@ -59,7 +59,18 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
         surfaceManager.writeToSurface(payload.surfaceId, payload.data);
       },
       surfaceCreated: (payload) => {
-        if (payload.splitFrom && payload.direction) {
+        if (payload.launchFor) {
+          surfaceManager.addSurfaceToWorkspace(
+            payload.surfaceId,
+            payload.title,
+            payload.launchFor.workspaceId,
+          );
+          surfaceManager.registerScriptSurface(
+            payload.surfaceId,
+            payload.launchFor.workspaceId,
+            payload.launchFor.scriptKey,
+          );
+        } else if (payload.splitFrom && payload.direction) {
           surfaceManager.addSurfaceAsSplit(
             payload.surfaceId,
             payload.title,
@@ -69,6 +80,9 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
         } else {
           surfaceManager.addSurface(payload.surfaceId, payload.title);
         }
+      },
+      surfaceExited: (payload) => {
+        surfaceManager.handleSurfaceExit(payload.surfaceId, payload.exitCode);
       },
       surfaceClosed: (payload) => {
         surfaceManager.removeSurface(payload.surfaceId);
@@ -936,6 +950,26 @@ window.addEventListener("ht-open-external", (e: Event) => {
 window.addEventListener("ht-show-surface-info", (e: Event) => {
   const detail = (e as CustomEvent).detail;
   if (detail?.surfaceId) showSurfaceInfo(detail.surfaceId);
+});
+
+window.addEventListener("ht-run-script", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (!detail?.workspaceId || !detail?.cwd || !detail?.scriptKey) return;
+  const runner =
+    currentSettings?.packageRunner ?? DEFAULT_SETTINGS.packageRunner;
+  const command = `${runner} run ${detail.scriptKey}`;
+  rpc.send("runScript", {
+    workspaceId: detail.workspaceId,
+    cwd: detail.cwd,
+    command,
+    scriptKey: detail.scriptKey,
+  });
+});
+
+window.addEventListener("ht-select-workspace-cwd", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (!detail?.workspaceId || !detail?.cwd) return;
+  surfaceManager.setWorkspaceCwd(detail.workspaceId, detail.cwd);
 });
 
 // Metadata poll rate follows window visibility: full rate visible, slow hidden.

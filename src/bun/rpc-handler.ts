@@ -78,6 +78,10 @@ export interface WorkspaceSnapshot {
   surfaceIds: string[];
   focusedSurfaceId: string | null;
   layout: PaneNode;
+  /** Live cwd per surface; persisted so restarts reopen shells in place. */
+  surfaceCwds?: Record<string, string>;
+  /** User-pinned cwd that drives the sidebar package.json card. */
+  selectedCwd?: string;
 }
 
 type Handler = (params: Record<string, unknown>) => unknown;

@@ -13,6 +13,7 @@ import { Sidebar } from "./sidebar";
 import { createIcon } from "./icons";
 import { TerminalEffects } from "./terminal-effects";
 import type {
+  PackageInfo,
   PanelEvent,
   PersistedLayout,
   SidebandMetaMessage,
@@ -106,6 +107,19 @@ export class SurfaceManager {
   private searchInputEl: HTMLInputElement | null = null;
   private searchVisible = false;
   private metadata = new Map<string, SurfaceMetadata>();
+  /** surfaceId → metadata about why we launched this surface, for script
+   *  status tracking. Cleared on surfaceExited. */
+  private scriptTrackers = new Map<
+    string,
+    { workspaceId: string; scriptKey: string }
+  >();
+  /** key "<workspaceId>:<scriptKey>" → epoch ms of last non-zero exit.
+   *  Read by the sidebar to render the red dot (auto-clears after 10 s). */
+  private scriptErrors = new Map<string, number>();
+  /** workspaceId → cwd the user explicitly marked as the workspace's cwd.
+   *  Drives which surface's package.json feeds the card when multiple panes
+   *  are in different directories. Auto-cleared when the cwd goes stale. */
+  private selectedCwds = new Map<string, string>();
 
   constructor(
     private terminalContainer: HTMLElement,
@@ -234,6 +248,10 @@ export class SurfaceManager {
         logs: [],
       };
       this.workspaces.push(workspace);
+      // Rehydrate the user's pinned "workspace cwd" — the card will pick it
+      // back up on the next updateSidebar, and auto-clear if the pinned dir
+      // doesn't match any of the (re-)spawned surfaces.
+      if (ws.selectedCwd) this.selectedCwds.set(workspace.id, ws.selectedCwd);
     }
 
     const targetIdx = Math.max(
@@ -472,20 +490,109 @@ export class SurfaceManager {
     this.metadata.set(surfaceId, metadata);
     const view = this.surfaces.get(surfaceId);
     if (view) renderSurfaceChips(view.chipsEl, metadata);
-    // Only rebuild the sidebar when something visible there changed:
-    // port set, or (for the focused surface) the foreground command.
+    // Rebuild the sidebar when any field the card displays may have changed:
+    // the port set, the focused-pane fg command, the cwd (multi-cwd chip
+    // row), or the package.json (header + scripts + running status). Tree
+    // shape also affects running-script dots, so include a cheap proxy.
     const portsChanged =
       !prev || !samePortSet(prev.listeningPorts, metadata.listeningPorts);
     const fgChanged =
       surfaceId === this.focusedSurfaceId &&
       (!prev || prev.foregroundPid !== metadata.foregroundPid);
-    if (portsChanged || fgChanged) {
+    const cwdChanged = (prev?.cwd ?? "") !== metadata.cwd;
+    const pkgChanged =
+      (prev?.packageJson?.path ?? null) !==
+      (metadata.packageJson?.path ?? null);
+    const treeLenChanged = (prev?.tree.length ?? -1) !== metadata.tree.length;
+    if (
+      portsChanged ||
+      fgChanged ||
+      cwdChanged ||
+      pkgChanged ||
+      treeLenChanged
+    ) {
       this.updateSidebar();
     }
+    // cwd changes also affect what gets persisted (surfaceCwds) — nudge the
+    // debounced sync so the on-disk layout tracks where shells currently
+    // are, not where they were when the workspace shape last changed.
+    if (cwdChanged) this.notifyWorkspaceChanged();
   }
 
   getSurfaceMetadata(surfaceId: string): SurfaceMetadata | null {
     return this.metadata.get(surfaceId) ?? null;
+  }
+
+  /** Mark `cwd` as the workspace's "primary" cwd — the sidebar package card
+   *  reads the packageJson from the surface running at that cwd, and the
+   *  card disappears gracefully when the cwd is no longer active. */
+  setWorkspaceCwd(workspaceId: string, cwd: string): void {
+    this.selectedCwds.set(workspaceId, cwd);
+    this.updateSidebar();
+    // Pinned cwd is a persisted field — sync so restarts respect the pick.
+    this.notifyWorkspaceChanged();
+  }
+
+  /** Attach a script-tracker to a freshly-created surface so surfaceExited
+   *  can paint the red dot when the run fails. */
+  registerScriptSurface(
+    surfaceId: string,
+    workspaceId: string,
+    scriptKey: string,
+  ): void {
+    this.scriptTrackers.set(surfaceId, { workspaceId, scriptKey });
+  }
+
+  /** Called by index.ts on the surfaceExited RPC. */
+  handleSurfaceExit(surfaceId: string, exitCode: number): void {
+    const tracker = this.scriptTrackers.get(surfaceId);
+    if (!tracker) return;
+    this.scriptTrackers.delete(surfaceId);
+    if (exitCode !== 0) {
+      const key = `${tracker.workspaceId}:${tracker.scriptKey}`;
+      const ts = Date.now();
+      this.scriptErrors.set(key, ts);
+      setTimeout(() => {
+        if (this.scriptErrors.get(key) === ts) {
+          this.scriptErrors.delete(key);
+          this.updateSidebar();
+        }
+      }, 10000);
+      this.updateSidebar();
+    }
+  }
+
+  /**
+   * Place a new surface inside an existing workspace by splitting off one of
+   * its panes — which keeps it in that workspace rather than creating a new
+   * one (plain `addSurface` always spawns a fresh workspace). Splits from the
+   * focused pane when the target is already active; otherwise splits from
+   * the workspace's focused-or-first pane.
+   *
+   * Falls back to `addSurface` only when the workspace disappeared or has
+   * zero panes — both "should never happen" paths for the runScript flow.
+   */
+  addSurfaceToWorkspace(
+    surfaceId: string,
+    title: string,
+    workspaceId: string,
+  ): void {
+    const idx = this.workspaces.findIndex((w) => w.id === workspaceId);
+    if (idx === -1) {
+      this.addSurface(surfaceId, title);
+      return;
+    }
+    const ws = this.workspaces[idx];
+    if (ws.surfaceIds.size === 0) {
+      this.addSurface(surfaceId, title);
+      return;
+    }
+    if (idx !== this.activeWorkspaceIndex) this.switchToWorkspace(idx);
+    const splitFrom =
+      this.focusedSurfaceId && ws.surfaceIds.has(this.focusedSurfaceId)
+        ? this.focusedSurfaceId
+        : [...ws.surfaceIds][0];
+    this.addSurfaceAsSplit(surfaceId, title, splitFrom, "horizontal");
   }
 
   // ── Settings ──
@@ -807,21 +914,37 @@ export class SurfaceManager {
       surfaceIds: string[];
       focusedSurfaceId: string | null;
       layout: import("../../shared/types").PaneNode;
+      surfaceCwds?: Record<string, string>;
+      selectedCwd?: string;
     }[];
     activeWorkspaceId: string | null;
   } {
     return {
-      workspaces: this.workspaces.map((ws) => ({
-        id: ws.id,
-        name: ws.name,
-        color: ws.color,
-        surfaceIds: ws.layout.getAllSurfaceIds(),
-        focusedSurfaceId:
-          this.focusedSurfaceId && ws.surfaceIds.has(this.focusedSurfaceId)
-            ? this.focusedSurfaceId
-            : null,
-        layout: ws.layout.root,
-      })),
+      workspaces: this.workspaces.map((ws) => {
+        const surfaceIds = ws.layout.getAllSurfaceIds();
+        // Live cwds from the metadata poller so a restart can reopen each
+        // shell in the directory it was running in, not $HOME.
+        const surfaceCwds: Record<string, string> = {};
+        for (const sid of surfaceIds) {
+          const cwd = this.metadata.get(sid)?.cwd;
+          if (cwd) surfaceCwds[sid] = cwd;
+        }
+        const pinned = this.selectedCwds.get(ws.id);
+        return {
+          id: ws.id,
+          name: ws.name,
+          color: ws.color,
+          surfaceIds,
+          focusedSurfaceId:
+            this.focusedSurfaceId && ws.surfaceIds.has(this.focusedSurfaceId)
+              ? this.focusedSurfaceId
+              : null,
+          layout: ws.layout.root,
+          surfaceCwds:
+            Object.keys(surfaceCwds).length > 0 ? surfaceCwds : undefined,
+          selectedCwd: pinned,
+        };
+      }),
       activeWorkspaceId: this.workspaces[this.activeWorkspaceIndex]?.id ?? null,
     };
   }
@@ -1001,6 +1124,58 @@ export class SurfaceManager {
                 ?.command ?? null)
             : null;
 
+        // Collect the distinct cwds across this workspace's surfaces.
+        const cwdSet: string[] = [];
+        const seen = new Set<string>();
+        for (const sid of ws.surfaceIds) {
+          const m = this.metadata.get(sid);
+          if (!m?.cwd) continue;
+          if (seen.has(m.cwd)) continue;
+          seen.add(m.cwd);
+          cwdSet.push(m.cwd);
+        }
+
+        // The user may have pinned a cwd; if it's gone stale (no surface
+        // still at that path), drop the pin and fall back to focused.
+        const pinned = this.selectedCwds.get(ws.id);
+        if (pinned && !seen.has(pinned)) this.selectedCwds.delete(ws.id);
+        const effectivePin = this.selectedCwds.get(ws.id) ?? null;
+        const selectedCwd = effectivePin ?? focusedMeta?.cwd ?? null;
+
+        // Resolve packageJson by locating the surface whose cwd matches the
+        // selected cwd — that surface's snapshot already has the right
+        // PackageInfo computed upstream by the poller.
+        let packageJson: PackageInfo | null = null;
+        if (selectedCwd) {
+          for (const sid of ws.surfaceIds) {
+            const m = this.metadata.get(sid);
+            if (m?.cwd === selectedCwd && m.packageJson) {
+              packageJson = m.packageJson;
+              break;
+            }
+          }
+        }
+
+        const runningScripts: string[] = [];
+        const erroredScripts: string[] = [];
+        if (packageJson?.scripts) {
+          const knownScripts = Object.keys(packageJson.scripts);
+          const running = new Set<string>();
+          for (const sid of ws.surfaceIds) {
+            const m = this.metadata.get(sid);
+            if (!m) continue;
+            for (const node of m.tree) {
+              const name = extractScriptName(node.command);
+              if (name && knownScripts.includes(name)) running.add(name);
+            }
+          }
+          for (const s of knownScripts) {
+            if (running.has(s)) runningScripts.push(s);
+            else if (this.scriptErrors.has(`${ws.id}:${s}`))
+              erroredScripts.push(s);
+          }
+        }
+
         return {
           id: ws.id,
           name: ws.name,
@@ -1018,6 +1193,11 @@ export class SurfaceManager {
           })),
           progress: ws.progress,
           listeningPorts,
+          packageJson,
+          runningScripts,
+          erroredScripts,
+          cwds: cwdSet,
+          selectedCwd,
         };
       }),
     );
@@ -1672,10 +1852,11 @@ function renderSurfaceChips(host: HTMLElement, meta: SurfaceMetadata): void {
   }
 
   if (meta.git) {
-    const label = formatGitChip(meta.git);
-    const chip = buildChip("chip-git", label);
+    const chip = document.createElement("span");
+    chip.className = "surface-chip chip-git";
     if (isDirtyGit(meta.git)) chip.classList.add("dirty");
     chip.title = formatGitTooltip(meta.git);
+    fillGitChip(chip, meta.git);
     host.appendChild(chip);
   }
 
@@ -1738,15 +1919,41 @@ function isDirtyGit(g: NonNullable<SurfaceMetadata["git"]>): boolean {
   );
 }
 
-function formatGitChip(g: NonNullable<SurfaceMetadata["git"]>): string {
-  const parts = ["\u2387 " + g.branch];
-  if (g.ahead > 0) parts.push(`\u2191${g.ahead}`);
-  if (g.behind > 0) parts.push(`\u2193${g.behind}`);
-  if (g.conflicts > 0) parts.push(`!${g.conflicts}`);
-  if (g.staged > 0) parts.push(`+${g.staged}`);
-  if (g.unstaged > 0) parts.push(`*${g.unstaged}`);
-  if (g.untracked > 0) parts.push(`?${g.untracked}`);
-  return parts.join(" ");
+/**
+ * Build the git chip DOM: branch (neutral), optional ahead/behind + conflicts,
+ * then green `+insertions` and red `-deletions` (from `git diff HEAD`). We
+ * show line counts instead of staged/unstaged/untracked file counts because
+ * +/- lines is what most prompts use and it's the most at-a-glance useful
+ * signal; the full file-count breakdown lives in the hover tooltip.
+ */
+function fillGitChip(
+  el: HTMLSpanElement,
+  g: NonNullable<SurfaceMetadata["git"]>,
+): void {
+  el.replaceChildren();
+
+  const branch = document.createElement("span");
+  branch.className = "chip-git-branch";
+  branch.textContent = "\u2387 " + g.branch;
+  el.appendChild(branch);
+
+  if (g.ahead > 0)
+    el.appendChild(gitSpan("chip-git-ahead", `\u2191${g.ahead}`));
+  if (g.behind > 0)
+    el.appendChild(gitSpan("chip-git-behind", `\u2193${g.behind}`));
+  if (g.conflicts > 0)
+    el.appendChild(gitSpan("chip-git-conflicts", `!${g.conflicts}`));
+  if (g.insertions > 0)
+    el.appendChild(gitSpan("chip-git-add", `+${g.insertions}`));
+  if (g.deletions > 0)
+    el.appendChild(gitSpan("chip-git-del", `\u2212${g.deletions}`));
+}
+
+function gitSpan(cls: string, text: string): HTMLSpanElement {
+  const s = document.createElement("span");
+  s.className = cls;
+  s.textContent = text;
+  return s;
 }
 
 function formatGitTooltip(g: NonNullable<SurfaceMetadata["git"]>): string {
@@ -1769,6 +1976,15 @@ function formatGitTooltip(g: NonNullable<SurfaceMetadata["git"]>): string {
     lines.push(`diff vs HEAD: +${g.insertions} -${g.deletions}`);
   }
   return lines.join("\n");
+}
+
+/** Extracts the script name from commands like "bun run build", "npm run
+ *  dev", "pnpm test", "yarn run start". Returns null when no match. */
+function extractScriptName(command: string): string | null {
+  const m = command.match(
+    /^(?:bun|npm|pnpm|yarn)(?:\s+run(?:-script)?)?\s+(\S+)/,
+  );
+  return m?.[1] ?? null;
 }
 
 function samePortSet(a: { port: number }[], b: { port: number }[]): boolean {

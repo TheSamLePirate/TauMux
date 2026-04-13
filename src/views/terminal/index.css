@@ -1143,13 +1143,34 @@ textarea {
   color: var(--accent-secondary);
   background: rgba(168, 85, 247, 0.08);
   border: 1px solid rgba(168, 85, 247, 0.22);
-  white-space: pre;
+  gap: 5px;
 }
 
 .process-manager-git.dirty {
   color: var(--accent-primary);
   background: rgba(234, 179, 8, 0.1);
   border-color: rgba(234, 179, 8, 0.3);
+}
+
+.process-manager-git-branch {
+  font-weight: 500;
+}
+
+.process-manager-git-ahead,
+.process-manager-git-behind {
+  color: var(--accent-secondary);
+  opacity: 0.85;
+}
+
+.process-manager-git-conflicts,
+.process-manager-git-del {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.process-manager-git-add {
+  color: #4ade80;
+  font-weight: 600;
 }
 
 .process-manager-table {
@@ -1228,6 +1249,248 @@ textarea {
   background: rgba(248, 113, 113, 0.22);
   color: #fecaca;
   border-color: rgba(248, 113, 113, 0.52);
+}
+
+/* ── Workspace cwd selector (multi-pane, mixed-cwd case) ── */
+
+.workspace-cwds {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px 4px 14px;
+  min-height: 20px;
+}
+
+.workspace-cwds-label {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-right: 2px;
+}
+
+.workspace-cwd-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 7px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.workspace-cwd-chip:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-strong);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.workspace-cwd-chip.active {
+  color: var(--accent-primary);
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.32);
+  box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.14) inset;
+}
+
+/* ── Workspace package.json card ── */
+
+.workspace-package {
+  margin: 6px 10px 6px 14px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.workspace-package-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.workspace-package-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent-secondary);
+}
+
+.workspace-package-name {
+  color: var(--text-strong);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-package-version {
+  font-size: 9px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.workspace-package-type {
+  font-size: 9px;
+  color: var(--accent-primary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(234, 179, 8, 0.08);
+  border: 1px solid rgba(234, 179, 8, 0.2);
+  margin-left: auto;
+}
+
+.workspace-package-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.workspace-package-bin {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-package-bin-label {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-right: 2px;
+}
+
+.workspace-package-bin-chip {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--font-mono, monospace);
+  color: var(--accent-secondary);
+  background: rgba(168, 85, 247, 0.08);
+  border: 1px solid rgba(168, 85, 247, 0.22);
+}
+
+.workspace-package-scripts {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-script-btn {
+  display: grid;
+  grid-template-columns: 10px auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.workspace-script-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+  color: var(--text-strong);
+}
+
+.workspace-script-btn[data-state="running"] {
+  background: rgba(74, 222, 128, 0.05);
+  border-color: rgba(74, 222, 128, 0.16);
+  color: var(--text-strong);
+}
+
+.workspace-script-btn[data-state="error"] {
+  background: rgba(248, 113, 113, 0.05);
+  border-color: rgba(248, 113, 113, 0.2);
+}
+
+.workspace-script-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
+}
+
+.workspace-script-dot.running {
+  background: #86efac;
+  box-shadow: 0 0 6px rgba(134, 239, 172, 0.6);
+  animation: script-pulse 1.6s ease-in-out infinite;
+}
+
+.workspace-script-dot.error {
+  background: #f87171;
+  box-shadow: 0 0 6px rgba(248, 113, 113, 0.6);
+}
+
+@keyframes script-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.workspace-script-name {
+  color: var(--text-strong);
+  font-weight: 500;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+
+.workspace-script-cmd {
+  color: var(--text-dim);
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.workspace-script-run {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-primary);
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.workspace-script-btn:hover .workspace-script-run {
+  opacity: 1;
+}
+
+.workspace-script-btn[data-state="running"] .workspace-script-run {
+  color: #86efac;
+  opacity: 0.9;
+}
+
+.workspace-script-btn[data-state="error"] .workspace-script-run {
+  color: #fca5a5;
+  opacity: 0.9;
 }
 
 /* ── Workspace port chips (live listening ports) ── */
@@ -1601,12 +1864,38 @@ textarea {
   background: rgba(168, 85, 247, 0.08);
   border-color: rgba(168, 85, 247, 0.22);
   font-variant-numeric: tabular-nums;
+  gap: 6px;
 }
 
 .surface-chip.chip-git.dirty {
   color: var(--accent-primary);
   background: rgba(234, 179, 8, 0.1);
   border-color: rgba(234, 179, 8, 0.3);
+}
+
+.chip-git-branch {
+  font-weight: 500;
+}
+
+.chip-git-ahead,
+.chip-git-behind {
+  color: var(--accent-secondary);
+  opacity: 0.85;
+}
+
+.chip-git-conflicts {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.chip-git-add {
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.chip-git-del {
+  color: #f87171;
+  font-weight: 600;
 }
 
 .surface-chip.chip-port {

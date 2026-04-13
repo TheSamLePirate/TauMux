@@ -33,6 +33,8 @@ export class SessionManager {
     | ((surfaceId: string, id: string, reason: string) => void)
     | null = null;
   onSurfaceClosed: ((surfaceId: string) => void) | null = null;
+  /** Fires when the PTY exits, before the surface is removed. */
+  onSurfaceExit: ((surfaceId: string, exitCode: number) => void) | null = null;
 
   constructor(shell?: string) {
     this.shell = shell || process.env["SHELL"] || "/bin/zsh";
@@ -67,7 +69,8 @@ export class SessionManager {
     };
 
     // Wire exit — surface closes when shell exits
-    pty.onExit = (_code: number) => {
+    pty.onExit = (code: number) => {
+      this.onSurfaceExit?.(id, code);
       this.closeSurface(id);
     };
 

@@ -1,4 +1,7 @@
-import type { WorkspaceContextMenuRequest } from "../../shared/types";
+import type {
+  PackageInfo,
+  WorkspaceContextMenuRequest,
+} from "../../shared/types";
 import { ICON_TEMPLATES, createIcon, type IconName } from "./icons";
 
 export interface WorkspaceInfo {
@@ -16,6 +19,17 @@ export interface WorkspaceInfo {
   progress: { value: number; label?: string } | null;
   /** Unique TCP ports listening across all panes in this workspace. */
   listeningPorts: number[];
+  /** Nearest package.json for this workspace's surfaces (or null). */
+  packageJson: PackageInfo | null;
+  /** Script names from package.json that are currently running in any surface. */
+  runningScripts: string[];
+  /** Script names whose most recent run exited non-zero within the last ~10 s. */
+  erroredScripts: string[];
+  /** Distinct cwds across all surfaces in this workspace, in stable order. */
+  cwds: string[];
+  /** The cwd currently driving the package.json card — user-selectable when
+   *  `cwds.length > 1`, defaults to the focused surface's cwd. */
+  selectedCwd: string | null;
 }
 
 interface SidebarCallbacks {
@@ -247,6 +261,38 @@ export class Sidebar {
         item.appendChild(portsContainer);
       }
 
+      // ── Row 2b2: multi-cwd selector (only when >1 distinct cwd) ──
+      if (ws.cwds.length > 1) {
+        const cwdRow = document.createElement("div");
+        cwdRow.className = "workspace-cwds";
+        const label = document.createElement("span");
+        label.className = "workspace-cwds-label";
+        label.textContent = "cwd";
+        cwdRow.appendChild(label);
+        for (const cwd of ws.cwds) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = `workspace-cwd-chip${cwd === ws.selectedCwd ? " active" : ""}`;
+          chip.textContent = shortCwd(cwd);
+          chip.title = cwd;
+          chip.addEventListener("click", (e) => {
+            e.stopPropagation();
+            window.dispatchEvent(
+              new CustomEvent("ht-select-workspace-cwd", {
+                detail: { workspaceId: ws.id, cwd },
+              }),
+            );
+          });
+          cwdRow.appendChild(chip);
+        }
+        item.appendChild(cwdRow);
+      }
+
+      // ── Row 2c: package.json card + script runners ──
+      if (ws.packageJson) {
+        item.appendChild(renderPackageCard(ws.id, ws.packageJson, ws));
+      }
+
       // ── Row 3: status pills (compact) ──
       if (ws.statusPills.length > 0) {
         const statusContainer = document.createElement("div");
@@ -413,4 +459,140 @@ export class Sidebar {
       list.appendChild(el);
     }
   }
+}
+
+/** Last two path segments (or full path if short); used by the cwd chip. */
+function shortCwd(cwd: string): string {
+  if (!cwd) return "";
+  const parts = cwd.replace(/\/+$/, "").split("/").filter(Boolean);
+  if (parts.length <= 2) {
+    return cwd.startsWith("/") ? "/" + parts.join("/") : parts.join("/");
+  }
+  return "\u2026/" + parts.slice(-2).join("/");
+}
+
+/**
+ * Render the package.json card for a workspace: name + version + description
+ * header, then a list of scripts with status dots and run buttons.
+ *
+ * The status dot on each script reflects derivation from the process tree
+ * (green = running) and a short-lived error flag (red = last exit non-zero
+ * within the last ~10 s). Grey otherwise.
+ */
+function renderPackageCard(
+  workspaceId: string,
+  pkg: PackageInfo,
+  ws: WorkspaceInfo,
+): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "workspace-package";
+
+  const header = document.createElement("div");
+  header.className = "workspace-package-header";
+
+  const icon = document.createElement("span");
+  icon.className = "workspace-package-icon";
+  icon.append(createIcon("package", "", 10));
+  header.appendChild(icon);
+
+  const nameEl = document.createElement("span");
+  nameEl.className = "workspace-package-name";
+  nameEl.textContent = pkg.name || "package.json";
+  header.appendChild(nameEl);
+
+  if (pkg.version) {
+    const versionEl = document.createElement("span");
+    versionEl.className = "workspace-package-version";
+    versionEl.textContent = "v" + pkg.version;
+    header.appendChild(versionEl);
+  }
+
+  if (pkg.type) {
+    const typeEl = document.createElement("span");
+    typeEl.className = "workspace-package-type";
+    typeEl.textContent = pkg.type;
+    header.appendChild(typeEl);
+  }
+
+  card.appendChild(header);
+
+  if (pkg.description) {
+    const descEl = document.createElement("div");
+    descEl.className = "workspace-package-desc";
+    descEl.textContent = pkg.description;
+    descEl.title = pkg.description;
+    card.appendChild(descEl);
+  }
+
+  if (pkg.bin) {
+    const binEl = document.createElement("div");
+    binEl.className = "workspace-package-bin";
+    const label = document.createElement("span");
+    label.className = "workspace-package-bin-label";
+    label.textContent = "bin";
+    binEl.appendChild(label);
+    const names =
+      typeof pkg.bin === "string"
+        ? [pkg.name ?? "(bin)"]
+        : Object.keys(pkg.bin);
+    for (const name of names) {
+      const chip = document.createElement("span");
+      chip.className = "workspace-package-bin-chip";
+      chip.textContent = name;
+      binEl.appendChild(chip);
+    }
+    card.appendChild(binEl);
+  }
+
+  const scriptKeys = pkg.scripts ? Object.keys(pkg.scripts) : [];
+  if (scriptKeys.length > 0) {
+    const scripts = document.createElement("div");
+    scripts.className = "workspace-package-scripts";
+
+    for (const key of scriptKeys) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "workspace-script-btn";
+      row.title = pkg.scripts![key] + "\n\nClick to run";
+
+      let state: "running" | "error" | "idle" = "idle";
+      if (ws.runningScripts.includes(key)) state = "running";
+      else if (ws.erroredScripts.includes(key)) state = "error";
+      row.dataset["state"] = state;
+
+      const dot = document.createElement("span");
+      dot.className = `workspace-script-dot ${state}`;
+      row.appendChild(dot);
+
+      const nameEl = document.createElement("span");
+      nameEl.className = "workspace-script-name";
+      nameEl.textContent = key;
+      row.appendChild(nameEl);
+
+      const cmdEl = document.createElement("span");
+      cmdEl.className = "workspace-script-cmd";
+      cmdEl.textContent = pkg.scripts![key];
+      row.appendChild(cmdEl);
+
+      const run = document.createElement("span");
+      run.className = "workspace-script-run";
+      run.textContent = state === "running" ? "running" : "run \u25B6";
+      row.appendChild(run);
+
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.dispatchEvent(
+          new CustomEvent("ht-run-script", {
+            detail: { workspaceId, cwd: pkg.directory, scriptKey: key },
+          }),
+        );
+      });
+
+      scripts.appendChild(row);
+    }
+
+    card.appendChild(scripts);
+  }
+
+  return card;
 }

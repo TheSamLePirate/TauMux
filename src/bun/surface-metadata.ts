@@ -11,9 +11,12 @@
  * changed vs the previous tick.
  */
 
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type {
   GitInfo,
   ListeningPort,
+  PackageInfo,
   ProcessNode,
   SurfaceMetadata,
 } from "../shared/types";
@@ -183,6 +186,71 @@ export function parseShortstat(output: string): {
 }
 
 /**
+ * Parse the subset of package.json that the UI cares about. Never throws —
+ * malformed JSON or unexpected shapes collapse to `null`.
+ */
+export function parsePackageJson(
+  text: string,
+  path: string,
+): PackageInfo | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  const info: PackageInfo = {
+    path,
+    directory: dirname(path),
+  };
+  if (typeof obj["name"] === "string") info.name = obj["name"];
+  if (typeof obj["version"] === "string") info.version = obj["version"];
+  if (typeof obj["type"] === "string") info.type = obj["type"];
+  if (typeof obj["description"] === "string")
+    info.description = obj["description"];
+  const bin = obj["bin"];
+  if (typeof bin === "string") {
+    info.bin = bin;
+  } else if (bin && typeof bin === "object") {
+    const coerced: Record<string, string> = {};
+    for (const [k, v] of Object.entries(bin)) {
+      if (typeof v === "string") coerced[k] = v;
+    }
+    if (Object.keys(coerced).length > 0) info.bin = coerced;
+  }
+  const scripts = obj["scripts"];
+  if (scripts && typeof scripts === "object") {
+    const coerced: Record<string, string> = {};
+    for (const [k, v] of Object.entries(scripts)) {
+      if (typeof v === "string") coerced[k] = v;
+    }
+    if (Object.keys(coerced).length > 0) info.scripts = coerced;
+  }
+  return info;
+}
+
+/**
+ * Walk up from `start` looking for the nearest `package.json`. Returns the
+ * absolute file path, or null. Stops at the filesystem root or at `HOME`.
+ */
+export function findPackageJson(start: string): string | null {
+  if (!start || !start.startsWith("/")) return null;
+  const home = process.env["HOME"] ?? "";
+  let dir = start;
+  for (let i = 0; i < 40; i++) {
+    const candidate = join(dir, "package.json");
+    if (existsSync(candidate)) return candidate;
+    if (dir === "/" || dir === home) return null;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+/**
  * Parse `lsof -a -d cwd -F pn -p <pids>` output.
  * Each process yields one `p<pid>` line followed by one `n<cwd>` line.
  */
@@ -260,7 +328,8 @@ export function metadataEqual(a: SurfaceMetadata, b: SurfaceMetadata): boolean {
     a.cwd !== b.cwd ||
     a.tree.length !== b.tree.length ||
     a.listeningPorts.length !== b.listeningPorts.length ||
-    !gitEqual(a.git, b.git)
+    !gitEqual(a.git, b.git) ||
+    !pkgEqual(a.packageJson, b.packageJson)
   ) {
     return false;
   }
@@ -283,6 +352,23 @@ export function metadataEqual(a: SurfaceMetadata, b: SurfaceMetadata): boolean {
       return false;
     }
   }
+  return true;
+}
+
+function pkgEqual(a: PackageInfo | null, b: PackageInfo | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (
+    a.path !== b.path ||
+    a.name !== b.name ||
+    a.version !== b.version ||
+    a.type !== b.type ||
+    a.description !== b.description
+  ) {
+    return false;
+  }
+  if (JSON.stringify(a.bin) !== JSON.stringify(b.bin)) return false;
+  if (JSON.stringify(a.scripts) !== JSON.stringify(b.scripts)) return false;
   return true;
 }
 
@@ -321,6 +407,15 @@ interface GitCacheEntry {
   at: number;
 }
 
+interface PkgCacheEntry {
+  /** package.json path, or null when none was found walking up from cwd. */
+  path: string | null;
+  info: PackageInfo | null;
+  /** mtime of package.json in ms epoch; used to invalidate contents. */
+  mtime: number;
+  at: number;
+}
+
 export class SurfaceMetadataPoller {
   private timer: ReturnType<typeof setInterval> | null = null;
   private inFlight = false;
@@ -328,6 +423,9 @@ export class SurfaceMetadataPoller {
   /** cwd → git snapshot + freshness. Reuses across ticks (TTL gated). */
   private gitCache = new Map<string, GitCacheEntry>();
   private gitTtlMs = 3000;
+  /** cwd → resolved package.json + contents; path+mtime drive invalidation. */
+  private pkgCache = new Map<string, PkgCacheEntry>();
+  private pkgTtlMs = 3000;
 
   onMetadata: ((surfaceId: string, metadata: SurfaceMetadata) => void) | null =
     null;
@@ -419,6 +517,7 @@ export class SurfaceMetadataPoller {
         if (cwd) cwds.add(cwd);
       }
       const gitByCwd = await this.resolveGit(cwds, now);
+      const pkgByCwd = this.resolvePackage(cwds, now);
 
       // Drop git cache entries for cwds that have disappeared (saves
       // memory across `cd` cycles over time).
@@ -456,6 +555,7 @@ export class SurfaceMetadataPoller {
           tree,
           listeningPorts,
           git: cwd ? (gitByCwd.get(cwd) ?? null) : null,
+          packageJson: cwd ? (pkgByCwd.get(cwd) ?? null) : null,
           updatedAt: now,
         };
 
@@ -471,6 +571,53 @@ export class SurfaceMetadataPoller {
     } finally {
       this.inFlight = false;
     }
+  }
+
+  /**
+   * Resolve the nearest package.json for each cwd, honoring a per-cwd TTL
+   * and invalidating the parsed contents when the file's mtime changes.
+   * Synchronous — readFileSync on a small JSON blob is cheap, and we skip
+   * the work entirely for cwds whose cache entry is still fresh.
+   */
+  private resolvePackage(
+    cwds: Set<string>,
+    now: number,
+  ): Map<string, PackageInfo | null> {
+    const result = new Map<string, PackageInfo | null>();
+    for (const cwd of cwds) {
+      const cached = this.pkgCache.get(cwd);
+      let entry = cached;
+
+      if (!entry || now - entry.at >= this.pkgTtlMs) {
+        const path = findPackageJson(cwd);
+        let info: PackageInfo | null = null;
+        let mtime = 0;
+        if (path) {
+          try {
+            const s = statSync(path);
+            mtime = s.mtimeMs;
+            if (cached && cached.path === path && cached.mtime === mtime) {
+              info = cached.info;
+            } else {
+              const text = readFileSync(path, "utf-8");
+              info = parsePackageJson(text, path);
+            }
+          } catch {
+            info = null;
+          }
+        }
+        entry = { path, info, mtime, at: now };
+        this.pkgCache.set(cwd, entry);
+      }
+
+      result.set(cwd, entry.info);
+    }
+    for (const k of [...this.pkgCache.keys()]) {
+      if (!cwds.has(k) && now - this.pkgCache.get(k)!.at > this.pkgTtlMs * 4) {
+        this.pkgCache.delete(k);
+      }
+    }
+    return result;
   }
 
   /**

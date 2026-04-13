@@ -46,6 +46,10 @@ export interface AppSettings {
   webMirrorPort: number;
   autoStartWebMirror: boolean;
 
+  // Scripts
+  /** Command used to run `package.json` scripts from the sidebar. */
+  packageRunner: "bun" | "npm" | "pnpm" | "yarn";
+
   // Advanced
   paneGap: number;
   sidebarWidth: number;
@@ -381,6 +385,8 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   webMirrorPort: 3000,
   autoStartWebMirror: false,
 
+  packageRunner: "bun",
+
   paneGap: 2,
   sidebarWidth: 304,
 };
@@ -404,6 +410,12 @@ export function validateSettings(s: AppSettings): AppSettings {
       s.cursorStyle === "bar" || s.cursorStyle === "underline"
         ? s.cursorStyle
         : "block",
+    packageRunner:
+      s.packageRunner === "npm" ||
+      s.packageRunner === "pnpm" ||
+      s.packageRunner === "yarn"
+        ? s.packageRunner
+        : "bun",
   };
 }
 

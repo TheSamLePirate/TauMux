@@ -22,6 +22,7 @@ A hybrid terminal emulator where a traditional PTY text layer (xterm.js) coexist
 ## Highlights
 
 - **Terminal multiplexer.** Workspaces, tiling splits, draggable dividers, per-pane drag-and-drop, workspace colors.
+- **Workspace-level package.json card.** The sidebar shows the nearest `package.json` from any pane's cwd — name, type, description, bin chips, and a one-click row per script. Pick `bun` / `npm` / `pnpm` / `yarn` from settings. Script dots: green pulse = running (detected in the process tree), red = last run exited non-zero, grey = idle.
 - **Canvas panels.** Floating SVG / HTML / image / canvas2d overlays driven by sideband file descriptors. Panels are independent DOM elements — draggable, resizable, interactive.
 - **Live process metadata.** A 1 Hz poller observes every descendant of every shell and surfaces cwd, pid, tty, full argv, listening TCP ports, CPU %, and RSS per process. Changes propagate to the pane header, sidebar, Process Manager, web mirror, and `ht` CLI — no tmux, no shell integration, just `ps` + `lsof` against pids we already own.
 - **Process Manager.** A full-screen overlay (⌘⌥P) that tabulates every process in every workspace with CPU / memory / kill buttons. Shift-click for SIGKILL.

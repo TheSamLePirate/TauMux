@@ -6,6 +6,7 @@ import {
   parseGitStatusV2,
   parseListenAddress,
   parseListeningPorts,
+  parsePackageJson,
   parsePs,
   parseShortstat,
   walkTree,
@@ -246,6 +247,7 @@ describe("metadataEqual", () => {
     tree: [{ pid: 10, ppid: 1, command: "zsh", cpu: 0, rssKb: 0 }],
     listeningPorts: [],
     git: null,
+    packageJson: null,
     updatedAt: 1,
   };
 
@@ -273,6 +275,40 @@ describe("metadataEqual", () => {
         listeningPorts: [{ pid: 10, port: 3000, proto: "tcp", address: "*" }],
       }),
     ).toBe(false);
+  });
+
+  test("package.json null vs populated not equal", () => {
+    expect(
+      metadataEqual(base, {
+        ...base,
+        packageJson: {
+          path: "/p/package.json",
+          directory: "/p",
+          name: "x",
+          scripts: { dev: "bun run" },
+        },
+      }),
+    ).toBe(false);
+  });
+
+  test("package.json script change not equal", () => {
+    const a: SurfaceMetadata = {
+      ...base,
+      packageJson: {
+        path: "/p/package.json",
+        directory: "/p",
+        name: "x",
+        scripts: { dev: "bun run src/a" },
+      },
+    };
+    const b: SurfaceMetadata = {
+      ...a,
+      packageJson: {
+        ...a.packageJson!,
+        scripts: { dev: "bun run src/b" },
+      },
+    };
+    expect(metadataEqual(a, b)).toBe(false);
   });
 
   test("git null vs populated not equal", () => {
@@ -367,6 +403,70 @@ describe("parseGitStatusV2", () => {
     expect(info.unstaged).toBe(2);
     expect(info.untracked).toBe(2);
     expect(info.conflicts).toBe(1);
+  });
+});
+
+describe("parsePackageJson", () => {
+  test("extracts all fields from a rich package.json", () => {
+    const text = JSON.stringify({
+      name: "my-app",
+      version: "1.2.3",
+      type: "module",
+      description: "does something useful",
+      bin: { mycli: "./bin/cli.js" },
+      scripts: {
+        dev: "bun run src/index.ts",
+        build: "bun build",
+        test: "bun test",
+      },
+      private: true, // ignored
+    });
+    const info = parsePackageJson(text, "/abs/pkg/package.json")!;
+    expect(info.path).toBe("/abs/pkg/package.json");
+    expect(info.directory).toBe("/abs/pkg");
+    expect(info.name).toBe("my-app");
+    expect(info.version).toBe("1.2.3");
+    expect(info.type).toBe("module");
+    expect(info.description).toBe("does something useful");
+    expect(info.bin).toEqual({ mycli: "./bin/cli.js" });
+    expect(info.scripts).toEqual({
+      dev: "bun run src/index.ts",
+      build: "bun build",
+      test: "bun test",
+    });
+  });
+
+  test("bin as string preserved verbatim", () => {
+    const text = JSON.stringify({ name: "cli", bin: "./bin/cli" });
+    expect(parsePackageJson(text, "/p/package.json")!.bin).toBe("./bin/cli");
+  });
+
+  test("filters non-string bin/scripts values", () => {
+    const text = JSON.stringify({
+      bin: { ok: "./a", nope: 42 },
+      scripts: { run: "x", bad: null },
+    });
+    const info = parsePackageJson(text, "/p/package.json")!;
+    expect(info.bin).toEqual({ ok: "./a" });
+    expect(info.scripts).toEqual({ run: "x" });
+  });
+
+  test("omits fields that don't exist", () => {
+    const text = JSON.stringify({ name: "tiny" });
+    const info = parsePackageJson(text, "/p/package.json")!;
+    expect(info.name).toBe("tiny");
+    expect(info.scripts).toBeUndefined();
+    expect(info.bin).toBeUndefined();
+    expect(info.description).toBeUndefined();
+  });
+
+  test("malformed JSON returns null", () => {
+    expect(parsePackageJson("{not json", "/p/package.json")).toBeNull();
+  });
+
+  test("non-object JSON returns null", () => {
+    expect(parsePackageJson('"just a string"', "/p/package.json")).toBeNull();
+    expect(parsePackageJson("[]", "/p/package.json")).toBeNull();
   });
 });
 

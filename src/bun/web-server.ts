@@ -630,11 +630,15 @@ html, body {
 .pane-chip.chip-cwd { font-family: ui-monospace, SFMono-Regular, monospace; max-width: 220px; }
 .pane-chip.chip-git {
   color: #c4b5fd; background: rgba(168,85,247,0.08); border-color: rgba(168,85,247,0.22);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums; gap: 6px;
 }
 .pane-chip.chip-git.dirty {
   color: #facc15; background: rgba(234,179,8,0.1); border-color: rgba(234,179,8,0.3);
 }
+.chip-git-branch { font-weight: 500; }
+.chip-git-ahead, .chip-git-behind { color: #c4b5fd; opacity: 0.85; }
+.chip-git-conflicts, .chip-git-del { color: #f87171; font-weight: 600; }
+.chip-git-add { color: #4ade80; font-weight: 600; }
 .pane-chip.chip-port {
   color: #86efac; background: rgba(74,222,128,0.08); border-color: rgba(74,222,128,0.2);
   font-variant-numeric: tabular-nums; cursor: pointer;
@@ -899,19 +903,19 @@ const APP_JS = [
   "  }",
   "  if (meta.git) {",
   "    var g = meta.git;",
-  "    var gparts = ['\\u2387 ' + g.branch];",
-  "    if (g.ahead > 0) gparts.push('\\u2191' + g.ahead);",
-  "    if (g.behind > 0) gparts.push('\\u2193' + g.behind);",
-  "    if (g.conflicts > 0) gparts.push('!' + g.conflicts);",
-  "    if (g.staged > 0) gparts.push('+' + g.staged);",
-  "    if (g.unstaged > 0) gparts.push('*' + g.unstaged);",
-  "    if (g.untracked > 0) gparts.push('?' + g.untracked);",
   "    var dirty = (g.staged + g.unstaged + g.untracked + g.conflicts + g.insertions + g.deletions) > 0;",
   "    var gc = document.createElement('span');",
   "    gc.className = 'pane-chip chip-git' + (dirty ? ' dirty' : '');",
-  "    gc.textContent = gparts.join(' ');",
+  "    function gitPart(cls, text) { var s = document.createElement('span'); s.className = cls; s.textContent = text; return s; }",
+  "    gc.appendChild(gitPart('chip-git-branch', '\\u2387 ' + g.branch));",
+  "    if (g.ahead > 0) gc.appendChild(gitPart('chip-git-ahead', '\\u2191' + g.ahead));",
+  "    if (g.behind > 0) gc.appendChild(gitPart('chip-git-behind', '\\u2193' + g.behind));",
+  "    if (g.conflicts > 0) gc.appendChild(gitPart('chip-git-conflicts', '!' + g.conflicts));",
+  "    if (g.insertions > 0) gc.appendChild(gitPart('chip-git-add', '+' + g.insertions));",
+  "    if (g.deletions > 0) gc.appendChild(gitPart('chip-git-del', '\\u2212' + g.deletions));",
   "    var tip = 'branch: ' + g.branch + (g.head ? ' @ ' + g.head : '');",
   "    if (g.upstream) tip += '\\nupstream: ' + g.upstream;",
+  "    tip += '\\nfiles: ' + g.staged + ' staged · ' + g.unstaged + ' unstaged · ' + g.untracked + ' untracked' + (g.conflicts ? ' · ' + g.conflicts + ' conflicts' : '');",
   "    if (g.insertions || g.deletions) tip += '\\ndiff vs HEAD: +' + g.insertions + ' -' + g.deletions;",
   "    gc.title = tip;",
   "    host.appendChild(gc);",

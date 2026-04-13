@@ -195,6 +195,13 @@ export class SettingsPanel {
         step: 500,
       },
     );
+
+    this.segmentedField(c, "Package Runner", s.packageRunner, "packageRunner", [
+      { value: "bun", label: "bun" },
+      { value: "npm", label: "npm" },
+      { value: "pnpm", label: "pnpm" },
+      { value: "yarn", label: "yarn" },
+    ]);
   }
 
   private renderAppearance(c: HTMLElement, s: AppSettings): void {

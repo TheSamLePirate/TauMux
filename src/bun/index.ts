@@ -222,6 +222,24 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
           console.error(`[killPid ${pid} ${signal}]`, err);
         }
       },
+      runScript: (payload) => {
+        const { workspaceId, cwd, command, scriptKey } = payload;
+        if (!workspaceId || !cwd || !command || !scriptKey) return;
+        const surfaceId = sessions.createSurface(80, 24, cwd);
+        const title = sessions.getSurface(surfaceId)?.title ?? "shell";
+        rpc.send("surfaceCreated", {
+          surfaceId,
+          title,
+          launchFor: { workspaceId, scriptKey },
+        });
+        broadcastSurfaceCreated(surfaceId, title);
+        // Small delay so the login shell's prompt is ready before we feed
+        // the script command. zsh emits ~150ms of async init (completion
+        // cache, etc.) on a fresh pty; 600 ms is a safe upper bound.
+        setTimeout(() => {
+          sessions.writeStdin(surfaceId, command + "\n");
+        }, 600);
+      },
       toggleMaximize: () => {
         if (mainWindow.isMaximized()) {
           mainWindow.unmaximize();
@@ -295,6 +313,11 @@ sessions.onSurfaceClosed = (surfaceId) => {
   if (sessions.surfaceCount === 0) {
     mainWindow.close();
   }
+};
+
+sessions.onSurfaceExit = (surfaceId, exitCode) => {
+  rpc.send("surfaceExited", { surfaceId, exitCode });
+  webServer?.broadcast({ type: "surfaceExited", surfaceId, exitCode });
 };
 
 metadataPoller.onMetadata = (surfaceId, metadata) => {
@@ -759,6 +782,8 @@ function saveLayout(): void {
         color: ws.color,
         layout: ws.layout,
         focusedSurfaceId: ws.focusedSurfaceId,
+        surfaceCwds: ws.surfaceCwds,
+        selectedCwd: ws.selectedCwd,
       })),
       sidebarVisible,
     };
@@ -827,7 +852,12 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
   for (const ws of persisted.workspaces) {
     const leafIds = collectLeafIds(ws.layout);
     for (const oldId of leafIds) {
-      const newId = sessions.createSurface(cols, rows);
+      // Re-spawn in the surface's last known cwd so shells resume where they
+      // left off (the metadata poller picks this up within a tick; without
+      // this, every restart dumps the user at $HOME regardless of where
+      // they were working).
+      const cwd = ws.surfaceCwds?.[oldId];
+      const newId = sessions.createSurface(cols, rows, cwd);
       surfaceMapping[oldId] = newId;
       const title = sessions.getSurface(newId)?.title ?? "shell";
       rpc.send("surfaceCreated", { surfaceId: newId, title });
@@ -835,16 +865,30 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
     }
   }
 
-  // Remap the layout trees
+  // Remap the layout trees + remap the surfaceCwds keys (old → new ids) so
+  // the webview can rehydrate its selectedCwds against live surface ids, and
+  // carry the user's pinned selectedCwd through untouched (path-based, not
+  // surface-id based, so no remapping needed).
   const remappedLayout: PersistedLayout = {
     ...persisted,
-    workspaces: persisted.workspaces.map((ws) => ({
-      ...ws,
-      layout: remapPaneNode(ws.layout, surfaceMapping),
-      focusedSurfaceId: ws.focusedSurfaceId
-        ? (surfaceMapping[ws.focusedSurfaceId] ?? null)
-        : null,
-    })),
+    workspaces: persisted.workspaces.map((ws) => {
+      const remappedCwds: Record<string, string> = {};
+      if (ws.surfaceCwds) {
+        for (const [oldId, cwd] of Object.entries(ws.surfaceCwds)) {
+          const newId = surfaceMapping[oldId];
+          if (newId) remappedCwds[newId] = cwd;
+        }
+      }
+      return {
+        ...ws,
+        layout: remapPaneNode(ws.layout, surfaceMapping),
+        focusedSurfaceId: ws.focusedSurfaceId
+          ? (surfaceMapping[ws.focusedSurfaceId] ?? null)
+          : null,
+        surfaceCwds:
+          Object.keys(remappedCwds).length > 0 ? remappedCwds : undefined,
+      };
+    }),
   };
 
   // Small delay to let webview process surfaceCreated messages first
