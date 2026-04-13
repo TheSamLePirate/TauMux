@@ -77,7 +77,45 @@ If you are writing scripts intended to be killed by closing the pane, ensure you
 
 ---
 
-## 5. UTF-8 Streaming
+## 5. Shell selection and settings integration
+
+By default HyperTerm spawns whatever `$SHELL` points to (falling back to `/bin/zsh`). Two layers override this:
+
+1. **`settings.json`** — the `shellPath` key in `AppSettings`. When set, `SessionManager` is constructed with that value (`new SessionManager(shellPath)`). Changing the value in **Settings → General → Shell** calls `sessions.setShell(newValue)`; the new shell takes effect for *new* surfaces — existing PTYs are never re-parented.
+2. **`-l` flag** — every spawn launches the shell with `-l` so dotfiles (`.zprofile`, `.zshrc`) load. This is important for PATH inheritance in GUI launches.
+
+`SessionManager.createSurface` also sets these per-shell environment variables on top of `process.env`:
+
+- `HT_SURFACE=<id>` — the ID of the new surface (used by `ht` for default `--surface` resolution).
+- `TERM=xterm-256color`, `COLORTERM=truecolor` — tell TUI apps about color support.
+- `HYPERTERM_*` channel map — described in the sideband doc.
+
+Changing **Settings → Advanced → Scrollback lines** updates the webview xterm.js options in place (no respawn).
+
+---
+
+## 6. Live process metadata
+
+Independently of the PTY layer, a `SurfaceMetadataPoller` (`src/bun/surface-metadata.ts`) observes every descendant of every shell and publishes snapshots at 1 Hz. This gives you:
+
+- `pid` / `foregroundPid` / `tty`
+- full descendant tree with argv, CPU%, RSS
+- cwd of the foreground process
+- listening TCP ports for the whole tree
+
+See [system-process-metadata.md](system-process-metadata.md) for the full pipeline, parsers, and consumers (pane chips, sidebar, Process Manager, web mirror, `ht` CLI).
+
+Importantly, the metadata pipeline never touches the PTY — it only reads pids and runs `ps` / `lsof` against them. PTY correctness is unaffected.
+
+---
+
+## 7. Web mirror auto-start
+
+`Settings → Network → Auto-start Web Mirror` is read at bun startup. If true (and no `HYPERTERM_WEB_PORT` env override is set to force-start), the mirror starts automatically on `webMirrorPort` (default 3000). Changing the port setting at runtime hot-swaps a running mirror onto the new port without restarting the app.
+
+---
+
+## 8. UTF-8 Streaming
 
 Terminal output is a continuous stream of bytes. Sometimes, a multi-byte UTF-8 character (like an emoji: 🚀) gets split right down the middle across two network chunks.
 

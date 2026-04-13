@@ -19,6 +19,7 @@ export const MENU_ACTIONS = {
   nextWorkspace: "workspace.next",
   prevWorkspace: "workspace.prev",
   toggleWebMirror: "network.toggle-web-mirror",
+  toggleProcessManager: "view.toggle-process-manager",
   copySelection: "edit.copy-selection",
   pasteClipboard: "edit.paste-clipboard",
   selectAll: "edit.select-all",
@@ -136,6 +137,11 @@ export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
           label: "Command Palette...",
           action: MENU_ACTIONS.toggleCommandPalette,
           accelerator: "CmdOrCtrl+Shift+P",
+        },
+        {
+          label: "Process Manager...",
+          action: MENU_ACTIONS.toggleProcessManager,
+          accelerator: "CmdOrCtrl+Alt+P",
         },
         { type: "divider" },
         {

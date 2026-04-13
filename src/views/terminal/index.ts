@@ -12,6 +12,7 @@ import { SurfaceManager } from "./surface-manager";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
 import { createIcon } from "./icons";
 import { showPromptDialog } from "./prompt-dialog";
+import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";
 import { showToast } from "./toast";
 
@@ -105,6 +106,10 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
       socketAction: (payload) => {
         handleSocketAction(payload.action, payload.payload);
       },
+      surfaceMetadata: (payload) => {
+        surfaceManager.setSurfaceMetadata(payload.surfaceId, payload.metadata);
+        processManagerPanel.refresh();
+      },
     },
     requests: {
       readScreen: (params) => {
@@ -149,6 +154,19 @@ function applySettings(settings: AppSettings): void {
 function openSettings(): void {
   clearTypingFocusMode();
   settingsPanel.show(currentSettings ?? DEFAULT_SETTINGS);
+}
+
+const processManagerPanel = new ProcessManagerPanel({
+  getData: () => surfaceManager.getProcessManagerData(),
+  onKill: (pid, signal) => {
+    rpc.send("killPid", { pid, signal });
+  },
+});
+
+function toggleProcessManager(): void {
+  if (!processManagerPanel.isVisible()) clearTypingFocusMode();
+  processManagerPanel.toggle();
+  syncPaletteCommands();
 }
 
 new Electroview({ rpc });
@@ -423,6 +441,17 @@ function buildPaletteCommands(): PaletteCommand[] {
       shortcut: "\u2318,",
       action: () => openSettings(),
     },
+    {
+      id: "toggle-process-manager",
+      category: "View",
+      label: processManagerPanel.isVisible()
+        ? "Close Process Manager"
+        : "Process Manager",
+      description:
+        "Inspect every process in the workspace — pid, command, cwd, ports, CPU, memory. Kill from the row.",
+      shortcut: "\u2318\u2325P",
+      action: () => toggleProcessManager(),
+    },
   ];
 }
 
@@ -681,6 +710,18 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
+  if (e.metaKey && e.altKey && e.key.toLowerCase() === "p") {
+    e.preventDefault();
+    toggleProcessManager();
+    return;
+  }
+
+  if (processManagerPanel.isVisible() && e.key === "Escape") {
+    e.preventDefault();
+    toggleProcessManager();
+    return;
+  }
+
   if (palette.isVisible()) return;
 
   if (e.metaKey && !e.shiftKey && e.key === "b") {
@@ -828,6 +869,18 @@ window.addEventListener("ht-new-workspace", () => {
   rpc.send("createSurface", {});
 });
 
+window.addEventListener("ht-open-external", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.url) rpc.send("openExternal", { url: detail.url });
+});
+
+// Metadata poll rate follows window visibility: full rate visible, slow hidden.
+function reportVisibility(): void {
+  rpc.send("windowVisibility", { visible: !document.hidden });
+}
+document.addEventListener("visibilitychange", reportVisibility);
+reportVisibility();
+
 window.addEventListener("ht-clear-notifications", () => {
   clearTypingFocusMode();
   rpc.send("clearNotifications");
@@ -909,6 +962,9 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
     }
     case "toggleCommandPalette":
       openCommandPalette();
+      break;
+    case "toggleProcessManager":
+      toggleProcessManager();
       break;
     case "openSettings":
       openSettings();

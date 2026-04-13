@@ -669,6 +669,319 @@ textarea {
   opacity: 0.6;
 }
 
+.workspace-meta-fg {
+  font-family: var(--font-mono, monospace);
+  color: var(--accent-primary);
+  font-weight: 500;
+}
+
+/* ── Process Manager overlay ── */
+
+.process-manager-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 5, 8, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 56px 24px 24px;
+  z-index: 200;
+}
+
+.process-manager-overlay.visible {
+  display: flex;
+}
+
+.process-manager-panel {
+  width: min(1100px, 100%);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 10, 14, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.process-manager-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.process-manager-header-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: 0.02em;
+}
+
+.process-manager-header-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-left: auto;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.process-manager-close {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.process-manager-close:hover {
+  color: var(--text-strong);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.process-manager-content {
+  overflow: auto;
+  padding: 12px 16px 20px;
+}
+
+.process-manager-summary {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 4px 2px 10px;
+}
+
+.process-manager-empty,
+.process-manager-empty-row {
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 10px 4px;
+}
+
+.process-manager-workspace {
+  margin-bottom: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.015);
+  overflow: hidden;
+}
+
+.process-manager-workspace.active {
+  border-color: rgba(234, 179, 8, 0.28);
+}
+
+.process-manager-workspace-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.process-manager-workspace-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.process-manager-workspace-name {
+  color: var(--text-strong);
+}
+
+.process-manager-workspace-count {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.process-manager-surface {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.process-manager-surface:last-child {
+  border-bottom: none;
+}
+
+.process-manager-surface-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.process-manager-surface-header:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.process-manager-caret {
+  width: 10px;
+  display: inline-block;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.process-manager-surface-title {
+  color: var(--text-strong);
+  font-weight: 500;
+}
+
+.process-manager-surface-cwd {
+  font-family: var(--font-mono, monospace);
+  color: var(--text-dim);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 360px;
+  white-space: nowrap;
+}
+
+.process-manager-port {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: #86efac;
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.2);
+}
+
+.process-manager-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.process-manager-table th,
+.process-manager-table td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.process-manager-table th {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.process-manager-table td.num,
+.process-manager-table th.num {
+  text-align: right;
+}
+
+.process-manager-table tr.foreground td {
+  background: rgba(234, 179, 8, 0.05);
+}
+
+.process-manager-table tr.foreground .process-manager-pid {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.process-manager-cmd {
+  font-family: var(--font-mono, monospace);
+  color: var(--text-strong);
+  max-width: 440px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.process-manager-cpu {
+  /* heatmap tint driven by --heat set inline per cell */
+  color: color-mix(in oklab, var(--text-strong), #f87171 calc(var(--heat, 0) * 100%));
+}
+
+.process-manager-mem {
+  color: var(--text-muted);
+}
+
+.process-manager-action {
+  text-align: right;
+  width: 60px;
+}
+
+.process-manager-kill-btn {
+  font-size: 10px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  cursor: pointer;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.process-manager-kill-btn:hover {
+  background: rgba(248, 113, 113, 0.22);
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.52);
+}
+
+/* ── Workspace port chips (live listening ports) ── */
+
+.workspace-ports {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding-left: 14px;
+}
+
+.workspace-port-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: #86efac;
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.22);
+  cursor: pointer;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+.workspace-port-chip:hover,
+.workspace-port-chip:focus-visible {
+  background: rgba(74, 222, 128, 0.2);
+  border-color: rgba(74, 222, 128, 0.44);
+  color: #bbf7d0;
+  outline: none;
+}
+
 /* ── Status pills ── */
 
 .workspace-status {
@@ -956,6 +1269,66 @@ textarea {
   text-shadow:
     0 0 10px var(--accent-primary-soft),
     0 0 22px var(--accent-primary-soft);
+}
+
+.surface-bar-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.surface-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.surface-chip.chip-command {
+  color: var(--text-strong);
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.22);
+}
+
+.surface-chip.chip-cwd {
+  color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+  max-width: 220px;
+}
+
+.surface-chip.chip-port {
+  color: #86efac;
+  background: rgba(74, 222, 128, 0.08);
+  border-color: rgba(74, 222, 128, 0.2);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+.surface-chip.chip-port:hover,
+.surface-chip.chip-port:focus-visible {
+  background: rgba(74, 222, 128, 0.18);
+  border-color: rgba(74, 222, 128, 0.42);
+  color: #bbf7d0;
+  outline: none;
 }
 
 .surface-bar-actions {

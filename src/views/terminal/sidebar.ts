@@ -9,8 +9,13 @@ export interface WorkspaceInfo {
   paneCount: number;
   surfaceTitles: string[];
   focusedSurfaceTitle?: string | null;
+  /** Full argv of the focused surface's foreground process, if it differs
+   *  from the shell. E.g. "bun run dev", "vim src/foo.ts". */
+  focusedSurfaceCommand?: string | null;
   statusPills: { key: string; value: string; color?: string; icon?: string }[];
   progress: { value: number; label?: string } | null;
+  /** Unique TCP ports listening across all panes in this workspace. */
+  listeningPorts: number[];
 }
 
 interface SidebarCallbacks {
@@ -184,7 +189,16 @@ export class Sidebar {
         const meta = document.createElement("div");
         meta.className = "workspace-meta-row";
 
-        if (ws.focusedSurfaceTitle && ws.focusedSurfaceTitle !== ws.name) {
+        if (ws.focusedSurfaceCommand) {
+          const fg = document.createElement("span");
+          fg.className = "workspace-meta workspace-meta-fg";
+          fg.textContent = ws.focusedSurfaceCommand;
+          fg.title = ws.focusedSurfaceCommand;
+          meta.appendChild(fg);
+        } else if (
+          ws.focusedSurfaceTitle &&
+          ws.focusedSurfaceTitle !== ws.name
+        ) {
           const focused = document.createElement("span");
           focused.className = "workspace-meta";
           focused.textContent = ws.focusedSurfaceTitle;
@@ -208,6 +222,29 @@ export class Sidebar {
         }
 
         if (meta.childElementCount > 0) item.appendChild(meta);
+      }
+
+      // ── Row 2b: listening ports (compact, clickable) ──
+      if (ws.listeningPorts.length > 0) {
+        const portsContainer = document.createElement("div");
+        portsContainer.className = "workspace-ports";
+        for (const port of ws.listeningPorts) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "workspace-port-chip";
+          chip.textContent = `:${port}`;
+          chip.title = `Open http://localhost:${port}`;
+          chip.addEventListener("click", (e) => {
+            e.stopPropagation();
+            window.dispatchEvent(
+              new CustomEvent("ht-open-external", {
+                detail: { url: `http://localhost:${port}` },
+              }),
+            );
+          });
+          portsContainer.appendChild(chip);
+        }
+        item.appendChild(portsContainer);
       }
 
       // ── Row 3: status pills (compact) ──

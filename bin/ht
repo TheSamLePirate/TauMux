@@ -152,6 +152,36 @@ function mapCommand(): RpcCall {
     case "list-panes":
       return { method: "pane.list", params: {} };
 
+    case "metadata":
+    case "cwd":
+    case "ps":
+    case "ports":
+      return {
+        method: "surface.metadata",
+        params: {
+          surface_id: flags["surface"] || process.env["HT_SURFACE"] || undefined,
+        },
+      };
+
+    case "open":
+      return {
+        method: "surface.open_port",
+        params: {
+          surface_id: flags["surface"] || process.env["HT_SURFACE"] || undefined,
+          port: positional[0] ? parseInt(positional[0], 10) : undefined,
+        },
+      };
+
+    case "kill":
+      return {
+        method: "surface.kill_port",
+        params: {
+          surface_id: flags["surface"] || process.env["HT_SURFACE"] || undefined,
+          port: positional[0] ? parseInt(positional[0], 10) : undefined,
+          signal: flags["signal"],
+        },
+      };
+
     case "set-status":
       return {
         method: "sidebar.set_status",
@@ -297,6 +327,32 @@ function formatOutput(result: unknown): void {
     console.log(JSON.stringify(result, null, 2));
     return;
   }
+  // Metadata-derived commands share one RPC method; format per command.
+  if (
+    command === "cwd" ||
+    command === "ps" ||
+    command === "ports" ||
+    command === "metadata"
+  ) {
+    formatMetadata(result, command);
+    return;
+  }
+  if (command === "open" && result && typeof result === "object") {
+    const { url } = result as { url: string };
+    if (url) {
+      console.log(`Opening ${url}`);
+      return;
+    }
+  }
+  if (command === "kill" && result && typeof result === "object") {
+    const { pid, port, signal } = result as {
+      pid: number;
+      port: number;
+      signal: string;
+    };
+    console.log(`Sent ${signal} to pid ${pid} (port :${port})`);
+    return;
+  }
   // Format specific types
   if (Array.isArray(result)) {
     if (result.length === 0) {
@@ -327,6 +383,73 @@ function formatOutput(result: unknown): void {
   }
   // Default: JSON
   console.log(JSON.stringify(result, null, 2));
+}
+
+interface MetadataSnapshot {
+  pid: number;
+  foregroundPid: number;
+  cwd: string;
+  tree: { pid: number; ppid: number; command: string }[];
+  listeningPorts: {
+    pid: number;
+    port: number;
+    proto: string;
+    address: string;
+  }[];
+  updatedAt: number;
+}
+
+function formatMetadata(
+  result: unknown,
+  cmd: "cwd" | "ps" | "ports" | "metadata",
+): void {
+  if (!result || typeof result !== "object") {
+    console.error("No metadata available (surface not found or not polled yet).");
+    process.exit(1);
+  }
+  const meta = result as MetadataSnapshot;
+
+  if (cmd === "cwd") {
+    console.log(meta.cwd || "");
+    return;
+  }
+
+  if (cmd === "ps") {
+    const fg = meta.foregroundPid;
+    console.log("  PID  PPID  COMMAND");
+    for (const node of meta.tree) {
+      const marker = node.pid === fg ? "* " : "  ";
+      console.log(
+        `${marker}${String(node.pid).padStart(5)} ${String(node.ppid).padStart(5)}  ${node.command}`,
+      );
+    }
+    return;
+  }
+
+  if (cmd === "ports") {
+    if (meta.listeningPorts.length === 0) {
+      console.log("(no listening ports)");
+      return;
+    }
+    const byPid = new Map<number, string>();
+    for (const n of meta.tree) byPid.set(n.pid, n.command);
+    console.log("PORT   PROTO  ADDRESS          PID    COMMAND");
+    for (const p of meta.listeningPorts) {
+      console.log(
+        `${String(p.port).padEnd(6)} ${p.proto.padEnd(6)} ${p.address.padEnd(16)} ${String(p.pid).padEnd(6)} ${byPid.get(p.pid) ?? ""}`,
+      );
+    }
+    return;
+  }
+
+  // "metadata" — pretty summary
+  const fgNode = meta.tree.find((n) => n.pid === meta.foregroundPid);
+  console.log(`pid        ${meta.pid}`);
+  console.log(`fg pid     ${meta.foregroundPid}`);
+  console.log(`fg command ${fgNode?.command ?? ""}`);
+  console.log(`cwd        ${meta.cwd}`);
+  console.log(`tree       ${meta.tree.length} process(es)`);
+  console.log(`ports      ${meta.listeningPorts.length} listener(s)`);
 }
 
 function printHelp(): void {
@@ -374,6 +497,16 @@ Notifications:
   notify [--title T] [--body B]         Create a notification
   list-notifications                    List notifications
   clear-notifications                   Clear all notifications
+
+Live Metadata (reads from polled surface state):
+  metadata [--surface S]                Summary: pid, fg, cwd, counts
+  cwd [--surface S]                     Print cwd of foreground process
+  ps [--surface S]                      Process tree rooted at the shell
+  ports [--surface S]                   Listening TCP ports for tree pids
+  open [PORT] [--surface S]             Open http://localhost:PORT in browser
+                                        (resolves from surface metadata if no PORT)
+  kill PORT [--signal SIG] [--surface S] Send SIG (default SIGTERM) to the pid
+                                        bound to PORT
 
 Aliases:
   capture-pane                          Alias for read-screen (tmux compat)

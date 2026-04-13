@@ -17,6 +17,7 @@ import {
 import type { HyperTermRPC, PersistedLayout, PaneNode } from "../shared/types";
 import { SessionManager } from "./session-manager";
 import { SocketServer } from "./socket-server";
+import { SurfaceMetadataPoller } from "./surface-metadata";
 import { WebServer } from "./web-server";
 import {
   createRpcHandler,
@@ -37,6 +38,7 @@ const settingsFile = join(configDir, "settings.json");
 const settingsManager = new SettingsManager(configDir, settingsFile);
 
 const sessions = new SessionManager(settingsManager.get().shellPath);
+const metadataPoller = new SurfaceMetadataPoller(sessions);
 let initialResizeReceived = false;
 
 let focusedSurfaceId: string | null = null;
@@ -190,6 +192,36 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         }
         rpc.send("settingsChanged", { settings: updated });
       },
+      openExternal: (payload) => {
+        // Only pass through http(s) and localhost-ish URLs from the webview;
+        // protects against accidentally opening file:// or javascript: URLs
+        // from hostile script output reaching the chip render path.
+        const url = payload.url;
+        if (!/^https?:\/\//i.test(url)) return;
+        try {
+          Utils.openExternal(url);
+        } catch (err) {
+          console.error("[openExternal] failed:", err);
+        }
+      },
+      windowVisibility: (payload) => {
+        // Slow down metadata polling while the window is hidden — still
+        // useful (ht CLI + web mirror clients may be live) but not critical.
+        metadataPoller.setPollRate(payload.visible ? 1000 : 3000);
+      },
+      killPid: (payload) => {
+        const pid = Number(payload.pid);
+        if (!Number.isFinite(pid) || pid <= 0) return;
+        const raw = payload.signal || "SIGTERM";
+        const signal = (
+          raw.startsWith("SIG") ? raw : `SIG${raw}`
+        ) as NodeJS.Signals;
+        try {
+          process.kill(pid, signal);
+        } catch (err) {
+          console.error(`[killPid ${pid} ${signal}]`, err);
+        }
+      },
       toggleMaximize: () => {
         if (mainWindow.isMaximized()) {
           mainWindow.unmaximize();
@@ -264,6 +296,12 @@ sessions.onSurfaceClosed = (surfaceId) => {
     mainWindow.close();
   }
 };
+
+metadataPoller.onMetadata = (surfaceId, metadata) => {
+  rpc.send("surfaceMetadata", { surfaceId, metadata });
+  webServer?.broadcast({ type: "surfaceMetadata", surfaceId, metadata });
+};
+metadataPoller.start();
 
 // ── Web Mirror ──
 
@@ -400,6 +438,9 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
       break;
     case MENU_ACTIONS.toggleCommandPalette:
       sendWebviewAction("toggleCommandPalette");
+      break;
+    case MENU_ACTIONS.toggleProcessManager:
+      sendWebviewAction("toggleProcessManager");
       break;
     case MENU_ACTIONS.nextWorkspace:
       sendWebviewAction("nextWorkspace");
@@ -585,6 +626,15 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     action === "log"
   ) {
     webServer?.broadcast({ type: "sidebarAction", action, payload });
+  } else if (action === "openExternal") {
+    const url = payload["url"];
+    if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+      try {
+        Utils.openExternal(url);
+      } catch (err) {
+        console.error("[openExternal] failed:", err);
+      }
+    }
   }
 }
 
@@ -617,6 +667,7 @@ const socketHandler = createRpcHandler(
   getAppState,
   dispatch,
   requestWebview,
+  metadataPoller,
 );
 const socketServer = new SocketServer("/tmp/hyperterm.sock", socketHandler);
 socketServer.start();

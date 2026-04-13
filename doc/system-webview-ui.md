@@ -42,47 +42,100 @@ Because HyperTerm prioritizes keyboard-centric workflows, most actions can be pe
 | **Prev Workspace** | `Ctrl+Cmd+[` | Jumps to the previous workspace in the list. |
 | **Jump to Workspace** | `Cmd+1` to `Cmd+9`| Jumps directly to Workspace 1 through 9. |
 | **Toggle Sidebar** | `Cmd+B` | Shows or hides the left Sidebar. |
-| **Command Palette** | `Cmd+Shift+P` | Opens the fuzzy-finder to search commands (Coming Soon). |
+| **Command Palette** | `Cmd+Shift+P` | Fuzzy finder over every action (including the ones below). |
+| **Process Manager** | `Cmd+Alt+P` | Opens the live process overlay — every pid in every workspace with CPU / RSS / kill. |
+| **Settings** | `Cmd+,` | Opens the full settings panel (general, appearance, theme, effects, network, advanced). |
+| **Find in Terminal** | `Cmd+F` | Toggles the search bar for the focused pane's scrollback. |
+| **Escape** | `Esc` | Closes any active overlay (settings, process manager, command palette). |
 | **Copy / Paste** | `Cmd+C` / `Cmd+V` | Standard terminal copy/paste. |
+| **Font Size** | `Cmd+=` / `Cmd+-` / `Cmd+0` | Increase, decrease, or reset font size. |
 
 ---
 
 ## 3. The Surface Bar & Context Menus
 
-Every pane features a minimal "Surface Bar" at the top. This bar displays the current process name or title (e.g., `zsh` or `npm`).
+Every pane features a minimal "Surface Bar" at the top. From left to right:
 
-### UI Actions
-On the far right of the Surface Bar, there are three tiny buttons:
-- **`│` (Split Right)**
-- **`─` (Split Down)**
-- **`×` (Close)**
+1. **Pane title** — the user-renamed title or the shell name (e.g. `zsh`). This is *not* the foreground command; it's a stable label.
+2. **Live metadata chips** (added in the metadata pipeline):
+   - **Foreground command** (amber) — only shown when the foreground process differs from the shell. Full argv, truncated to ~48 chars, full text on hover. Updates within one poll tick (~1 s).
+   - **CWD chip** (muted monospace) — last two path segments (`…/proj/src`). Full absolute path on hover.
+   - **Port chips** (green) — one per unique listening port across the whole descendant process tree. **Click (or keyboard-activate) to open** `http://localhost:<port>` in the system browser. Tooltip shows `proto address:port (pid N)`.
+3. **Action buttons** on the far right:
+   - **`│` (Split Right)**
+   - **`─` (Split Down)**
+   - **`×` (Close)**
+
+Chips update automatically as the foreground process changes, you `cd` to a new directory, or a process binds/releases a TCP port. The metadata pipeline that drives them is documented in [system-process-metadata.md](system-process-metadata.md).
 
 ### Right-Click Context Menu
-If you **Right-Click** anywhere on the Surface Bar, a native Context Menu will appear allowing you to:
+Right-click anywhere on the Surface Bar for a native context menu:
 - **Rename** the pane (useful for keeping track of what is running where).
 - Trigger Splits.
 - Close the pane.
+
+### Pane Drag & Drop
+Click and drag on the Surface Bar (but not on the chips or buttons) to rearrange panes — drop zones highlight the destination. A small ghost of the bar follows the cursor; release over another pane to swap or split.
 
 ---
 
 ## 4. The Sidebar
 
-The Sidebar is your ambient dashboard. It's hidden by default but can be toggled via `Cmd+B`. It is broken down into three main sections:
+The Sidebar is your ambient dashboard. It's hidden by default but can be toggled via `Cmd+B`. Every workspace becomes a card:
 
-### 1. Workspace List
-A list of all active workspaces. The currently active workspace is highlighted with its accent color. You can click on any workspace to switch to it.
+### 1. Workspace card header
+A colored dot (workspace accent), the name, an index badge (`01`, `02`, …) that matches the `Cmd+N` jump shortcut, a pane-count badge if there's more than one pane, and a close button.
 
-### 2. Status & Progress (Per-Workspace)
-If a script in the active workspace has used the RPC API to push metadata (via `ht set-status` or `ht set-progress`), it appears here. 
+### 2. Focused foreground command
+When the focused pane in that workspace is running something other than the shell, a monospace accent chip shows the full foreground argv (e.g. `bun run dev`, `vim src/foo.ts`). Falls back to the focused pane's title otherwise.
+
+### 3. Listening port chips
+Aggregated across *every* pane in the workspace, deduped by port number. Clickable just like the pane-header chips — opens the URL in the system browser. This is the fastest way to see "what's listening where" across many workspaces at a glance.
+
+### 4. Status & Progress (Per-Workspace)
+If a script in the active workspace has used the RPC API to push metadata (via `ht set-status` or `ht set-progress`), it appears here.
 - **Status Pills** are great for showing build states (e.g., `Build: Passing`).
 - **Progress Bars** show fractional completion (0.0 to 1.0) for long-running scripts.
 
-### 3. Logs
+### 5. Logs
 A continuous feed of structural logs pushed via the RPC API (`ht log`). Logs are color-coded by severity (`info`, `error`, `success`, `warning`).
+
+### 6. Notifications & Web Mirror status
+At the bottom of the sidebar: the latest notification ring-buffer (from `ht notify`) and a live indicator for the web mirror showing its URL when running.
+
+The sidebar only re-renders when the visible projection changes (port set or focused-surface foreground pid) — cwd churn or tree reshuffles don't trigger a redraw, so it stays calm even when something's busy.
 
 ---
 
-## 5. UI Architecture & Performance Notes
+## 5. The Process Manager (`Cmd+Alt+P`)
+
+A full-screen overlay that tabulates every process in every workspace. Opens via `Cmd+Alt+P`, **View → Process Manager…**, or the command palette.
+
+### Summary line
+`N processes · X.X% CPU · Y.Y M RSS` across the entire app — a quick sense of load.
+
+### Workspace cards
+Each workspace gets its own accent-bordered card (active workspace highlighted in amber), with a header showing the color dot, workspace name, and process count. Inside:
+
+### Surface rows
+Each pane inside the workspace is a collapsible section with a header showing the pane title, the surface's cwd, and port chips. Click the header (or press Enter when focused) to collapse/expand.
+
+### Process table
+Each surface's process tree is rendered as a table:
+
+| Column | Contents |
+|--------|----------|
+| PID | the pid; foreground row is highlighted in accent |
+| Command | full argv from `ps -o args`, truncated with tooltip for the rest |
+| CPU % | instantaneous %, cell color heats toward red as the number grows (via CSS `color-mix` + `--heat` variable) |
+| Memory | RSS formatted as K / M / G |
+| — | **kill** button; SIGTERM by default, **Shift+click** for SIGKILL |
+
+The panel refreshes in place on every metadata change (push-based; no webview-side polling). `Escape` closes it.
+
+---
+
+## 6. UI Architecture & Performance Notes
 
 ### `xterm.js` Integration
 HyperTerm Canvas uses `xterm.js` for the text grid. It is configured with:

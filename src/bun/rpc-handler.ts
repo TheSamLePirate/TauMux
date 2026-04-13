@@ -1,4 +1,5 @@
 import type { SessionManager } from "./session-manager";
+import type { SurfaceMetadataPoller } from "./surface-metadata";
 import type { PaneNode, PaneRect } from "../shared/types";
 
 const VERSION = "0.0.1";
@@ -89,6 +90,7 @@ export function createRpcHandler(
     method: string,
     params: Record<string, unknown>,
   ) => Promise<unknown>,
+  metadataPoller?: SurfaceMetadataPoller,
 ): (
   method: string,
   params: Record<string, unknown>,
@@ -232,6 +234,92 @@ export function createRpcHandler(
         title: s.title,
         cwd: s.cwd,
       }));
+    },
+
+    "surface.metadata": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string) ??
+        getState().focusedSurfaceId;
+      if (!id) return null;
+      return metadataPoller?.getSnapshot(id) ?? null;
+    },
+
+    "surface.kill_pid": (params) => {
+      const pid = Number(params["pid"]);
+      if (!Number.isFinite(pid) || pid <= 0) throw new Error("pid required");
+      const raw = (params["signal"] as string) || "SIGTERM";
+      const signal = (
+        raw.startsWith("SIG") ? raw : `SIG${raw}`
+      ) as NodeJS.Signals;
+      try {
+        process.kill(pid, signal);
+      } catch (err) {
+        throw new Error(
+          `kill failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      return { pid, signal };
+    },
+
+    "surface.kill_port": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string) ??
+        getState().focusedSurfaceId;
+      const port = Number(params["port"]);
+      if (!Number.isFinite(port) || port <= 0) {
+        throw new Error("port required");
+      }
+      if (!id) throw new Error("no surface");
+      const meta = metadataPoller?.getSnapshot(id);
+      if (!meta) throw new Error("no metadata yet — try again in a second");
+      const entry = meta.listeningPorts.find((p) => p.port === port);
+      if (!entry) {
+        throw new Error(`no process listening on :${port} in this surface`);
+      }
+      const rawSignal = (params["signal"] as string) || "SIGTERM";
+      const signal = rawSignal.startsWith("SIG")
+        ? (rawSignal as NodeJS.Signals)
+        : (`SIG${rawSignal}` as NodeJS.Signals);
+      try {
+        process.kill(entry.pid, signal);
+      } catch (err) {
+        throw new Error(
+          `kill failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      return { pid: entry.pid, port, signal };
+    },
+
+    "surface.open_port": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string) ??
+        getState().focusedSurfaceId;
+      let port = Number(params["port"]);
+
+      if (!Number.isFinite(port) || port <= 0) {
+        if (!id) throw new Error("no surface");
+        const meta = metadataPoller?.getSnapshot(id);
+        if (!meta) throw new Error("no metadata yet — try again in a second");
+        const uniquePorts = [
+          ...new Set(meta.listeningPorts.map((p) => p.port)),
+        ].sort((a, b) => a - b);
+        if (uniquePorts.length === 0) {
+          throw new Error("no listening ports in this surface");
+        }
+        if (uniquePorts.length > 1) {
+          throw new Error(
+            `multiple listening ports (${uniquePorts.join(", ")}); pass one explicitly`,
+          );
+        }
+        port = uniquePorts[0];
+      }
+
+      const url = `http://localhost:${port}`;
+      dispatch("openExternal", { url });
+      return { url, port };
     },
 
     "surface.split": (params) => {

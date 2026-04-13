@@ -17,6 +17,7 @@ import type {
   PersistedLayout,
   SidebandMetaMessage,
   SurfaceContextMenuRequest,
+  SurfaceMetadata,
 } from "../../shared/types";
 import { WORKSPACE_COLORS } from "../../shared/workspace-colors";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
@@ -58,6 +59,7 @@ interface SurfaceView {
   container: HTMLDivElement;
   panelsEl: HTMLDivElement;
   titleEl: HTMLSpanElement;
+  chipsEl: HTMLDivElement;
   title: string;
 }
 
@@ -103,6 +105,7 @@ export class SurfaceManager {
   private searchBarEl: HTMLDivElement | null = null;
   private searchInputEl: HTMLInputElement | null = null;
   private searchVisible = false;
+  private metadata = new Map<string, SurfaceMetadata>();
 
   constructor(
     private terminalContainer: HTMLElement,
@@ -301,6 +304,7 @@ export class SurfaceManager {
     view.term.dispose();
     view.container.remove();
     this.surfaces.delete(surfaceId);
+    this.metadata.delete(surfaceId);
     this.updateSidebar();
   }
 
@@ -420,6 +424,48 @@ export class SurfaceManager {
 
   getSurfaceTitle(surfaceId: string): string | null {
     return this.surfaces.get(surfaceId)?.title ?? null;
+  }
+
+  /** Snapshot used by the process manager panel. */
+  getProcessManagerData(): {
+    id: string;
+    name: string;
+    color?: string;
+    active: boolean;
+    surfaces: { id: string; title: string; metadata: SurfaceMetadata | null }[];
+  }[] {
+    return this.workspaces.map((ws, i) => ({
+      id: ws.id,
+      name: ws.name,
+      color: ws.color,
+      active: i === this.activeWorkspaceIndex,
+      surfaces: [...ws.surfaceIds].map((sid) => ({
+        id: sid,
+        title: this.surfaces.get(sid)?.title ?? sid,
+        metadata: this.metadata.get(sid) ?? null,
+      })),
+    }));
+  }
+
+  setSurfaceMetadata(surfaceId: string, metadata: SurfaceMetadata): void {
+    const prev = this.metadata.get(surfaceId);
+    this.metadata.set(surfaceId, metadata);
+    const view = this.surfaces.get(surfaceId);
+    if (view) renderSurfaceChips(view.chipsEl, metadata);
+    // Only rebuild the sidebar when something visible there changed:
+    // port set, or (for the focused surface) the foreground command.
+    const portsChanged =
+      !prev || !samePortSet(prev.listeningPorts, metadata.listeningPorts);
+    const fgChanged =
+      surfaceId === this.focusedSurfaceId &&
+      (!prev || prev.foregroundPid !== metadata.foregroundPid);
+    if (portsChanged || fgChanged) {
+      this.updateSidebar();
+    }
+  }
+
+  getSurfaceMetadata(surfaceId: string): SurfaceMetadata | null {
+    return this.metadata.get(surfaceId) ?? null;
   }
 
   // ── Settings ──
@@ -917,6 +963,24 @@ export class SurfaceManager {
               this.focusedSurfaceId)
             : (surfaceTitles[0] ?? null);
 
+        const portSet = new Set<number>();
+        for (const surfaceId of ws.surfaceIds) {
+          const meta = this.metadata.get(surfaceId);
+          if (!meta) continue;
+          for (const p of meta.listeningPorts) portSet.add(p.port);
+        }
+        const listeningPorts = [...portSet].sort((a, b) => a - b);
+
+        const focusedMeta =
+          this.focusedSurfaceId && ws.surfaceIds.has(this.focusedSurfaceId)
+            ? (this.metadata.get(this.focusedSurfaceId) ?? null)
+            : null;
+        const focusedSurfaceCommand =
+          focusedMeta && focusedMeta.foregroundPid !== focusedMeta.pid
+            ? (focusedMeta.tree.find((n) => n.pid === focusedMeta.foregroundPid)
+                ?.command ?? null)
+            : null;
+
         return {
           id: ws.id,
           name: ws.name,
@@ -925,6 +989,7 @@ export class SurfaceManager {
           paneCount: ws.surfaceIds.size,
           surfaceTitles,
           focusedSurfaceTitle,
+          focusedSurfaceCommand,
           statusPills: [...ws.status.entries()].map(([key, s]) => ({
             key,
             value: s.value,
@@ -932,6 +997,7 @@ export class SurfaceManager {
             icon: s.icon,
           })),
           progress: ws.progress,
+          listeningPorts,
         };
       }),
     );
@@ -974,6 +1040,10 @@ export class SurfaceManager {
     barTitle.textContent = title;
     barTitleWrap.appendChild(barTitle);
     bar.appendChild(barTitleWrap);
+
+    const chipsEl = document.createElement("div");
+    chipsEl.className = "surface-bar-chips";
+    bar.appendChild(chipsEl);
 
     const barActions = document.createElement("div");
     barActions.className = "surface-bar-actions";
@@ -1105,6 +1175,7 @@ export class SurfaceManager {
       container,
       panelsEl,
       titleEl: barTitle,
+      chipsEl,
       title,
     };
   }
@@ -1545,4 +1616,79 @@ export class SurfaceManager {
       this.dividerEls.push(el);
     }
   }
+}
+
+// --- Surface chips renderer -------------------------------------------------
+
+function renderSurfaceChips(host: HTMLElement, meta: SurfaceMetadata): void {
+  host.replaceChildren();
+
+  const fg = meta.tree.find((n) => n.pid === meta.foregroundPid);
+  // Hide command chip when the foreground IS the shell itself — rendering
+  // "zsh" / "bash" forever is noise.
+  const showCommand =
+    fg && meta.foregroundPid !== meta.pid && fg.command.length > 0;
+  if (showCommand) {
+    host.appendChild(buildChip("chip-command", truncate(fg.command, 48)));
+  }
+
+  if (meta.cwd) {
+    const chip = buildChip("chip-cwd", shortenCwd(meta.cwd));
+    chip.title = meta.cwd;
+    host.appendChild(chip);
+  }
+
+  // Dedup ports shown in the chip row by port number (a single proc often
+  // binds both v4 and v6 for the same port).
+  const seen = new Set<number>();
+  for (const p of meta.listeningPorts) {
+    if (seen.has(p.port)) continue;
+    seen.add(p.port);
+    const chip = buildChip("chip-port", `:${p.port}`);
+    chip.title = `${p.proto} ${p.address}:${p.port} (pid ${p.pid}) — click to open`;
+    chip.setAttribute("role", "button");
+    chip.tabIndex = 0;
+    const url = `http://localhost:${p.port}`;
+    const open = (e: Event): void => {
+      e.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent("ht-open-external", { detail: { url } }),
+      );
+    };
+    chip.addEventListener("click", open);
+    chip.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") open(e);
+    });
+    host.appendChild(chip);
+  }
+}
+
+function buildChip(cls: string, text: string): HTMLSpanElement {
+  const el = document.createElement("span");
+  el.className = `surface-chip ${cls}`;
+  el.textContent = text;
+  return el;
+}
+
+/**
+ * Compact cwd for the chip — last 2 path segments are almost always enough
+ * context. Full absolute path lives on the chip's title attribute.
+ */
+function shortenCwd(cwd: string): string {
+  if (cwd === "/") return "/";
+  const parts = cwd.replace(/\/+$/, "").split("/").filter(Boolean);
+  if (parts.length <= 2)
+    return cwd.startsWith("/") ? "/" + parts.join("/") : parts.join("/");
+  return "\u2026/" + parts.slice(-2).join("/");
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + "\u2026" : s;
+}
+
+function samePortSet(a: { port: number }[], b: { port: number }[]): boolean {
+  if (a.length !== b.length) return false;
+  const aSet = new Set(a.map((x) => x.port));
+  for (const x of b) if (!aSet.has(x.port)) return false;
+  return true;
 }

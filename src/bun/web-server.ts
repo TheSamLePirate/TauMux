@@ -615,6 +615,25 @@ html, body {
   transition: background 0.15s, color 0.15s; padding: 0; flex-shrink: 0;
 }
 .pane-bar-btn:hover { background: var(--overlay); color: var(--text); }
+.pane-bar-chips {
+  display: inline-flex; align-items: center; gap: 6px;
+  flex: 1 1 auto; overflow: hidden; white-space: nowrap; min-width: 0;
+}
+.pane-chip {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 7px;
+  border-radius: 9px; font-size: 10px; font-weight: 500; line-height: 1;
+  background: rgba(255,255,255,0.05); color: var(--subtext);
+  border: 1px solid rgba(255,255,255,0.05); max-width: 260px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;
+}
+.pane-chip.chip-command { color: var(--text); background: rgba(234,179,8,0.1); border-color: rgba(234,179,8,0.22); }
+.pane-chip.chip-cwd { font-family: ui-monospace, SFMono-Regular, monospace; max-width: 220px; }
+.pane-chip.chip-port {
+  color: #86efac; background: rgba(74,222,128,0.08); border-color: rgba(74,222,128,0.2);
+  font-variant-numeric: tabular-nums; cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.pane-chip.chip-port:hover { background: rgba(74,222,128,0.2); border-color: rgba(74,222,128,0.44); color: #bbf7d0; }
 .pane-term { position: absolute; top: 31px; left: 0; right: 0; bottom: 0; overflow: hidden; }
 .pane .xterm { height: 100%; }
 .xterm-viewport { background-color: transparent !important; }
@@ -772,9 +791,10 @@ const APP_JS = [
   'var dotEl = document.getElementById("status-dot");',
   'var fsBtn = document.getElementById("fullscreen-btn");',
   'var backBtn = document.getElementById("back-btn");',
-  "var panes = {};          // surfaceId -> { term, fitAddon, el, termEl, barTitle, title }",
+  "var panes = {};          // surfaceId -> { term, fitAddon, el, termEl, barTitle, chipsEl, title }",
   "var surfaceTitles = {};  // surfaceId -> title string",
   "var surfaceSizes = {};   // surfaceId -> { cols, rows }",
+  "var surfaceMetadata = {};// surfaceId -> SurfaceMetadata snapshot",
   "var workspaces = [];     // latest workspace state from server",
   "var activeWorkspaceId = null;",
   "var focusedSurfaceId = null;",
@@ -824,6 +844,9 @@ const APP_JS = [
   "  barTitle.className = 'pane-bar-title';",
   "  barTitle.textContent = surfaceTitles[surfaceId] || surfaceId;",
   "  bar.appendChild(barTitle);",
+  "  var chipsEl = document.createElement('div');",
+  "  chipsEl.className = 'pane-bar-chips';",
+  "  bar.appendChild(chipsEl);",
   "  var fsBtn = document.createElement('button');",
   "  fsBtn.className = 'pane-bar-btn';",
   "  fsBtn.title = 'Fullscreen';",
@@ -845,9 +868,42 @@ const APP_JS = [
   "  term.onBinary(function(data) { sendMsg({ type: 'stdin', surfaceId: surfaceId, data: data }); });",
   "  // Click selects pane (does not fullscreen)",
   "  el.addEventListener('click', function() { selectPane(surfaceId); });",
-  "  var p = { term: term, fitAddon: fitAddon, el: el, termEl: termEl, barTitle: barTitle, title: surfaceTitles[surfaceId] || surfaceId };",
+  "  var p = { term: term, fitAddon: fitAddon, el: el, termEl: termEl, barTitle: barTitle, chipsEl: chipsEl, title: surfaceTitles[surfaceId] || surfaceId };",
   "  panes[surfaceId] = p;",
+  "  if (surfaceMetadata[surfaceId]) renderPaneChips(chipsEl, surfaceMetadata[surfaceId]);",
   "  return p;",
+  "}",
+  "",
+  "function renderPaneChips(host, meta) {",
+  "  host.innerHTML = '';",
+  "  var fg = null;",
+  "  for (var i = 0; i < meta.tree.length; i++) {",
+  "    if (meta.tree[i].pid === meta.foregroundPid) { fg = meta.tree[i]; break; }",
+  "  }",
+  "  if (fg && meta.foregroundPid !== meta.pid && fg.command) {",
+  "    var c = document.createElement('span'); c.className = 'pane-chip chip-command';",
+  "    c.textContent = fg.command.length > 48 ? fg.command.slice(0, 47) + '\\u2026' : fg.command;",
+  "    c.title = fg.command; host.appendChild(c);",
+  "  }",
+  "  if (meta.cwd) {",
+  "    var parts = meta.cwd.replace(/\\/+$/, '').split('/').filter(function(s){return s;});",
+  "    var short = parts.length <= 2 ? (meta.cwd.charAt(0)==='/' ? '/' + parts.join('/') : parts.join('/')) : '\\u2026/' + parts.slice(-2).join('/');",
+  "    var cc = document.createElement('span'); cc.className = 'pane-chip chip-cwd'; cc.textContent = short; cc.title = meta.cwd; host.appendChild(cc);",
+  "  }",
+  "  var seen = {};",
+  "  for (var j = 0; j < meta.listeningPorts.length; j++) {",
+  "    var lp = meta.listeningPorts[j];",
+  "    if (seen[lp.port]) continue;",
+  "    seen[lp.port] = true;",
+  "    var pc = document.createElement('span');",
+  "    pc.className = 'pane-chip chip-port'; pc.textContent = ':' + lp.port;",
+  "    pc.title = lp.proto + ' ' + lp.address + ':' + lp.port + ' (pid ' + lp.pid + ') — click to open';",
+  "    pc.setAttribute('role', 'button'); pc.tabIndex = 0;",
+  "    (function(port){",
+  "      pc.addEventListener('click', function(e){ e.stopPropagation(); window.open('http://' + location.hostname + ':' + port, '_blank'); });",
+  "    })(lp.port);",
+  "    host.appendChild(pc);",
+  "  }",
   "}",
   "",
   "function selectPane(surfaceId) {",
@@ -1390,6 +1446,11 @@ const APP_JS = [
   "        sidebarNotifs = [];",
   "        clearGlow();",
   "        renderSidebar();",
+  "        break;",
+  '      case "surfaceMetadata":',
+  "        surfaceMetadata[msg.surfaceId] = msg.metadata;",
+  "        var mp = panes[msg.surfaceId];",
+  "        if (mp && mp.chipsEl) renderPaneChips(mp.chipsEl, msg.metadata);",
   "        break;",
   '      case "sidebarState":',
   "        setSidebarOpen(msg.visible);",

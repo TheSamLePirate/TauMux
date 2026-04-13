@@ -163,6 +163,87 @@ ht notify --title "Deployment Complete" --body "Production updated to v1.2.0"
 
 ---
 
+## 6. Live Process Metadata
+
+A metadata poller (see [system-process-metadata.md](system-process-metadata.md)) observes every descendant of every shell. The CLI exposes five commands against the poller's cached snapshot.
+
+**Summary of the current surface:**
+
+```bash
+ht metadata
+# pid        12345
+# fg pid     12346
+# fg command bun run dev
+# cwd        /Users/olivier/work
+# tree       4 process(es)
+# ports      1 listener(s)
+```
+
+**Just the cwd of the foreground process:**
+
+```bash
+ht cwd
+# /Users/olivier/work
+```
+
+**Full descendant tree** (with a `*` on the foreground row):
+
+```bash
+ht ps
+#   PID  PPID  COMMAND
+#   12345     1  -zsh
+# * 12346 12345  bun run dev
+#   12347 12346  node --experimental-vm-modules …
+```
+
+**Listening TCP ports** — joined back to the tree command so you can see "what's serving :3000":
+
+```bash
+ht ports
+# PORT   PROTO  ADDRESS          PID    COMMAND
+# 3000   tcp    *                12346  bun run dev
+# 8080   tcp6   ::1              12347  python3 -m http.server
+```
+
+**Open ports in the browser:**
+
+```bash
+ht open 3000                         # http://localhost:3000
+ht open                              # resolves the unique listening port
+```
+
+`ht open` without a port errors if there are zero or multiple ports, listing the candidates so you can pick one.
+
+**Signal the process bound to a port:**
+
+```bash
+ht kill 3000                         # SIGTERM (default)
+ht kill 3000 --signal SIGKILL        # or SIGHUP, SIGUSR1, etc.
+```
+
+Every metadata command accepts `--surface <id>` to target a non-focused pane. Inside a HyperTerm shell, `HT_SURFACE` is auto-set so the CLI uses the *current* pane by default.
+
+**Raw JSON:**
+
+```bash
+ht metadata --json
+# {
+#   "pid": 12345,
+#   "foregroundPid": 12346,
+#   "cwd": "/Users/olivier/work",
+#   "tree": [
+#     {"pid":12345,"ppid":1,"command":"-zsh","cpu":0.1,"rssKb":2048},
+#     {"pid":12346,"ppid":12345,"command":"bun run dev","cpu":12.4,"rssKb":45312}
+#   ],
+#   "listeningPorts": [{"pid":12346,"port":3000,"proto":"tcp","address":"*"}],
+#   "updatedAt": 1728766122123
+# }
+```
+
+Because metadata fans out identically to the web mirror, you can also observe it live over WebSocket by watching `{ type: "surfaceMetadata", surfaceId, metadata }` frames on the mirror connection — useful for building remote dashboards or piping into telemetry systems.
+
+---
+
 ## Advanced Usage: JSON Output & RPC
 
 Every `ht` command supports the `--json` (or `-j`) flag. This will format the output as raw JSON, making it extremely easy to parse using tools like `jq`.
@@ -185,7 +266,45 @@ echo '{"id":"1", "method":"system.ping", "params":{}}' | nc -U /tmp/hyperterm.so
 # {"id":"1","result":"PONG"}
 ```
 
-Use `ht capabilities --json` to get a list of all 29 available JSON-RPC methods.
+Use `ht capabilities --json` to get the live list of all available JSON-RPC methods (currently 33+, including the metadata surface methods below).
+
+### Method reference
+
+All methods accept an optional `surface_id` in their params; if omitted, the server substitutes the focused surface. A trailing description in **bold** marks methods added with the metadata pipeline.
+
+**`system.*`** — `ping`, `version`, `identify`, `capabilities`, `tree`.
+
+**`workspace.*`** — `list`, `current`, `create`, `select`, `close`, `rename`, `next`, `previous`.
+
+**`surface.*`** — `list`, `split`, `close`, `focus`, `send_text`, `send_key`, `read_text`, **`metadata`**, **`open_port`**, **`kill_port`**, **`kill_pid`**.
+
+**`sidebar.*`** — `set_status`, `clear_status`, `set_progress`, `clear_progress`, `log`.
+
+**`notification.*`** — `create`, `list`, `clear`.
+
+**`pane.*`** — `list`.
+
+### Live metadata methods in detail
+
+```json
+// surface.metadata — cached snapshot from the poller
+{"id":"1","method":"surface.metadata","params":{"surface_id":"surface:2"}}
+// → result: SurfaceMetadata | null
+
+// surface.open_port — optional port; resolves from metadata if omitted
+{"id":"2","method":"surface.open_port","params":{"surface_id":"surface:2","port":3000}}
+// → result: { url, port } ; throws if ambiguous or no listener
+
+// surface.kill_port — resolves pid from metadata, sends signal
+{"id":"3","method":"surface.kill_port","params":{"port":3000,"signal":"SIGTERM"}}
+// → result: { pid, port, signal }
+
+// surface.kill_pid — kill any pid directly (used by Process Manager UI)
+{"id":"4","method":"surface.kill_pid","params":{"pid":12346,"signal":"SIGKILL"}}
+// → result: { pid, signal }
+```
+
+All four error via thrown messages (surface server converts to `{"error":"..."}`). `signal` accepts either `SIGTERM` or `TERM`; the server rewrites to a Node-style `NodeJS.Signals` value.
 
 ---
 

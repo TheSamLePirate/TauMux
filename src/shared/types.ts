@@ -39,6 +39,50 @@ export interface PersistedLayout {
   sidebarVisible: boolean;
 }
 
+// === Live Surface Metadata ===
+
+/** One process observed in a surface's descendant tree. */
+export interface ProcessNode {
+  pid: number;
+  ppid: number;
+  /** Full argv as reported by `ps -o args` (not truncated). */
+  command: string;
+  /** Instantaneous CPU% from `ps %cpu`. */
+  cpu: number;
+  /** Resident set size in KB from `ps rss`. */
+  rssKb: number;
+}
+
+/** A TCP listener owned by a process in the tree. */
+export interface ListeningPort {
+  pid: number;
+  port: number;
+  proto: "tcp" | "tcp6";
+  /** Listening address, e.g. "*", "127.0.0.1", "::1". */
+  address: string;
+}
+
+/** Live, polled view of what a surface's shell and its descendants are doing. */
+export interface SurfaceMetadata {
+  /** Shell pid (same as pty.pid). */
+  pid: number;
+  /**
+   * Foreground process group leader on the pane's tty.
+   * Equal to `pid` when the shell itself is in the foreground.
+   * Look up `tree.find(p => p.pid === foregroundPid)?.command` for the
+   * full command line ("bun run dev", "python3 -m http.server 8080", …).
+   */
+  foregroundPid: number;
+  /** cwd of the foreground process. */
+  cwd: string;
+  /** Pre-order tree rooted at `pid`, each entry with its full argv. */
+  tree: ProcessNode[];
+  /** TCP listeners owned by any pid in the tree. */
+  listeningPorts: ListeningPort[];
+  /** Wall-clock ms when this snapshot was produced. */
+  updatedAt: number;
+}
+
 // === Sideband Channel Types ===
 
 export interface ChannelDescriptor {
@@ -193,6 +237,15 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
 
       // Settings
       updateSettings: { settings: Partial<AppSettings> };
+
+      // Open an external URL in the system default handler (browser, etc.)
+      openExternal: { url: string };
+
+      // Window visibility (drives metadata polling rate on the bun side)
+      windowVisibility: { visible: boolean };
+
+      // Kill an arbitrary pid (used by the process manager panel)
+      killPid: { pid: number; signal?: string };
     };
   };
   webview: {
@@ -228,6 +281,9 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
         id: string;
         reason: string;
       };
+
+      // Live surface metadata (cwd / process tree / listening ports)
+      surfaceMetadata: { surfaceId: string; metadata: SurfaceMetadata };
 
       // Web server status
       webServerStatus: { running: boolean; port: number; url?: string };
