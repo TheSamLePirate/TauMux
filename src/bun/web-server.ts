@@ -628,6 +628,13 @@ html, body {
 }
 .pane-chip.chip-command { color: var(--text); background: rgba(234,179,8,0.1); border-color: rgba(234,179,8,0.22); }
 .pane-chip.chip-cwd { font-family: ui-monospace, SFMono-Regular, monospace; max-width: 220px; }
+.pane-chip.chip-git {
+  color: #c4b5fd; background: rgba(168,85,247,0.08); border-color: rgba(168,85,247,0.22);
+  font-variant-numeric: tabular-nums;
+}
+.pane-chip.chip-git.dirty {
+  color: #facc15; background: rgba(234,179,8,0.1); border-color: rgba(234,179,8,0.3);
+}
 .pane-chip.chip-port {
   color: #86efac; background: rgba(74,222,128,0.08); border-color: rgba(74,222,128,0.2);
   font-variant-numeric: tabular-nums; cursor: pointer;
@@ -889,6 +896,25 @@ const APP_JS = [
   "    var parts = meta.cwd.replace(/\\/+$/, '').split('/').filter(function(s){return s;});",
   "    var short = parts.length <= 2 ? (meta.cwd.charAt(0)==='/' ? '/' + parts.join('/') : parts.join('/')) : '\\u2026/' + parts.slice(-2).join('/');",
   "    var cc = document.createElement('span'); cc.className = 'pane-chip chip-cwd'; cc.textContent = short; cc.title = meta.cwd; host.appendChild(cc);",
+  "  }",
+  "  if (meta.git) {",
+  "    var g = meta.git;",
+  "    var gparts = ['\\u2387 ' + g.branch];",
+  "    if (g.ahead > 0) gparts.push('\\u2191' + g.ahead);",
+  "    if (g.behind > 0) gparts.push('\\u2193' + g.behind);",
+  "    if (g.conflicts > 0) gparts.push('!' + g.conflicts);",
+  "    if (g.staged > 0) gparts.push('+' + g.staged);",
+  "    if (g.unstaged > 0) gparts.push('*' + g.unstaged);",
+  "    if (g.untracked > 0) gparts.push('?' + g.untracked);",
+  "    var dirty = (g.staged + g.unstaged + g.untracked + g.conflicts + g.insertions + g.deletions) > 0;",
+  "    var gc = document.createElement('span');",
+  "    gc.className = 'pane-chip chip-git' + (dirty ? ' dirty' : '');",
+  "    gc.textContent = gparts.join(' ');",
+  "    var tip = 'branch: ' + g.branch + (g.head ? ' @ ' + g.head : '');",
+  "    if (g.upstream) tip += '\\nupstream: ' + g.upstream;",
+  "    if (g.insertions || g.deletions) tip += '\\ndiff vs HEAD: +' + g.insertions + ' -' + g.deletions;",
+  "    gc.title = tip;",
+  "    host.appendChild(gc);",
   "  }",
   "  var seen = {};",
   "  for (var j = 0; j < meta.listeningPorts.length; j++) {",

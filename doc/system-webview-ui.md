@@ -44,6 +44,7 @@ Because HyperTerm prioritizes keyboard-centric workflows, most actions can be pe
 | **Toggle Sidebar** | `Cmd+B` | Shows or hides the left Sidebar. |
 | **Command Palette** | `Cmd+Shift+P` | Fuzzy finder over every action (including the ones below). |
 | **Process Manager** | `Cmd+Alt+P` | Opens the live process overlay — every pid in every workspace with CPU / RSS / kill. |
+| **Pane Info** | `Cmd+I` | Opens the detail view for the focused pane — identity, git, ports, process tree. |
 | **Settings** | `Cmd+,` | Opens the full settings panel (general, appearance, theme, effects, network, advanced). |
 | **Find in Terminal** | `Cmd+F` | Toggles the search bar for the focused pane's scrollback. |
 | **Escape** | `Esc` | Closes any active overlay (settings, process manager, command palette). |
@@ -62,6 +63,7 @@ Every pane features a minimal "Surface Bar" at the top. From left to right:
    - **CWD chip** (muted monospace) — last two path segments (`…/proj/src`). Full absolute path on hover.
    - **Port chips** (green) — one per unique listening port across the whole descendant process tree. **Click (or keyboard-activate) to open** `http://localhost:<port>` in the system browser. Tooltip shows `proto address:port (pid N)`.
 3. **Action buttons** on the far right:
+   - **`ⓘ` (Pane Info)** — opens the detail panel for this pane (`Cmd+I`).
    - **`│` (Split Right)**
    - **`─` (Split Down)**
    - **`×` (Close)**
@@ -107,7 +109,20 @@ The sidebar only re-renders when the visible projection changes (port set or foc
 
 ---
 
-## 5. The Process Manager (`Cmd+Alt+P`)
+## 5. The Pane Info panel (`Cmd+I`)
+
+Clicking the `ⓘ` button on any surface bar (or pressing `Cmd+I` on the focused pane, or picking **Show Pane Info** from the command palette) opens a centered overlay with everything we know about that single surface. The content is split into four sections that live-update as the metadata poller emits:
+
+1. **Identity** — shell PID, foreground PID, foreground command (full argv), cwd (with a one-click **copy** button), surface ID, and how long ago the snapshot was polled.
+2. **Git** — only rendered when cwd is inside a git repo. Shows branch + HEAD SHA, upstream with ahead/behind counts, file counts (staged / unstaged / untracked / conflicts), and line counts from `git diff HEAD --shortstat`. Branch name is emphasized with the accent color.
+3. **Listening ports** — table of every TCP listener in the process tree with proto/address/pid/command columns. Each row has an **open** button (opens `http://localhost:<port>` in the default browser) and a **kill** button (SIGTERM, Shift-click for SIGKILL).
+4. **Process tree** — full descendant table (PID / PPID / command / CPU % / Memory). Foreground row highlighted in accent. CPU% cell tints toward red as load increases. Kill button per row.
+
+`Escape` closes the panel. If the surface closes while the panel is open, the body switches to "This pane no longer exists." without destroying the overlay — closing manually via the `×` button or `Escape` is always available.
+
+---
+
+## 6. The Process Manager (`Cmd+Alt+P`)
 
 A full-screen overlay that tabulates every process in every workspace. Opens via `Cmd+Alt+P`, **View → Process Manager…**, or the command palette.
 
@@ -135,7 +150,7 @@ The panel refreshes in place on every metadata change (push-based; no webview-si
 
 ---
 
-## 6. UI Architecture & Performance Notes
+## 7. UI Architecture & Performance Notes
 
 ### `xterm.js` Integration
 HyperTerm Canvas uses `xterm.js` for the text grid. It is configured with:

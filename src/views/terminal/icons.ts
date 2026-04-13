@@ -23,6 +23,7 @@ export const ICON_TEMPLATES = {
     '<circle cx="7" cy="5" r="2"/><circle cx="17" cy="19" r="2"/><circle cx="17" cy="7" r="2"/><path d="M7 7v7a5 5 0 0 0 5 5h3"/><path d="M7 7a5 5 0 0 0 5 5h3"/>',
   globe:
     '<circle cx="12" cy="12" r="8.5"/><path d="M3.8 9h16.4M3.8 15h16.4M12 3.5c2.3 2.3 3.5 5.3 3.5 8.5S14.3 18.2 12 20.5M12 3.5C9.7 5.8 8.5 8.8 8.5 12s1.2 6.2 3.5 8.5"/>',
+  info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5"/><circle cx="12" cy="8" r="1"/>',
   hammer:
     '<path d="m14 5 5 5"/><path d="m11 8 3-3 5 5-3 3"/><path d="M4 20 13 11"/>',
   key: '<circle cx="8" cy="12" r="3"/><path d="M11 12h9"/><path d="M17 12v3"/><path d="M20 12v2"/>',

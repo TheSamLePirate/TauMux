@@ -3,9 +3,11 @@ import {
   findForegroundPid,
   metadataEqual,
   parseCwds,
+  parseGitStatusV2,
   parseListenAddress,
   parseListeningPorts,
   parsePs,
+  parseShortstat,
   walkTree,
   type PsRow,
 } from "../src/bun/surface-metadata";
@@ -243,6 +245,7 @@ describe("metadataEqual", () => {
     cwd: "/tmp",
     tree: [{ pid: 10, ppid: 1, command: "zsh", cpu: 0, rssKb: 0 }],
     listeningPorts: [],
+    git: null,
     updatedAt: 1,
   };
 
@@ -270,5 +273,137 @@ describe("metadataEqual", () => {
         listeningPorts: [{ pid: 10, port: 3000, proto: "tcp", address: "*" }],
       }),
     ).toBe(false);
+  });
+
+  test("git null vs populated not equal", () => {
+    expect(
+      metadataEqual(base, {
+        ...base,
+        git: {
+          branch: "main",
+          head: "abc123",
+          upstream: "origin/main",
+          ahead: 0,
+          behind: 0,
+          staged: 0,
+          unstaged: 0,
+          untracked: 0,
+          conflicts: 0,
+          insertions: 0,
+          deletions: 0,
+          detached: false,
+        },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("parseGitStatusV2", () => {
+  test("empty input → null", () => {
+    expect(parseGitStatusV2("")).toBeNull();
+  });
+
+  test("clean tracked branch", () => {
+    const out = [
+      "# branch.oid 1234567890abcdef1234567890abcdef12345678",
+      "# branch.head main",
+      "# branch.upstream origin/main",
+      "# branch.ab +0 -0",
+    ].join("\n");
+    const info = parseGitStatusV2(out)!;
+    expect(info.branch).toBe("main");
+    expect(info.head).toBe("1234567890ab");
+    expect(info.upstream).toBe("origin/main");
+    expect(info.ahead).toBe(0);
+    expect(info.behind).toBe(0);
+    expect(info.staged).toBe(0);
+    expect(info.unstaged).toBe(0);
+    expect(info.detached).toBe(false);
+  });
+
+  test("detached HEAD", () => {
+    const out = [
+      "# branch.oid 1234567890abcdef1234567890abcdef12345678",
+      "# branch.head (detached)",
+    ].join("\n");
+    const info = parseGitStatusV2(out)!;
+    expect(info.branch).toBe("(detached)");
+    expect(info.detached).toBe(true);
+  });
+
+  test("initial commit (no oid yet)", () => {
+    const out = ["# branch.oid (initial)", "# branch.head main"].join("\n");
+    const info = parseGitStatusV2(out)!;
+    expect(info.head).toBe("");
+    expect(info.branch).toBe("main");
+  });
+
+  test("ahead and behind", () => {
+    const out = [
+      "# branch.oid abcdef123456abcdef123456",
+      "# branch.head feature",
+      "# branch.upstream origin/feature",
+      "# branch.ab +2 -5",
+    ].join("\n");
+    const info = parseGitStatusV2(out)!;
+    expect(info.ahead).toBe(2);
+    expect(info.behind).toBe(5);
+  });
+
+  test("mix of staged, unstaged, untracked, conflicts", () => {
+    const out = [
+      "# branch.oid abcdef123456",
+      "# branch.head main",
+      "1 M. N... 100644 100644 100644 abc def src/foo.ts",
+      "1 .M N... 100644 100644 100644 abc def src/bar.ts",
+      "1 MM N... 100644 100644 100644 abc def src/both.ts",
+      "2 R. N... 100644 100644 100644 abc def R100 src/new.ts\tsrc/old.ts",
+      "? new-file.ts",
+      "? another.ts",
+      "u UU N... 100644 100644 100644 100644 abc def hij src/conflict.ts",
+    ].join("\n");
+    const info = parseGitStatusV2(out)!;
+    expect(info.staged).toBe(3);
+    expect(info.unstaged).toBe(2);
+    expect(info.untracked).toBe(2);
+    expect(info.conflicts).toBe(1);
+  });
+});
+
+describe("parseShortstat", () => {
+  test("both insertions and deletions", () => {
+    const { insertions, deletions } = parseShortstat(
+      " 3 files changed, 42 insertions(+), 15 deletions(-)",
+    );
+    expect(insertions).toBe(42);
+    expect(deletions).toBe(15);
+  });
+
+  test("only insertions", () => {
+    const { insertions, deletions } = parseShortstat(
+      " 1 file changed, 10 insertions(+)",
+    );
+    expect(insertions).toBe(10);
+    expect(deletions).toBe(0);
+  });
+
+  test("only deletions", () => {
+    const { insertions, deletions } = parseShortstat(
+      " 1 file changed, 5 deletions(-)",
+    );
+    expect(insertions).toBe(0);
+    expect(deletions).toBe(5);
+  });
+
+  test("singular insertion/deletion", () => {
+    const { insertions, deletions } = parseShortstat(
+      " 1 file changed, 1 insertion(+), 1 deletion(-)",
+    );
+    expect(insertions).toBe(1);
+    expect(deletions).toBe(1);
+  });
+
+  test("empty output → zeros", () => {
+    expect(parseShortstat("")).toEqual({ insertions: 0, deletions: 0 });
   });
 });

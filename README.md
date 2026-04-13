@@ -103,6 +103,7 @@ The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`.
 | `⌘,` | Settings |
 | `⌘⇧P` | Command palette |
 | `⌘⌥P` | **Process Manager** |
+| `⌘I` | **Pane Info** (full detail view for the focused pane) |
 | `⌘F` | Find in terminal |
 | `⌘⌥←↑→↓` | Focus neighboring pane |
 | `⌃⌘]` / `⌃⌘[` | Next / previous workspace |
@@ -155,10 +156,11 @@ ht list-notifications
 ht clear-notifications
 
 # Live metadata (see next section)
-ht metadata                          # summary: pid / fg / cwd / counts
+ht metadata                          # summary: pid / fg / cwd / git / counts
 ht cwd                               # print cwd
 ht ps                                # process tree with * marker on fg
 ht ports                             # PORT PROTO ADDR PID COMMAND
+ht git                               # branch, upstream, ahead/behind, dirty, +/-
 ht open 3000                         # open http://localhost:3000
 ht open                              # resolves the unique listening port
 ht kill 3000                         # SIGTERM to the pid on :3000
@@ -186,7 +188,7 @@ See [`doc/system-process-metadata.md`](doc/system-process-metadata.md) for the f
 
 - A single `SurfaceMetadataPoller` runs in the Bun process.
 - Per tick (1 Hz while the window is focused, ~3 Hz when hidden): **one** `ps -axo pid,ppid,pgid,stat,%cpu,rss,args -ww` call, **one** combined `lsof -iTCP -sTCP:LISTEN` across the union of tree pids, **one** combined `lsof -d cwd` across foreground pids.
-- Per surface we derive: `pid` (shell), `foregroundPid` (tty's foreground pgrp leader), `cwd`, full descendant tree with argv + CPU % + RSS KB, listening TCP ports (dedup by pid/port/address).
+- Per surface we derive: `pid` (shell), `foregroundPid` (tty's foreground pgrp leader), `cwd`, full descendant tree with argv + CPU % + RSS KB, listening TCP ports (dedup by pid/port/address), and — when `cwd` is inside a git work tree — `branch`, `head`, `upstream`, `ahead`/`behind`, `staged`/`unstaged`/`untracked`/`conflicts` file counts, and `insertions`/`deletions` line counts. Git calls are TTL-cached per cwd (3 s) so idle panes don't spam git.
 - Snapshots are diffed against the previous tick; `onMetadata(surfaceId, metadata)` only fires on real change.
 - Emissions fan out to the Electrobun RPC (→ webview chips + sidebar + Process Manager), to the WebSocket web mirror (→ remote clients), and are cached for `ht` CLI queries.
 

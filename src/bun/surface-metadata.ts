@@ -12,6 +12,7 @@
  */
 
 import type {
+  GitInfo,
   ListeningPort,
   ProcessNode,
   SurfaceMetadata,
@@ -105,6 +106,83 @@ export function parseListeningPorts(
 }
 
 /**
+ * Parse `git status --porcelain=v2 -b` output into a (partially populated)
+ * GitInfo. Line counts (`insertions`/`deletions`) remain 0 — use
+ * `parseShortstat` on `git diff HEAD --shortstat` and merge.
+ *
+ * Returns `null` only when the input is empty (non-repo); otherwise always
+ * returns a valid object, even if the branch line is missing (which happens
+ * on very-fresh repos with no commits yet).
+ */
+export function parseGitStatusV2(output: string): GitInfo | null {
+  if (!output) return null;
+  const info: GitInfo = {
+    branch: "",
+    head: "",
+    upstream: "",
+    ahead: 0,
+    behind: 0,
+    staged: 0,
+    unstaged: 0,
+    untracked: 0,
+    conflicts: 0,
+    insertions: 0,
+    deletions: 0,
+    detached: false,
+  };
+  for (const line of output.split("\n")) {
+    if (!line) continue;
+    if (line.startsWith("# branch.oid ")) {
+      const val = line.slice("# branch.oid ".length);
+      info.head = val === "(initial)" ? "" : val.slice(0, 12);
+    } else if (line.startsWith("# branch.head ")) {
+      const val = line.slice("# branch.head ".length);
+      info.branch = val;
+      info.detached = val === "(detached)";
+    } else if (line.startsWith("# branch.upstream ")) {
+      info.upstream = line.slice("# branch.upstream ".length);
+    } else if (line.startsWith("# branch.ab ")) {
+      const m = line.match(/\+(\d+)\s+-(\d+)/);
+      if (m) {
+        info.ahead = parseInt(m[1]!, 10);
+        info.behind = parseInt(m[2]!, 10);
+      }
+    } else if (line.startsWith("1 ") || line.startsWith("2 ")) {
+      // Entry format: "1 XY sub mH mI mW hH hI path"
+      //          or "2 XY sub mH mI mW hH hI Xscore origPath\tpath"
+      // XY[0] = index state, XY[1] = working-tree state; '.' means unchanged.
+      const xy = line.slice(2, 4);
+      if (xy[0] && xy[0] !== "." && xy[0] !== " ") info.staged++;
+      if (xy[1] && xy[1] !== "." && xy[1] !== " ") info.unstaged++;
+    } else if (line.startsWith("? ")) {
+      info.untracked++;
+    } else if (line.startsWith("u ")) {
+      info.conflicts++;
+    }
+  }
+  return info;
+}
+
+/**
+ * Parse `git diff --shortstat` output, e.g.:
+ *   " 3 files changed, 42 insertions(+), 15 deletions(-)"
+ *   " 1 file changed, 5 deletions(-)"
+ *   " 1 file changed, 10 insertions(+)"
+ * Empty output → { insertions: 0, deletions: 0 }.
+ */
+export function parseShortstat(output: string): {
+  insertions: number;
+  deletions: number;
+} {
+  const ins = output.match(/(\d+)\s+insertion/);
+  const del = output.match(/(\d+)\s+deletion/);
+  return {
+    insertions: ins ? parseInt(ins[1]!, 10) : 0,
+    deletions: del ? parseInt(del[1]!, 10) : 0,
+  };
+}
+
+/**
  * Parse `lsof -a -d cwd -F pn -p <pids>` output.
  * Each process yields one `p<pid>` line followed by one `n<cwd>` line.
  */
@@ -181,7 +259,8 @@ export function metadataEqual(a: SurfaceMetadata, b: SurfaceMetadata): boolean {
     a.foregroundPid !== b.foregroundPid ||
     a.cwd !== b.cwd ||
     a.tree.length !== b.tree.length ||
-    a.listeningPorts.length !== b.listeningPorts.length
+    a.listeningPorts.length !== b.listeningPorts.length ||
+    !gitEqual(a.git, b.git)
   ) {
     return false;
   }
@@ -207,6 +286,25 @@ export function metadataEqual(a: SurfaceMetadata, b: SurfaceMetadata): boolean {
   return true;
 }
 
+function gitEqual(a: GitInfo | null, b: GitInfo | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.branch === b.branch &&
+    a.head === b.head &&
+    a.upstream === b.upstream &&
+    a.ahead === b.ahead &&
+    a.behind === b.behind &&
+    a.staged === b.staged &&
+    a.unstaged === b.unstaged &&
+    a.untracked === b.untracked &&
+    a.conflicts === b.conflicts &&
+    a.insertions === b.insertions &&
+    a.deletions === b.deletions &&
+    a.detached === b.detached
+  );
+}
+
 // --- Poller ----------------------------------------------------------------
 
 interface SurfaceLike {
@@ -218,10 +316,18 @@ interface SessionsLike {
   getAllSurfaces(): SurfaceLike[];
 }
 
+interface GitCacheEntry {
+  info: GitInfo | null;
+  at: number;
+}
+
 export class SurfaceMetadataPoller {
   private timer: ReturnType<typeof setInterval> | null = null;
   private inFlight = false;
   private last = new Map<string, SurfaceMetadata>();
+  /** cwd → git snapshot + freshness. Reuses across ticks (TTL gated). */
+  private gitCache = new Map<string, GitCacheEntry>();
+  private gitTtlMs = 3000;
 
   onMetadata: ((surfaceId: string, metadata: SurfaceMetadata) => void) | null =
     null;
@@ -305,6 +411,26 @@ export class SurfaceMetadataPoller {
       ]);
 
       const now = Date.now();
+
+      // Resolve git info for every unique cwd in this tick, TTL-cached.
+      const cwds = new Set<string>();
+      for (const { fg } of per.values()) {
+        const cwd = cwdByPid.get(fg);
+        if (cwd) cwds.add(cwd);
+      }
+      const gitByCwd = await this.resolveGit(cwds, now);
+
+      // Drop git cache entries for cwds that have disappeared (saves
+      // memory across `cd` cycles over time).
+      for (const k of [...this.gitCache.keys()]) {
+        if (
+          !cwds.has(k) &&
+          now - this.gitCache.get(k)!.at > this.gitTtlMs * 4
+        ) {
+          this.gitCache.delete(k);
+        }
+      }
+
       for (const s of surfaces) {
         const entry = per.get(s.id);
         if (!entry) continue;
@@ -322,12 +448,14 @@ export class SurfaceMetadataPoller {
             a.address.localeCompare(b.address),
         );
 
+        const cwd = cwdByPid.get(fg) ?? "";
         const metadata: SurfaceMetadata = {
           pid: s.pty.pid,
           foregroundPid: fg,
-          cwd: cwdByPid.get(fg) ?? "",
+          cwd,
           tree,
           listeningPorts,
+          git: cwd ? (gitByCwd.get(cwd) ?? null) : null,
           updatedAt: now,
         };
 
@@ -343,6 +471,37 @@ export class SurfaceMetadataPoller {
     } finally {
       this.inFlight = false;
     }
+  }
+
+  /**
+   * Collect git snapshots for the given cwds, honoring the per-cwd TTL.
+   * Runs at most one `git status` + one `git diff --shortstat` per stale
+   * entry, in parallel across cwds.
+   */
+  private async resolveGit(
+    cwds: Set<string>,
+    now: number,
+  ): Promise<Map<string, GitInfo | null>> {
+    const result = new Map<string, GitInfo | null>();
+    const stale: string[] = [];
+    for (const cwd of cwds) {
+      const cached = this.gitCache.get(cwd);
+      if (cached && now - cached.at < this.gitTtlMs) {
+        result.set(cwd, cached.info);
+      } else {
+        stale.push(cwd);
+      }
+    }
+    if (stale.length === 0) return result;
+
+    await Promise.all(
+      stale.map(async (cwd) => {
+        const info = await runGit(cwd);
+        this.gitCache.set(cwd, { info, at: now });
+        result.set(cwd, info);
+      }),
+    );
+    return result;
   }
 }
 
@@ -399,6 +558,56 @@ async function runListeningPorts(
     return parseListeningPorts(out);
   } catch {
     return new Map();
+  }
+}
+
+/**
+ * Run `git status --porcelain=v2 -b` + `git diff HEAD --shortstat` inside
+ * `cwd`. Returns null when `cwd` is not inside a git work tree (exit != 0).
+ * Never throws — subprocess failures degrade gracefully to null.
+ */
+async function runGit(cwd: string): Promise<GitInfo | null> {
+  try {
+    const statusProc = Bun.spawn(["git", "status", "--porcelain=v2", "-b"], {
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, LC_ALL: "C", LANG: "C" },
+    });
+    const [statusOut, statusCode] = await Promise.all([
+      new Response(statusProc.stdout).text(),
+      statusProc.exited,
+    ]);
+    if (statusCode !== 0) return null;
+
+    const info = parseGitStatusV2(statusOut);
+    if (!info) return null;
+
+    // Combined staged + unstaged line counts against HEAD. Runs in parallel
+    // with the status parse; fails silently on repos with no HEAD yet.
+    try {
+      const diffProc = Bun.spawn(["git", "diff", "HEAD", "--shortstat"], {
+        cwd,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env, LC_ALL: "C", LANG: "C" },
+      });
+      const [diffOut, diffCode] = await Promise.all([
+        new Response(diffProc.stdout).text(),
+        diffProc.exited,
+      ]);
+      if (diffCode === 0) {
+        const { insertions, deletions } = parseShortstat(diffOut);
+        info.insertions = insertions;
+        info.deletions = deletions;
+      }
+    } catch {
+      // No HEAD yet; leave zeros.
+    }
+
+    return info;
+  } catch {
+    return null;
   }
 }
 

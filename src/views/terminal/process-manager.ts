@@ -202,6 +202,39 @@ export class ProcessManagerPanel {
       header.appendChild(cwd);
     }
 
+    if (s.metadata?.git) {
+      const g = s.metadata.git;
+      const parts = ["\u2387 " + g.branch];
+      if (g.ahead > 0) parts.push(`\u2191${g.ahead}`);
+      if (g.behind > 0) parts.push(`\u2193${g.behind}`);
+      if (g.conflicts > 0) parts.push(`!${g.conflicts}`);
+      if (g.staged > 0) parts.push(`+${g.staged}`);
+      if (g.unstaged > 0) parts.push(`*${g.unstaged}`);
+      if (g.untracked > 0) parts.push(`?${g.untracked}`);
+      const dirty =
+        g.staged +
+          g.unstaged +
+          g.untracked +
+          g.conflicts +
+          g.insertions +
+          g.deletions >
+        0;
+      const chip = document.createElement("span");
+      chip.className = `process-manager-git${dirty ? " dirty" : ""}`;
+      chip.textContent = parts.join(" ");
+      const tip = [
+        `branch: ${g.branch}${g.head ? " @ " + g.head : ""}`,
+        g.upstream ? `upstream: ${g.upstream}` : "",
+        g.insertions || g.deletions
+          ? `diff vs HEAD: +${g.insertions} -${g.deletions}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      chip.title = tip;
+      header.appendChild(chip);
+    }
+
     if (s.metadata) {
       const seenPorts = new Set<number>();
       for (const p of s.metadata.listeningPorts) {

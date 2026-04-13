@@ -24,12 +24,28 @@ interface ListeningPort {
   address: string;       // "*", "127.0.0.1", "::1", etc.
 }
 
+interface GitInfo {
+  branch: string;        // "main"; "(detached)" when HEAD is detached
+  head: string;          // abbrev commit hash, "" when repo has no commits yet
+  upstream: string;      // "origin/main", "" when no tracking branch
+  ahead: number;         // commits ahead of upstream
+  behind: number;        // commits behind upstream
+  staged: number;        // files with staged changes
+  unstaged: number;      // files with unstaged changes
+  untracked: number;     // new, non-ignored files
+  conflicts: number;     // files with merge conflicts
+  insertions: number;    // lines added in `git diff HEAD --shortstat`
+  deletions: number;     // lines removed in `git diff HEAD --shortstat`
+  detached: boolean;     // true when `# branch.head` is "(detached)"
+}
+
 interface SurfaceMetadata {
   pid: number;            // the shell's pid (same as PtyManager.pid)
   foregroundPid: number;  // foreground pgrp leader on the pane tty
   cwd: string;            // cwd of foregroundPid
   tree: ProcessNode[];    // pre-order, rooted at pid
   listeningPorts: ListeningPort[];
+  git: GitInfo | null;    // null when cwd is not inside a git repo
   updatedAt: number;      // wall-clock ms
 }
 ```
@@ -177,6 +193,42 @@ Handles all four shapes lsof emits:
 | `[::1]:443` | `{ "::1", 443 }` |
 
 Returns `null` for malformed input.
+
+### `parseGitStatusV2(output: string): GitInfo | null`
+
+Consumes `git status --porcelain=v2 -b` output. The porcelain v2 format is stable and designed for tooling — each line is prefixed by a single letter identifying the record kind:
+
+| Prefix | Meaning | What we extract |
+|--------|---------|-----------------|
+| `# branch.oid <sha>` | HEAD commit SHA (or `(initial)` before the first commit) | 12-char abbrev → `head` |
+| `# branch.head <name>` | Current branch, or `(detached)` | `branch`, `detached` |
+| `# branch.upstream <name>` | Tracked upstream, missing when none | `upstream` |
+| `# branch.ab +N -M` | Ahead/behind vs upstream | `ahead`, `behind` |
+| `1 XY …` | Ordinary change (XY = index/worktree states, `.` = unchanged) | `staged` / `unstaged` counters |
+| `2 XY …` | Renamed/copied change | `staged` / `unstaged` counters |
+| `? <path>` | Untracked | `untracked` counter |
+| `u XY …` | Unmerged (conflicts) | `conflicts` counter |
+| `! <path>` | Ignored (only if `--ignored` requested) | *skipped* |
+
+Line counts (`insertions`, `deletions`) stay at `0` — they come from `parseShortstat` on a separate `git diff HEAD --shortstat` call, merged into the same `GitInfo`.
+
+Runs with `LC_ALL=C, LANG=C` in the subprocess env (same as `ps`) so Git's output uses the English keywords the regex depends on.
+
+Returns `null` only when the input string is empty; a repo with zero changes still returns a fully-populated `GitInfo` with all counters at 0. The poller separately detects "not a git repo" via the subprocess exit code (≠ 0 → `null` snapshot cached).
+
+### `parseShortstat(output: string)`
+
+Matches `N insertion(s)(+)` and `N deletion(s)(-)` anywhere in the string — tolerates the variable phrasing Git uses (`"1 file changed, 1 insertion(+)"` vs `"3 files changed, 42 insertions(+), 15 deletions(-)"`). Returns `{ insertions: 0, deletions: 0 }` for empty input.
+
+### Git TTL cache
+
+`git status` is cheap on small repos but can take hundreds of ms on kernel-sized trees. The poller caches `GitInfo | null` per cwd for `gitTtlMs = 3000`, then refreshes only when a cwd's entry is stale. Stale entries whose cwd hasn't been seen in > 12 s are evicted. This means:
+
+- **1 Hz tick** with unchanged cwd → **0** git calls.
+- **User `cd`'s to a new dir** → up to 2 git calls on the next tick (status + diff).
+- **Huge repos** → the first tick after a `cd` may emit snapshots ~200 ms late; subsequent ticks read from cache.
+
+Both git calls run in parallel via `Promise.all` across stale cwds, so N surfaces in N different repos cost ~max(git latency) wall time, not N×.
 
 ### `walkTree(rootPid, psMap)`
 

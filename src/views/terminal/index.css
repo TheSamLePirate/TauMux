@@ -675,6 +675,267 @@ textarea {
   font-weight: 500;
 }
 
+/* ── Surface Details overlay ── */
+
+.surface-details-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 5, 8, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 56px 24px 24px;
+  z-index: 210;
+}
+
+.surface-details-overlay.visible {
+  display: flex;
+}
+
+.surface-details-panel {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 10, 14, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.surface-details-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.surface-details-header-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: 0.02em;
+}
+
+.surface-details-header-subtitle {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.surface-details-header-subtitle.with-dot::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot-color, var(--accent-secondary));
+  margin-right: 6px;
+  transform: translateY(1px);
+}
+
+.surface-details-close {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.surface-details-close:hover {
+  color: var(--text-strong);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.surface-details-body {
+  overflow: auto;
+  padding: 8px 16px 20px;
+}
+
+.surface-details-empty,
+.surface-details-empty-row {
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 12px 4px;
+}
+
+.surface-details-section {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.surface-details-section:last-child {
+  border-bottom: none;
+}
+
+.surface-details-section h3 {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+}
+
+.surface-details-dl {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+
+.surface-details-dl dt {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  align-self: center;
+}
+
+.surface-details-dl dd {
+  font-size: 12px;
+  color: var(--text-strong);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.surface-details-dl dd.mono {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+}
+
+.surface-details-dl dd.subtle {
+  color: var(--text-muted);
+}
+
+.surface-details-dl dd.emphasize {
+  color: var(--accent-primary);
+  font-weight: 500;
+}
+
+.surface-details-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.surface-details-table th,
+.surface-details-table td {
+  padding: 5px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.surface-details-table th {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.surface-details-table td.num,
+.surface-details-table th.num {
+  text-align: right;
+}
+
+.surface-details-table td.mono {
+  font-family: var(--font-mono, monospace);
+}
+
+.surface-details-table td.subtle {
+  color: var(--text-muted);
+}
+
+.surface-details-table tr.foreground td {
+  background: rgba(234, 179, 8, 0.05);
+}
+
+.surface-details-table tr.foreground .surface-details-pid {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.surface-details-port {
+  color: #86efac;
+  font-weight: 600;
+}
+
+.surface-details-cmd {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.surface-details-cpu {
+  color: color-mix(
+    in oklab,
+    var(--text-strong),
+    #f87171 calc(var(--heat, 0) * 100%)
+  );
+}
+
+.surface-details-row-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.surface-details-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+}
+
+.surface-details-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-strong);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.surface-details-btn.danger {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.08);
+  border-color: rgba(248, 113, 113, 0.2);
+}
+
+.surface-details-btn.danger:hover {
+  background: rgba(248, 113, 113, 0.22);
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.52);
+}
+
+.surface-details-copy {
+  margin-left: auto;
+}
+
 /* ── Process Manager overlay ── */
 
 .process-manager-overlay {
@@ -868,6 +1129,27 @@ textarea {
   color: #86efac;
   background: rgba(74, 222, 128, 0.08);
   border: 1px solid rgba(74, 222, 128, 0.2);
+}
+
+.process-manager-git {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-secondary);
+  background: rgba(168, 85, 247, 0.08);
+  border: 1px solid rgba(168, 85, 247, 0.22);
+  white-space: pre;
+}
+
+.process-manager-git.dirty {
+  color: var(--accent-primary);
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.3);
 }
 
 .process-manager-table {
@@ -1312,6 +1594,19 @@ textarea {
   color: var(--text-muted);
   font-family: var(--font-mono, monospace);
   max-width: 220px;
+}
+
+.surface-chip.chip-git {
+  color: var(--accent-secondary);
+  background: rgba(168, 85, 247, 0.08);
+  border-color: rgba(168, 85, 247, 0.22);
+  font-variant-numeric: tabular-nums;
+}
+
+.surface-chip.chip-git.dirty {
+  color: var(--accent-primary);
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.3);
 }
 
 .surface-chip.chip-port {

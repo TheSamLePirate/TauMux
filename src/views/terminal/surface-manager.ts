@@ -426,6 +426,26 @@ export class SurfaceManager {
     return this.surfaces.get(surfaceId)?.title ?? null;
   }
 
+  /** Snapshot used by the per-surface details panel. */
+  getSurfaceDetailsRef(surfaceId: string): {
+    id: string;
+    title: string;
+    workspaceName: string;
+    workspaceColor?: string;
+    metadata: SurfaceMetadata | null;
+  } | null {
+    const view = this.surfaces.get(surfaceId);
+    if (!view) return null;
+    const ws = this.workspaces.find((w) => w.surfaceIds.has(surfaceId));
+    return {
+      id: surfaceId,
+      title: view.title,
+      workspaceName: ws?.name ?? "",
+      workspaceColor: ws?.color,
+      metadata: this.metadata.get(surfaceId) ?? null,
+    };
+  }
+
   /** Snapshot used by the process manager panel. */
   getProcessManagerData(): {
     id: string;
@@ -1048,6 +1068,19 @@ export class SurfaceManager {
     const barActions = document.createElement("div");
     barActions.className = "surface-bar-actions";
 
+    const infoBtn = document.createElement("button");
+    infoBtn.className = "surface-bar-btn";
+    infoBtn.title = "Pane Info (\u2318I)";
+    infoBtn.setAttribute("aria-label", "Pane info");
+    infoBtn.append(createIcon("info"));
+    infoBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent("ht-show-surface-info", { detail: { surfaceId } }),
+      );
+    });
+    barActions.appendChild(infoBtn);
+
     const splitRightBtn = document.createElement("button");
     splitRightBtn.className = "surface-bar-btn";
     splitRightBtn.title = "Split Right (Cmd+D)";
@@ -1638,6 +1671,14 @@ function renderSurfaceChips(host: HTMLElement, meta: SurfaceMetadata): void {
     host.appendChild(chip);
   }
 
+  if (meta.git) {
+    const label = formatGitChip(meta.git);
+    const chip = buildChip("chip-git", label);
+    if (isDirtyGit(meta.git)) chip.classList.add("dirty");
+    chip.title = formatGitTooltip(meta.git);
+    host.appendChild(chip);
+  }
+
   // Dedup ports shown in the chip row by port number (a single proc often
   // binds both v4 and v6 for the same port).
   const seen = new Set<number>();
@@ -1684,6 +1725,50 @@ function shortenCwd(cwd: string): string {
 
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + "\u2026" : s;
+}
+
+function isDirtyGit(g: NonNullable<SurfaceMetadata["git"]>): boolean {
+  return (
+    g.staged > 0 ||
+    g.unstaged > 0 ||
+    g.untracked > 0 ||
+    g.conflicts > 0 ||
+    g.insertions > 0 ||
+    g.deletions > 0
+  );
+}
+
+function formatGitChip(g: NonNullable<SurfaceMetadata["git"]>): string {
+  const parts = ["\u2387 " + g.branch];
+  if (g.ahead > 0) parts.push(`\u2191${g.ahead}`);
+  if (g.behind > 0) parts.push(`\u2193${g.behind}`);
+  if (g.conflicts > 0) parts.push(`!${g.conflicts}`);
+  if (g.staged > 0) parts.push(`+${g.staged}`);
+  if (g.unstaged > 0) parts.push(`*${g.unstaged}`);
+  if (g.untracked > 0) parts.push(`?${g.untracked}`);
+  return parts.join(" ");
+}
+
+function formatGitTooltip(g: NonNullable<SurfaceMetadata["git"]>): string {
+  const lines: string[] = [];
+  lines.push(`branch: ${g.branch}${g.head ? " @ " + g.head : ""}`);
+  if (g.upstream) {
+    const ab: string[] = [];
+    if (g.ahead > 0) ab.push(`↑${g.ahead}`);
+    if (g.behind > 0) ab.push(`↓${g.behind}`);
+    lines.push(
+      `upstream: ${g.upstream}${ab.length ? " (" + ab.join(" ") + ")" : ""}`,
+    );
+  }
+  if (g.staged || g.unstaged || g.untracked || g.conflicts) {
+    lines.push(
+      `files: ${g.staged} staged, ${g.unstaged} unstaged, ${g.untracked} untracked${g.conflicts ? `, ${g.conflicts} conflicts` : ""}`,
+    );
+  }
+  if (g.insertions || g.deletions) {
+    lines.push(`diff vs HEAD: +${g.insertions} -${g.deletions}`);
+  }
+  return lines.join("\n");
 }
 
 function samePortSet(a: { port: number }[], b: { port: number }[]): boolean {

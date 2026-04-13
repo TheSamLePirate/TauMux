@@ -14,6 +14,7 @@ import { createIcon } from "./icons";
 import { showPromptDialog } from "./prompt-dialog";
 import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";
+import { SurfaceDetailsPanel } from "./surface-details";
 import { showToast } from "./toast";
 
 // Declared before rpc so handlers can reference it; assigned after rpc is created.
@@ -109,6 +110,12 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
       surfaceMetadata: (payload) => {
         surfaceManager.setSurfaceMetadata(payload.surfaceId, payload.metadata);
         processManagerPanel.refresh();
+        if (
+          surfaceDetailsPanel.isVisible() &&
+          surfaceDetailsPanel.currentSurface() === payload.surfaceId
+        ) {
+          surfaceDetailsPanel.refresh();
+        }
       },
     },
     requests: {
@@ -166,6 +173,34 @@ const processManagerPanel = new ProcessManagerPanel({
 function toggleProcessManager(): void {
   if (!processManagerPanel.isVisible()) clearTypingFocusMode();
   processManagerPanel.toggle();
+  syncPaletteCommands();
+}
+
+const surfaceDetailsPanel = new SurfaceDetailsPanel({
+  getRef: (surfaceId) => surfaceManager.getSurfaceDetailsRef(surfaceId),
+  onKillPid: (pid, signal) => rpc.send("killPid", { pid, signal }),
+  onOpenUrl: (url) => rpc.send("openExternal", { url }),
+});
+
+function showSurfaceInfo(surfaceId: string | null): void {
+  const target =
+    surfaceId ??
+    surfaceManager.getActiveSurfaceId() ??
+    surfaceManager.getSurfaceDetailsRef(
+      surfaceManager.getActiveSurfaceId() ?? "",
+    )?.id ??
+    null;
+  if (!target) return;
+  clearTypingFocusMode();
+  surfaceDetailsPanel.showFor(target);
+  syncPaletteCommands();
+}
+
+function toggleFocusedSurfaceInfo(): void {
+  const active = surfaceManager.getActiveSurfaceId();
+  if (!active) return;
+  if (!surfaceDetailsPanel.isVisible()) clearTypingFocusMode();
+  surfaceDetailsPanel.toggleFor(active);
   syncPaletteCommands();
 }
 
@@ -452,6 +487,17 @@ function buildPaletteCommands(): PaletteCommand[] {
       shortcut: "\u2318\u2325P",
       action: () => toggleProcessManager(),
     },
+    {
+      id: "show-pane-info",
+      category: "View",
+      label: surfaceDetailsPanel.isVisible()
+        ? "Close Pane Info"
+        : "Show Pane Info",
+      description:
+        "Full detail view for the focused pane — identity, git, ports, process tree, kill buttons.",
+      shortcut: "\u2318I",
+      action: () => toggleFocusedSurfaceInfo(),
+    },
   ];
 }
 
@@ -716,9 +762,22 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
+  if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "i") {
+    e.preventDefault();
+    toggleFocusedSurfaceInfo();
+    return;
+  }
+
   if (processManagerPanel.isVisible() && e.key === "Escape") {
     e.preventDefault();
     toggleProcessManager();
+    return;
+  }
+
+  if (surfaceDetailsPanel.isVisible() && e.key === "Escape") {
+    e.preventDefault();
+    surfaceDetailsPanel.hide();
+    syncPaletteCommands();
     return;
   }
 
@@ -872,6 +931,11 @@ window.addEventListener("ht-new-workspace", () => {
 window.addEventListener("ht-open-external", (e: Event) => {
   const detail = (e as CustomEvent).detail;
   if (detail?.url) rpc.send("openExternal", { url: detail.url });
+});
+
+window.addEventListener("ht-show-surface-info", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.surfaceId) showSurfaceInfo(detail.surfaceId);
 });
 
 // Metadata poll rate follows window visibility: full rate visible, slow hidden.

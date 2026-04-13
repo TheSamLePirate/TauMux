@@ -156,6 +156,7 @@ function mapCommand(): RpcCall {
     case "cwd":
     case "ps":
     case "ports":
+    case "git":
       return {
         method: "surface.metadata",
         params: {
@@ -332,6 +333,7 @@ function formatOutput(result: unknown): void {
     command === "cwd" ||
     command === "ps" ||
     command === "ports" ||
+    command === "git" ||
     command === "metadata"
   ) {
     formatMetadata(result, command);
@@ -396,12 +398,26 @@ interface MetadataSnapshot {
     proto: string;
     address: string;
   }[];
+  git: {
+    branch: string;
+    head: string;
+    upstream: string;
+    ahead: number;
+    behind: number;
+    staged: number;
+    unstaged: number;
+    untracked: number;
+    conflicts: number;
+    insertions: number;
+    deletions: number;
+    detached: boolean;
+  } | null;
   updatedAt: number;
 }
 
 function formatMetadata(
   result: unknown,
-  cmd: "cwd" | "ps" | "ports" | "metadata",
+  cmd: "cwd" | "ps" | "ports" | "git" | "metadata",
 ): void {
   if (!result || typeof result !== "object") {
     console.error("No metadata available (surface not found or not polled yet).");
@@ -442,12 +458,41 @@ function formatMetadata(
     return;
   }
 
+  if (cmd === "git") {
+    if (!meta.git) {
+      console.log("(not a git repo)");
+      return;
+    }
+    const g = meta.git;
+    console.log(`branch:    ${g.branch}${g.head ? " @ " + g.head : ""}`);
+    if (g.upstream) {
+      const ab: string[] = [];
+      if (g.ahead > 0) ab.push(`ahead ${g.ahead}`);
+      if (g.behind > 0) ab.push(`behind ${g.behind}`);
+      console.log(
+        `upstream:  ${g.upstream}${ab.length ? " (" + ab.join(", ") + ")" : ""}`,
+      );
+    }
+    console.log(
+      `files:     ${g.staged} staged, ${g.unstaged} unstaged, ${g.untracked} untracked${g.conflicts ? `, ${g.conflicts} conflicts` : ""}`,
+    );
+    console.log(`diff HEAD: +${g.insertions} -${g.deletions}`);
+    return;
+  }
+
   // "metadata" — pretty summary
   const fgNode = meta.tree.find((n) => n.pid === meta.foregroundPid);
   console.log(`pid        ${meta.pid}`);
   console.log(`fg pid     ${meta.foregroundPid}`);
   console.log(`fg command ${fgNode?.command ?? ""}`);
   console.log(`cwd        ${meta.cwd}`);
+  if (meta.git) {
+    const dirty =
+      meta.git.staged + meta.git.unstaged + meta.git.untracked + meta.git.conflicts;
+    console.log(
+      `git        ${meta.git.branch}${dirty ? ` (${dirty} dirty)` : ""}`,
+    );
+  }
   console.log(`tree       ${meta.tree.length} process(es)`);
   console.log(`ports      ${meta.listeningPorts.length} listener(s)`);
 }
@@ -503,6 +548,7 @@ Live Metadata (reads from polled surface state):
   cwd [--surface S]                     Print cwd of foreground process
   ps [--surface S]                      Process tree rooted at the shell
   ports [--surface S]                   Listening TCP ports for tree pids
+  git [--surface S]                     Git branch, ahead/behind, dirty counts
   open [PORT] [--surface S]             Open http://localhost:PORT in browser
                                         (resolves from surface metadata if no PORT)
   kill PORT [--signal SIG] [--surface S] Send SIG (default SIGTERM) to the pid

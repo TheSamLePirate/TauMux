@@ -62,6 +62,34 @@ export interface ListeningPort {
   address: string;
 }
 
+/** Git repository observation for the surface's cwd, if any. */
+export interface GitInfo {
+  /** Branch name, e.g. "main"; "(detached)" when HEAD is detached. */
+  branch: string;
+  /** Abbreviated HEAD commit hash (first 12 chars), empty if unavailable. */
+  head: string;
+  /** Upstream branch name, e.g. "origin/main", or empty when none tracked. */
+  upstream: string;
+  /** Commits ahead of upstream. */
+  ahead: number;
+  /** Commits behind upstream. */
+  behind: number;
+  /** Files with changes in the index (staged). */
+  staged: number;
+  /** Files with changes in the working tree (unstaged). */
+  unstaged: number;
+  /** Untracked (not .gitignore'd) files. */
+  untracked: number;
+  /** Files with unresolved merge conflicts. */
+  conflicts: number;
+  /** Lines inserted in `git diff HEAD --shortstat` (staged + unstaged). */
+  insertions: number;
+  /** Lines deleted in `git diff HEAD --shortstat` (staged + unstaged). */
+  deletions: number;
+  /** True when HEAD is detached (rebase, bisect, explicit checkout of a commit). */
+  detached: boolean;
+}
+
 /** Live, polled view of what a surface's shell and its descendants are doing. */
 export interface SurfaceMetadata {
   /** Shell pid (same as pty.pid). */
@@ -79,6 +107,8 @@ export interface SurfaceMetadata {
   tree: ProcessNode[];
   /** TCP listeners owned by any pid in the tree. */
   listeningPorts: ListeningPort[];
+  /** Git status for the cwd, or null when cwd is not inside a git repo. */
+  git: GitInfo | null;
   /** Wall-clock ms when this snapshot was produced. */
   updatedAt: number;
 }
