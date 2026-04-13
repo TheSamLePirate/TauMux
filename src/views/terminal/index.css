@@ -334,6 +334,8 @@ textarea {
 #sidebar::-webkit-scrollbar,
 .xterm-viewport::-webkit-scrollbar {
   width: 0;
+  height: 0;
+  display: none;
 }
 
 #sidebar.collapsed {
@@ -2121,6 +2123,14 @@ textarea {
 .xterm-viewport {
   background-color: transparent !important;
   scrollbar-width: none;
+  /* xterm's default is `overflow-y: scroll`, which on macOS reserves a
+   * permanent ~15 px scrollbar gutter even when the scrollbar is hidden —
+   * showing up as an unused dead zone on the right of every terminal.
+   * `auto` still allows the programmatic scrollTop xterm uses for scrollback
+   * while only claiming gutter space on demand (which we then hide via
+   * ::-webkit-scrollbar { display: none }). */
+  overflow-y: auto !important;
+  scrollbar-gutter: auto;
 }
 
 .panel {

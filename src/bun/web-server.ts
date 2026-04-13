@@ -647,7 +647,16 @@ html, body {
 .pane-chip.chip-port:hover { background: rgba(74,222,128,0.2); border-color: rgba(74,222,128,0.44); color: #bbf7d0; }
 .pane-term { position: absolute; top: 31px; left: 0; right: 0; bottom: 0; overflow: hidden; }
 .pane .xterm { height: 100%; }
-.xterm-viewport { background-color: transparent !important; }
+.xterm-viewport {
+  background-color: transparent !important;
+  scrollbar-width: none;
+  /* Kill the reserved scrollbar gutter - see native webview CSS for the
+   * full rationale. auto keeps programmatic scrollTop working for xterm
+   * scrollback while letting the gutter collapse when not scrolling. */
+  overflow-y: auto !important;
+  scrollbar-gutter: auto;
+}
+.xterm-viewport::-webkit-scrollbar { width: 0; height: 0; display: none; }
 body.fullscreen-mode #pane-container .pane { display: none; }
 body.fullscreen-mode #pane-container .pane.fullscreen-active {
   display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important;

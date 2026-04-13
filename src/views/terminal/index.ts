@@ -190,6 +190,15 @@ function toggleProcessManager(): void {
   syncPaletteCommands();
 }
 
+/**
+ * Send the split request with the active workspace's cwd attached. Falls
+ * back bun-side to the splitFrom pane's live cwd if we send `undefined`.
+ */
+function requestSplit(direction: "horizontal" | "vertical"): void {
+  const cwd = surfaceManager.getActiveWorkspaceCwd() ?? undefined;
+  rpc.send("splitSurface", { direction, cwd });
+}
+
 const surfaceDetailsPanel = new SurfaceDetailsPanel({
   getRef: (surfaceId) => surfaceManager.getSurfaceDetailsRef(surfaceId),
   onKillPid: (pid, signal) => rpc.send("killPid", { pid, signal }),
@@ -348,7 +357,7 @@ function buildPaletteCommands(): PaletteCommand[] {
       label: "Split Right",
       description: "Create a new pane to the right of the current one.",
       shortcut: "\u2318D",
-      action: () => rpc.send("splitSurface", { direction: "horizontal" }),
+      action: () => requestSplit("horizontal"),
     },
     {
       id: "split-down",
@@ -356,7 +365,7 @@ function buildPaletteCommands(): PaletteCommand[] {
       label: "Split Down",
       description: "Create a new pane below the current one.",
       shortcut: "\u2318\u21e7D",
-      action: () => rpc.send("splitSurface", { direction: "vertical" }),
+      action: () => requestSplit("vertical"),
     },
     {
       id: "close-pane",
@@ -731,11 +740,11 @@ newWorkspaceBtn?.addEventListener("click", () => {
 });
 
 splitRightBtn?.addEventListener("click", () => {
-  rpc.send("splitSurface", { direction: "horizontal" });
+  requestSplit("horizontal");
 });
 
 splitDownBtn?.addEventListener("click", () => {
-  rpc.send("splitSurface", { direction: "vertical" });
+  requestSplit("vertical");
 });
 
 document.addEventListener("keydown", (e) => {
@@ -811,13 +820,13 @@ document.addEventListener("keydown", (e) => {
 
   if (e.metaKey && !e.shiftKey && e.key === "d") {
     e.preventDefault();
-    rpc.send("splitSurface", { direction: "horizontal" });
+    requestSplit("horizontal");
     return;
   }
 
   if (e.metaKey && e.shiftKey && e.key === "D") {
     e.preventDefault();
-    rpc.send("splitSurface", { direction: "vertical" });
+    requestSplit("vertical");
     return;
   }
 
@@ -992,7 +1001,7 @@ window.addEventListener("ht-split", (e: Event) => {
   const detail = (e as CustomEvent).detail;
   if (detail?.surfaceId && detail?.direction) {
     surfaceManager.focusSurface(detail.surfaceId);
-    rpc.send("splitSurface", { direction: detail.direction });
+    requestSplit(detail.direction);
   }
 });
 

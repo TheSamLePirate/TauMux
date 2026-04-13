@@ -103,7 +103,7 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         createWorkspaceSurface(80, 24, payload.cwd);
       },
       splitSurface: (payload) => {
-        splitSurface(payload.direction);
+        splitSurface(payload.direction, undefined, payload.cwd);
       },
       closeSurface: (payload) => {
         sessions.closeSurface(payload.surfaceId);
@@ -362,15 +362,21 @@ function createWorkspaceSurface(
 function splitSurface(
   direction: "horizontal" | "vertical",
   splitFrom = focusedSurfaceId,
+  cwdOverride?: string,
 ): void {
   if (!splitFrom) {
-    createWorkspaceSurface(80, 24);
+    createWorkspaceSurface(80, 24, cwdOverride);
     return;
   }
 
   sendWebviewAction("focusSurface", { surfaceId: splitFrom });
 
-  const surfaceId = sessions.createSurface(80, 24);
+  // New pane's cwd: the webview's pinned workspace cwd wins (passed by the
+  // RPC), otherwise inherit the splitFrom pane's live cwd from the metadata
+  // poller so the shell opens in the same directory the user is already in.
+  const cwd =
+    cwdOverride ?? metadataPoller.getSnapshot(splitFrom)?.cwd ?? undefined;
+  const surfaceId = sessions.createSurface(80, 24, cwd);
   const title = sessions.getSurface(surfaceId)?.title ?? "shell";
   focusedSurfaceId = surfaceId;
   rpc.send("surfaceCreated", {

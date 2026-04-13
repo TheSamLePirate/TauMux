@@ -533,6 +533,23 @@ export class SurfaceManager {
     this.notifyWorkspaceChanged();
   }
 
+  /**
+   * The "workspace cwd" driving splits/new panes/script runs. Preference
+   * order: user-pinned cwd for the active workspace, focused surface's live
+   * cwd from the metadata poller, or null when nothing is known yet.
+   */
+  getActiveWorkspaceCwd(): string | null {
+    const ws = this.workspaces[this.activeWorkspaceIndex];
+    if (!ws) return null;
+    const pinned = this.selectedCwds.get(ws.id);
+    if (pinned) return pinned;
+    const focused =
+      this.focusedSurfaceId && ws.surfaceIds.has(this.focusedSurfaceId)
+        ? this.metadata.get(this.focusedSurfaceId)
+        : null;
+    return focused?.cwd || null;
+  }
+
   /** Attach a script-tracker to a freshly-created surface so surfaceExited
    *  can paint the red dot when the run fails. */
   registerScriptSurface(
@@ -629,7 +646,7 @@ export class SurfaceManager {
       t.options.theme = theme;
       // Force xterm to re-render with new colors
       t.refresh(0, t.rows - 1);
-      view.fitAddon.fit();
+      fitSurfaceTerminal(view);
       view.effects.setEnabled(s.terminalBloom);
       view.effects.setIntensity(s.bloomIntensity);
       view.effects.setFocused(view.id === this.focusedSurfaceId);
@@ -678,7 +695,7 @@ export class SurfaceManager {
     this.fontSize = size;
     for (const view of this.surfaces.values()) {
       view.term.options.fontSize = size;
-      view.fitAddon.fit();
+      fitSurfaceTerminal(view);
     }
     // Re-report size to bun for the active surface
     const active = this.focusedSurfaceId
@@ -1737,7 +1754,7 @@ export class SurfaceManager {
     for (const surfaceId of ws.surfaceIds) {
       const view = this.surfaces.get(surfaceId);
       if (!view) continue;
-      view.fitAddon.fit();
+      fitSurfaceTerminal(view);
       view.effects.setFocused(view.id === this.focusedSurfaceId);
       this.onResize(surfaceId, view.term.cols, view.term.rows);
       view.panelManager.updateInlinePanels();
@@ -1976,6 +1993,60 @@ function formatGitTooltip(g: NonNullable<SurfaceMetadata["git"]>): string {
     lines.push(`diff vs HEAD: +${g.insertions} -${g.deletions}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * Fit a terminal to its parent container's full width/height — no 14 px
+ * scrollbar-gutter shave. FitAddon hardcodes `overviewRuler?.width || 14`
+ * as an unconditional subtraction whenever `scrollback !== 0`, which costs
+ * us a column or two on every pane. We hide the scrollbar via CSS already,
+ * so there's no reason for FitAddon to reserve the gutter at all.
+ *
+ * Same math as FitAddon.proposeDimensions otherwise: parent getComputedStyle
+ * width/height minus the terminal element's padding, floor-divided by the
+ * cell dimensions the render service computed.
+ */
+function fitSurfaceTerminal(view: {
+  term: Terminal;
+  fitAddon: FitAddon;
+}): void {
+  const term = view.term;
+  if (!term.element?.parentElement) return;
+
+  const core = (
+    term as unknown as {
+      _core?: {
+        _renderService?: {
+          dimensions?: { css?: { cell?: { width: number; height: number } } };
+          clear(): void;
+        };
+      };
+    }
+  )._core;
+  const cell = core?._renderService?.dimensions?.css?.cell;
+  if (!cell || !cell.width || !cell.height) {
+    // Render service not ready — defer to FitAddon which has its own first-
+    // frame guards; it'll subtract 14 px for one tick then we'll catch up.
+    view.fitAddon.fit();
+    return;
+  }
+
+  const ps = window.getComputedStyle(term.element.parentElement);
+  const w = Math.max(0, parseInt(ps.getPropertyValue("width")) || 0);
+  const h = parseInt(ps.getPropertyValue("height")) || 0;
+  const es = window.getComputedStyle(term.element);
+  const padX =
+    (parseInt(es.getPropertyValue("padding-left")) || 0) +
+    (parseInt(es.getPropertyValue("padding-right")) || 0);
+  const padY =
+    (parseInt(es.getPropertyValue("padding-top")) || 0) +
+    (parseInt(es.getPropertyValue("padding-bottom")) || 0);
+
+  const cols = Math.max(2, Math.floor((w - padX) / cell.width));
+  const rows = Math.max(1, Math.floor((h - padY) / cell.height));
+  if (term.cols === cols && term.rows === rows) return;
+  core._renderService?.clear();
+  term.resize(cols, rows);
 }
 
 /** Extracts the script name from commands like "bun run build", "npm run

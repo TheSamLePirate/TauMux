@@ -250,7 +250,13 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
 
       // Surface lifecycle
       createSurface: { cwd?: string };
-      splitSurface: { direction: "horizontal" | "vertical" };
+      splitSurface: {
+        direction: "horizontal" | "vertical";
+        /** Optional cwd for the new pane; typically the active workspace's
+         *  selected cwd. Falls back bun-side to the splitFrom pane's cwd
+         *  from the metadata poller when omitted. */
+        cwd?: string;
+      };
       closeSurface: { surfaceId: string };
       focusSurface: { surfaceId: string };
 
