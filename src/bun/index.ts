@@ -86,6 +86,11 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
           initialResizeReceived = true;
           // Send settings now that the webview is ready
           rpc.send("restoreSettings", { settings: settingsManager.get() });
+          // Re-send the web-mirror status — the boot-time send at module
+          // load happens before the webview has registered RPC handlers,
+          // so the sidebar dot was stuck on "Offline" (its CSS default)
+          // even when auto-start had brought the server up.
+          sendWebServerStatus();
           if (!tryRestoreLayout(payload.cols, payload.rows)) {
             createWorkspaceSurface(payload.cols, payload.rows);
           }
