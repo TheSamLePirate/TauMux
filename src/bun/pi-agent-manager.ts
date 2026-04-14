@@ -183,7 +183,7 @@ export class PiAgentInstance {
   }
 
   private handleMessage(msg: PiAgentEvent): void {
-    // Check if this is a response to a command we sent
+    // Check if this is a response to a command we sent (via send())
     if (msg["type"] === "response" && msg["id"]) {
       const waiter = this.responseWaiters.get(msg["id"] as string);
       if (waiter) {
@@ -193,10 +193,10 @@ export class PiAgentInstance {
         } else {
           waiter.reject(new Error((msg["error"] as string) ?? "Unknown error"));
         }
-        return;
+        // Still forward to onEvent so the UI can also process it
       }
     }
-    // Forward all events to the UI
+    // Forward ALL messages to the UI (events + responses)
     this.onEvent?.(msg);
   }
 

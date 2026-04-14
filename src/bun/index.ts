@@ -342,35 +342,35 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       },
       agentPrompt: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) void agent.prompt(payload.message);
+        if (agent) agent.sendNoWait({ type: "prompt", message: payload.message });
       },
       agentAbort: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) void agent.abort();
+        if (agent) agent.sendNoWait({ type: "abort" });
       },
       agentSetModel: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) void agent.setModel(payload.provider, payload.modelId);
+        if (agent) agent.sendNoWait({ type: "set_model", provider: payload.provider, modelId: payload.modelId });
       },
       agentSetThinking: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) void agent.setThinkingLevel(payload.level);
+        if (agent) agent.sendNoWait({ type: "set_thinking_level", level: payload.level });
       },
       agentNewSession: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) void agent.newSession();
+        if (agent) agent.sendNoWait({ type: "new_session" });
       },
       agentCompact: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) void agent.compact();
+        if (agent) agent.sendNoWait({ type: "compact" });
       },
       agentGetModels: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) void agent.getAvailableModels();
+        if (agent) agent.sendNoWait({ type: "get_available_models" });
       },
       agentGetState: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) void agent.getState();
+        if (agent) agent.sendNoWait({ type: "get_state" });
       },
       agentExtensionUIResponse: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
