@@ -1635,11 +1635,22 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
       const aid = payload["agentId"] as string;
       const splitFrom = payload["splitFrom"] as string | undefined;
       const dir = payload["direction"] as "horizontal" | "vertical" | undefined;
-      if (!sid || !aid) break;
-      if (splitFrom && dir) {
-        surfaceManager.addAgentSurfaceAsSplit(sid, aid, splitFrom, dir);
-      } else {
-        surfaceManager.addAgentSurface(sid, aid);
+      if (!sid || !aid) {
+        showToast(`Agent: missing sid/aid`, "error");
+        break;
+      }
+      try {
+        if (splitFrom && dir) {
+          surfaceManager.addAgentSurfaceAsSplit(sid, aid, splitFrom, dir);
+        } else {
+          surfaceManager.addAgentSurface(sid, aid);
+        }
+      } catch (err) {
+        // If agent panel fails, create a terminal pane as fallback so
+        // we can visually confirm the pipeline works
+        showToast(`Agent panel error: ${String(err).slice(0, 120)}`, "error");
+        // Request a real terminal surface as a fallback
+        rpc.send("createSurface", {});
       }
       break;
     }
