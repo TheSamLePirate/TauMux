@@ -1,10 +1,8 @@
 /**
- * Agent Panel — a beautiful chat UI for the pi coding agent that lives
- * inside a surface pane alongside terminals and browser panes.
- *
- * Renders streaming text, thinking blocks, tool calls/results,
- * and provides an input bar for sending prompts. Fully integrated with
- * the HyperTerm Canvas glass aesthetic.
+ * Agent Panel — a glass-style chat UI for the pi coding agent that lives
+ * inside a surface pane. Fully integrated with HyperTerm Canvas theme system,
+ * real-time streaming with animations, collapsible tool calls, thinking blocks,
+ * model selector, session stats, and interactive controls.
  */
 
 import { createIcon } from "./icons";
@@ -28,7 +26,6 @@ interface ChatMessage {
   content: string;
   thinking?: string;
   toolName?: string;
-  toolCallId?: string;
   isError?: boolean;
   timestamp: number;
 }
@@ -40,6 +37,8 @@ interface ToolCallState {
   result?: string;
   isError?: boolean;
   isRunning: boolean;
+  collapsed: boolean;
+  startTime: number;
 }
 
 export interface AgentPaneView {
@@ -49,7 +48,6 @@ export interface AgentPaneView {
   titleEl: HTMLSpanElement;
   chipsEl: HTMLDivElement;
   title: string;
-  // Internal state for rendering
   _state: AgentPanelState;
   _elements: AgentPanelElements;
 }
@@ -67,26 +65,41 @@ interface AgentPanelState {
   sessionStats: {
     tokens?: { input: number; output: number; total: number };
     cost?: number;
-    contextUsage?: { tokens: number; contextWindow: number; percent: number };
+    contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null };
   } | null;
   autoScroll: boolean;
   showModelSelector: boolean;
+  showThinkingSelector: boolean;
   retryState: { attempt: number; maxAttempts: number; delayMs: number } | null;
+  turnCount: number;
+  totalToolCalls: number;
 }
 
 interface AgentPanelElements {
   messagesEl: HTMLDivElement;
   inputEl: HTMLTextAreaElement;
   inputBarEl: HTMLDivElement;
-  statusEl: HTMLDivElement;
+  footerEl: HTMLDivElement;
   sendBtn: HTMLButtonElement;
-  modelBtn: HTMLButtonElement;
-  thinkingBtn: HTMLButtonElement;
+  modelBtnLabel: HTMLSpanElement;
+  thinkingBtnLabel: HTMLSpanElement;
   modelSelectorEl: HTMLDivElement;
+  thinkingSelectorEl: HTMLDivElement;
   toolbarEl: HTMLDivElement;
+  streamingIndicator: HTMLDivElement;
+  contextMeter: HTMLDivElement;
+  contextMeterFill: HTMLDivElement;
+  contextMeterLabel: HTMLSpanElement;
 }
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high"] as const;
+const THINKING_COLORS: Record<string, string> = {
+  off: "var(--text-dim)",
+  minimal: "var(--text-muted)",
+  low: "#67e8f9",
+  medium: "var(--accent-secondary)",
+  high: "#f97316",
+};
 
 export function createAgentPaneView(
   surfaceId: string,
@@ -98,13 +111,13 @@ export function createAgentPaneView(
   container.dataset["surfaceId"] = surfaceId;
   container.style.display = "none";
 
-  // ── Status bar (matches terminal surface bar) ──
+  // ── Status bar ──
   const bar = document.createElement("div");
   bar.className = "surface-bar";
 
   const barTitleWrap = document.createElement("div");
   barTitleWrap.className = "surface-bar-title-wrap";
-  const barIcon = createIcon("command", "surface-bar-icon", 12);
+  const barIcon = createIcon("command", "surface-bar-icon");
   barIcon.classList.add("agent-bar-icon");
   barTitleWrap.appendChild(barIcon);
   const barTitle = document.createElement("span");
@@ -120,25 +133,20 @@ export function createAgentPaneView(
   const barActions = document.createElement("div");
   barActions.className = "surface-bar-actions";
 
-  const splitRightBtn = document.createElement("button");
-  splitRightBtn.className = "surface-bar-btn";
-  splitRightBtn.title = "Split Right";
-  splitRightBtn.append(createIcon("splitHorizontal"));
-  splitRightBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    callbacks.onSplit(surfaceId, "horizontal");
-  });
-  barActions.appendChild(splitRightBtn);
-
-  const splitDownBtn = document.createElement("button");
-  splitDownBtn.className = "surface-bar-btn";
-  splitDownBtn.title = "Split Down";
-  splitDownBtn.append(createIcon("splitVertical"));
-  splitDownBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    callbacks.onSplit(surfaceId, "vertical");
-  });
-  barActions.appendChild(splitDownBtn);
+  for (const [title, icon, dir] of [
+    ["Split Right", "splitHorizontal", "horizontal"],
+    ["Split Down", "splitVertical", "vertical"],
+  ] as const) {
+    const btn = document.createElement("button");
+    btn.className = "surface-bar-btn";
+    btn.title = title;
+    btn.append(createIcon(icon));
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      callbacks.onSplit(surfaceId, dir);
+    });
+    barActions.appendChild(btn);
+  }
 
   const closeBtn = document.createElement("button");
   closeBtn.className = "surface-bar-btn surface-bar-close";
@@ -149,11 +157,10 @@ export function createAgentPaneView(
     callbacks.onClose(surfaceId);
   });
   barActions.appendChild(closeBtn);
-
   bar.appendChild(barActions);
   container.appendChild(bar);
 
-  // ── Main agent body ──
+  // ── Body ──
   const body = document.createElement("div");
   body.className = "agent-body";
 
@@ -161,79 +168,112 @@ export function createAgentPaneView(
   const toolbarEl = document.createElement("div");
   toolbarEl.className = "agent-toolbar";
 
+  // Model button
   const modelBtn = document.createElement("button");
-  modelBtn.className = "agent-toolbar-btn agent-model-btn";
-  modelBtn.textContent = "Loading model…";
-  modelBtn.title = "Select model";
+  modelBtn.className = "agent-tb-btn agent-tb-model";
+  const modelDot = document.createElement("span");
+  modelDot.className = "agent-tb-dot agent-tb-dot-model";
+  modelBtn.appendChild(modelDot);
+  const modelBtnLabel = document.createElement("span");
+  modelBtnLabel.textContent = "Loading…";
+  modelBtn.appendChild(modelBtnLabel);
+  const modelChevron = document.createElement("span");
+  modelChevron.className = "agent-tb-chevron";
+  modelChevron.textContent = "▾";
+  modelBtn.appendChild(modelChevron);
   modelBtn.addEventListener("click", () => {
     state.showModelSelector = !state.showModelSelector;
-    renderModelSelector(view);
-    if (state.showModelSelector) {
-      callbacks.onGetModels(agentId);
-    }
+    state.showThinkingSelector = false;
+    renderDropdowns(view);
+    if (state.showModelSelector) callbacks.onGetModels(agentId);
   });
   toolbarEl.appendChild(modelBtn);
 
+  // Thinking button
   const thinkingBtn = document.createElement("button");
-  thinkingBtn.className = "agent-toolbar-btn agent-thinking-btn";
-  thinkingBtn.textContent = "thinking: off";
-  thinkingBtn.title = "Cycle thinking level";
+  thinkingBtn.className = "agent-tb-btn agent-tb-thinking";
+  const thinkDot = document.createElement("span");
+  thinkDot.className = "agent-tb-dot";
+  thinkDot.style.background = THINKING_COLORS["off"];
+  thinkingBtn.appendChild(thinkDot);
+  const thinkingBtnLabel = document.createElement("span");
+  thinkingBtnLabel.textContent = "off";
+  thinkingBtn.appendChild(thinkingBtnLabel);
+  const thinkChevron = document.createElement("span");
+  thinkChevron.className = "agent-tb-chevron";
+  thinkChevron.textContent = "▾";
+  thinkingBtn.appendChild(thinkChevron);
   thinkingBtn.addEventListener("click", () => {
-    const idx = THINKING_LEVELS.indexOf(
-      state.thinkingLevel as (typeof THINKING_LEVELS)[number],
-    );
-    const next = THINKING_LEVELS[(idx + 1) % THINKING_LEVELS.length];
-    callbacks.onSetThinking(agentId, next);
+    state.showThinkingSelector = !state.showThinkingSelector;
+    state.showModelSelector = false;
+    renderDropdowns(view);
   });
   toolbarEl.appendChild(thinkingBtn);
 
-  const newSessionBtn = document.createElement("button");
-  newSessionBtn.className = "agent-toolbar-btn";
-  newSessionBtn.textContent = "New Session";
-  newSessionBtn.title = "Start a fresh conversation";
-  newSessionBtn.addEventListener("click", () => {
-    callbacks.onNewSession(agentId);
-  });
-  toolbarEl.appendChild(newSessionBtn);
+  // Spacer
+  const spacer = document.createElement("div");
+  spacer.style.flex = "1";
+  toolbarEl.appendChild(spacer);
 
+  // New session
+  const newBtn = document.createElement("button");
+  newBtn.className = "agent-tb-btn agent-tb-action";
+  newBtn.title = "New session";
+  newBtn.textContent = "↻ New";
+  newBtn.addEventListener("click", () => callbacks.onNewSession(agentId));
+  toolbarEl.appendChild(newBtn);
+
+  // Compact
   const compactBtn = document.createElement("button");
-  compactBtn.className = "agent-toolbar-btn";
-  compactBtn.textContent = "Compact";
-  compactBtn.title = "Compact conversation context";
-  compactBtn.addEventListener("click", () => {
-    callbacks.onCompact(agentId);
-  });
+  compactBtn.className = "agent-tb-btn agent-tb-action";
+  compactBtn.title = "Compact context";
+  compactBtn.textContent = "⊘ Compact";
+  compactBtn.addEventListener("click", () => callbacks.onCompact(agentId));
   toolbarEl.appendChild(compactBtn);
 
   body.appendChild(toolbarEl);
 
-  // Model selector dropdown
+  // ── Dropdowns ──
   const modelSelectorEl = document.createElement("div");
-  modelSelectorEl.className = "agent-model-selector hidden";
+  modelSelectorEl.className = "agent-dropdown agent-dropdown-hidden";
   body.appendChild(modelSelectorEl);
 
-  // ── Messages area ──
+  const thinkingSelectorEl = document.createElement("div");
+  thinkingSelectorEl.className = "agent-dropdown agent-dropdown-hidden";
+  body.appendChild(thinkingSelectorEl);
+
+  // ── Streaming indicator ──
+  const streamingIndicator = document.createElement("div");
+  streamingIndicator.className = "agent-streaming-bar agent-streaming-bar-hidden";
+  streamingIndicator.innerHTML = `<div class="agent-streaming-bar-glow"></div><span class="agent-streaming-bar-label">Thinking</span>`;
+  body.appendChild(streamingIndicator);
+
+  // ── Messages ──
   const messagesEl = document.createElement("div");
   messagesEl.className = "agent-messages";
-
-  // Welcome message
-  const welcome = document.createElement("div");
-  welcome.className = "agent-welcome";
-  welcome.innerHTML = `
-    <div class="agent-welcome-icon">✦</div>
-    <div class="agent-welcome-title">Pi Agent</div>
-    <div class="agent-welcome-sub">AI coding assistant running inside HyperTerm Canvas.<br>
-    Equipped with read, write, edit, and bash tools plus the ht-cli skill.</div>
-  `;
-  messagesEl.appendChild(welcome);
-
+  appendWelcome(messagesEl);
   body.appendChild(messagesEl);
 
-  // ── Status bar ──
-  const statusEl = document.createElement("div");
-  statusEl.className = "agent-status";
-  statusEl.textContent = "Ready";
-  body.appendChild(statusEl);
+  // ── Context meter ──
+  const contextMeter = document.createElement("div");
+  contextMeter.className = "agent-context-meter";
+  const contextMeterFill = document.createElement("div");
+  contextMeterFill.className = "agent-context-fill";
+  contextMeter.appendChild(contextMeterFill);
+  const contextMeterLabel = document.createElement("span");
+  contextMeterLabel.className = "agent-context-label";
+  contextMeterLabel.textContent = "";
+  contextMeter.appendChild(contextMeterLabel);
+
+  // ── Footer ──
+  const footerEl = document.createElement("div");
+  footerEl.className = "agent-footer";
+  footerEl.appendChild(contextMeter);
+  const footerText = document.createElement("span");
+  footerText.className = "agent-footer-text";
+  footerText.textContent = "Ready";
+  footerEl.appendChild(footerText);
+  body.appendChild(footerEl);
 
   // ── Input bar ──
   const inputBarEl = document.createElement("div");
@@ -241,25 +281,13 @@ export function createAgentPaneView(
 
   const inputEl = document.createElement("textarea");
   inputEl.className = "agent-input";
-  inputEl.placeholder = "Ask the agent anything…";
+  inputEl.placeholder = "Message pi agent…";
   inputEl.rows = 1;
-  inputEl.addEventListener("input", () => {
-    autoResizeTextarea(inputEl);
-  });
+  inputEl.addEventListener("input", () => autoResize(inputEl));
   inputEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      const text = inputEl.value.trim();
-      if (text) {
-        if (state.isStreaming) {
-          // During streaming, steer
-          callbacks.onSendPrompt(agentId, text);
-        } else {
-          callbacks.onSendPrompt(agentId, text);
-        }
-        inputEl.value = "";
-        autoResizeTextarea(inputEl);
-      }
+      submitInput(view, callbacks);
     }
     if (e.key === "Escape" && state.isStreaming) {
       e.preventDefault();
@@ -271,19 +299,12 @@ export function createAgentPaneView(
   const sendBtn = document.createElement("button");
   sendBtn.className = "agent-send-btn";
   sendBtn.title = "Send (Enter)";
-  sendBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>`;
+  sendBtn.innerHTML = SEND_ICON;
   sendBtn.addEventListener("click", () => {
-    const text = inputEl.value.trim();
-    if (text) {
-      if (state.isStreaming) {
-        callbacks.onSendPrompt(agentId, text);
-      } else {
-        callbacks.onSendPrompt(agentId, text);
-      }
-      inputEl.value = "";
-      autoResizeTextarea(inputEl);
-    } else if (state.isStreaming) {
+    if (state.isStreaming) {
       callbacks.onAbort(agentId);
+    } else {
+      submitInput(view, callbacks);
     }
   });
   inputBarEl.appendChild(sendBtn);
@@ -291,17 +312,10 @@ export function createAgentPaneView(
   body.appendChild(inputBarEl);
   container.appendChild(body);
 
-  // Focus on click
-  container.addEventListener("mousedown", () => {
-    callbacks.onFocus(surfaceId);
-  });
-
-  // Auto-scroll on messages area scroll
+  container.addEventListener("mousedown", () => callbacks.onFocus(surfaceId));
   messagesEl.addEventListener("scroll", () => {
-    const isAtBottom =
-      messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight <
-      40;
-    state.autoScroll = isAtBottom;
+    state.autoScroll =
+      messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 50;
   });
 
   const state: AgentPanelState = {
@@ -317,19 +331,27 @@ export function createAgentPaneView(
     sessionStats: null,
     autoScroll: true,
     showModelSelector: false,
+    showThinkingSelector: false,
     retryState: null,
+    turnCount: 0,
+    totalToolCalls: 0,
   };
 
   const elements: AgentPanelElements = {
     messagesEl,
     inputEl,
     inputBarEl,
-    statusEl,
+    footerEl,
     sendBtn,
-    modelBtn,
-    thinkingBtn,
+    modelBtnLabel,
+    thinkingBtnLabel,
     modelSelectorEl,
+    thinkingSelectorEl,
     toolbarEl,
+    streamingIndicator,
+    contextMeter,
+    contextMeterFill,
+    contextMeterLabel,
   };
 
   const view: AgentPaneView = {
@@ -343,85 +365,88 @@ export function createAgentPaneView(
     _elements: elements,
   };
 
-  // Request initial state
-  setTimeout(() => callbacks.onGetState(agentId), 100);
+  setTimeout(() => callbacks.onGetState(agentId), 200);
 
   return view;
 }
 
-/** Handle an event from the pi agent RPC process. */
+// ── Event handler ──
+
 export function agentPanelHandleEvent(
   view: AgentPaneView,
   event: Record<string, unknown>,
 ): void {
-  const state = view._state;
-  const els = view._elements;
+  const s = view._state;
+  const el = view._elements;
+  const t = event["type"] as string;
 
-  switch (event["type"]) {
+  switch (t) {
     case "agent_start":
-      state.isStreaming = true;
-      state.currentText = "";
-      state.currentThinking = "";
-      state.toolCalls.clear();
-      updateStreamingUI(view);
+      s.isStreaming = true;
+      s.currentText = "";
+      s.currentThinking = "";
+      s.toolCalls.clear();
+      s.turnCount++;
+      syncStreamingUI(view);
       break;
 
     case "agent_end":
-      state.isStreaming = false;
-      if (state.currentText) {
-        state.messages.push({
-          role: "assistant",
-          content: state.currentText,
-          thinking: state.currentThinking || undefined,
-          timestamp: Date.now(),
-        });
-        state.currentText = "";
-        state.currentThinking = "";
-      }
-      renderMessages(view);
-      updateStreamingUI(view);
+      s.isStreaming = false;
+      flushStreaming(view);
+      syncStreamingUI(view);
+      break;
+
+    case "turn_start":
+      break;
+
+    case "turn_end":
+      break;
+
+    case "message_start":
+      break;
+
+    case "message_end":
       break;
 
     case "message_update": {
-      const delta = event["assistantMessageEvent"] as Record<string, unknown>;
-      if (!delta) break;
-      if (delta["type"] === "text_delta") {
-        state.currentText += delta["delta"] as string;
-        renderStreamingMessage(view);
-      } else if (delta["type"] === "thinking_delta") {
-        state.currentThinking += delta["delta"] as string;
-        renderStreamingThinking(view);
+      const d = event["assistantMessageEvent"] as Record<string, unknown> | undefined;
+      if (!d) break;
+      const dt = d["type"] as string;
+      if (dt === "text_delta") {
+        s.currentText += d["delta"] as string;
+        renderStream(view);
+      } else if (dt === "thinking_delta") {
+        s.currentThinking += d["delta"] as string;
+        renderThinkingStream(view);
+      } else if (dt === "done" || dt === "error") {
+        flushStreaming(view);
       }
       break;
     }
 
     case "tool_execution_start": {
       const tcId = event["toolCallId"] as string;
-      const toolName = event["toolName"] as string;
-      const args = event["args"]
-        ? JSON.stringify(event["args"], null, 2)
-        : "";
-      state.toolCalls.set(tcId, {
+      s.totalToolCalls++;
+      s.toolCalls.set(tcId, {
         id: tcId,
-        name: toolName,
-        args: truncateToolArgs(args),
+        name: event["toolName"] as string,
+        args: formatArgs(event["args"]),
         isRunning: true,
+        collapsed: false,
+        startTime: Date.now(),
       });
       renderToolCall(view, tcId);
+      updateChips(view);
       break;
     }
 
     case "tool_execution_update": {
       const tcId = event["toolCallId"] as string;
-      const tc = state.toolCalls.get(tcId);
+      const tc = s.toolCalls.get(tcId);
       if (tc) {
-        const partial = event["partialResult"] as Record<string, unknown> | undefined;
-        if (partial?.["content"]) {
-          const content = partial["content"] as Array<{ text?: string }>;
-          tc.result = content
-            .map((c) => c.text ?? "")
-            .join("")
-            .slice(0, 2000);
+        const pr = event["partialResult"] as Record<string, unknown> | undefined;
+        if (pr?.["content"]) {
+          tc.result = extractContent(pr["content"]).slice(0, 3000);
         }
         renderToolCall(view, tcId);
       }
@@ -430,581 +455,605 @@ export function agentPanelHandleEvent(
 
     case "tool_execution_end": {
       const tcId = event["toolCallId"] as string;
-      const tc = state.toolCalls.get(tcId);
+      const tc = s.toolCalls.get(tcId);
       if (tc) {
         tc.isRunning = false;
         tc.isError = event["isError"] as boolean;
-        const result = event["result"] as Record<string, unknown> | undefined;
-        if (result?.["content"]) {
-          const content = result["content"] as Array<{ text?: string }>;
-          tc.result = content
-            .map((c) => c.text ?? "")
-            .join("")
-            .slice(0, 4000);
-        }
+        const r = event["result"] as Record<string, unknown> | undefined;
+        if (r?.["content"]) tc.result = extractContent(r["content"]).slice(0, 6000);
+        tc.collapsed = true; // auto-collapse on completion
         renderToolCall(view, tcId);
+        updateChips(view);
       }
       break;
     }
 
     case "compaction_start":
-      state.isCompacting = true;
-      els.statusEl.textContent = "Compacting context…";
-      els.statusEl.classList.add("agent-status-busy");
+      s.isCompacting = true;
+      el.streamingIndicator.classList.remove("agent-streaming-bar-hidden");
+      (el.streamingIndicator.querySelector(".agent-streaming-bar-label") as HTMLElement).textContent = "Compacting context…";
       break;
 
     case "compaction_end":
-      state.isCompacting = false;
-      els.statusEl.classList.remove("agent-status-busy");
-      updateStatus(view);
+      s.isCompacting = false;
+      if (!s.isStreaming) el.streamingIndicator.classList.add("agent-streaming-bar-hidden");
+      syncFooter(view);
       break;
 
-    case "auto_retry_start": {
-      state.retryState = {
+    case "auto_retry_start":
+      s.retryState = {
         attempt: event["attempt"] as number,
         maxAttempts: event["maxAttempts"] as number,
         delayMs: event["delayMs"] as number,
       };
-      els.statusEl.textContent = `Retrying (${state.retryState.attempt}/${state.retryState.maxAttempts})…`;
-      els.statusEl.classList.add("agent-status-busy");
+      el.streamingIndicator.classList.remove("agent-streaming-bar-hidden");
+      (el.streamingIndicator.querySelector(".agent-streaming-bar-label") as HTMLElement).textContent =
+        `Retrying (${s.retryState.attempt}/${s.retryState.maxAttempts})…`;
       break;
-    }
 
     case "auto_retry_end":
-      state.retryState = null;
-      els.statusEl.classList.remove("agent-status-busy");
-      updateStatus(view);
+      s.retryState = null;
+      if (!s.isStreaming) el.streamingIndicator.classList.add("agent-streaming-bar-hidden");
+      syncFooter(view);
       break;
 
     case "queue_update":
       break;
 
-    case "response": {
-      const cmd = event["command"] as string;
-      if (cmd === "get_state" && event["success"] && event["data"]) {
-        const data = event["data"] as Record<string, unknown>;
-        if (data["model"]) {
-          state.model = data["model"] as AgentPanelState["model"];
-          els.modelBtn.textContent = state.model?.name ?? state.model?.id ?? "No model";
-        }
-        if (data["thinkingLevel"]) {
-          state.thinkingLevel = data["thinkingLevel"] as string;
-          els.thinkingBtn.textContent = `thinking: ${state.thinkingLevel}`;
-        }
-        state.isStreaming = data["isStreaming"] as boolean;
-        updateStreamingUI(view);
-        updateStatus(view);
-      }
-      if (cmd === "get_available_models" && event["success"] && event["data"]) {
-        const data = event["data"] as { models: Array<Record<string, unknown>> };
-        state.availableModels = (data.models ?? []).map((m) => ({
-          provider: (m["provider"] as string) ?? "",
-          id: (m["id"] as string) ?? "",
-          name: (m["name"] as string) ?? (m["id"] as string) ?? "",
-        }));
-        renderModelSelector(view);
-      }
-      if (cmd === "set_model" && event["success"] && event["data"]) {
-        const data = event["data"] as Record<string, unknown>;
-        state.model = {
-          provider: (data["provider"] as string) ?? "",
-          id: (data["id"] as string) ?? "",
-          name: (data["name"] as string) ?? (data["id"] as string) ?? "",
-        };
-        els.modelBtn.textContent = state.model.name;
-        state.showModelSelector = false;
-        renderModelSelector(view);
-      }
-      if (cmd === "set_thinking_level" && event["success"]) {
-        // The level was set in the send call
-      }
-      if (cmd === "get_session_stats" && event["success"] && event["data"]) {
-        state.sessionStats = event["data"] as AgentPanelState["sessionStats"];
-        updateStatus(view);
-      }
-      if (cmd === "prompt" && event["success"]) {
-        // Prompt accepted — already handling via events
-      }
-      if (cmd === "new_session" && event["success"]) {
-        state.messages = [];
-        state.currentText = "";
-        state.currentThinking = "";
-        state.toolCalls.clear();
-        renderMessages(view);
-        updateStatus(view);
-      }
+    case "response":
+      handleResponse(view, event);
       break;
-    }
 
     case "agent_stderr": {
-      // Show as system message
       const text = event["text"] as string;
-      if (text && !text.includes("Debugger") && !text.includes("node --inspect")) {
-        state.messages.push({
-          role: "system",
-          content: text,
-          timestamp: Date.now(),
-        });
-        renderMessages(view);
+      if (text && !text.includes("Debugger") && !text.includes("inspector")) {
+        s.messages.push({ role: "system", content: text, timestamp: Date.now() });
+        renderAllMessages(view);
       }
       break;
     }
 
     case "extension_ui_request":
-      // Handle extension UI requests (select, confirm, etc.)
-      handleExtensionUIRequest(view, event);
+      handleExtUI(view, event);
       break;
+
+    case "agent_exit": {
+      s.isStreaming = false;
+      flushStreaming(view);
+      s.messages.push({ role: "system", content: `Agent process exited (code ${event["code"] ?? "?"})`, timestamp: Date.now() });
+      renderAllMessages(view);
+      syncStreamingUI(view);
+      break;
+    }
   }
 }
 
-/** Set the available models list from the agent state response. */
-export function agentPanelSetModels(
-  view: AgentPaneView,
-  models: Array<{ provider: string; id: string; name: string }>,
-): void {
-  view._state.availableModels = models;
-  renderModelSelector(view);
+export function agentPanelAddUserMessage(view: AgentPaneView, text: string): void {
+  view._state.messages.push({ role: "user", content: text, timestamp: Date.now() });
+  renderAllMessages(view);
 }
 
-/** Set model info on the panel. */
-export function agentPanelSetModel(
-  view: AgentPaneView,
-  model: { provider: string; id: string; name: string } | null,
-): void {
-  view._state.model = model;
-  view._elements.modelBtn.textContent = model?.name ?? model?.id ?? "No model";
-}
-
-/** Set thinking level. */
-export function agentPanelSetThinking(
-  view: AgentPaneView,
-  level: string,
-): void {
-  view._state.thinkingLevel = level;
-  view._elements.thinkingBtn.textContent = `thinking: ${level}`;
-}
-
-/** Add a user message to the display. */
-export function agentPanelAddUserMessage(
-  view: AgentPaneView,
-  text: string,
-): void {
-  view._state.messages.push({
-    role: "user",
-    content: text,
-    timestamp: Date.now(),
-  });
-  renderMessages(view);
-}
-
-/** Focus the input. */
 export function agentPanelFocusInput(view: AgentPaneView): void {
   view._elements.inputEl.focus();
 }
 
-// ── Private rendering helpers ──
+// ── Private helpers ──
 
-function renderMessages(view: AgentPaneView): void {
+function submitInput(view: AgentPaneView, cb: AgentPanelCallbacks): void {
+  const text = view._elements.inputEl.value.trim();
+  if (!text) return;
+  cb.onSendPrompt(view.agentId, text);
+  view._elements.inputEl.value = "";
+  autoResize(view._elements.inputEl);
+}
+
+function flushStreaming(view: AgentPaneView): void {
+  const s = view._state;
+  if (s.currentText || s.currentThinking) {
+    s.messages.push({
+      role: "assistant",
+      content: s.currentText,
+      thinking: s.currentThinking || undefined,
+      timestamp: Date.now(),
+    });
+    s.currentText = "";
+    s.currentThinking = "";
+  }
+  // Flush completed tool calls into messages
+  for (const [, tc] of s.toolCalls) {
+    if (!tc.isRunning) {
+      s.messages.push({
+        role: "tool",
+        content: tc.result ?? "",
+        toolName: tc.name,
+        isError: tc.isError,
+        timestamp: Date.now(),
+      });
+    }
+  }
+  s.toolCalls.clear();
+  renderAllMessages(view);
+}
+
+function syncStreamingUI(view: AgentPaneView): void {
+  const { sendBtn, inputEl, streamingIndicator } = view._elements;
+  const { isStreaming } = view._state;
+
+  if (isStreaming) {
+    sendBtn.innerHTML = STOP_ICON;
+    sendBtn.title = "Stop (Escape)";
+    sendBtn.classList.add("agent-send-stop");
+    inputEl.placeholder = "Steer the agent… (Esc to stop)";
+    streamingIndicator.classList.remove("agent-streaming-bar-hidden");
+    (streamingIndicator.querySelector(".agent-streaming-bar-label") as HTMLElement).textContent = "Generating…";
+  } else {
+    sendBtn.innerHTML = SEND_ICON;
+    sendBtn.title = "Send (Enter)";
+    sendBtn.classList.remove("agent-send-stop");
+    inputEl.placeholder = "Message pi agent…";
+    streamingIndicator.classList.add("agent-streaming-bar-hidden");
+  }
+  syncFooter(view);
+}
+
+function syncFooter(view: AgentPaneView): void {
+  const { footerEl, contextMeterFill, contextMeterLabel } = view._elements;
+  const { model, thinkingLevel, sessionStats, turnCount, totalToolCalls } = view._state;
+  const txt = footerEl.querySelector(".agent-footer-text") as HTMLElement;
+
+  const parts: string[] = [];
+  if (model) parts.push(model.name || model.id);
+  if (thinkingLevel !== "off") parts.push(`thinking:${thinkingLevel}`);
+  if (turnCount > 0) parts.push(`${turnCount} turns`);
+  if (totalToolCalls > 0) parts.push(`${totalToolCalls} tools`);
+  if (sessionStats?.cost != null) parts.push(`$${sessionStats.cost.toFixed(4)}`);
+  txt.textContent = parts.length ? parts.join(" · ") : "Ready";
+
+  const pct = sessionStats?.contextUsage?.percent;
+  if (pct != null) {
+    contextMeterFill.style.width = `${Math.min(100, pct)}%`;
+    contextMeterFill.style.background =
+      pct > 80 ? "#f87171" : pct > 50 ? "#f59e0b" : "var(--accent-primary)";
+    contextMeterLabel.textContent = `${pct}%`;
+  } else {
+    contextMeterFill.style.width = "0%";
+    contextMeterLabel.textContent = "";
+  }
+}
+
+function updateChips(view: AgentPaneView): void {
+  const { chipsEl } = view;
+  chipsEl.replaceChildren();
+
+  const running = [...view._state.toolCalls.values()].filter((tc) => tc.isRunning);
+  if (running.length > 0) {
+    const chip = document.createElement("span");
+    chip.className = "surface-chip chip-agent-tool";
+    chip.textContent = `⟳ ${running[0].name}${running.length > 1 ? ` +${running.length - 1}` : ""}`;
+    chipsEl.appendChild(chip);
+  }
+
+  if (view._state.isStreaming) {
+    const chip = document.createElement("span");
+    chip.className = "surface-chip chip-agent-streaming";
+    chip.textContent = "streaming";
+    chipsEl.appendChild(chip);
+  }
+}
+
+function renderAllMessages(view: AgentPaneView): void {
   const { messagesEl } = view._elements;
-  const { messages, autoScroll, toolCalls } = view._state;
+  const { messages, autoScroll } = view._state;
 
-  // Preserve welcome if no messages
+  messagesEl.innerHTML = "";
   if (messages.length === 0) {
-    messagesEl.innerHTML = "";
-    const welcome = document.createElement("div");
-    welcome.className = "agent-welcome";
-    welcome.innerHTML = `
-      <div class="agent-welcome-icon">✦</div>
-      <div class="agent-welcome-title">Pi Agent</div>
-      <div class="agent-welcome-sub">AI coding assistant running inside HyperTerm Canvas.<br>
-      Equipped with read, write, edit, and bash tools plus the ht-cli skill.</div>
-    `;
-    messagesEl.appendChild(welcome);
+    appendWelcome(messagesEl);
     return;
   }
 
-  // Clear and re-render all messages
-  messagesEl.innerHTML = "";
-
   for (const msg of messages) {
-    const msgEl = createMessageElement(msg);
-    messagesEl.appendChild(msgEl);
+    messagesEl.appendChild(createMsgEl(msg));
   }
 
-  // Render active tool calls
-  for (const [, tc] of toolCalls) {
-    const tcEl = createToolCallElement(tc);
-    messagesEl.appendChild(tcEl);
+  // Show active tool calls
+  for (const [, tc] of view._state.toolCalls) {
+    messagesEl.appendChild(buildToolCallEl(tc));
   }
 
-  if (autoScroll) {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
+  if (autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function renderStreamingMessage(view: AgentPaneView): void {
+function renderStream(view: AgentPaneView): void {
   const { messagesEl } = view._elements;
   const { currentText, autoScroll } = view._state;
 
-  let streamEl = messagesEl.querySelector(
-    ".agent-msg-streaming",
-  ) as HTMLDivElement | null;
-  if (!streamEl) {
-    streamEl = document.createElement("div");
-    streamEl.className = "agent-msg agent-msg-assistant agent-msg-streaming";
-    messagesEl.appendChild(streamEl);
+  let el = messagesEl.querySelector(".agent-msg-live") as HTMLDivElement | null;
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "agent-msg agent-msg-assistant agent-msg-live";
+    messagesEl.appendChild(el);
   }
-  streamEl.innerHTML = "";
-
   const contentEl = document.createElement("div");
   contentEl.className = "agent-msg-content";
-  contentEl.innerHTML = renderMarkdownLite(currentText);
-  streamEl.appendChild(contentEl);
-
-  // Cursor blink
+  contentEl.innerHTML = mdLite(currentText);
   const cursor = document.createElement("span");
-  cursor.className = "agent-streaming-cursor";
-  cursor.textContent = "▊";
+  cursor.className = "agent-cursor";
   contentEl.appendChild(cursor);
+  el.replaceChildren(contentEl);
 
-  if (autoScroll) {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
+  if (autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function renderStreamingThinking(view: AgentPaneView): void {
+function renderThinkingStream(view: AgentPaneView): void {
   const { messagesEl } = view._elements;
   const { currentThinking, autoScroll } = view._state;
 
-  let thinkEl = messagesEl.querySelector(
-    ".agent-thinking-streaming",
-  ) as HTMLDivElement | null;
-  if (!thinkEl) {
-    thinkEl = document.createElement("div");
-    thinkEl.className = "agent-thinking agent-thinking-streaming";
-    // Insert before streaming message if it exists
-    const streamMsg = messagesEl.querySelector(".agent-msg-streaming");
-    if (streamMsg) {
-      messagesEl.insertBefore(thinkEl, streamMsg);
-    } else {
-      messagesEl.appendChild(thinkEl);
-    }
+  let el = messagesEl.querySelector(".agent-think-live") as HTMLDivElement | null;
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "agent-think agent-think-live";
+    const liveMsg = messagesEl.querySelector(".agent-msg-live");
+    if (liveMsg) messagesEl.insertBefore(el, liveMsg);
+    else messagesEl.appendChild(el);
   }
-
-  const header = document.createElement("div");
-  header.className = "agent-thinking-header";
-  header.textContent = "💭 Thinking…";
-
+  el.innerHTML = "";
+  const hdr = document.createElement("div");
+  hdr.className = "agent-think-hdr";
+  hdr.textContent = "💭 Thinking…";
+  el.appendChild(hdr);
   const body = document.createElement("div");
-  body.className = "agent-thinking-body";
-  body.textContent = currentThinking.slice(-500);
+  body.className = "agent-think-body";
+  body.textContent = currentThinking.length > 600 ? "…" + currentThinking.slice(-600) : currentThinking;
+  el.appendChild(body);
 
-  thinkEl.replaceChildren(header, body);
-
-  if (autoScroll) {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
+  if (autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 function renderToolCall(view: AgentPaneView, tcId: string): void {
   const { messagesEl } = view._elements;
-  const { autoScroll, toolCalls } = view._state;
-  const tc = toolCalls.get(tcId);
+  const tc = view._state.toolCalls.get(tcId);
   if (!tc) return;
 
-  let el = messagesEl.querySelector(
-    `[data-tool-call-id="${tcId}"]`,
-  ) as HTMLDivElement | null;
-  if (!el) {
-    el = createToolCallElement(tc);
-    el.dataset["toolCallId"] = tcId;
-    // Insert before streaming message
-    const streamMsg = messagesEl.querySelector(".agent-msg-streaming");
-    if (streamMsg) {
-      messagesEl.insertBefore(el, streamMsg);
-    } else {
-      messagesEl.appendChild(el);
-    }
+  const existing = messagesEl.querySelector(`[data-tcid="${tcId}"]`) as HTMLDivElement | null;
+  const el = buildToolCallEl(tc);
+  if (existing) {
+    existing.replaceWith(el);
   } else {
-    // Update in place
-    const newEl = createToolCallElement(tc);
-    newEl.dataset["toolCallId"] = tcId;
-    el.replaceWith(newEl);
+    const liveMsg = messagesEl.querySelector(".agent-msg-live");
+    if (liveMsg) messagesEl.insertBefore(el, liveMsg);
+    else messagesEl.appendChild(el);
   }
 
-  if (autoScroll) {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
+  if (view._state.autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function renderModelSelector(view: AgentPaneView): void {
-  const { modelSelectorEl } = view._elements;
-  const { showModelSelector, availableModels } = view._state;
-
-  if (!showModelSelector) {
-    modelSelectorEl.classList.add("hidden");
-    return;
-  }
-
-  modelSelectorEl.classList.remove("hidden");
-  modelSelectorEl.innerHTML = "";
-
-  if (!availableModels) {
-    const loading = document.createElement("div");
-    loading.className = "agent-model-loading";
-    loading.textContent = "Loading models…";
-    modelSelectorEl.appendChild(loading);
-    return;
-  }
-
-  // Group by provider
-  const byProvider = new Map<string, typeof availableModels>();
-  for (const m of availableModels) {
-    const group = byProvider.get(m.provider) ?? [];
-    group.push(m);
-    byProvider.set(m.provider, group);
-  }
-
-  for (const [provider, models] of byProvider) {
-    const header = document.createElement("div");
-    header.className = "agent-model-group-header";
-    header.textContent = provider;
-    modelSelectorEl.appendChild(header);
-
-    for (const m of models) {
-      const item = document.createElement("button");
-      item.className = "agent-model-item";
-      if (
-        view._state.model?.provider === m.provider &&
-        view._state.model?.id === m.id
-      ) {
-        item.classList.add("agent-model-item-active");
-      }
-      item.textContent = m.name || m.id;
-      item.addEventListener("click", () => {
-        view._state.showModelSelector = false;
-        // The callbacks are attached to the view via closure
-        const agentId = view.agentId;
-        // Emit a custom event that the parent will handle
-        window.dispatchEvent(
-          new CustomEvent("ht-agent-set-model", {
-            detail: { agentId, provider: m.provider, modelId: m.id },
-          }),
-        );
-      });
-      modelSelectorEl.appendChild(item);
-    }
-  }
-}
-
-function updateStreamingUI(view: AgentPaneView): void {
-  const { sendBtn, inputEl, statusEl } = view._elements;
-  const { isStreaming } = view._state;
-
-  if (isStreaming) {
-    sendBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`;
-    sendBtn.title = "Stop (Escape)";
-    sendBtn.classList.add("agent-send-btn-stop");
-    inputEl.placeholder = "Steer the agent… (Escape to stop)";
-    statusEl.textContent = "Streaming…";
-    statusEl.classList.add("agent-status-busy");
-  } else {
-    sendBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>`;
-    sendBtn.title = "Send (Enter)";
-    sendBtn.classList.remove("agent-send-btn-stop");
-    inputEl.placeholder = "Ask the agent anything…";
-    statusEl.classList.remove("agent-status-busy");
-    updateStatus(view);
-    // Remove streaming elements
-    const messagesEl = view._elements.messagesEl;
-    messagesEl.querySelector(".agent-msg-streaming")?.remove();
-    messagesEl.querySelector(".agent-thinking-streaming")?.remove();
-  }
-}
-
-function updateStatus(view: AgentPaneView): void {
-  const { statusEl } = view._elements;
-  const { model, thinkingLevel, isStreaming, sessionStats } = view._state;
-
-  if (isStreaming) return; // Don't overwrite streaming status
-
-  const parts: string[] = [];
-  if (model) parts.push(model.name || model.id);
-  if (thinkingLevel !== "off") parts.push(`thinking: ${thinkingLevel}`);
-  if (sessionStats?.cost !== undefined && sessionStats.cost !== null) {
-    parts.push(`$${sessionStats.cost.toFixed(4)}`);
-  }
-  if (sessionStats?.contextUsage?.percent !== undefined) {
-    parts.push(`ctx: ${sessionStats.contextUsage.percent}%`);
-  }
-
-  statusEl.textContent = parts.length > 0 ? parts.join(" · ") : "Ready";
-}
-
-function createMessageElement(msg: ChatMessage): HTMLDivElement {
+function buildToolCallEl(tc: ToolCallState): HTMLDivElement {
   const el = document.createElement("div");
-  el.className = `agent-msg agent-msg-${msg.role}`;
+  el.className = `agent-tc${tc.isRunning ? " agent-tc-run" : ""}${tc.isError ? " agent-tc-err" : " agent-tc-ok"}`;
+  el.dataset["tcid"] = tc.id;
 
-  if (msg.thinking) {
-    const thinkEl = document.createElement("details");
-    thinkEl.className = "agent-thinking-block";
-    const summary = document.createElement("summary");
-    summary.className = "agent-thinking-summary";
-    summary.textContent = "💭 Thinking";
-    thinkEl.appendChild(summary);
-    const body = document.createElement("div");
-    body.className = "agent-thinking-body";
-    body.textContent = msg.thinking;
-    thinkEl.appendChild(body);
-    el.appendChild(thinkEl);
-  }
-
-  const contentEl = document.createElement("div");
-  contentEl.className = "agent-msg-content";
-  if (msg.role === "user") {
-    contentEl.textContent = msg.content;
-  } else if (msg.role === "system") {
-    contentEl.textContent = msg.content;
-  } else {
-    contentEl.innerHTML = renderMarkdownLite(msg.content);
-  }
-  el.appendChild(contentEl);
-
-  return el;
-}
-
-function createToolCallElement(tc: ToolCallState): HTMLDivElement {
-  const el = document.createElement("div");
-  el.className = `agent-tool-call${tc.isRunning ? " agent-tool-running" : ""}${tc.isError ? " agent-tool-error" : ""}`;
-
-  const header = document.createElement("div");
-  header.className = "agent-tool-header";
+  const hdr = document.createElement("div");
+  hdr.className = "agent-tc-hdr";
 
   const icon = document.createElement("span");
-  icon.className = "agent-tool-icon";
+  icon.className = "agent-tc-icon";
   icon.textContent = tc.isRunning ? "⟳" : tc.isError ? "✗" : "✓";
-  header.appendChild(icon);
+  hdr.appendChild(icon);
 
   const name = document.createElement("span");
-  name.className = "agent-tool-name";
+  name.className = "agent-tc-name";
   name.textContent = tc.name;
-  header.appendChild(name);
+  hdr.appendChild(name);
 
   if (tc.args) {
     const args = document.createElement("span");
-    args.className = "agent-tool-args";
-    args.textContent = tc.args.slice(0, 100);
-    header.appendChild(args);
+    args.className = "agent-tc-args";
+    args.textContent = tc.args.length > 80 ? tc.args.slice(0, 77) + "…" : tc.args;
+    hdr.appendChild(args);
   }
 
-  el.appendChild(header);
+  if (!tc.isRunning) {
+    const elapsed = document.createElement("span");
+    elapsed.className = "agent-tc-elapsed";
+    elapsed.textContent = `${((Date.now() - tc.startTime) / 1000).toFixed(1)}s`;
+    hdr.appendChild(elapsed);
+  }
 
-  if (tc.result) {
-    const resultEl = document.createElement("pre");
-    resultEl.className = "agent-tool-result";
-    resultEl.textContent = tc.result.slice(0, 2000);
-    el.appendChild(resultEl);
+  // Toggle collapse
+  const toggle = document.createElement("button");
+  toggle.className = "agent-tc-toggle";
+  toggle.textContent = tc.collapsed ? "▸" : "▾";
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    tc.collapsed = !tc.collapsed;
+    const body = el.querySelector(".agent-tc-body") as HTMLDivElement | null;
+    if (body) body.classList.toggle("agent-tc-body-hidden", tc.collapsed);
+    toggle.textContent = tc.collapsed ? "▸" : "▾";
+  });
+  hdr.appendChild(toggle);
+
+  el.appendChild(hdr);
+
+  if (tc.result !== undefined) {
+    const body = document.createElement("pre");
+    body.className = `agent-tc-body${tc.collapsed ? " agent-tc-body-hidden" : ""}`;
+    body.textContent = tc.result.slice(0, 3000);
+    el.appendChild(body);
   }
 
   return el;
 }
 
-function handleExtensionUIRequest(
-  view: AgentPaneView,
-  event: Record<string, unknown>,
-): void {
-  const method = event["method"] as string;
-  const id = event["id"] as string;
+function renderDropdowns(view: AgentPaneView): void {
+  const { modelSelectorEl, thinkingSelectorEl } = view._elements;
+  const s = view._state;
+
+  // Model dropdown
+  if (s.showModelSelector) {
+    modelSelectorEl.classList.remove("agent-dropdown-hidden");
+    modelSelectorEl.innerHTML = "";
+    if (!s.availableModels) {
+      const ld = document.createElement("div");
+      ld.className = "agent-dd-loading";
+      ld.textContent = "Loading models…";
+      modelSelectorEl.appendChild(ld);
+    } else {
+      const byProvider = new Map<string, typeof s.availableModels>();
+      for (const m of s.availableModels) {
+        const g = byProvider.get(m.provider) ?? [];
+        g.push(m);
+        byProvider.set(m.provider, g);
+      }
+      for (const [prov, models] of byProvider) {
+        const gh = document.createElement("div");
+        gh.className = "agent-dd-group";
+        gh.textContent = prov;
+        modelSelectorEl.appendChild(gh);
+        for (const m of models) {
+          const item = document.createElement("button");
+          item.className = "agent-dd-item";
+          if (s.model?.provider === m.provider && s.model?.id === m.id) {
+            item.classList.add("agent-dd-item-active");
+          }
+          item.textContent = m.name || m.id;
+          item.addEventListener("click", () => {
+            s.showModelSelector = false;
+            renderDropdowns(view);
+            window.dispatchEvent(new CustomEvent("ht-agent-set-model", {
+              detail: { agentId: view.agentId, provider: m.provider, modelId: m.id },
+            }));
+          });
+          modelSelectorEl.appendChild(item);
+        }
+      }
+    }
+  } else {
+    modelSelectorEl.classList.add("agent-dropdown-hidden");
+  }
+
+  // Thinking dropdown
+  if (s.showThinkingSelector) {
+    thinkingSelectorEl.classList.remove("agent-dropdown-hidden");
+    thinkingSelectorEl.innerHTML = "";
+    for (const lvl of THINKING_LEVELS) {
+      const item = document.createElement("button");
+      item.className = "agent-dd-item";
+      if (s.thinkingLevel === lvl) item.classList.add("agent-dd-item-active");
+      const dot = document.createElement("span");
+      dot.className = "agent-tb-dot";
+      dot.style.background = THINKING_COLORS[lvl] ?? "var(--text-dim)";
+      item.appendChild(dot);
+      const label = document.createElement("span");
+      label.textContent = lvl;
+      item.appendChild(label);
+      item.addEventListener("click", () => {
+        s.showThinkingSelector = false;
+        renderDropdowns(view);
+        window.dispatchEvent(new CustomEvent("ht-agent-set-thinking", {
+          detail: { agentId: view.agentId, level: lvl },
+        }));
+      });
+      thinkingSelectorEl.appendChild(item);
+    }
+  } else {
+    thinkingSelectorEl.classList.add("agent-dropdown-hidden");
+  }
+}
+
+function handleResponse(view: AgentPaneView, ev: Record<string, unknown>): void {
+  const s = view._state;
+  const el = view._elements;
+  const cmd = ev["command"] as string;
+  const ok = ev["success"] as boolean;
+  const data = ev["data"] as Record<string, unknown> | undefined;
+
+  if (cmd === "get_state" && ok && data) {
+    if (data["model"]) {
+      s.model = data["model"] as AgentPanelState["model"];
+      el.modelBtnLabel.textContent = s.model?.name ?? s.model?.id ?? "No model";
+    }
+    if (data["thinkingLevel"]) {
+      s.thinkingLevel = data["thinkingLevel"] as string;
+      el.thinkingBtnLabel.textContent = s.thinkingLevel;
+      const dot = el.toolbarEl.querySelector(".agent-tb-thinking .agent-tb-dot") as HTMLElement | null;
+      if (dot) dot.style.background = THINKING_COLORS[s.thinkingLevel] ?? "var(--text-dim)";
+    }
+    s.isStreaming = (data["isStreaming"] as boolean) ?? false;
+    syncStreamingUI(view);
+  }
+
+  if (cmd === "get_available_models" && ok && data) {
+    const arr = (data as { models?: unknown[] }).models;
+    if (Array.isArray(arr)) {
+      s.availableModels = arr.map((m: unknown) => {
+        const rec = m as Record<string, unknown>;
+        return {
+          provider: (rec["provider"] as string) ?? "",
+          id: (rec["id"] as string) ?? "",
+          name: (rec["name"] as string) ?? (rec["id"] as string) ?? "",
+        };
+      });
+      renderDropdowns(view);
+    }
+  }
+
+  if (cmd === "set_model" && ok && data) {
+    s.model = {
+      provider: (data["provider"] as string) ?? "",
+      id: (data["id"] as string) ?? "",
+      name: (data["name"] as string) ?? (data["id"] as string) ?? "",
+    };
+    el.modelBtnLabel.textContent = s.model.name;
+    syncFooter(view);
+  }
+
+  if (cmd === "set_thinking_level" && ok) {
+    // thinkingLevel updated via the set-thinking event
+  }
+
+  if (cmd === "get_session_stats" && ok && data) {
+    s.sessionStats = data as AgentPanelState["sessionStats"];
+    syncFooter(view);
+  }
+
+  if (cmd === "new_session" && ok) {
+    s.messages = [];
+    s.currentText = "";
+    s.currentThinking = "";
+    s.toolCalls.clear();
+    s.turnCount = 0;
+    s.totalToolCalls = 0;
+    s.sessionStats = null;
+    renderAllMessages(view);
+    syncFooter(view);
+  }
+}
+
+function handleExtUI(view: AgentPaneView, ev: Record<string, unknown>): void {
+  const method = ev["method"] as string;
+  const id = ev["id"] as string;
   if (!method || !id) return;
 
-  // For fire-and-forget methods, just display
   if (method === "notify") {
-    view._state.messages.push({
-      role: "system",
-      content: `[${(event["notifyType"] as string) ?? "info"}] ${event["message"] as string}`,
-      timestamp: Date.now(),
-    });
-    renderMessages(view);
+    const level = (ev["notifyType"] as string) ?? "info";
+    const msg = ev["message"] as string;
+    view._state.messages.push({ role: "system", content: `[${level}] ${msg}`, timestamp: Date.now() });
+    renderAllMessages(view);
     return;
   }
 
   if (method === "setStatus") {
-    // Update chips
-    const key = event["statusKey"] as string;
-    const text = event["statusText"] as string | undefined;
+    const key = ev["statusKey"] as string;
+    const text = ev["statusText"] as string | undefined;
     if (key && text) {
-      renderAgentChip(view, key, text);
+      const existing = view.chipsEl.querySelector(`[data-ck="${key}"]`) as HTMLSpanElement | null;
+      if (existing) { existing.textContent = text; }
+      else {
+        const chip = document.createElement("span");
+        chip.className = "surface-chip chip-agent-status";
+        chip.dataset["ck"] = key;
+        chip.textContent = text;
+        view.chipsEl.appendChild(chip);
+      }
     }
     return;
   }
 
-  // For dialog methods, auto-cancel for now (user can enhance later)
-  // In a full implementation these would show dialogs
-  window.dispatchEvent(
-    new CustomEvent("ht-agent-extension-ui-response", {
-      detail: { agentId: view.agentId, id, cancelled: true },
-    }),
-  );
+  // Auto-cancel dialog methods
+  window.dispatchEvent(new CustomEvent("ht-agent-extension-ui-response", {
+    detail: { agentId: view.agentId, id, cancelled: true },
+  }));
 }
 
-function renderAgentChip(
-  view: AgentPaneView,
-  key: string,
-  text: string,
-): void {
-  const existing = view.chipsEl.querySelector(
-    `[data-chip-key="${key}"]`,
-  ) as HTMLSpanElement | null;
-  if (existing) {
-    existing.textContent = text;
+// ── DOM Helpers ──
+
+function appendWelcome(parent: HTMLDivElement): void {
+  const el = document.createElement("div");
+  el.className = "agent-welcome";
+  el.innerHTML = `
+    <div class="agent-welcome-glyph">✦</div>
+    <div class="agent-welcome-title">Pi Agent</div>
+    <div class="agent-welcome-desc">AI coding assistant with read, write, edit, bash tools and the HyperTerm Canvas skill.<br>
+    <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Esc</kbd> abort</div>
+  `;
+  parent.appendChild(el);
+}
+
+function createMsgEl(msg: ChatMessage): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = `agent-msg agent-msg-${msg.role}`;
+
+  if (msg.role === "tool") {
+    const hdr = document.createElement("div");
+    hdr.className = `agent-tc-inline-hdr${msg.isError ? " agent-tc-inline-err" : ""}`;
+    hdr.textContent = `${msg.isError ? "✗" : "✓"} ${msg.toolName ?? "tool"}`;
+    el.appendChild(hdr);
+    if (msg.content) {
+      const body = document.createElement("pre");
+      body.className = "agent-tc-inline-body";
+      body.textContent = msg.content.slice(0, 2000);
+      el.appendChild(body);
+    }
+    return el;
+  }
+
+  if (msg.thinking) {
+    const details = document.createElement("details");
+    details.className = "agent-think-block";
+    const summary = document.createElement("summary");
+    summary.textContent = "💭 Thinking";
+    details.appendChild(summary);
+    const body = document.createElement("div");
+    body.className = "agent-think-body";
+    body.textContent = msg.thinking;
+    details.appendChild(body);
+    el.appendChild(details);
+  }
+
+  const content = document.createElement("div");
+  content.className = "agent-msg-content";
+  if (msg.role === "assistant") {
+    content.innerHTML = mdLite(msg.content);
   } else {
-    const chip = document.createElement("span");
-    chip.className = "surface-chip chip-agent-status";
-    chip.dataset["chipKey"] = key;
-    chip.textContent = text;
-    view.chipsEl.appendChild(chip);
+    content.textContent = msg.content;
+  }
+  el.appendChild(content);
+  return el;
+}
+
+function formatArgs(args: unknown): string {
+  if (!args) return "";
+  try {
+    const s = typeof args === "string" ? args : JSON.stringify(args);
+    // Show the first meaningful param
+    const parsed = JSON.parse(s);
+    if (parsed.command) return parsed.command;
+    if (parsed.path) return parsed.path;
+    return s.length > 120 ? s.slice(0, 117) + "…" : s;
+  } catch {
+    return String(args).slice(0, 120);
   }
 }
 
-function autoResizeTextarea(el: HTMLTextAreaElement): void {
+function extractContent(content: unknown): string {
+  if (!Array.isArray(content)) return String(content);
+  return content.map((c: { text?: string }) => c.text ?? "").join("");
+}
+
+function autoResize(el: HTMLTextAreaElement): void {
   el.style.height = "auto";
-  el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  el.style.height = Math.min(el.scrollHeight, 180) + "px";
 }
 
-function truncateToolArgs(args: string): string {
-  if (args.length <= 200) return args;
-  return args.slice(0, 197) + "…";
+function mdLite(text: string): string {
+  let h = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  h = h.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) =>
+    `<pre class="agent-code"${lang ? ` data-lang="${lang}"` : ""}><code>${code.trim()}</code></pre>`);
+  h = h.replace(/`([^`]+)`/g, '<code class="agent-ic">$1</code>');
+  h = h.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  h = h.replace(/\n/g, "<br>");
+  return h;
 }
 
-/**
- * Very lightweight Markdown-to-HTML for assistant messages.
- * Handles code blocks, inline code, bold, links. Not a full parser.
- */
-function renderMarkdownLite(text: string): string {
-  // Escape HTML
-  let html = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  // Code blocks
-  html = html.replace(
-    /```(\w*)\n([\s\S]*?)```/g,
-    (_m, lang, code) =>
-      `<pre class="agent-code-block"${lang ? ` data-lang="${lang}"` : ""}><code>${code.trim()}</code></pre>`,
-  );
-
-  // Inline code
-  html = html.replace(
-    /`([^`]+)`/g,
-    '<code class="agent-inline-code">$1</code>',
-  );
-
-  // Bold
-  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-
-  // Line breaks
-  html = html.replace(/\n/g, "<br>");
-
-  return html;
-}
+const SEND_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>`;
+const STOP_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>`;
