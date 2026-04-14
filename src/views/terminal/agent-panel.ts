@@ -104,7 +104,8 @@ export function createAgentPaneView(
 
   const barTitleWrap = document.createElement("div");
   barTitleWrap.className = "surface-bar-title-wrap";
-  const barIcon = createIcon("command", "surface-bar-icon agent-bar-icon", 12);
+  const barIcon = createIcon("command", "surface-bar-icon", 12);
+  barIcon.classList.add("agent-bar-icon");
   barTitleWrap.appendChild(barIcon);
   const barTitle = document.createElement("span");
   barTitle.className = "surface-bar-title";
