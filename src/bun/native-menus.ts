@@ -30,6 +30,9 @@ export const MENU_ACTIONS = {
   installHtCli: "app.install-ht-cli",
   browserSplitRight: "browser.split-right",
   browserSplitDown: "browser.split-down",
+  agentNew: "agent.new",
+  agentSplitRight: "agent.split-right",
+  agentSplitDown: "agent.split-down",
 } as const;
 
 export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
@@ -94,6 +97,19 @@ export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
         {
           label: "Split Browser Down",
           action: MENU_ACTIONS.browserSplitDown,
+        },
+        { type: "divider" },
+        {
+          label: "New Agent Workspace",
+          action: MENU_ACTIONS.agentNew,
+        },
+        {
+          label: "Split Agent Right",
+          action: MENU_ACTIONS.agentSplitRight,
+        },
+        {
+          label: "Split Agent Down",
+          action: MENU_ACTIONS.agentSplitDown,
         },
         { type: "divider" },
         {

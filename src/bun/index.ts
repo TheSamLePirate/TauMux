@@ -41,12 +41,14 @@ import {
 } from "./native-menus";
 import { normalizeMenuActionEvent } from "./menu-events";
 import { SettingsManager } from "./settings-manager";
+import { PiAgentManager } from "./pi-agent-manager";
 
 const configDir = join(Utils.paths.config, "hyperterm-canvas");
 const settingsFile = join(configDir, "settings.json");
 const settingsManager = new SettingsManager(configDir, settingsFile);
 
 const sessions = new SessionManager(settingsManager.get().shellPath);
+const piAgentManager = new PiAgentManager();
 const browserSurfaces = new BrowserSurfaceManager();
 const browserHistory = new BrowserHistoryStore(configDir);
 const metadataPoller = new SurfaceMetadataPoller(sessions);
@@ -123,7 +125,12 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         splitSurface(payload.direction, undefined, payload.cwd);
       },
       closeSurface: (payload) => {
-        if (browserSurfaces.isBrowserSurface(payload.surfaceId)) {
+        if (piAgentManager.isAgentSurface(payload.surfaceId)) {
+          piAgentManager.removeAgent(payload.surfaceId);
+          sendWebviewAction("agentSurfaceClosed", {
+            surfaceId: payload.surfaceId,
+          });
+        } else if (browserSurfaces.isBrowserSurface(payload.surfaceId)) {
           browserSurfaces.closeSurface(payload.surfaceId);
         } else {
           sessions.closeSurface(payload.surfaceId);
@@ -327,6 +334,160 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
           );
         }
       },
+
+      // ── Agent surface lifecycle ──
+      createAgentSurface: (payload) => {
+        createAgentWorkspaceSurface(payload);
+      },
+      splitAgentSurface: (payload) => {
+        splitAgentSurface(payload.direction, payload);
+      },
+      agentPrompt: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({ type: "prompt", message: payload.message });
+      },
+      agentAbort: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "abort" });
+      },
+      agentSetModel: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "set_model",
+            provider: payload.provider,
+            modelId: payload.modelId,
+          });
+      },
+      agentSetThinking: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "set_thinking_level",
+            level: payload.level,
+          });
+      },
+      agentNewSession: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "new_session" });
+      },
+      agentCompact: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "compact" });
+      },
+      agentGetModels: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "get_available_models" });
+      },
+      agentGetState: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "get_state" });
+      },
+      agentExtensionUIResponse: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.respondToExtensionUI(payload.id, payload.response);
+      },
+      agentSteer: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.steer(payload.message);
+      },
+      agentFollowUp: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.followUp(payload.message);
+      },
+      agentBash: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "bash",
+            command: payload.command,
+            ...(payload.timeout != null ? { timeout: payload.timeout } : {}),
+          });
+      },
+      agentAbortBash: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.abortBash();
+      },
+      agentCycleModel: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "cycle_model" });
+      },
+      agentCycleThinking: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "cycle_thinking_level" });
+      },
+      agentGetCommands: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "get_commands" });
+      },
+      agentGetSessionStats: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "get_session_stats" });
+      },
+      agentGetForkMessages: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "get_fork_messages" });
+      },
+      agentGetLastAssistantText: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "get_last_assistant_text" });
+      },
+      agentSetSteeringMode: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({ type: "set_steering_mode", mode: payload.mode });
+      },
+      agentSetFollowUpMode: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({ type: "set_follow_up_mode", mode: payload.mode });
+      },
+      agentSetAutoCompaction: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "set_auto_compaction",
+            enabled: payload.enabled,
+          });
+      },
+      agentSetAutoRetry: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "set_auto_retry",
+            enabled: payload.enabled,
+          });
+      },
+      agentAbortRetry: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.abortRetry();
+      },
+      agentSetSessionName: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({ type: "set_session_name", name: payload.name });
+      },
+      agentSwitchSession: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "switch_session",
+            sessionPath: payload.sessionPath,
+          });
+      },
+      agentFork: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "fork", entryId: payload.entryId });
+      },
+      agentExportHtml: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "export_html",
+            ...(payload.outputPath ? { outputPath: payload.outputPath } : {}),
+          });
+      },
     },
   },
 });
@@ -420,7 +581,11 @@ sessions.onSidebandDataFailed = (surfaceId, id, reason) => {
 sessions.onSurfaceClosed = (surfaceId) => {
   rpc.send("surfaceClosed", { surfaceId });
   webServer?.broadcast({ type: "surfaceClosed", surfaceId });
-  if (sessions.surfaceCount === 0 && browserSurfaces.surfaceCount === 0) {
+  if (
+    sessions.surfaceCount === 0 &&
+    browserSurfaces.surfaceCount === 0 &&
+    piAgentManager.agentCount === 0
+  ) {
     mainWindow.close();
   }
 };
@@ -428,7 +593,11 @@ sessions.onSurfaceClosed = (surfaceId) => {
 browserSurfaces.onSurfaceClosed = (surfaceId) => {
   rpc.send("browserSurfaceClosed", { surfaceId });
   webServer?.broadcast({ type: "browserSurfaceClosed", surfaceId });
-  if (sessions.surfaceCount === 0 && browserSurfaces.surfaceCount === 0) {
+  if (
+    sessions.surfaceCount === 0 &&
+    browserSurfaces.surfaceCount === 0 &&
+    piAgentManager.agentCount === 0
+  ) {
     mainWindow.close();
   }
 };
@@ -547,6 +716,104 @@ function splitBrowserSurface(
   });
 }
 
+// ── Agent Surface Creation ──
+
+/** Resolve the ht-cli skill path from the project root. */
+function resolveHtCliSkillPath(): string {
+  const projectRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+  return join(projectRoot, ".agents", "skills", "hyperterm-canvas", "SKILL.md");
+}
+
+function createAgentWorkspaceSurface(
+  opts: {
+    provider?: string;
+    model?: string;
+    thinkingLevel?: string;
+    cwd?: string;
+  } = {},
+): void {
+  const cwd =
+    opts.cwd ??
+    metadataPoller.getSnapshot(focusedSurfaceId ?? "")?.cwd ??
+    process.cwd();
+  const skills: string[] = [];
+  const skillPath = resolveHtCliSkillPath();
+  if (existsSync(skillPath)) skills.push(skillPath);
+
+  const agent = piAgentManager.createAgent({
+    provider: opts.provider,
+    model: opts.model,
+    thinkingLevel: opts.thinkingLevel,
+    cwd,
+    skills,
+  });
+
+  agent.onEvent = (event) => {
+    sendWebviewAction("agentEvent", { agentId: agent.id, event });
+  };
+  agent.onExit = (code) => {
+    sendWebviewAction("agentEvent", {
+      agentId: agent.id,
+      event: { type: "agent_exit", code },
+    });
+  };
+
+  focusedSurfaceId = agent.id;
+  sendWebviewAction("agentSurfaceCreated", {
+    surfaceId: agent.id,
+    agentId: agent.id,
+  });
+  void agent
+    .start()
+    .catch((err) => console.error("[agent] start failed:", err));
+}
+
+function splitAgentSurface(
+  direction: "horizontal" | "vertical",
+  opts: {
+    provider?: string;
+    model?: string;
+    thinkingLevel?: string;
+    cwd?: string;
+  } = {},
+): void {
+  const splitFrom = focusedSurfaceId;
+  const cwd =
+    opts.cwd ??
+    metadataPoller.getSnapshot(splitFrom ?? "")?.cwd ??
+    process.cwd();
+  const skills: string[] = [];
+  const skillPath = resolveHtCliSkillPath();
+  if (existsSync(skillPath)) skills.push(skillPath);
+
+  const agent = piAgentManager.createAgent({
+    provider: opts.provider,
+    model: opts.model,
+    thinkingLevel: opts.thinkingLevel,
+    cwd,
+    skills,
+  });
+
+  agent.onEvent = (event) => {
+    sendWebviewAction("agentEvent", { agentId: agent.id, event });
+  };
+  agent.onExit = (code) => {
+    sendWebviewAction("agentEvent", {
+      agentId: agent.id,
+      event: { type: "agent_exit", code },
+    });
+  };
+
+  focusedSurfaceId = agent.id;
+  sendWebviewAction("agentSurfaceCreated", {
+    surfaceId: agent.id,
+    agentId: agent.id,
+    splitFrom: splitFrom ?? undefined,
+    direction,
+  });
+  void agent.start();
+}
+
 function renameActiveWorkspace(): void {
   const activeWorkspace =
     workspaceState.find((ws) => ws.id === activeWorkspaceId) ?? null;
@@ -581,7 +848,10 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
       const surfaceId =
         (data as { surfaceId?: string })?.surfaceId ?? focusedSurfaceId;
       if (surfaceId) {
-        if (browserSurfaces.isBrowserSurface(surfaceId)) {
+        if (piAgentManager.isAgentSurface(surfaceId)) {
+          piAgentManager.removeAgent(surfaceId);
+          sendWebviewAction("agentSurfaceClosed", { surfaceId });
+        } else if (browserSurfaces.isBrowserSurface(surfaceId)) {
           browserSurfaces.closeSurface(surfaceId);
         } else {
           sessions.closeSurface(surfaceId);
@@ -673,6 +943,15 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
       break;
     case MENU_ACTIONS.installHtCli:
       void installHtCli();
+      break;
+    case MENU_ACTIONS.agentNew:
+      createAgentWorkspaceSurface();
+      break;
+    case MENU_ACTIONS.agentSplitRight:
+      splitAgentSurface("horizontal");
+      break;
+    case MENU_ACTIONS.agentSplitDown:
+      splitAgentSurface("vertical");
       break;
   }
 }
@@ -847,6 +1126,25 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     webServer?.broadcast({ type: "sidebarAction", action, payload });
   } else if (action === "createBrowserSurface") {
     createBrowserWorkspaceSurface(payload["url"] as string | undefined);
+  } else if (action === "createAgentSurface") {
+    createAgentWorkspaceSurface(
+      payload as {
+        provider?: string;
+        model?: string;
+        thinkingLevel?: string;
+        cwd?: string;
+      },
+    );
+  } else if (action === "splitAgentSurface") {
+    splitAgentSurface(
+      (payload["direction"] as "horizontal" | "vertical") || "horizontal",
+      payload as {
+        provider?: string;
+        model?: string;
+        thinkingLevel?: string;
+        cwd?: string;
+      },
+    );
   } else if (action === "splitBrowserSurface") {
     splitBrowserSurface(
       (payload["direction"] as "horizontal" | "vertical") || "horizontal",
@@ -1062,8 +1360,17 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
   for (const ws of persisted.workspaces) {
     const leafIds = collectLeafIds(ws.layout);
     for (const oldId of leafIds) {
-      const isBrowser = ws.surfaceTypes?.[oldId] === "browser";
-      if (isBrowser) {
+      const surfType = ws.surfaceTypes?.[oldId];
+      if (surfType === "agent") {
+        // Agent surfaces are not restored — they require a fresh pi process.
+        // Create a terminal surface instead as a placeholder.
+        const cwd = ws.surfaceCwds?.[oldId];
+        const newId = sessions.createSurface(cols, rows, cwd);
+        surfaceMapping[oldId] = newId;
+        const title = sessions.getSurface(newId)?.title ?? "shell";
+        rpc.send("surfaceCreated", { surfaceId: newId, title });
+        broadcastSurfaceCreated(newId, title);
+      } else if (surfType === "browser") {
         const url = ws.surfaceUrls?.[oldId] ?? "about:blank";
         const newId = browserSurfaces.createSurface(url);
         surfaceMapping[oldId] = newId;
@@ -1142,6 +1449,7 @@ process.on("SIGINT", () => {
   saveLayout();
   settingsManager.saveNow();
   browserHistory.saveNow();
+  piAgentManager.dispose();
   webServer?.stop();
   socketServer.stop();
   process.exit(0);
@@ -1150,6 +1458,7 @@ process.on("SIGTERM", () => {
   saveLayout();
   settingsManager.saveNow();
   browserHistory.saveNow();
+  piAgentManager.dispose();
   webServer?.stop();
   socketServer.stop();
   process.exit(0);

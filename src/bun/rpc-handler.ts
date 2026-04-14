@@ -88,8 +88,8 @@ export interface WorkspaceSnapshot {
   selectedCwd?: string;
   /** Persisted URL per browser surface id for restore. */
   surfaceUrls?: Record<string, string>;
-  /** Surface type per surface id (only stored for "browser"). */
-  surfaceTypes?: Record<string, "terminal" | "browser">;
+  /** Surface type per surface id (only stored for "browser" or "agent"). */
+  surfaceTypes?: Record<string, "terminal" | "browser" | "agent">;
 }
 
 type Handler = (params: Record<string, unknown>) => unknown;
@@ -548,6 +548,21 @@ export function createRpcHandler(
     },
 
     // ── Browser ──
+
+    // ── Agent ──
+
+    "agent.create": () => {
+      dispatch("createAgentSurface", {});
+      return "OK";
+    },
+
+    "agent.create_split": (params) => {
+      const dir = params["direction"] as string;
+      const direction =
+        dir === "down" || dir === "vertical" ? "vertical" : "horizontal";
+      dispatch("splitAgentSurface", { direction });
+      return "OK";
+    },
 
     "browser.list": () => {
       return (browserSurfaces?.getAllSurfaces() ?? []).map((s) => ({
