@@ -31,10 +31,25 @@
 
 | Metric | Value |
 |---|---|
-| Tests | 196 pass, 0 fail (was 161 before) |
-| New tests | 35 (browser-surface-manager, browser-history, url-helpers) |
+| Tests | **220 pass, 0 fail** (was 161 before, +59 new) |
+| New test files | 4 (browser-surface-manager, browser-history, url-helpers, rpc-handler-browser) |
 | Typecheck | Clean (`tsc --noEmit` = 0 errors) |
 | App launch | Verified via `bun start` — terminal works, no crashes |
+
+### Phase 2 Additions (cmux-parity browser automation)
+
+Added full cmux-style browser automation API:
+
+| Category | Commands Added |
+|---|---|
+| **DOM Interaction** | click, dblclick, hover, focus, check, uncheck, scroll-into-view, type, fill, press, select, scroll, highlight |
+| **Waiting** | wait (--selector, --text, --url-contains, --load-state, --function, --timeout-ms) |
+| **Inspection** | get (title, url, text, html, value, attr, count, box, styles), is (visible, enabled, checked) |
+| **Script/Style Injection** | addscript, addstyle |
+| **Console & Errors** | console list/clear, errors list/clear (captured via preload) |
+| **Unified CLI** | `ht browser [surface] <subcommand>` (cmux-compatible syntax) |
+| **Identify** | browser identify (surface metadata) |
+| **Snapshot** | Accessibility tree snapshot with element refs |
 17. [File Change Matrix](#17-file-change-matrix)
 18. [Risk Register](#18-risk-register)
 19. [Testing Plan](#19-testing-plan)

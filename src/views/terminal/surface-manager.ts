@@ -1542,6 +1542,20 @@ export class SurfaceManager {
             }),
           );
         },
+        onConsoleLog: (sid, level, args, timestamp) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-browser-console-log", {
+              detail: { surfaceId: sid, level, args, timestamp },
+            }),
+          );
+        },
+        onError: (sid, message, filename, lineno, timestamp) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-browser-error", {
+              detail: { surfaceId: sid, message, filename, lineno, timestamp },
+            }),
+          );
+        },
       },
     );
 

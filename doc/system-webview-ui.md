@@ -20,10 +20,11 @@ The highest level of organization is the Workspace. You can think of a Workspace
 
 ### Surfaces (Panes)
 Within a Workspace, the screen can be divided into multiple `Surfaces`.
-- A Surface is a single terminal instance (running `xterm.js`) combined with its floating Canvas Panels.
+- A Surface is either a **terminal instance** (running `xterm.js`) or a **browser instance** (running `<electrobun-webview>`).
+- Terminal surfaces have IDs like `surface:N`; browser surfaces use `browser:N`.
 - Surfaces are organized using a **Binary Tree** (`PaneLayout`).
 - When you split a surface horizontally or vertically, the available space is mathematically halved.
-- You can resize panes by clicking and dragging the dividers (the gaps between terminals) with your mouse.
+- You can resize panes by clicking and dragging the dividers (the gaps between terminals/browsers) with your mouse.
 
 ---
 
@@ -39,6 +40,7 @@ Because HyperTerm prioritizes keyboard-centric workflows, most actions can be pe
 | **Split Right** | `Cmd+D` | Splits the currently focused pane vertically. |
 | **Split Down** | `Cmd+Shift+D` | Splits the currently focused pane horizontally. |
 | **Close Pane** | `Cmd+W` | Closes the currently focused pane. If it's the last pane, the workspace closes. |
+| **Open Browser Split** | `Cmd+Shift+L` | Splits a browser pane alongside the focused pane. |
 | **Focus Direction** | `Cmd+Alt+Arrow` | Moves keyboard focus to the adjacent pane in the direction of the arrow. |
 | **Next Workspace** | `Ctrl+Cmd+]` | Jumps to the next workspace in the list. |
 | **Prev Workspace** | `Ctrl+Cmd+[` | Jumps to the previous workspace in the list. |
@@ -48,7 +50,7 @@ Because HyperTerm prioritizes keyboard-centric workflows, most actions can be pe
 | **Process Manager** | `Cmd+Alt+P` | Opens the live process overlay — every pid in every workspace with CPU / RSS / kill. |
 | **Pane Info** | `Cmd+I` | Opens the detail view for the focused pane — identity, git, ports, process tree. |
 | **Settings** | `Cmd+,` | Opens the full settings panel (general, appearance, theme, effects, network, advanced). |
-| **Find in Terminal** | `Cmd+F` | Toggles the search bar for the focused pane's scrollback. |
+| **Find in Terminal** | `Cmd+F` | Toggles the search bar for the focused pane's scrollback (or find-in-page for browser). |
 | **Escape** | `Esc` | Closes any active overlay (settings, process manager, command palette). |
 | **Copy / Paste** | `Cmd+C` / `Cmd+V` | Standard terminal copy/paste. |
 | **Font Size** | `Cmd+=` / `Cmd+-` / `Cmd+0` | Increase, decrease, or reset font size. |
@@ -152,7 +154,34 @@ The panel refreshes in place on every metadata change (push-based; no webview-si
 
 ---
 
-## 7. UI Architecture & Performance Notes
+## 7. Browser Panes
+
+Browser panes are first-class surfaces that share the same layout, workspace, and navigation system as terminal panes. They render via Electrobun's `<electrobun-webview>` custom element (OOPIF — Out-Of-Process IFrame), which runs in a fully isolated browser process.
+
+### Address bar
+Each browser pane has a compact address bar with back/forward/reload buttons, a lock icon (🔒 for HTTPS, ⚠ for HTTP), a URL input field, and a DevTools button. The URL input auto-detects whether input is a URL or a search query.
+
+### Browser-specific shortcuts
+When a browser pane is focused, keyboard shortcuts switch from terminal mode to browser mode:
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+L` | Focus address bar |
+| `Cmd+[` / `Cmd+]` | Back / Forward |
+| `Cmd+R` | Reload |
+| `Alt+Cmd+I` | Toggle DevTools |
+| `Cmd+F` | Find in page |
+| `Cmd+=` / `Cmd+-` / `Cmd+0` | Zoom in / out / reset |
+
+Global shortcuts (sidebar, palette, workspace nav) work regardless of surface type.
+
+### Overlay z-ordering
+Because `<electrobun-webview>` renders as a native layer above the parent webview, browser panes are hidden via `toggleHidden()` when overlays (command palette, settings, process manager, dialogs) open, and restored when they close.
+
+### Automation
+See [`system-browser-pane.md`](system-browser-pane.md) for the full browser automation API — 40+ commands for navigation, DOM interaction, waiting, inspection, script injection, and console/error capture.
+
+## 8. UI Architecture & Performance Notes
 
 ### `xterm.js` Integration
 HyperTerm Canvas uses `xterm.js` for the text grid. It is configured with:
@@ -163,6 +192,8 @@ HyperTerm Canvas uses `xterm.js` for the text grid. It is configured with:
 ### Memory Considerations
 When you switch to a different workspace, the panes of the previous workspace are **hidden** (`display: none`), not destroyed.
 This means if you have 5 workspaces, each with 4 splits, you have **20 instances of `xterm.js`** running in the DOM simultaneously.
+
+Browser panes run in isolated OOPIF processes. Each open browser pane consumes additional system memory (~50–100 MB per process). Close browser panes when no longer needed.
 
 While `xterm.js` is highly optimized, keeping dozens of WebGL contexts alive in the background can consume significant GPU memory. It is recommended to close workspaces (`Cmd+W`) when you are done with them rather than letting them pile up indefinitely.
 

@@ -197,6 +197,19 @@ export interface BrowserPaneCallbacks {
     result?: string,
     error?: string,
   ) => void;
+  onConsoleLog?: (
+    surfaceId: string,
+    level: string,
+    args: string[],
+    timestamp: number,
+  ) => void;
+  onError?: (
+    surfaceId: string,
+    message: string,
+    filename: string | undefined,
+    lineno: number | undefined,
+    timestamp: number,
+  ) => void;
 }
 
 // ── Create browser pane ──
@@ -469,6 +482,25 @@ export function createBrowserPaneView(
         msg["reqId"] as string,
         msg["result"] as string | undefined,
         msg["error"] as string | undefined,
+      );
+    }
+
+    if (msg["type"] === "console" && callbacks.onConsoleLog) {
+      callbacks.onConsoleLog(
+        surfaceId,
+        msg["level"] as string,
+        msg["args"] as string[],
+        msg["timestamp"] as number,
+      );
+    }
+
+    if (msg["type"] === "error" && callbacks.onError) {
+      callbacks.onError(
+        surfaceId,
+        msg["message"] as string,
+        msg["filename"] as string | undefined,
+        msg["lineno"] as number | undefined,
+        msg["timestamp"] as number,
       );
     }
   });

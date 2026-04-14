@@ -13,6 +13,7 @@ A hybrid terminal emulator where a traditional PTY text layer (xterm.js) coexist
 - [Process Manager](#process-manager)
 - [Sideband protocol (fd 3/4/5)](#sideband-protocol-fd-345)
 - [Web mirror](#web-mirror)
+- [Browser panes](#browser-panes)
 - [Settings](#settings)
 - [Socket API](#socket-api-json-rpc)
 - [Project layout](#project-layout)
@@ -29,6 +30,7 @@ A hybrid terminal emulator where a traditional PTY text layer (xterm.js) coexist
 - **`ht` CLI.** Control everything from a shell: spawn panes, send keys, manipulate layouts, open ports in a browser (`ht open 3000`), send signals (`ht kill 8080`), inspect trees (`ht ps`), tail metadata (`ht metadata`). Installs via an in-app menu item — no Bun required on other Macs.
 - **Web mirror.** The entire native UI, including chips and metadata, mirrored over WebSocket to anything on the LAN.
 - **Client libraries.** Python + TypeScript helpers for the sideband protocol. Safe no-ops when not running inside HyperTerm.
+- **Built-in browser.** Split a WebKit browser alongside terminals with `⌘⇧L`. Address bar with smart URL detection and configurable search engines. Full scriptable API: click, type, fill, wait, snapshot, eval, console capture — 40+ commands via `ht browser` CLI.
 - **Themeable.** 10 built-in presets (Catppuccin, Tokyo Night, Dracula, Nord, Rosé Pine, Gruvbox, Solarized, Synthwave '84, Everforest, Obsidian) plus per-color overrides.
 
 ## Quick start
@@ -73,7 +75,7 @@ The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`.
                                    ▼
 ┌──────────────────── Electrobun webview (src/views/terminal/) ───────────────────────┐
 │                                                                                      │
-│  SurfaceManager (workspaces + PaneLayout + xterm.js instances)                       │
+│  SurfaceManager (workspaces + PaneLayout + xterm.js + browser instances)              │
 │     ├── per-pane chips row  (fg command, cwd, port badges — click to open)           │
 │     ├── Sidebar (workspaces + fg command + port chips + status pills)                │
 │     ├── ProcessManagerPanel (⌘⌥P overlay, CPU/MEM, kill)                              │
@@ -89,7 +91,7 @@ The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`.
 - **No node-pty.** `Bun.spawn` with `terminal: true` is the only PTY API used.
 - **No React.** Vanilla TS + DOM in the webview. xterm.js is the only significant webview dep.
 - **PTY is the source of truth.** Canvas panels and metadata chips are ephemeral overlays — they never affect terminal state.
-- **Keyboard goes to xterm.js.** Panels + chips are mouse-only (plus keyboard for chip-button focus).
+- **Keyboard goes to xterm.js.** Panels + chips are mouse-only (plus keyboard for chip-button focus). Browser panes receive keyboard input when focused.
 
 ## Keyboard shortcuts
 
@@ -106,6 +108,11 @@ The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`.
 | `⌘⌥P` | **Process Manager** |
 | `⌘I` | **Pane Info** (full detail view for the focused pane) |
 | `⌘F` | Find in terminal |
+| `⌘⇧L` | **Open browser in split** |
+| `⌘L` | **Focus browser address bar** (when browser pane focused) |
+| `⌘[` / `⌘]` | **Browser back / forward** (when browser pane focused) |
+| `⌘R` | **Reload browser page** (when browser pane focused) |
+| `⌥⌘I` | **Toggle browser DevTools** (when browser pane focused) |
 | `⌘⌥←↑→↓` | Focus neighboring pane |
 | `⌃⌘]` / `⌃⌘[` | Next / previous workspace |
 | `⌘1…9` | Jump to workspace N |
@@ -169,6 +176,21 @@ ht kill 3000 --signal SIGKILL
 
 # tmux compat
 ht capture-pane --lines 50           # alias for read-screen
+
+# Browser (see Browser Panes section below)
+ht browser open https://example.com
+ht browser open-split https://example.com
+ht browser browser:2 navigate https://example.org
+ht browser browser:2 click "button[type='submit']"
+ht browser browser:2 fill "#email" "user@example.com"
+ht browser browser:2 wait --text "Welcome" --timeout-ms 15000
+ht browser browser:2 get title
+ht browser browser:2 is visible "#dashboard"
+ht browser browser:2 snapshot
+ht browser browser:2 eval "document.title"
+ht browser browser:2 console
+ht browser browser:2 errors
+ht browser list
 ```
 
 Every command honors `--surface <id>` to target a specific pane; if omitted, the CLI falls back to `HT_SURFACE` (auto-set inside panes) and finally the focused surface. Add `--json` (or `-j`) to any command for raw JSON output.
@@ -317,6 +339,49 @@ bun scripts/demo_canvas_life.ts              # Game of life
 bash scripts/test_sideband.sh                # Protocol integration check
 ```
 
+## Browser panes
+
+Open a browser split with `⌘⇧L` or from the command palette. Browser panes sit in the same tiling layout as terminal panes — they share workspaces, splits, and keyboard navigation.
+
+Key features:
+
+- **Address bar** with smart URL detection and search engine integration (Google, DuckDuckGo, Bing, Kagi)
+- **Navigation** — back, forward, reload via buttons and keyboard (`⌘[`, `⌘]`, `⌘R`)
+- **Developer tools** — WebKit inspector via `⌥⌘I`
+- **Find in page** — `⌘F` when a browser pane is focused
+- **Cookie sharing** — all browser panes share the same session
+- **Session persistence** — browser URLs are saved and restored across app restarts
+- **Dark mode** — force dark mode on pages via Settings → Browser
+
+### Browser automation
+
+The `ht browser` command group provides 40+ scriptable commands for agent automation:
+
+```bash
+# Navigate, wait, inspect
+ht browser open https://example.com/login
+ht browser browser:1 wait --load-state complete --timeout-ms 15000
+ht browser browser:1 snapshot                 # accessibility tree
+ht browser browser:1 get title
+
+# Fill a form
+ht browser browser:1 fill "#email" "ops@example.com"
+ht browser browser:1 fill "#password" "$PASSWORD"
+ht browser browser:1 click "button[type='submit']"
+ht browser browser:1 wait --text "Welcome"
+ht browser browser:1 is visible "#dashboard"
+
+# Inject code
+ht browser browser:1 addscript "console.log('hello')"
+ht browser browser:1 addstyle "body { font-size: 20px }"
+
+# Debug
+ht browser browser:1 console                  # page console logs
+ht browser browser:1 errors                   # page JS errors
+```
+
+See [`doc/system-browser-pane.md`](doc/system-browser-pane.md) for the full reference.
+
 ## Web mirror
 
 Open from the sidebar footer or `ht` — the mirror runs on `http://<laptop-ip>:3000` (configurable) and streams terminal output, sideband panels, and **now metadata chips** over a single WebSocket. Port chips in the mirror open `http://<laptop-ip>:<port>` in a new tab, which is particularly handy for hitting a dev server from a phone on the same Wi-Fi.
@@ -332,6 +397,7 @@ All settings persist to `~/Library/Application Support/hyperterm-canvas/settings
 - **Theme** — 10 presets + per-color overrides, background opacity, accent / secondary / foreground colors, full 16-color ANSI palette.
 - **Effects** — terminal bloom toggle + intensity.
 - **Network** — web mirror port + auto-start.
+- **Browser** — search engine, home page, force dark mode, terminal link interception.
 - **Advanced** — pane gap (px between splits), sidebar width.
 
 Every setting takes effect live (no restart), with these caveats:
@@ -367,6 +433,8 @@ Errors are returned as `{"id":"1","error":"message"}`. See [`doc/system-rpc-sock
 
 **Panes:** `pane.list`
 
+**Browser:** `browser.list`, `browser.open`, `browser.open_split`, `browser.close`, `browser.identify`, `browser.navigate`, `browser.back`, `browser.forward`, `browser.reload`, `browser.url`, `browser.wait`, `browser.click`, `browser.dblclick`, `browser.hover`, `browser.focus`, `browser.check`, `browser.uncheck`, `browser.scroll_into_view`, `browser.type`, `browser.fill`, `browser.press`, `browser.select`, `browser.scroll`, `browser.highlight`, `browser.snapshot`, `browser.get`, `browser.is`, `browser.eval`, `browser.addscript`, `browser.addstyle`, `browser.find`, `browser.stop_find`, `browser.devtools`, `browser.console_list`, `browser.console_clear`, `browser.errors_list`, `browser.errors_clear`, `browser.history`, `browser.clear_history`
+
 ## Project layout
 
 ```
@@ -374,6 +442,8 @@ src/
   bun/                          # Bun main process
     index.ts                    # BrowserWindow, RPC handlers, socket server, poller wiring
     session-manager.ts          # Multi-surface PTY manager (setShell, callbacks)
+    browser-surface-manager.ts  # Browser surface state (URL, title, zoom, console, errors)
+    browser-history.ts          # JSON-persisted browser history with search + dedup
     pty-manager.ts              # Single PTY, Bun.spawn with terminal option
     sideband-parser.ts          # Multi-channel JSONL + binary reader
     event-writer.ts             # fd 5 JSONL event writer (incl. system errors)
@@ -390,14 +460,15 @@ src/
     index.html                  # Entry HTML
     index.ts                    # RPC handlers, keybinds, CustomEvent wiring
     index.css                   # All styles (theme variables drive everything)
-    surface-manager.ts          # Workspaces, pane layout, xterm instances, chip rendering
+    surface-manager.ts          # Workspaces, pane layout, xterm + browser instances, chip rendering
+    browser-pane.ts             # Browser pane: <electrobun-webview>, address bar, nav, preload
     pane-layout.ts              # Binary tree split computation
     panel-manager.ts            # Sideband panel lifecycle
     panel.ts                    # Single panel (drag, resize, render)
     content-renderers.ts        # Extensible content renderer registry
     sidebar.ts                  # Workspaces, status pills, port chips, fg command
     process-manager.ts          # ⌘⌥P overlay — every process, CPU/MEM, kill
-    settings-panel.ts           # Full settings UI
+    settings-panel.ts           # Full settings UI (general, appearance, theme, effects, network, browser, advanced)
     terminal-effects.ts         # WebGL bloom layer
     command-palette.ts          # ⌘⇧P fuzzy command search
     toast.ts                    # In-webview toast notifications
@@ -414,8 +485,9 @@ doc/
   system-sideband-protocol.md
   system-canvas-panels.md
   system-webview-ui.md
-  system-process-metadata.md    # NEW — full spec for the metadata pipeline
-tests/                          # 134 tests across 10 files (ps/lsof parsers, sideband, RPC, etc.)
+  system-process-metadata.md    # Full spec for the metadata pipeline
+  system-browser-pane.md        # Browser pane: architecture, API, automation, settings
+tests/                          # 220 tests across 15 files
 ```
 
 ## Development
@@ -424,7 +496,7 @@ tests/                          # 134 tests across 10 files (ps/lsof parsers, si
 bun install                # dependencies
 bun start                  # dev: build + launch once
 bun dev                    # dev: build + launch with watch
-bun test                   # 134 tests
+bun test                   # 220 tests
 bun run typecheck          # TypeScript check
 bun run build:cli          # standalone ./build/ht-cli binary (for other Macs)
 bun run build:dev          # dev .app (no CLI injection yet — requires stable/canary)
@@ -441,6 +513,7 @@ A `postBuild` Electrobun hook (`scripts/post-build.ts`) compiles `bin/ht` target
 - [`doc/system-canvas-panels.md`](doc/system-canvas-panels.md) — panel rendering, positioning modes, content renderers
 - [`doc/system-webview-ui.md`](doc/system-webview-ui.md) — workspaces, panes, sidebar, process manager, keyboard UX
 - [`doc/system-process-metadata.md`](doc/system-process-metadata.md) — live process metadata: poller, parsers, diff, renderers, CLI
+- [`doc/system-browser-pane.md`](doc/system-browser-pane.md) — built-in browser pane: architecture, automation API, CLI, settings
 - [`scripts/README_python.md`](scripts/README_python.md), [`scripts/README_typescript.md`](scripts/README_typescript.md) — client library reference
 
 ## Tech stack

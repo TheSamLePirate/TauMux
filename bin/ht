@@ -60,6 +60,175 @@ interface RpcCall {
   params: Record<string, unknown>;
 }
 
+/**
+ * Map `ht browser [surface] <subcommand> [args...]` to RPC calls.
+ * Supports cmux-style positional surface targeting:
+ *   ht browser browser:2 click "#btn"
+ *   ht browser --surface browser:2 click "#btn"
+ */
+function mapBrowserSubcommand(): RpcCall {
+  // Parse: positional[0] might be a surface ref or a subcommand
+  let surfaceId: string | undefined = flags["surface"];
+  let sub: string;
+  let subArgs: string[];
+
+  if (positional[0]?.startsWith("browser:") || positional[0]?.startsWith("surface:")) {
+    surfaceId = positional[0];
+    sub = positional[1] || "identify";
+    subArgs = positional.slice(2);
+  } else {
+    sub = positional[0] || "identify";
+    subArgs = positional.slice(1);
+  }
+
+  const sid = surfaceId;
+  const snapshotAfter = flags["snapshot-after"] === "true" || flags["snapshot_after"] === "true";
+
+  switch (sub) {
+    // Navigation
+    case "open":
+      return { method: sid ? "browser.navigate" : "browser.open", params: { surface_id: sid, url: subArgs[0] } };
+    case "open-split":
+      return { method: "browser.open_split", params: { url: subArgs[0], direction: flags["direction"] || "right" } };
+    case "goto":
+    case "navigate":
+      return { method: "browser.navigate", params: { surface_id: sid, url: subArgs[0] } };
+    case "back":
+      return { method: "browser.back", params: { surface_id: sid } };
+    case "forward":
+      return { method: "browser.forward", params: { surface_id: sid } };
+    case "reload":
+      return { method: "browser.reload", params: { surface_id: sid } };
+    case "url":
+    case "get-url":
+      return { method: "browser.url", params: { surface_id: sid } };
+    case "identify":
+      return { method: "browser.identify", params: { surface_id: sid } };
+
+    // Wait
+    case "wait":
+      return {
+        method: "browser.wait",
+        params: {
+          surface_id: sid,
+          selector: flags["selector"],
+          text: flags["text"],
+          url_contains: flags["url-contains"] || flags["url_contains"],
+          load_state: flags["load-state"] || flags["load_state"],
+          function: flags["function"],
+          timeout_ms: flags["timeout-ms"] || flags["timeout_ms"],
+        },
+      };
+
+    // DOM Interaction
+    case "click":
+      return { method: "browser.click", params: { surface_id: sid, selector: subArgs[0], snapshot_after: snapshotAfter } };
+    case "dblclick":
+      return { method: "browser.dblclick", params: { surface_id: sid, selector: subArgs[0] } };
+    case "hover":
+      return { method: "browser.hover", params: { surface_id: sid, selector: subArgs[0] } };
+    case "focus":
+      return { method: "browser.focus", params: { surface_id: sid, selector: subArgs[0] } };
+    case "check":
+      return { method: "browser.check", params: { surface_id: sid, selector: subArgs[0] } };
+    case "uncheck":
+      return { method: "browser.uncheck", params: { surface_id: sid, selector: subArgs[0] } };
+    case "scroll-into-view":
+      return { method: "browser.scroll_into_view", params: { surface_id: sid, selector: subArgs[0] } };
+    case "type":
+      return { method: "browser.type", params: { surface_id: sid, selector: subArgs[0], text: subArgs[1] || flags["text"] } };
+    case "fill":
+      return { method: "browser.fill", params: { surface_id: sid, selector: subArgs[0], text: subArgs[1] ?? flags["text"] ?? "" } };
+    case "press":
+      return { method: "browser.press", params: { surface_id: sid, key: subArgs[0] } };
+    case "keydown":
+      return { method: "browser.press", params: { surface_id: sid, key: subArgs[0] } };
+    case "keyup":
+      return { method: "browser.press", params: { surface_id: sid, key: subArgs[0] } };
+    case "select":
+      return { method: "browser.select", params: { surface_id: sid, selector: subArgs[0], value: subArgs[1] } };
+    case "scroll":
+      return { method: "browser.scroll", params: { surface_id: sid, selector: flags["selector"], dx: flags["dx"], dy: flags["dy"] } };
+    case "highlight":
+      return { method: "browser.highlight", params: { surface_id: sid, selector: subArgs[0] } };
+
+    // Inspection
+    case "snapshot":
+      return {
+        method: "browser.snapshot",
+        params: {
+          surface_id: sid,
+          selector: flags["selector"],
+          max_depth: flags["max-depth"] || flags["max_depth"],
+          interactive: flags["interactive"] === "true" || flags["i"] === "true",
+          compact: flags["compact"] === "true",
+        },
+      };
+    case "get":
+      return {
+        method: "browser.get",
+        params: {
+          surface_id: sid,
+          what: subArgs[0],
+          selector: subArgs[1] || flags["selector"],
+          attr: flags["attr"],
+          property: flags["property"],
+        },
+      };
+    case "is":
+      return {
+        method: "browser.is",
+        params: {
+          surface_id: sid,
+          check: subArgs[0],
+          selector: subArgs[1] || flags["selector"],
+        },
+      };
+
+    // Eval / injection
+    case "eval":
+      return { method: "browser.eval", params: { surface_id: sid, script: subArgs[0] || flags["script"] } };
+    case "addscript":
+      return { method: "browser.addscript", params: { surface_id: sid, script: subArgs[0] } };
+    case "addstyle":
+      return { method: "browser.addstyle", params: { surface_id: sid, css: subArgs[0] } };
+
+    // Console & errors
+    case "console":
+      if (subArgs[0] === "clear") return { method: "browser.console_clear", params: { surface_id: sid } };
+      return { method: "browser.console_list", params: { surface_id: sid } };
+    case "errors":
+      if (subArgs[0] === "clear") return { method: "browser.errors_clear", params: { surface_id: sid } };
+      return { method: "browser.errors_list", params: { surface_id: sid } };
+
+    // Find in page
+    case "find-in-page":
+      return { method: "browser.find", params: { surface_id: sid, query: subArgs[0] } };
+
+    // DevTools
+    case "devtools":
+      return { method: "browser.devtools", params: { surface_id: sid } };
+
+    // History
+    case "history":
+      if (subArgs[0] === "clear") return { method: "browser.clear_history", params: {} };
+      return { method: "browser.history", params: {} };
+
+    // Close
+    case "close":
+      return { method: "browser.close", params: { surface_id: sid } };
+
+    // List
+    case "list":
+      return { method: "browser.list", params: {} };
+
+    default:
+      console.error(`Unknown browser subcommand: ${sub}`);
+      console.error('Run "ht browser help" for usage.');
+      process.exit(1);
+  }
+}
+
 function mapCommand(): RpcCall {
   switch (command) {
     case "ping":
@@ -243,8 +412,12 @@ function mapCommand(): RpcCall {
     case "clear-notifications":
       return { method: "notification.clear", params: {} };
 
-    // ── Browser ──
+    // ── Browser (unified `ht browser <sub>` command, cmux-compatible) ──
 
+    case "browser":
+      return mapBrowserSubcommand();
+
+    // Legacy hyphenated aliases
     case "browser-open":
       return {
         method: "browser.open",
@@ -635,21 +808,47 @@ Live Metadata (reads from polled surface state):
   kill PORT [--signal SIG] [--surface S] Send SIG (default SIGTERM) to the pid
                                         bound to PORT
 
-Browser:
-  browser-open [url]                    Open browser in new workspace
-  browser-split [url] [--direction D]   Split browser alongside current pane
-  browser-navigate [--surface S] <url>  Navigate to URL
-  browser-back [--surface S]            Go back
-  browser-forward [--surface S]         Go forward
-  browser-reload [--surface S]          Reload page
-  browser-url [--surface S]             Print current URL
-  browser-eval [--surface S] <script>   Execute JavaScript in page
-  browser-find [--surface S] <query>    Find text in page
-  browser-devtools [--surface S]        Toggle developer tools
-  browser-history                       List browser history
-  browser-clear-history                 Clear browser history
-  browser-close [--surface S]           Close browser surface
-  list-browsers                         List all browser surfaces
+Browser (use: ht browser [surface] <subcommand> [args...]):
+  ht browser open [url]                     Open browser split (or navigate if surface given)
+  ht browser open-split [url]               Split browser alongside current pane
+  ht browser [S] navigate <url>             Navigate to URL
+  ht browser [S] back|forward|reload        Navigation
+  ht browser [S] url                        Print current URL
+  ht browser [S] identify                   Show browser surface metadata
+
+  ht browser [S] wait --selector|--text|--url-contains|--load-state|--function [--timeout-ms N]
+
+  ht browser [S] click <sel>                Click element
+  ht browser [S] dblclick|hover|focus <sel> Mouse actions
+  ht browser [S] check|uncheck <sel>        Checkbox toggle
+  ht browser [S] scroll-into-view <sel>     Scroll element into view
+  ht browser [S] type <sel> <text>          Type text into element
+  ht browser [S] fill <sel> [text]          Fill input (empty = clear)
+  ht browser [S] press|keydown|keyup <key>  Keyboard events
+  ht browser [S] select <sel> <value>       Select dropdown option
+  ht browser [S] scroll [--dx N] [--dy N]   Scroll page or element
+  ht browser [S] highlight <sel>            Highlight element (3s)
+
+  ht browser [S] snapshot [--selector sel] [--max-depth N]
+  ht browser [S] get <title|url|text|html|value|attr|count|box|styles> [sel]
+  ht browser [S] is <visible|enabled|checked> <sel>
+
+  ht browser [S] eval <script>              Execute JavaScript
+  ht browser [S] addscript <script>         Inject JavaScript
+  ht browser [S] addstyle <css>             Inject CSS
+
+  ht browser [S] console [list|clear]       Page console messages
+  ht browser [S] errors [list|clear]        Page errors
+
+  ht browser [S] devtools                   Toggle developer tools
+  ht browser [S] find-in-page <query>       Find text in page
+  ht browser history [clear]                Browser history
+  ht browser list                           List all browser surfaces
+  ht browser [S] close                      Close browser surface
+
+  [S] = optional --surface browser:N or positional browser:N
+
+  Legacy aliases: browser-open, browser-split, browser-navigate, etc.
 
 Aliases:
   capture-pane                          Alias for read-screen (tmux compat)

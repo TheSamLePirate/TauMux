@@ -284,6 +284,8 @@ All methods accept an optional `surface_id` in their params; if omitted, the ser
 
 **`pane.*`** — `list`.
 
+**`browser.*`** — `list`, `open`, `open_split`, `close`, `identify`, `navigate`, `back`, `forward`, `reload`, `url`, `wait`, `click`, `dblclick`, `hover`, `focus`, `check`, `uncheck`, `scroll_into_view`, `type`, `fill`, `press`, `select`, `scroll`, `highlight`, `snapshot`, `get`, `is`, `eval`, `addscript`, `addstyle`, `find`, `stop_find`, `devtools`, `console_list`, `console_clear`, `errors_list`, `errors_clear`, `history`, `clear_history`.
+
 ### Live metadata methods in detail
 
 ```json
@@ -308,8 +310,48 @@ All four error via thrown messages (surface server converts to `{"error":"..."}`
 
 ---
 
+### Browser automation methods in detail
+
+Browser panes use `browser:N` surface IDs. Pass `surface_id` to target a specific pane; if omitted, commands target the focused browser pane.
+
+```json
+// Open a browser split
+{"id":"1","method":"browser.open_split","params":{"url":"https://example.com"}}
+
+// Navigate
+{"id":"2","method":"browser.navigate","params":{"surface_id":"browser:1","url":"https://example.org"}}
+
+// Wait for page load
+{"id":"3","method":"browser.wait","params":{"surface_id":"browser:1","load_state":"complete","timeout_ms":15000}}
+// → result: "true" or "timeout"
+
+// Click an element
+{"id":"4","method":"browser.click","params":{"surface_id":"browser:1","selector":"button[type='submit']"}}
+
+// Fill a form field
+{"id":"5","method":"browser.fill","params":{"surface_id":"browser:1","selector":"#email","text":"user@example.com"}}
+
+// Get page title (async — result comes back via eval roundtrip)
+{"id":"6","method":"browser.get","params":{"surface_id":"browser:1","what":"title"}}
+// → result: "Example Domain"
+
+// Check if element is visible
+{"id":"7","method":"browser.is","params":{"surface_id":"browser:1","check":"visible","selector":"#dashboard"}}
+// → result: "true" or "false"
+
+// Get captured console logs
+{"id":"8","method":"browser.console_list","params":{"surface_id":"browser:1"}}
+// → result: [{"level":"log","args":["hello"],"timestamp":1728766122123}, ...]
+
+// Inject CSS
+{"id":"9","method":"browser.addstyle","params":{"surface_id":"browser:1","css":"body { font-size: 20px }"}}
+```
+
+For the full method reference, see [`doc/system-browser-pane.md`](system-browser-pane.md) § 6.
+
 ## Limitations and Caveats
 
 - **Parameter Parsing:** The `ht` CLI flag parser is simplistic. It expects flags in the format `--key value` (with a space). It **does not** support `--key=value`.
 - **No Sidebar Read API:** Currently, you can write status pills, progress, and logs to the sidebar, but there is no API method to read them back out (e.g., you cannot do `ht get-status`).
+- **Browser eval is async:** `browser.get`, `browser.is`, and `browser.wait` use a JS eval → host-message roundtrip. Results may take a few hundred milliseconds and time out after 5s (get/is) or the configured timeout (wait).
 - **Signal Handling:** While closing a pane via `ht close-surface` sends a SIGKILL to the underlying shell, deep process trees (like a spawned dev server) might occasionally be left orphaned depending on the shell configuration.

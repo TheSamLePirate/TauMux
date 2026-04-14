@@ -303,6 +303,21 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       browserSetZoom: (payload) => {
         browserSurfaces.setZoom(payload.surfaceId, payload.zoom);
       },
+      browserConsoleLog: (payload) => {
+        browserSurfaces.addConsoleLog(payload.surfaceId, {
+          level: payload.level,
+          args: payload.args,
+          timestamp: payload.timestamp,
+        });
+      },
+      browserError: (payload) => {
+        browserSurfaces.addError(payload.surfaceId, {
+          message: payload.message,
+          filename: payload.filename,
+          lineno: payload.lineno,
+          timestamp: payload.timestamp,
+        });
+      },
       browserEvalResult: (payload) => {
         const resolve = pendingBrowserEvals.get(payload.reqId);
         if (resolve) {
@@ -880,6 +895,7 @@ const socketHandler = createRpcHandler(
   metadataPoller,
   browserSurfaces,
   browserHistory,
+  pendingBrowserEvals,
 );
 const socketServer = new SocketServer("/tmp/hyperterm.sock", socketHandler);
 socketServer.start();

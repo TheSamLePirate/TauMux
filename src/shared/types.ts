@@ -351,6 +351,20 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       browserTitleChanged: { surfaceId: string; title: string };
       /** Webview requests zoom change — bun records it for persistence. */
       browserSetZoom: { surfaceId: string; zoom: number };
+      /** Console/error capture from browser preload. */
+      browserConsoleLog: {
+        surfaceId: string;
+        level: string;
+        args: string[];
+        timestamp: number;
+      };
+      browserError: {
+        surfaceId: string;
+        message: string;
+        filename?: string;
+        lineno?: number;
+        timestamp: number;
+      };
       /** Eval result coming back from a browser webview. */
       browserEvalResult: {
         surfaceId: string;

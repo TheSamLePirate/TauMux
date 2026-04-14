@@ -1273,6 +1273,31 @@ window.addEventListener("ht-browser-zoom", (e: Event) => {
   }
 });
 
+window.addEventListener("ht-browser-console-log", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.surfaceId) {
+    rpc.send("browserConsoleLog", {
+      surfaceId: detail.surfaceId,
+      level: detail.level ?? "log",
+      args: detail.args ?? [],
+      timestamp: detail.timestamp ?? Date.now(),
+    });
+  }
+});
+
+window.addEventListener("ht-browser-error", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.surfaceId) {
+    rpc.send("browserError", {
+      surfaceId: detail.surfaceId,
+      message: detail.message ?? "",
+      filename: detail.filename,
+      lineno: detail.lineno,
+      timestamp: detail.timestamp ?? Date.now(),
+    });
+  }
+});
+
 window.addEventListener("ht-clear-logs", () => {
   surfaceManager.clearLogs();
 });

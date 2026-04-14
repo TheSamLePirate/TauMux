@@ -10,12 +10,27 @@
  * we communicate with it via RPC messages.
  */
 
+export interface ConsoleEntry {
+  level: string;
+  args: string[];
+  timestamp: number;
+}
+
+export interface ErrorEntry {
+  message: string;
+  filename?: string;
+  lineno?: number;
+  timestamp: number;
+}
+
 export interface BrowserSurface {
   id: string;
   url: string;
   title: string;
   zoom: number;
   partition: string;
+  consoleLogs: ConsoleEntry[];
+  errors: ErrorEntry[];
 }
 
 export class BrowserSurfaceManager {
@@ -32,6 +47,8 @@ export class BrowserSurfaceManager {
       title: "New Tab",
       zoom: 1.0,
       partition: partition || "persist:browser-shared",
+      consoleLogs: [],
+      errors: [],
     });
     console.log(`[browser] created ${id} → ${url || "about:blank"}`);
     return id;
@@ -78,6 +95,45 @@ export class BrowserSurfaceManager {
   /** Check whether a surface id belongs to this manager. */
   isBrowserSurface(id: string): boolean {
     return this.surfaces.has(id);
+  }
+
+  /** Append a console log entry from the preload capture. */
+  addConsoleLog(id: string, entry: ConsoleEntry): void {
+    const surface = this.surfaces.get(id);
+    if (!surface) return;
+    surface.consoleLogs.push(entry);
+    // Cap at 500 entries
+    if (surface.consoleLogs.length > 500) {
+      surface.consoleLogs.splice(0, surface.consoleLogs.length - 500);
+    }
+  }
+
+  /** Append an error entry from the preload capture. */
+  addError(id: string, entry: ErrorEntry): void {
+    const surface = this.surfaces.get(id);
+    if (!surface) return;
+    surface.errors.push(entry);
+    if (surface.errors.length > 200) {
+      surface.errors.splice(0, surface.errors.length - 200);
+    }
+  }
+
+  getConsoleLogs(id: string): ConsoleEntry[] {
+    return this.surfaces.get(id)?.consoleLogs ?? [];
+  }
+
+  getErrors(id: string): ErrorEntry[] {
+    return this.surfaces.get(id)?.errors ?? [];
+  }
+
+  clearConsoleLogs(id: string): void {
+    const surface = this.surfaces.get(id);
+    if (surface) surface.consoleLogs = [];
+  }
+
+  clearErrors(id: string): void {
+    const surface = this.surfaces.get(id);
+    if (surface) surface.errors = [];
   }
 
   destroy(): void {

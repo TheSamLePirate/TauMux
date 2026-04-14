@@ -130,10 +130,19 @@ The app should feel built from one shape system.
 
 ### 5.3 Panes
 
-- Panes are the core product surface.
+- Panes are the core product surface — both terminal and browser.
 - The border, title bar, and focus ring must be legible without looking ornamental.
 - Focus state should be obvious, but quieter than the terminal content itself.
 - Metadata chips should look like instrumentation, not badges from another app.
+
+### 5.4 Browser Panes
+
+- Browser panes use the same surface-bar pattern as terminal panes (globe icon instead of terminal icon, domain chip instead of cwd chip).
+- The address bar is a compact row below the surface bar: back/forward/reload buttons, lock icon, URL input, DevTools button. All styled with the same button and input families as the rest of the UI.
+- The `<electrobun-webview>` fills the remaining space below the address bar.
+- When overlays open, browser webview layers are hidden to prevent z-ordering conflicts.
+- Loading state: the reload button spins. No additional chrome or loading bars.
+- Find-in-page: same pattern as the terminal search bar (compact row with input + close button).
 
 ### 5.4 Overlays
 

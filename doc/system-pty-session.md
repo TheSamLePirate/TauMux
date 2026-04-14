@@ -15,7 +15,9 @@ This provides several benefits:
 - **Startup Speed:** Shells spawn in less than 50ms.
 - **Native OS Integration:** Bun communicates directly with the Unix `openpty` APIs.
 
-When you open a new tab or split a pane, HyperTerm creates a `PtyManager`. This manager is responsible for tracking the Process ID (PID), capturing standard output (stdout), and passing keyboard input (stdin) down to the shell.
+When you open a new terminal tab or split a terminal pane, HyperTerm creates a `PtyManager`. This manager is responsible for tracking the Process ID (PID), capturing standard output (stdout), and passing keyboard input (stdin) down to the shell.
+
+> **Note:** Browser panes (`⌘⇧L`) do not use PTYs. They are managed by `BrowserSurfaceManager` and render via `<electrobun-webview>` OOPIF elements. See [`system-browser-pane.md`](system-browser-pane.md) for the browser pane architecture.
 
 ---
 
