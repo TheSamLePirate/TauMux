@@ -2,8 +2,11 @@ import type { SidebandMetaMessage, PanelEvent } from "../shared/types";
 import { PtyManager } from "./pty-manager";
 import { SidebandParser } from "./sideband-parser";
 import { EventWriter } from "./event-writer";
+import { Terminal as HeadlessTerminal } from "@xterm/headless";
+import { SerializeAddon } from "@xterm/addon-serialize";
 
-const MAX_HISTORY_BYTES = 64 * 1024; // 64KB of recent output per surface
+const MAX_HISTORY_BYTES = 64 * 1024; // 64KB raw byte fallback per surface
+const HEADLESS_SCROLLBACK = 2000; // bounded scrollback for the bun-side mirror
 
 export interface Surface {
   id: string;
@@ -12,8 +15,15 @@ export interface Surface {
   eventWriter: EventWriter | null;
   cwd: string;
   title: string;
+  /** Raw byte history kept as a safety net if the headless terminal
+   *  failed to construct (or for diagnostics). 64 KB cap, oldest dropped. */
   outputHistory: string[];
   outputHistorySize: number;
+  /** Headless xterm that mirrors the PTY stream so we can replay a
+   *  *terminal-state-correct* snapshot to web clients via SerializeAddon
+   *  instead of dumping raw bytes that could start mid-escape. */
+  headless: HeadlessTerminal | null;
+  serializer: SerializeAddon | null;
 }
 
 export class SessionManager {
@@ -55,6 +65,29 @@ export class SessionManager {
     const outputHistory: string[] = [];
     let outputHistorySize = 0;
 
+    // Headless mirror of the PTY stream. Used by getOutputHistory() so
+    // web clients rejoining mid-stream get a terminal-state-correct
+    // replay instead of raw bytes that could start mid-escape-sequence.
+    let headless: HeadlessTerminal | null = null;
+    let serializer: SerializeAddon | null = null;
+    try {
+      headless = new HeadlessTerminal({
+        cols,
+        rows,
+        scrollback: HEADLESS_SCROLLBACK,
+        allowProposedApi: true,
+      });
+      serializer = new SerializeAddon();
+      headless.loadAddon(serializer);
+    } catch (err) {
+      console.warn(
+        `[session] headless terminal init failed for ${id}:`,
+        err instanceof Error ? err.message : err,
+      );
+      headless = null;
+      serializer = null;
+    }
+
     // Wire stdout
     pty.onStdout = (data: string) => {
       outputHistory.push(data);
@@ -64,6 +97,13 @@ export class SessionManager {
         outputHistory.length > 1
       ) {
         outputHistorySize -= outputHistory.shift()!.length;
+      }
+      if (headless) {
+        try {
+          headless.write(data);
+        } catch {
+          /* headless terminal bugs must never crash the PTY pipeline */
+        }
       }
       this.onStdout?.(id, data);
     };
@@ -161,6 +201,8 @@ export class SessionManager {
       title: this.shell.split("/").pop() || "shell",
       outputHistory,
       outputHistorySize,
+      headless,
+      serializer,
     };
 
     this.surfaces.set(id, surface);
@@ -176,6 +218,11 @@ export class SessionManager {
     surface.parser?.stop();
     surface.eventWriter?.close();
     surface.pty.destroy();
+    try {
+      surface.headless?.dispose();
+    } catch {
+      /* ignore */
+    }
     this.surfaces.delete(surfaceId);
 
     console.log(`[session] closed ${surfaceId}`);
@@ -196,6 +243,11 @@ export class SessionManager {
     const surface = this.surfaces.get(surfaceId);
     if (!surface) return;
     surface.pty.resize(cols, rows);
+    try {
+      surface.headless?.resize(cols, rows);
+    } catch {
+      /* ignore */
+    }
     surface.eventWriter?.send({
       id: "__terminal__",
       event: "resize",
@@ -211,6 +263,20 @@ export class SessionManager {
   getOutputHistory(surfaceId: string): string {
     const surface = this.surfaces.get(surfaceId);
     if (!surface) return "";
+    if (surface.serializer) {
+      try {
+        // Terminal-state-correct replay. Rewrites the alternate buffer,
+        // SGR state, cursor position, scrollback — everything a fresh
+        // client needs to land in the right screen, even mid-TUI.
+        return surface.serializer.serialize();
+      } catch (err) {
+        console.warn(
+          `[session] serialize() failed for ${surfaceId}:`,
+          err instanceof Error ? err.message : err,
+        );
+        /* fall through to byte-buffer replay */
+      }
+    }
     return surface.outputHistory.join("");
   }
 
@@ -231,6 +297,11 @@ export class SessionManager {
       surface.parser?.stop();
       surface.eventWriter?.close();
       surface.pty.destroy();
+      try {
+        surface.headless?.dispose();
+      } catch {
+        /* ignore */
+      }
     }
     this.surfaces.clear();
   }

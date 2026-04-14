@@ -322,7 +322,9 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         const resolve = pendingBrowserEvals.get(payload.reqId);
         if (resolve) {
           pendingBrowserEvals.delete(payload.reqId);
-          resolve(payload.error ? `Error: ${payload.error}` : (payload.result ?? ""));
+          resolve(
+            payload.error ? `Error: ${payload.error}` : (payload.result ?? ""),
+          );
         }
       },
     },
@@ -370,17 +372,14 @@ function applyNativeWindowFrameInset(width: number, height: number): void {
 
 applyNativeWindowFrameInset(mainWindow.frame.width, mainWindow.frame.height);
 
-mainWindow.on(
-  "resize",
-  (event: unknown) => {
-    const resized = event as
-      | { data?: { width?: number; height?: number } }
-      | undefined;
-    const width = resized?.data?.width ?? mainWindow.frame.width;
-    const height = resized?.data?.height ?? mainWindow.frame.height;
-    applyNativeWindowFrameInset(width, height);
-  },
-);
+mainWindow.on("resize", (event: unknown) => {
+  const resized = event as
+    | { data?: { width?: number; height?: number } }
+    | undefined;
+  const width = resized?.data?.width ?? mainWindow.frame.width;
+  const height = resized?.data?.height ?? mainWindow.frame.height;
+  applyNativeWindowFrameInset(width, height);
+});
 
 ApplicationMenu.setApplicationMenu(buildApplicationMenu());
 
@@ -786,6 +785,8 @@ function toggleWebServer(): void {
         getAppState,
         () => focusedSurfaceId,
         () => sidebarVisible,
+        settingsManager.get().webMirrorBind,
+        settingsManager.get().webMirrorAuthToken,
       );
       setupWebServerCallbacks(webServer);
     }

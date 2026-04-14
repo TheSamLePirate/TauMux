@@ -7,21 +7,24 @@
     "ht": "bin/ht"
   },
   "scripts": {
-    "start": "electrobun dev",
-    "dev": "electrobun dev --watch",
-    "build": "electrobun build",
-    "build:dev": "electrobun build --env=dev",
-    "build:canary": "electrobun build --env=canary",
-    "build:stable": "electrobun build --env=stable",
+    "start": "bun scripts/build-web-client.ts && electrobun dev",
+    "dev": "bun scripts/build-web-client.ts && electrobun dev --watch",
+    "build": "bun scripts/build-web-client.ts --minify && electrobun build",
+    "build:dev": "bun scripts/build-web-client.ts --minify && electrobun build --env=dev",
+    "build:canary": "bun scripts/build-web-client.ts --minify && electrobun build --env=canary",
+    "build:stable": "bun scripts/build-web-client.ts --minify && electrobun build --env=stable",
     "build:cli": "bun scripts/build-cli.ts",
-    "package:mac": "electrobun build --env=stable",
-    "test": "bun test",
+    "build:web-client": "bun scripts/build-web-client.ts",
+    "package:mac": "bun scripts/build-web-client.ts --minify && electrobun build --env=stable",
+    "test": "bun scripts/build-web-client.ts && bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
+    "@xterm/addon-serialize": "^0.14.0",
     "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/headless": "^6.0.0",
     "electrobun": "1.16.0",
     "xterm": "5.3.0"
   },

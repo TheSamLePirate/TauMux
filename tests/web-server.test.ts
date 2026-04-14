@@ -1,6 +1,7 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import { WebServer } from "../src/bun/web-server";
 import { SessionManager } from "../src/bun/session-manager";
+import { WEB_PROTOCOL_VERSION } from "../src/shared/web-protocol";
 
 const TEST_PORT = 18923;
 
@@ -46,7 +47,6 @@ describe("WebServer", () => {
     createServer();
     const res = await fetch(`http://127.0.0.1:${TEST_PORT}/`);
     const html = await res.text();
-    // xterm.js UMD bundle should be inlined
     expect(html).toContain("Terminal");
     expect(html).toContain("FitAddon");
     expect(html.length).toBeGreaterThan(45000);
@@ -58,7 +58,7 @@ describe("WebServer", () => {
     expect(res.status).toBe(404);
   });
 
-  test("WebSocket connects and receives welcome", async () => {
+  test("WebSocket connects and receives hello envelope", async () => {
     createServer();
 
     const msg = await new Promise<Record<string, unknown>>(
@@ -73,29 +73,50 @@ describe("WebServer", () => {
       },
     );
 
-    expect(msg["type"]).toBe("welcome");
-    expect(Array.isArray(msg["surfaces"])).toBe(true);
-    expect((msg["surfaces"] as { id: string }[]).length).toBeGreaterThanOrEqual(
+    expect(msg["v"]).toBe(WEB_PROTOCOL_VERSION);
+    expect(msg["seq"]).toBe(0);
+    expect(msg["type"]).toBe("hello");
+    const payload = msg["payload"] as Record<string, unknown>;
+    expect(typeof payload["sessionId"]).toBe("string");
+    expect(typeof payload["serverInstanceId"]).toBe("string");
+    expect(payload["protocolVersion"]).toBe(WEB_PROTOCOL_VERSION);
+    const snapshot = payload["snapshot"] as Record<string, unknown>;
+    expect(Array.isArray(snapshot["surfaces"])).toBe(true);
+    expect((snapshot["surfaces"] as unknown[]).length).toBeGreaterThanOrEqual(
       1,
     );
-    expect(typeof msg["focusedSurfaceId"]).toBe("string");
+    expect(typeof snapshot["focusedSurfaceId"]).toBe("string");
+    expect(snapshot["metadata"]).toBeDefined();
+    expect(snapshot["panels"]).toBeDefined();
+    expect(snapshot["notifications"]).toBeDefined();
+    expect(snapshot["logs"]).toBeDefined();
   });
 
-  test("WebSocket receives history after welcome", async () => {
+  test("WebSocket receives history after hello when workspace is active", async () => {
     sessions = new SessionManager();
     const surfaceId = sessions.createSurface(80, 24);
 
-    // Write some data to build history
     sessions.writeStdin(surfaceId, "echo hello\r");
     await Bun.sleep(200);
 
+    // Build a workspace so the server auto-subscribes the new client.
+    const layout = { type: "leaf" as const, surfaceId };
     server = new WebServer(
       TEST_PORT,
       sessions,
       () => ({
         focusedSurfaceId: surfaceId,
-        workspaces: [],
-        activeWorkspaceId: null,
+        workspaces: [
+          {
+            id: "ws1",
+            name: "work",
+            color: "#89b4fa",
+            surfaceIds: [surfaceId],
+            focusedSurfaceId: surfaceId,
+            layout,
+          },
+        ],
+        activeWorkspaceId: "ws1",
       }),
       () => surfaceId,
     );
@@ -107,7 +128,6 @@ describe("WebServer", () => {
         const msgs: Record<string, unknown>[] = [];
         ws.onmessage = (e) => {
           msgs.push(JSON.parse(e.data as string));
-          // Welcome + history
           if (msgs.length >= 2) {
             ws.close();
             resolve(msgs);
@@ -121,26 +141,27 @@ describe("WebServer", () => {
       },
     );
 
-    expect(messages[0]["type"]).toBe("welcome");
-    if (messages.length > 1) {
-      expect(messages[1]["type"]).toBe("history");
-      expect(typeof messages[1]["data"]).toBe("string");
-    }
+    expect(messages[0]["type"]).toBe("hello");
+    expect(messages[0]["seq"]).toBe(0);
+    expect(messages[1]["type"]).toBe("history");
+    expect(messages[1]["seq"]).toBe(1);
+    const hp = messages[1]["payload"] as Record<string, unknown>;
+    expect(hp["surfaceId"]).toBe(surfaceId);
+    expect(typeof hp["data"]).toBe("string");
   });
 
-  test("stdin message routes to PTY", async () => {
+  test("stdin envelope routes to PTY", async () => {
     createServer();
 
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${TEST_PORT}`);
       ws.onopen = () => {
-        // Send stdin to the surface
         const surfaces = sessions!.getAllSurfaces();
         ws.send(
           JSON.stringify({
+            v: WEB_PROTOCOL_VERSION,
             type: "stdin",
-            surfaceId: surfaces[0].id,
-            data: "echo test\r",
+            payload: { surfaceId: surfaces[0]!.id, data: "echo test\r" },
           }),
         );
         setTimeout(() => {
@@ -152,15 +173,13 @@ describe("WebServer", () => {
       setTimeout(() => reject(new Error("timeout")), 3000);
     });
 
-    // If we got here without error, stdin was accepted
     expect(true).toBe(true);
   });
 
-  test("broadcast sends to all connected clients", async () => {
+  test("broadcast envelopes reach all connected clients with seq numbers", async () => {
     const srv = createServer();
 
-    // Connect two clients
-    const received: string[][] = [[], []];
+    const received: Record<string, unknown>[][] = [[], []];
 
     const clients = await Promise.all(
       [0, 1].map(
@@ -169,8 +188,8 @@ describe("WebServer", () => {
             const ws = new WebSocket(`ws://127.0.0.1:${TEST_PORT}`);
             ws.onmessage = (e) => {
               const msg = JSON.parse(e.data as string);
-              if (msg.type !== "welcome" && msg.type !== "history") {
-                received[idx].push(msg.type);
+              if (msg.type !== "hello" && msg.type !== "history") {
+                received[idx]!.push(msg);
               }
             };
             ws.onopen = () => resolve(ws);
@@ -182,13 +201,18 @@ describe("WebServer", () => {
 
     await Bun.sleep(100);
 
-    // Broadcast a message
     srv.broadcast({ type: "surfaceClosed", surfaceId: "test" });
 
     await Bun.sleep(100);
 
-    expect(received[0]).toContain("surfaceClosed");
-    expect(received[1]).toContain("surfaceClosed");
+    for (const client of received) {
+      expect(client.length).toBeGreaterThanOrEqual(1);
+      const closed = client.find((m) => m["type"] === "surfaceClosed")!;
+      expect(closed["v"]).toBe(WEB_PROTOCOL_VERSION);
+      expect(typeof closed["seq"]).toBe("number");
+      const payload = closed["payload"] as Record<string, unknown>;
+      expect(payload["surfaceId"]).toBe("test");
+    }
 
     clients.forEach((ws) => ws.close());
   });

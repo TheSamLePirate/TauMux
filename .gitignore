@@ -6,3 +6,5 @@ dist/
 __pycache__/
 *.pyc
 artifacts/
+# Web-mirror client build artifacts (produced by scripts/build-web-client.ts)
+assets/web-client/

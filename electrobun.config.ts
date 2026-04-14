@@ -31,6 +31,10 @@ export default {
         "vendor/fonts/nerd-regular.ttf",
       "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf":
         "vendor/fonts/nerd-bold.ttf",
+      // Web-mirror client bundle (produced by scripts/build-web-client.ts)
+      "assets/web-client/client.js": "vendor/web-client/client.js",
+      "assets/web-client/client.css": "vendor/web-client/client.css",
+      "assets/web-client/tokens.css": "vendor/web-client/tokens.css",
     },
     mac: {
       icons: "icon.iconset",

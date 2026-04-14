@@ -384,9 +384,11 @@ See [`doc/system-browser-pane.md`](doc/system-browser-pane.md) for the full refe
 
 ## Web mirror
 
-Open from the sidebar footer or `ht` — the mirror runs on `http://<laptop-ip>:3000` (configurable) and streams terminal output, sideband panels, and **now metadata chips** over a single WebSocket. Port chips in the mirror open `http://<laptop-ip>:<port>` in a new tab, which is particularly handy for hitting a dev server from a phone on the same Wi-Fi.
+Open from the sidebar footer or `ht` — the mirror runs on `http://127.0.0.1:3000` by default (loopback only). Flip `webMirrorBind` to `0.0.0.0` to expose it on the LAN, and set `webMirrorAuthToken` to require `?t=<token>` (or `Authorization: Bearer <token>`) on every request. Terminal output, sideband panels, metadata chips, and notifications all stream over a single WebSocket. Port chips open `http://<host>:<port>` in a new tab — handy for poking a dev server from a phone on the same Wi-Fi.
 
 Auto-start is off by default; enable it in **Settings → Network → Auto-start Web Mirror**, or set `HYPERTERM_WEB_PORT` in the env to force-enable.
+
+Under the hood (see [`doc/http-web-ui-refactor.md`](doc/http-web-ui-refactor.md) for the full write-up): protocol v2 envelopes with per-session sequence numbers, resume-on-reconnect backed by a 2 MB ring buffer, terminal-state-correct replay via `@xterm/headless` + `SerializeAddon`, 16 ms stdout coalescing, metadata dedup, and Graphite-themed chrome that matches the native app.
 
 ## Settings
 
@@ -396,13 +398,13 @@ All settings persist to `~/Library/Application Support/hyperterm-canvas/settings
 - **Appearance** — font family/size, line height, cursor style, cursor blink.
 - **Theme** — 10 presets + per-color overrides, background opacity, accent / secondary / foreground colors, full 16-color ANSI palette.
 - **Effects** — terminal bloom toggle + intensity.
-- **Network** — web mirror port + auto-start.
+- **Network** — web mirror port + auto-start + bind address + optional auth token.
 - **Browser** — search engine, home page, force dark mode, terminal link interception.
 - **Advanced** — pane gap (px between splits), sidebar width.
 
 Every setting takes effect live (no restart), with these caveats:
 - `shellPath` applies to *new* surfaces only (matches the UI note).
-- `webMirrorPort` restarts a running mirror on the new port.
+- `webMirrorPort`, `webMirrorBind`, and `webMirrorAuthToken` restart a running mirror on change.
 - `autoStartWebMirror` only matters at launch (the mirror can still be toggled any time after).
 
 ## Socket API (JSON-RPC)
@@ -451,7 +453,13 @@ src/
     rpc-handler.ts              # All socket methods (incl. surface.metadata/open/kill)
     surface-metadata.ts         # Poller + ps/lsof parsers + diff + emit
     settings-manager.ts         # Load/save + debounced persist
-    web-server.ts               # Bun.serve + WebSocket mirror (HTML bundle inline)
+    web-server.ts               # Re-export shim → src/bun/web/
+    web/
+      asset-loader.ts           # xterm bundle + Nerd Font loading
+      connection.ts             # SessionBuffer (ring buffer, seq, backpressure)
+      page.ts                   # Inlined HTML that references the built client
+      server.ts                 # Bun.serve, envelope protocol, resume, auth
+      state-store.ts            # Server-side cache of metadata/panels/sidebar
     native-menus.ts             # App menu + context menus
   shared/
     types.ts                    # RPC schema, sideband types, ProcessNode, SurfaceMetadata
