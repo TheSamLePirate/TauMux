@@ -32,6 +32,54 @@ export interface PiAgentEvent {
   [key: string]: unknown;
 }
 
+/**
+ * Resolve the full path to `pi` by checking common locations and
+ * the user's login-shell PATH. Packaged macOS apps inherit a minimal
+ * system PATH that excludes nvm / volta / brew / etc.
+ */
+let _resolvedPiPath: string | null = null;
+async function resolvePiBinary(): Promise<string> {
+  if (_resolvedPiPath) return _resolvedPiPath;
+
+  // 1. Already on PATH?
+  const direct = Bun.spawnSync(["which", "pi"], { stdout: "pipe", stderr: "pipe" });
+  if (direct.exitCode === 0) {
+    const p = new TextDecoder().decode(direct.stdout).trim();
+    if (p) { _resolvedPiPath = p; return p; }
+  }
+
+  // 2. Ask the user's login shell for the full PATH and resolve from there.
+  //    This handles nvm, volta, fnm, brew, mise, asdf, etc.
+  const shell = process.env["SHELL"] || "/bin/zsh";
+  const login = Bun.spawnSync(
+    [shell, "-ilc", "which pi"],
+    { stdout: "pipe", stderr: "pipe", env: { ...process.env, HOME: process.env["HOME"] ?? "" } },
+  );
+  if (login.exitCode === 0) {
+    const p = new TextDecoder().decode(login.stdout).trim();
+    if (p) { _resolvedPiPath = p; return p; }
+  }
+
+  // 3. Common known locations
+  const home = process.env["HOME"] ?? "";
+  const candidates = [
+    `${home}/.nvm/versions/node/v24.14.0/bin/pi`,
+    `${home}/.volta/bin/pi`,
+    `${home}/.local/bin/pi`,
+    "/usr/local/bin/pi",
+    "/opt/homebrew/bin/pi",
+  ];
+  for (const c of candidates) {
+    try {
+      const f = Bun.file(c);
+      if (await f.exists()) { _resolvedPiPath = c; return c; }
+    } catch { /* skip */ }
+  }
+
+  // 4. Fallback — hope it's on PATH at runtime
+  return "pi";
+}
+
 export class PiAgentInstance {
   readonly id: string;
   private proc: ReturnType<typeof Bun.spawn> | null = null;
@@ -61,7 +109,7 @@ export class PiAgentInstance {
   }
 
   async start(): Promise<void> {
-    const piPath = this.config.piBinary ?? "pi";
+    const piPath = this.config.piBinary ?? await resolvePiBinary();
     const args = [piPath, "--mode", "rpc", "--no-session"];
 
     if (this.config.provider) {
@@ -84,6 +132,22 @@ export class PiAgentInstance {
 
     const cwd = this.config.cwd ?? process.cwd();
 
+    // Resolve the user's login-shell PATH so pi (and the tools it
+    // invokes like node, npm, git) can be found even when the app
+    // was launched from Finder with a minimal system PATH.
+    let shellPath = process.env["PATH"] ?? "";
+    try {
+      const shell = process.env["SHELL"] || "/bin/zsh";
+      const r = Bun.spawnSync(
+        [shell, "-ilc", "echo $PATH"],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+      if (r.exitCode === 0) {
+        const p = new TextDecoder().decode(r.stdout).trim();
+        if (p) shellPath = p;
+      }
+    } catch { /* keep existing PATH */ }
+
     try {
       this.proc = Bun.spawn(args, {
         cwd,
@@ -92,6 +156,7 @@ export class PiAgentInstance {
         stderr: "pipe",
         env: {
           ...process.env,
+          PATH: shellPath,
           TERM: "dumb",
           NO_COLOR: "1",
         },
