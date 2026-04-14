@@ -17,6 +17,7 @@ import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";
 import { SurfaceDetailsPanel } from "./surface-details";
 import { showToast } from "./toast";
+import { startMouseDebug } from "./mouse-debug";
 
 // Declared before rpc so handlers can reference it; assigned after rpc is created.
 // eslint-disable-next-line prefer-const
@@ -539,7 +540,8 @@ function buildPaletteCommands(): PaletteCommand[] {
       label: "Open Browser Split",
       description: "Split a built-in browser pane alongside the current pane.",
       shortcut: "\u2318\u21e7L",
-      action: () => rpc.send("splitBrowserSurface", { direction: "horizontal" }),
+      action: () =>
+        rpc.send("splitBrowserSurface", { direction: "horizontal" }),
     },
     {
       id: "browser-new",
@@ -814,7 +816,10 @@ function showSurfaceContextMenu(detail: SurfaceContextMenuRequest): void {
   const y = detail.y ?? window.innerHeight / 2;
 
   requestAnimationFrame(() => {
-    const maxX = Math.max(margin, window.innerWidth - menu.offsetWidth - margin);
+    const maxX = Math.max(
+      margin,
+      window.innerWidth - menu.offsetWidth - margin,
+    );
     const maxY = Math.max(
       margin,
       window.innerHeight - menu.offsetHeight - margin,
@@ -1547,3 +1552,7 @@ window.addEventListener("ht-workspace-changed", syncToolbarState);
 
 syncSidebarState();
 syncToolbarState();
+
+// Temporary mouse hit-test overlay. Toggle with Ctrl+Alt+Shift+M.
+// See src/views/terminal/mouse-debug.ts.
+startMouseDebug();

@@ -179,6 +179,11 @@ export interface BrowserPaneView {
   findBarEl: HTMLDivElement | null;
   findInputEl: HTMLInputElement | null;
   findVisible: boolean;
+  /** Intended hidden state — tracked so we can re-apply once the OOPIF
+   *  finishes initializing. If the pane is created in an inactive
+   *  workspace, the first toggleHidden/togglePassthrough calls no-op
+   *  because webviewId is still null; a small retry loop reapplies. */
+  desiredHidden: boolean;
 }
 
 export interface BrowserPaneCallbacks {
@@ -187,10 +192,7 @@ export interface BrowserPaneCallbacks {
   onNewWindow: (surfaceId: string, url: string) => void;
   onFocus: (surfaceId: string) => void;
   onClose: (surfaceId: string) => void;
-  onSplit: (
-    surfaceId: string,
-    direction: "horizontal" | "vertical",
-  ) => void;
+  onSplit: (surfaceId: string, direction: "horizontal" | "vertical") => void;
   onEvalResult?: (
     surfaceId: string,
     reqId: string,
@@ -366,7 +368,7 @@ export function createBrowserPaneView(
   // Default navigation rules: allow everything but block known-dangerous schemes
   // Users can further restrict via settings (host whitelist).
   webviewEl.setNavigationRules([
-    "^javascript:*",   // block javascript: URLs
+    "^javascript:*", // block javascript: URLs
     "^data:text/html*", // block data: HTML (XSS vector)
   ]);
   container.appendChild(webviewContainer);
@@ -391,6 +393,7 @@ export function createBrowserPaneView(
     findBarEl: null,
     findInputEl: null,
     findVisible: false,
+    desiredHidden: false,
   };
 
   // ── Event wiring ──
@@ -420,14 +423,16 @@ export function createBrowserPaneView(
   }
 
   function navigateTo(input: string) {
-    const url = isUrl(input) ? normalizeUrl(input) : buildSearchUrl(input, searchEngine);
+    const url = isUrl(input)
+      ? normalizeUrl(input)
+      : buildSearchUrl(input, searchEngine);
     webviewEl.loadURL(url);
   }
 
   // Navigation events
   webviewEl.on("did-navigate", (e: CustomEvent) => {
     const url =
-      typeof e.detail === "string" ? e.detail : (e.detail as any)?.url ?? "";
+      typeof e.detail === "string" ? e.detail : ((e.detail as any)?.url ?? "");
     if (!url) return;
     view.currentUrl = url;
     view.isLoading = false;
@@ -442,7 +447,7 @@ export function createBrowserPaneView(
 
   webviewEl.on("did-navigate-in-page", (e: CustomEvent) => {
     const url =
-      typeof e.detail === "string" ? e.detail : (e.detail as any)?.url ?? "";
+      typeof e.detail === "string" ? e.detail : ((e.detail as any)?.url ?? "");
     if (url) {
       view.currentUrl = url;
       addressBar.value = url;
@@ -507,9 +512,7 @@ export function createBrowserPaneView(
 
   webviewEl.on("new-window-open", (e: CustomEvent) => {
     const url =
-      typeof e.detail === "string"
-        ? e.detail
-        : (e.detail as any)?.url ?? "";
+      typeof e.detail === "string" ? e.detail : ((e.detail as any)?.url ?? "");
     if (url) callbacks.onNewWindow(surfaceId, url);
   });
 
@@ -647,7 +650,8 @@ export function browserPaneFindInPage(view: BrowserPaneView, query: string) {
     findInput.addEventListener("keydown", (e: KeyboardEvent) => {
       if (e.key === "Enter" && e.shiftKey) {
         e.preventDefault();
-        if (findInput.value) view.webviewEl.findInPage(findInput.value, { forward: false });
+        if (findInput.value)
+          view.webviewEl.findInPage(findInput.value, { forward: false });
       } else if (e.key === "Enter") {
         e.preventDefault();
         if (findInput.value) view.webviewEl.findInPage(findInput.value);
@@ -726,10 +730,30 @@ export function browserPaneSyncDimensions(view: BrowserPaneView) {
 }
 
 export function browserPaneSetHidden(view: BrowserPaneView, hidden: boolean) {
+  view.desiredHidden = hidden;
+  applyHiddenState(view);
+}
+
+function applyHiddenState(view: BrowserPaneView): void {
+  // `toggleHidden` / `togglePassthrough` silently no-op if the OOPIF
+  // isn't initialized yet (webviewId === null). When a browser pane is
+  // created in an inactive workspace the first hide call lands before
+  // init completes; retry on a short poll until it sticks.
+  const w = view.webviewEl as WebviewTagElement & { webviewId?: number | null };
   try {
-    view.webviewEl.toggleHidden(hidden);
+    w.toggleHidden(view.desiredHidden);
+    // `hidden` stops the OOPIF from rendering but does not always remove
+    // it from native hit-testing. Since the OOPIF lives as a separate
+    // NSView on top of the host window, stale positions can silently
+    // absorb clicks in the active workspace. Passthrough forces the
+    // native layer to pass mouse events through to the host regardless
+    // of where the overlay sits.
+    w.togglePassthrough(view.desiredHidden);
   } catch {
-    // May fail before the native webview is created
+    /* ignore */
+  }
+  if (w.webviewId === null || w.webviewId === undefined) {
+    setTimeout(() => applyHiddenState(view), 50);
   }
 }
 
@@ -745,7 +769,10 @@ const DARK_MODE_CSS = `
   }
 `;
 
-export function browserPaneApplyDarkMode(view: BrowserPaneView, enabled: boolean) {
+export function browserPaneApplyDarkMode(
+  view: BrowserPaneView,
+  enabled: boolean,
+) {
   if (enabled) {
     view.webviewEl.executeJavascript(`
       if (!document.getElementById("__ht_dark_mode")) {
