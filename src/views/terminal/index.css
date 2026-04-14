@@ -5798,3 +5798,176 @@ body::after {
   background: var(--t3-muted);
   color: var(--t3-muted-foreground);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Browser Pane
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.surface-browser .browser-address-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+  background: var(--bg-glass);
+  border-bottom: 1px solid var(--border-soft, rgba(255,255,255,0.06));
+  min-height: 30px;
+  flex-shrink: 0;
+}
+
+.browser-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted, rgba(255,255,255,0.55));
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s, opacity 0.12s;
+}
+
+.browser-nav-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-strong, #f5f7fb);
+}
+
+.browser-nav-btn:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+.browser-nav-btn.browser-loading svg {
+  animation: browser-spin 0.8s linear infinite;
+}
+
+@keyframes browser-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.browser-lock-icon {
+  font-size: 11px;
+  line-height: 1;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.browser-lock-secure {
+  color: var(--ansi-green, #4ade80);
+}
+
+.browser-lock-insecure {
+  color: var(--ansi-yellow, #f59e0b);
+}
+
+.browser-url-input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  color: var(--text-strong, #f5f7fb);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.browser-url-input:focus {
+  border-color: var(--accent-primary, #eab308);
+  background: rgba(255,255,255,0.06);
+}
+
+.browser-url-input::placeholder {
+  color: var(--text-muted, rgba(255,255,255,0.35));
+}
+
+.browser-webview-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.browser-webview-container electrobun-webview {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.surface-browser {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Domain chip in the browser pane header */
+.chip-domain {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.06);
+  color: var(--text-muted, rgba(255,255,255,0.55));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* Find-in-page bar for browser panes */
+.browser-find-bar {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: var(--bg-glass-strong, rgba(10,10,10,0.9));
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.browser-find-bar.browser-find-bar-visible {
+  display: flex;
+}
+
+.browser-find-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  background: rgba(255,255,255,0.04);
+  color: var(--text-strong, #f5f7fb);
+  font-size: 12px;
+  outline: none;
+}
+
+.browser-find-input:focus {
+  border-color: var(--accent-primary, #eab308);
+}
+
+.browser-find-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted, rgba(255,255,255,0.55));
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.browser-find-close:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-strong, #f5f7fb);
+}

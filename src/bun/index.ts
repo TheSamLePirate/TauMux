@@ -22,6 +22,8 @@ import {
 } from "node:fs";
 import type { HyperTermRPC, PersistedLayout, PaneNode } from "../shared/types";
 import { SessionManager } from "./session-manager";
+import { BrowserSurfaceManager } from "./browser-surface-manager";
+import { BrowserHistoryStore } from "./browser-history";
 import { SocketServer } from "./socket-server";
 import { SurfaceMetadataPoller } from "./surface-metadata";
 import { WebServer } from "./web-server";
@@ -45,6 +47,8 @@ const settingsFile = join(configDir, "settings.json");
 const settingsManager = new SettingsManager(configDir, settingsFile);
 
 const sessions = new SessionManager(settingsManager.get().shellPath);
+const browserSurfaces = new BrowserSurfaceManager();
+const browserHistory = new BrowserHistoryStore(configDir);
 const metadataPoller = new SurfaceMetadataPoller(sessions);
 let initialResizeReceived = false;
 
@@ -119,7 +123,11 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         splitSurface(payload.direction, undefined, payload.cwd);
       },
       closeSurface: (payload) => {
-        sessions.closeSurface(payload.surfaceId);
+        if (browserSurfaces.isBrowserSurface(payload.surfaceId)) {
+          browserSurfaces.closeSurface(payload.surfaceId);
+        } else {
+          sessions.closeSurface(payload.surfaceId);
+        }
       },
       focusSurface: (payload) => {
         focusedSurfaceId = payload.surfaceId;
@@ -267,9 +275,47 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
           mainWindow.maximize();
         }
       },
+
+      // ── Browser surface lifecycle ──
+      createBrowserSurface: (payload) => {
+        createBrowserWorkspaceSurface(payload.url);
+      },
+      splitBrowserSurface: (payload) => {
+        splitBrowserSurface(payload.direction, payload.url);
+      },
+      browserNavigated: (payload) => {
+        browserSurfaces.updateNavigation(
+          payload.surfaceId,
+          payload.url,
+          payload.title,
+        );
+        browserHistory.record(payload.url, payload.title);
+        webServer?.broadcast({
+          type: "browserNavigated",
+          surfaceId: payload.surfaceId,
+          url: payload.url,
+          title: payload.title,
+        });
+      },
+      browserTitleChanged: (payload) => {
+        browserSurfaces.setTitle(payload.surfaceId, payload.title);
+      },
+      browserSetZoom: (payload) => {
+        browserSurfaces.setZoom(payload.surfaceId, payload.zoom);
+      },
+      browserEvalResult: (payload) => {
+        const resolve = pendingBrowserEvals.get(payload.reqId);
+        if (resolve) {
+          pendingBrowserEvals.delete(payload.reqId);
+          resolve(payload.error ? `Error: ${payload.error}` : (payload.result ?? ""));
+        }
+      },
     },
   },
 });
+
+// Pending browser eval results (socket API → webview → bun)
+const pendingBrowserEvals = new Map<string, (value: string) => void>();
 
 // Create the main window
 const mainWindow = new BrowserWindow({
@@ -360,7 +406,15 @@ sessions.onSidebandDataFailed = (surfaceId, id, reason) => {
 sessions.onSurfaceClosed = (surfaceId) => {
   rpc.send("surfaceClosed", { surfaceId });
   webServer?.broadcast({ type: "surfaceClosed", surfaceId });
-  if (sessions.surfaceCount === 0) {
+  if (sessions.surfaceCount === 0 && browserSurfaces.surfaceCount === 0) {
+    mainWindow.close();
+  }
+};
+
+browserSurfaces.onSurfaceClosed = (surfaceId) => {
+  rpc.send("browserSurfaceClosed", { surfaceId });
+  webServer?.broadcast({ type: "browserSurfaceClosed", surfaceId });
+  if (sessions.surfaceCount === 0 && browserSurfaces.surfaceCount === 0) {
     mainWindow.close();
   }
 };
@@ -442,6 +496,43 @@ function splitSurface(
   broadcastSurfaceCreated(surfaceId, title);
 }
 
+// ── Browser Surface Creation ──
+
+function createBrowserWorkspaceSurface(url?: string): void {
+  const resolvedUrl =
+    url || settingsManager.get().browserHomePage || "about:blank";
+  const surfaceId = browserSurfaces.createSurface(resolvedUrl);
+  focusedSurfaceId = surfaceId;
+  rpc.send("browserSurfaceCreated", { surfaceId, url: resolvedUrl });
+  webServer?.broadcast({
+    type: "browserSurfaceCreated",
+    surfaceId,
+    url: resolvedUrl,
+  });
+}
+
+function splitBrowserSurface(
+  direction: "horizontal" | "vertical",
+  url?: string,
+): void {
+  const resolvedUrl =
+    url || settingsManager.get().browserHomePage || "about:blank";
+  const splitFrom = focusedSurfaceId;
+  const surfaceId = browserSurfaces.createSurface(resolvedUrl);
+  focusedSurfaceId = surfaceId;
+  rpc.send("browserSurfaceCreated", {
+    surfaceId,
+    url: resolvedUrl,
+    splitFrom: splitFrom ?? undefined,
+    direction,
+  });
+  webServer?.broadcast({
+    type: "browserSurfaceCreated",
+    surfaceId,
+    url: resolvedUrl,
+  });
+}
+
 function renameActiveWorkspace(): void {
   const activeWorkspace =
     workspaceState.find((ws) => ws.id === activeWorkspaceId) ?? null;
@@ -475,7 +566,13 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
     case MENU_ACTIONS.closePane: {
       const surfaceId =
         (data as { surfaceId?: string })?.surfaceId ?? focusedSurfaceId;
-      if (surfaceId) sessions.closeSurface(surfaceId);
+      if (surfaceId) {
+        if (browserSurfaces.isBrowserSurface(surfaceId)) {
+          browserSurfaces.closeSurface(surfaceId);
+        } else {
+          sessions.closeSurface(surfaceId);
+        }
+      }
       break;
     }
     case MENU_ACTIONS.renameWorkspace: {
@@ -548,6 +645,12 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
       break;
     case MENU_ACTIONS.openSettings:
       sendWebviewAction("openSettings");
+      break;
+    case MENU_ACTIONS.browserSplitRight:
+      splitBrowserSurface("horizontal");
+      break;
+    case MENU_ACTIONS.browserSplitDown:
+      splitBrowserSurface("vertical");
       break;
     case MENU_ACTIONS.openProjectReadme:
       Utils.openPath(
@@ -726,6 +829,13 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     action === "log"
   ) {
     webServer?.broadcast({ type: "sidebarAction", action, payload });
+  } else if (action === "createBrowserSurface") {
+    createBrowserWorkspaceSurface(payload["url"] as string | undefined);
+  } else if (action === "splitBrowserSurface") {
+    splitBrowserSurface(
+      (payload["direction"] as "horizontal" | "vertical") || "horizontal",
+      payload["url"] as string | undefined,
+    );
   } else if (action === "openExternal") {
     const url = payload["url"];
     if (typeof url === "string" && /^https?:\/\//i.test(url)) {
@@ -768,6 +878,8 @@ const socketHandler = createRpcHandler(
   dispatch,
   requestWebview,
   metadataPoller,
+  browserSurfaces,
+  browserHistory,
 );
 const socketServer = new SocketServer("/tmp/hyperterm.sock", socketHandler);
 socketServer.start();
@@ -862,6 +974,8 @@ function saveLayout(): void {
         surfaceTitles: ws.surfaceTitles,
         surfaceCwds: ws.surfaceCwds,
         selectedCwd: ws.selectedCwd,
+        surfaceUrls: ws.surfaceUrls,
+        surfaceTypes: ws.surfaceTypes,
       })),
       sidebarVisible,
     };
@@ -902,6 +1016,7 @@ function remapPaneNode(
     return {
       type: "leaf",
       surfaceId: mapping[node.surfaceId] ?? node.surfaceId,
+      surfaceType: node.surfaceType,
     };
   }
   return {
@@ -930,18 +1045,31 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
   for (const ws of persisted.workspaces) {
     const leafIds = collectLeafIds(ws.layout);
     for (const oldId of leafIds) {
-      // Re-spawn in the surface's last known cwd so shells resume where they
-      // left off (the metadata poller picks this up within a tick; without
-      // this, every restart dumps the user at $HOME regardless of where
-      // they were working).
-      const cwd = ws.surfaceCwds?.[oldId];
-      const newId = sessions.createSurface(cols, rows, cwd);
-      surfaceMapping[oldId] = newId;
-      const restoredTitle = ws.surfaceTitles?.[oldId];
-      if (restoredTitle) sessions.renameSurface(newId, restoredTitle);
-      const title = sessions.getSurface(newId)?.title ?? "shell";
-      rpc.send("surfaceCreated", { surfaceId: newId, title });
-      broadcastSurfaceCreated(newId, title);
+      const isBrowser = ws.surfaceTypes?.[oldId] === "browser";
+      if (isBrowser) {
+        const url = ws.surfaceUrls?.[oldId] ?? "about:blank";
+        const newId = browserSurfaces.createSurface(url);
+        surfaceMapping[oldId] = newId;
+        rpc.send("browserSurfaceCreated", { surfaceId: newId, url });
+        webServer?.broadcast({
+          type: "browserSurfaceCreated",
+          surfaceId: newId,
+          url,
+        });
+      } else {
+        // Re-spawn in the surface's last known cwd so shells resume where they
+        // left off (the metadata poller picks this up within a tick; without
+        // this, every restart dumps the user at $HOME regardless of where
+        // they were working).
+        const cwd = ws.surfaceCwds?.[oldId];
+        const newId = sessions.createSurface(cols, rows, cwd);
+        surfaceMapping[oldId] = newId;
+        const restoredTitle = ws.surfaceTitles?.[oldId];
+        if (restoredTitle) sessions.renameSurface(newId, restoredTitle);
+        const title = sessions.getSurface(newId)?.title ?? "shell";
+        rpc.send("surfaceCreated", { surfaceId: newId, title });
+        broadcastSurfaceCreated(newId, title);
+      }
     }
   }
 
@@ -996,6 +1124,7 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
 process.on("SIGINT", () => {
   saveLayout();
   settingsManager.saveNow();
+  browserHistory.saveNow();
   webServer?.stop();
   socketServer.stop();
   process.exit(0);
@@ -1003,6 +1132,7 @@ process.on("SIGINT", () => {
 process.on("SIGTERM", () => {
   saveLayout();
   settingsManager.saveNow();
+  browserHistory.saveNow();
   webServer?.stop();
   socketServer.stop();
   process.exit(0);

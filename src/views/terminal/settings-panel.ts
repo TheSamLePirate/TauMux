@@ -61,6 +61,12 @@ export class SettingsPanel {
         render: (c, s) => this.renderNetwork(c, s),
       },
       {
+        id: "browser",
+        label: "Browser",
+        icon: "globe",
+        render: (c, s) => this.renderBrowser(c, s),
+      },
+      {
         id: "advanced",
         label: "Advanced",
         icon: "wrench",
@@ -468,6 +474,49 @@ export class SettingsPanel {
     );
   }
 
+  private renderBrowser(c: HTMLElement, s: AppSettings): void {
+    this.sectionTitle(c, "Browser");
+    this.sectionDesc(
+      c,
+      "Built-in browser pane settings. Open a browser split with ⌘⇧L.",
+    );
+
+    this.selectField(
+      c,
+      "Search Engine",
+      s.browserSearchEngine,
+      "browserSearchEngine",
+      [
+        { value: "google", label: "Google" },
+        { value: "duckduckgo", label: "DuckDuckGo" },
+        { value: "bing", label: "Bing" },
+        { value: "kagi", label: "Kagi" },
+      ],
+      "Search engine used when typing non-URL queries in the address bar.",
+    );
+
+    this.textField(c, "Home Page", s.browserHomePage, "browserHomePage", {
+      placeholder: "about:blank",
+      note: "URL to load when opening a new browser pane. Leave empty for a blank page.",
+    });
+
+    this.toggleField(
+      c,
+      "Force Dark Mode",
+      s.browserForceDarkMode,
+      "browserForceDarkMode",
+      { note: "Inject dark mode CSS into web pages that don't provide a dark theme." },
+    );
+
+    this.toggleField(
+      c,
+      "Intercept Terminal Links",
+      s.browserInterceptTerminalLinks,
+      "browserInterceptTerminalLinks",
+      { note: "Open ⌘-clicked URLs in the built-in browser instead of the system browser." },
+    );
+  }
+
   private renderAdvanced(c: HTMLElement, s: AppSettings): void {
     this.sectionTitle(c, "Advanced");
     this.sectionDesc(c, "Layout and spacing. Changes apply immediately.");
@@ -615,6 +664,30 @@ export class SettingsPanel {
     toggle.appendChild(input);
     toggle.appendChild(slider);
     row.appendChild(toggle);
+  }
+
+  private selectField(
+    c: HTMLElement,
+    label: string,
+    value: string,
+    key: keyof AppSettings,
+    options: { value: string; label: string }[],
+    note?: string,
+  ): void {
+    const row = this.fieldRow(c, label, note);
+    const select = document.createElement("select");
+    select.className = "settings-input";
+    for (const opt of options) {
+      const option = document.createElement("option");
+      option.value = opt.value;
+      option.textContent = opt.label;
+      option.selected = opt.value === value;
+      select.appendChild(option);
+    }
+    select.addEventListener("change", () => {
+      this.emit({ [key]: select.value });
+    });
+    row.appendChild(select);
   }
 
   private segmentedField(

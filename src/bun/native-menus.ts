@@ -28,6 +28,8 @@ export const MENU_ACTIONS = {
   openProjectReadme: "help.open-project-readme",
   setWorkspaceColor: "workspace.set-color",
   installHtCli: "app.install-ht-cli",
+  browserSplitRight: "browser.split-right",
+  browserSplitDown: "browser.split-down",
 } as const;
 
 export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
@@ -82,6 +84,16 @@ export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
           label: "Split Down",
           action: MENU_ACTIONS.splitDown,
           accelerator: "CmdOrCtrl+Shift+D",
+        },
+        { type: "divider" },
+        {
+          label: "Split Browser Right",
+          action: MENU_ACTIONS.browserSplitRight,
+          accelerator: "CmdOrCtrl+Shift+L",
+        },
+        {
+          label: "Split Browser Down",
+          action: MENU_ACTIONS.browserSplitDown,
         },
         { type: "divider" },
         {

@@ -13,6 +13,9 @@ export interface PaneSplit {
 export interface PaneLeaf {
   type: "leaf";
   surfaceId: string;
+  /** Surface kind. Omitted or "terminal" = terminal PTY pane.
+   *  "browser" = embedded web browser pane. */
+  surfaceType?: "terminal" | "browser";
 }
 
 export type PaneNode = PaneSplit | PaneLeaf;
@@ -39,6 +42,10 @@ export interface PersistedWorkspace {
   surfaceCwds?: Record<string, string>;
   /** User-pinned cwd for the workspace (drives the package.json card). */
   selectedCwd?: string;
+  /** Persisted URL per browser surface id for restore. */
+  surfaceUrls?: Record<string, string>;
+  /** Surface type per surface id (only stored for "browser"; terminal is the default). */
+  surfaceTypes?: Record<string, "terminal" | "browser">;
 }
 
 export interface PersistedLayout {
@@ -286,6 +293,10 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
           surfaceCwds?: Record<string, string>;
           /** User-pinned workspace cwd (drives package.json card). */
           selectedCwd?: string;
+          /** Persisted URL per browser surface id for restore. */
+          surfaceUrls?: Record<string, string>;
+          /** Surface type per surface id (only stored for "browser"). */
+          surfaceTypes?: Record<string, "terminal" | "browser">;
         }[];
         activeWorkspaceId: string | null;
       };
@@ -326,6 +337,26 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
         cwd: string;
         command: string;
         scriptKey: string;
+      };
+
+      // ── Browser surface lifecycle (webview → bun) ──
+      createBrowserSurface: { url?: string };
+      splitBrowserSurface: {
+        direction: "horizontal" | "vertical";
+        url?: string;
+      };
+      /** Webview notifies bun when a browser pane navigates. */
+      browserNavigated: { surfaceId: string; url: string; title: string };
+      /** Webview notifies bun when a browser pane's page title changes. */
+      browserTitleChanged: { surfaceId: string; title: string };
+      /** Webview requests zoom change — bun records it for persistence. */
+      browserSetZoom: { surfaceId: string; zoom: number };
+      /** Eval result coming back from a browser webview. */
+      browserEvalResult: {
+        surfaceId: string;
+        reqId: string;
+        result?: string;
+        error?: string;
       };
     };
   };
@@ -389,6 +420,16 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
 
       // Socket API dispatched actions (bun → webview)
       socketAction: { action: string; payload: Record<string, unknown> };
+
+      // ── Browser surface lifecycle (bun → webview) ──
+      browserSurfaceCreated: {
+        surfaceId: string;
+        url: string;
+        splitFrom?: string;
+        direction?: "horizontal" | "vertical";
+      };
+      /** Bun asks webview to close a browser surface (e.g. from socket API). */
+      browserSurfaceClosed: { surfaceId: string };
     };
   };
 }

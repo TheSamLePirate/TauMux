@@ -63,6 +63,11 @@ export const ICON_TEMPLATES = {
     '<rect x="4.5" y="6" width="15" height="12" rx="1.5"/><path d="M4.5 9.5h15"/><path d="M7.5 7.75h0M10 7.75h0M12.5 7.75h0"/>',
   chevronUp: '<path d="m7 15 5-5 5 5"/>',
   chevronDown: '<path d="m7 9 5 5 5-5"/>',
+  chevronLeft: '<path d="m15 7-5 5 5 5"/>',
+  chevronRight: '<path d="m9 7 5 5-5 5"/>',
+  reload:
+    '<path d="M3.5 2v6h6"/><path d="M3.8 8A9 9 0 1 1 3 12"/>',
+  code: '<path d="m8 18-6-6 6-6"/><path d="m16 6 6 6-6 6"/>',
   wrench:
     '<path d="m14 7 3-3a3 3 0 0 1-4 4l-7 7a2 2 0 1 1-3-3l7-7a3 3 0 0 1 4 4Z"/>',
   workspace:

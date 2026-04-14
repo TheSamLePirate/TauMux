@@ -88,6 +88,21 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
       surfaceClosed: (payload) => {
         surfaceManager.removeSurface(payload.surfaceId);
       },
+      browserSurfaceCreated: (payload) => {
+        if (payload.splitFrom && payload.direction) {
+          surfaceManager.addBrowserSurfaceAsSplit(
+            payload.surfaceId,
+            payload.url,
+            payload.splitFrom,
+            payload.direction,
+          );
+        } else {
+          surfaceManager.addBrowserSurface(payload.surfaceId, payload.url);
+        }
+      },
+      browserSurfaceClosed: (payload) => {
+        surfaceManager.removeBrowserSurface(payload.surfaceId);
+      },
       sidebandMeta: (payload) => {
         surfaceManager.handleSidebandMeta(payload.surfaceId, payload);
       },
@@ -122,6 +137,7 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
       socketAction: (payload) => {
         handleSocketAction(payload.action, payload.payload);
       },
+      // Note: browser navigation commands from socket API go through socketAction
       surfaceMetadata: (payload) => {
         surfaceManager.setSurfaceMetadata(payload.surfaceId, payload.metadata);
         processManagerPanel.refresh();
@@ -175,6 +191,7 @@ function applySettings(settings: AppSettings): void {
 
 function openSettings(): void {
   clearTypingFocusMode();
+  surfaceManager.hideBrowserWebviews();
   settingsPanel.show(currentSettings ?? DEFAULT_SETTINGS);
 }
 
@@ -186,7 +203,12 @@ const processManagerPanel = new ProcessManagerPanel({
 });
 
 function toggleProcessManager(): void {
-  if (!processManagerPanel.isVisible()) clearTypingFocusMode();
+  if (!processManagerPanel.isVisible()) {
+    clearTypingFocusMode();
+    surfaceManager.hideBrowserWebviews();
+  } else {
+    surfaceManager.showBrowserWebviews();
+  }
   processManagerPanel.toggle();
   syncPaletteCommands();
 }
@@ -512,6 +534,21 @@ function buildPaletteCommands(): PaletteCommand[] {
       action: () => toggleProcessManager(),
     },
     {
+      id: "browser-split",
+      category: "Browser",
+      label: "Open Browser Split",
+      description: "Split a built-in browser pane alongside the current pane.",
+      shortcut: "\u2318\u21e7L",
+      action: () => rpc.send("splitBrowserSurface", { direction: "horizontal" }),
+    },
+    {
+      id: "browser-new",
+      category: "Browser",
+      label: "New Browser Workspace",
+      description: "Open a new workspace with a browser pane.",
+      action: () => rpc.send("createBrowserSurface", {}),
+    },
+    {
       id: "show-pane-info",
       category: "View",
       label: surfaceDetailsPanel.isVisible()
@@ -569,8 +606,15 @@ function toggleSidebar() {
 
 function openCommandPalette() {
   clearTypingFocusMode();
+  if (!palette.isVisible()) {
+    surfaceManager.hideBrowserWebviews();
+  }
   syncPaletteCommands();
   palette.toggle();
+  // Restore browser webviews when palette closes
+  if (!palette.isVisible()) {
+    surfaceManager.showBrowserWebviews();
+  }
 }
 
 function isTerminalInputActive(): boolean {
@@ -875,6 +919,7 @@ document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       e.preventDefault();
       settingsPanel.hide();
+      surfaceManager.showBrowserWebviews();
     }
     return;
   }
@@ -912,11 +957,69 @@ document.addEventListener("keydown", (e) => {
   if (surfaceDetailsPanel.isVisible() && e.key === "Escape") {
     e.preventDefault();
     surfaceDetailsPanel.hide();
+    surfaceManager.showBrowserWebviews();
     syncPaletteCommands();
     return;
   }
 
   if (palette.isVisible()) return;
+
+  // ⌘⇧L — Open browser in split
+  if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "l") {
+    e.preventDefault();
+    rpc.send("splitBrowserSurface", { direction: "horizontal" });
+    return;
+  }
+
+  // Browser-specific shortcuts when a browser pane is focused
+  const activeSurfaceType = surfaceManager.getActiveSurfaceType();
+  if (activeSurfaceType === "browser") {
+    if (e.metaKey && !e.shiftKey && !e.altKey && e.key === "l") {
+      e.preventDefault();
+      surfaceManager.focusBrowserAddressBar();
+      return;
+    }
+    if (e.metaKey && !e.shiftKey && e.key === "[") {
+      e.preventDefault();
+      surfaceManager.browserGoBack();
+      return;
+    }
+    if (e.metaKey && !e.shiftKey && e.key === "]") {
+      e.preventDefault();
+      surfaceManager.browserGoForward();
+      return;
+    }
+    if (e.metaKey && !e.shiftKey && !e.altKey && e.key === "r") {
+      e.preventDefault();
+      surfaceManager.browserReload();
+      return;
+    }
+    if (e.metaKey && e.altKey && e.key.toLowerCase() === "i") {
+      e.preventDefault();
+      surfaceManager.browserToggleDevTools();
+      return;
+    }
+    if (e.metaKey && !e.shiftKey && e.key === "f") {
+      e.preventDefault();
+      surfaceManager.browserFindInPage();
+      return;
+    }
+    if (e.metaKey && !e.shiftKey && (e.key === "=" || e.key === "+")) {
+      e.preventDefault();
+      surfaceManager.browserZoomIn();
+      return;
+    }
+    if (e.metaKey && !e.shiftKey && e.key === "-") {
+      e.preventDefault();
+      surfaceManager.browserZoomOut();
+      return;
+    }
+    if (e.metaKey && !e.shiftKey && e.key === "0") {
+      e.preventDefault();
+      surfaceManager.browserZoomReset();
+      return;
+    }
+  }
 
   if (e.metaKey && !e.shiftKey && e.key === "b") {
     e.preventDefault();
@@ -1125,6 +1228,51 @@ window.addEventListener("ht-clear-notifications", () => {
   rpc.send("clearNotifications");
 });
 
+// ── Browser pane events ──
+
+window.addEventListener("ht-browser-navigated", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.surfaceId) {
+    rpc.send("browserNavigated", {
+      surfaceId: detail.surfaceId,
+      url: detail.url ?? "",
+      title: detail.title ?? "",
+    });
+  }
+});
+
+window.addEventListener("ht-browser-title-changed", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.surfaceId) {
+    rpc.send("browserTitleChanged", {
+      surfaceId: detail.surfaceId,
+      title: detail.title ?? "",
+    });
+  }
+});
+
+window.addEventListener("ht-browser-eval-result", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.surfaceId && detail?.reqId) {
+    rpc.send("browserEvalResult", {
+      surfaceId: detail.surfaceId,
+      reqId: detail.reqId,
+      result: detail.result,
+      error: detail.error,
+    });
+  }
+});
+
+window.addEventListener("ht-browser-zoom", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.surfaceId) {
+    rpc.send("browserSetZoom", {
+      surfaceId: detail.surfaceId,
+      zoom: detail.zoom ?? 1.0,
+    });
+  }
+});
+
 window.addEventListener("ht-clear-logs", () => {
   surfaceManager.clearLogs();
 });
@@ -1297,6 +1445,48 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
         (payload["message"] as string) || "",
         payload["source"] as string | undefined,
       );
+      break;
+    }
+    // ── Browser actions from socket API ──
+    case "browser.navigateTo": {
+      const id = payload["surfaceId"] as string;
+      const url = payload["url"] as string;
+      if (id && url) surfaceManager.browserNavigateTo(id, url);
+      break;
+    }
+    case "browser.goBack": {
+      surfaceManager.browserGoBack(payload["surfaceId"] as string);
+      break;
+    }
+    case "browser.goForward": {
+      surfaceManager.browserGoForward(payload["surfaceId"] as string);
+      break;
+    }
+    case "browser.reload": {
+      surfaceManager.browserReload(payload["surfaceId"] as string);
+      break;
+    }
+    case "browser.evalJs": {
+      surfaceManager.browserEvalJs(
+        payload["surfaceId"] as string,
+        payload["script"] as string,
+        payload["reqId"] as string | undefined,
+      );
+      break;
+    }
+    case "browser.findInPage": {
+      surfaceManager.browserFindInPage(
+        payload["surfaceId"] as string,
+        payload["query"] as string,
+      );
+      break;
+    }
+    case "browser.stopFind": {
+      surfaceManager.browserStopFind(payload["surfaceId"] as string);
+      break;
+    }
+    case "browser.toggleDevTools": {
+      surfaceManager.browserToggleDevTools(payload["surfaceId"] as string);
       break;
     }
     case "showToast": {

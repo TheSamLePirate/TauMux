@@ -1,4 +1,6 @@
 import type { SessionManager } from "./session-manager";
+import type { BrowserSurfaceManager } from "./browser-surface-manager";
+import type { BrowserHistoryStore } from "./browser-history";
 import type { SurfaceMetadataPoller } from "./surface-metadata";
 import type { PaneNode, PaneRect } from "../shared/types";
 
@@ -84,6 +86,10 @@ export interface WorkspaceSnapshot {
   surfaceCwds?: Record<string, string>;
   /** User-pinned cwd that drives the sidebar package.json card. */
   selectedCwd?: string;
+  /** Persisted URL per browser surface id for restore. */
+  surfaceUrls?: Record<string, string>;
+  /** Surface type per surface id (only stored for "browser"). */
+  surfaceTypes?: Record<string, "terminal" | "browser">;
 }
 
 type Handler = (params: Record<string, unknown>) => unknown;
@@ -97,6 +103,8 @@ export function createRpcHandler(
     params: Record<string, unknown>,
   ) => Promise<unknown>,
   metadataPoller?: SurfaceMetadataPoller,
+  browserSurfaces?: BrowserSurfaceManager,
+  browserHistory?: BrowserHistoryStore,
 ): (
   method: string,
   params: Record<string, unknown>,
@@ -510,6 +518,177 @@ export function createRpcHandler(
     "notification.clear": () => {
       notifications.length = 0;
       dispatch("notification", { notifications: [] });
+      return "OK";
+    },
+
+    // ── Browser ──
+
+    "browser.list": () => {
+      return (browserSurfaces?.getAllSurfaces() ?? []).map((s) => ({
+        id: s.id,
+        url: s.url,
+        title: s.title,
+        zoom: s.zoom,
+      }));
+    },
+
+    "browser.open": (params) => {
+      dispatch("createBrowserSurface", { url: params["url"] ?? undefined });
+      return "OK";
+    },
+
+    "browser.open_split": (params) => {
+      const dir = params["direction"] as string;
+      const direction =
+        dir === "down" || dir === "vertical" ? "vertical" : "horizontal";
+      dispatch("splitBrowserSurface", {
+        direction,
+        url: params["url"] ?? undefined,
+      });
+      return "OK";
+    },
+
+    "browser.navigate": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string);
+      const url = params["url"] as string;
+      if (id && url) {
+        dispatch("browser.navigateTo", { surfaceId: id, url });
+      }
+      return "OK";
+    },
+
+    "browser.back": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string);
+      if (id) dispatch("browser.goBack", { surfaceId: id });
+      return "OK";
+    },
+
+    "browser.forward": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string);
+      if (id) dispatch("browser.goForward", { surfaceId: id });
+      return "OK";
+    },
+
+    "browser.reload": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string);
+      if (id) dispatch("browser.reload", { surfaceId: id });
+      return "OK";
+    },
+
+    "browser.url": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string);
+      if (!id) return null;
+      return browserSurfaces?.getSurface(id)?.url ?? null;
+    },
+
+    "browser.eval": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string);
+      const script = params["script"] as string;
+      if (id && script) {
+        dispatch("browser.evalJs", { surfaceId: id, script });
+      }
+      return "OK";
+    },
+
+    "browser.find": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string);
+      const query = params["query"] as string;
+      if (id && query) {
+        dispatch("browser.findInPage", { surfaceId: id, query });
+      }
+      return "OK";
+    },
+
+    "browser.stop_find": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string);
+      if (id) dispatch("browser.stopFind", { surfaceId: id });
+      return "OK";
+    },
+
+    "browser.devtools": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string);
+      if (id) dispatch("browser.toggleDevTools", { surfaceId: id });
+      return "OK";
+    },
+
+    "browser.history": () => {
+      return browserHistory?.getAll(100) ?? [];
+    },
+
+    "browser.clear_history": () => {
+      browserHistory?.clear();
+      return "OK";
+    },
+
+    "browser.snapshot": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string);
+      if (!id) throw new Error("surface_id required");
+      // Inject a DOM snapshot script that sends results via host-message → evalResult
+      const snapshotScript = `
+        (function() {
+          var counter = 0;
+          function snap(node, depth, max) {
+            if (depth > max || !node) return null;
+            var tag = node.tagName ? node.tagName.toLowerCase() : null;
+            var role = (node.getAttribute && node.getAttribute("role")) || tag;
+            var name = (node.getAttribute && (
+              node.getAttribute("aria-label") ||
+              node.getAttribute("alt") ||
+              node.getAttribute("title") ||
+              node.getAttribute("placeholder")
+            )) || "";
+            var text = node.nodeType === 3 ? (node.textContent || "").trim() : "";
+            var interactive = ["a","button","input","select","textarea"].indexOf(tag) >= 0;
+            var children = [];
+            var cn = node.childNodes || [];
+            for (var i = 0; i < cn.length; i++) {
+              var c = snap(cn[i], depth + 1, max);
+              if (c) children.push(c);
+            }
+            if (!role && !text && children.length === 0) return null;
+            var entry = { role: role };
+            if (name) entry.name = name;
+            if (text) entry.text = text;
+            if (interactive) entry.ref = "e" + (++counter);
+            if (children.length) entry.children = children;
+            return entry;
+          }
+          return JSON.stringify(snap(document.body, 0, 8));
+        })()
+      `;
+      dispatch("browser.evalJs", {
+        surfaceId: id,
+        script: snapshotScript,
+        reqId: `snapshot:${Date.now()}`,
+      });
+      return "OK (snapshot dispatched — result returns asynchronously)";
+    },
+
+    "browser.close": (params) => {
+      const id =
+        (params["surface_id"] as string) ??
+        (params["surface"] as string);
+      if (id) browserSurfaces?.closeSurface(id);
       return "OK";
     },
   };

@@ -22,6 +22,22 @@ import type {
 } from "../../shared/types";
 import { WORKSPACE_COLORS } from "../../shared/workspace-colors";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
+import {
+  type BrowserPaneView,
+  createBrowserPaneView,
+  browserPaneNavigateTo,
+  browserPaneGoBack,
+  browserPaneGoForward,
+  browserPaneReload,
+  browserPaneEvalJs,
+  browserPaneFindInPage,
+  browserPaneStopFind,
+  browserPaneToggleDevTools,
+  browserPaneFocusAddressBar,
+  browserPaneSyncDimensions,
+  browserPaneSetHidden,
+  browserPaneApplyDarkMode,
+} from "./browser-pane";
 
 const defaultGlassTheme = {
   background: "rgba(10, 10, 10, 0)",
@@ -52,13 +68,18 @@ const PANE_DRAG_THRESHOLD = 8;
 
 interface SurfaceView {
   id: string;
-  term: Terminal;
-  fitAddon: FitAddon;
-  searchAddon: SearchAddon;
-  effects: TerminalEffects;
-  panelManager: PanelManager;
+  surfaceType: "terminal" | "browser";
+  // Terminal-specific (null for browser panes)
+  term: Terminal | null;
+  fitAddon: FitAddon | null;
+  searchAddon: SearchAddon | null;
+  effects: TerminalEffects | null;
+  panelManager: PanelManager | null;
+  panelsEl: HTMLDivElement | null;
+  // Browser-specific (null for terminal panes)
+  browserView: BrowserPaneView | null;
+  // Shared
   container: HTMLDivElement;
-  panelsEl: HTMLDivElement;
   titleEl: HTMLSpanElement;
   chipsEl: HTMLDivElement;
   title: string;
@@ -202,7 +223,52 @@ export class SurfaceManager {
     this.switchToWorkspace(this.workspaces.length - 1);
     this.updateSidebar();
 
-    this.scheduleLayoutForNewSurface(() => view.term.focus());
+    this.scheduleLayoutForNewSurface(() => view.term?.focus());
+  }
+
+  /** Add a browser surface as a new workspace. */
+  addBrowserSurface(surfaceId: string, url: string): void {
+    const view = this.createBrowserSurfaceView(surfaceId, url);
+    this.surfaces.set(surfaceId, view);
+
+    const ws: Workspace = {
+      id: `ws:${++this.wsCounter}`,
+      layout: new PaneLayout(surfaceId),
+      surfaceIds: new Set([surfaceId]),
+      name: "Browser",
+      color: WORKSPACE_COLORS[(this.wsCounter - 1) % WORKSPACE_COLORS.length],
+      status: new Map(),
+      progress: null,
+      logs: [],
+    };
+    this.workspaces.push(ws);
+    this.switchToWorkspace(this.workspaces.length - 1);
+    this.updateSidebar();
+    this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+  }
+
+  /** Add a browser surface as a split within the active workspace. */
+  addBrowserSurfaceAsSplit(
+    surfaceId: string,
+    url: string,
+    splitFrom: string,
+    direction: "horizontal" | "vertical",
+  ): void {
+    const view = this.createBrowserSurfaceView(surfaceId, url);
+    this.surfaces.set(surfaceId, view);
+
+    const ws = this.activeWorkspace();
+    if (!ws) return;
+
+    ws.layout.splitSurface(splitFrom, direction, surfaceId);
+    ws.surfaceIds.add(surfaceId);
+
+    this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+  }
+
+  /** Remove a browser surface (same as removeSurface — shared logic). */
+  removeBrowserSurface(surfaceId: string): void {
+    this.removeSurface(surfaceId);
   }
 
   /** Add a surface as a split within the active workspace. */
@@ -318,8 +384,8 @@ export class SurfaceManager {
       this.applyLayout();
     }
 
-    view.effects.destroy();
-    view.term.dispose();
+    view.effects?.destroy();
+    view.term?.dispose();
     view.container.remove();
     this.surfaces.delete(surfaceId);
     this.metadata.delete(surfaceId);
@@ -330,11 +396,16 @@ export class SurfaceManager {
     this.focusedSurfaceId = surfaceId;
     for (const v of this.surfaces.values()) {
       v.container.classList.toggle("focused", v.id === surfaceId);
-      v.effects.setFocused(v.id === surfaceId);
+      v.effects?.setFocused(v.id === surfaceId);
     }
     // Clear notification glow when surface becomes selected
     this.clearGlow(surfaceId);
-    this.surfaces.get(surfaceId)?.term.focus();
+    const focusedView = this.surfaces.get(surfaceId);
+    if (focusedView?.surfaceType === "browser" && focusedView.browserView) {
+      // Browser panes don't have a terminal to focus
+    } else {
+      focusedView?.term?.focus();
+    }
     const activeWorkspace = this.activeWorkspace();
     if (activeWorkspace?.surfaceIds.has(surfaceId)) {
       this.updateTitlebar(activeWorkspace);
@@ -355,16 +426,17 @@ export class SurfaceManager {
   writeToSurface(surfaceId: string, data: string): void {
     const view = this.surfaces.get(surfaceId);
     if (!view) return;
-    view.effects.pulseOutput(data.length);
+    if (!view.term) return;
+    view.effects?.pulseOutput(data.length);
     view.term.write(data);
   }
 
   handleSidebandMeta(surfaceId: string, msg: SidebandMetaMessage): void {
-    this.surfaces.get(surfaceId)?.panelManager.handleMeta(msg);
+    this.surfaces.get(surfaceId)?.panelManager?.handleMeta(msg);
   }
 
   handleSidebandData(surfaceId: string, id: string, base64: string): void {
-    this.surfaces.get(surfaceId)?.panelManager.handleData(id, base64);
+    this.surfaces.get(surfaceId)?.panelManager?.handleData(id, base64);
   }
 
   handleSidebandBinary(
@@ -372,7 +444,7 @@ export class SurfaceManager {
     id: string,
     binary: Uint8Array,
   ): void {
-    this.surfaces.get(surfaceId)?.panelManager.handleBinary(id, binary);
+    this.surfaces.get(surfaceId)?.panelManager?.handleBinary(id, binary);
   }
 
   handleSidebandDataFailed(
@@ -380,7 +452,7 @@ export class SurfaceManager {
     id: string,
     reason: string,
   ): void {
-    this.surfaces.get(surfaceId)?.panelManager.handleDataFailed(id, reason);
+    this.surfaces.get(surfaceId)?.panelManager?.handleDataFailed(id, reason);
   }
 
   resizeAll(): void {
@@ -420,14 +492,23 @@ export class SurfaceManager {
 
   getActiveTerm(): Terminal | null {
     if (!this.focusedSurfaceId) return null;
-    return this.surfaces.get(this.focusedSurfaceId)?.term ?? null;
+    const view = this.surfaces.get(this.focusedSurfaceId);
+    if (!view || view.surfaceType === "browser") return null;
+    return view.term;
+  }
+
+  getActiveSurfaceType(): "terminal" | "browser" | null {
+    if (!this.focusedSurfaceId) return null;
+    return this.surfaces.get(this.focusedSurfaceId)?.surfaceType ?? null;
   }
 
   setTerminalEffectsEnabled(enabled: boolean): void {
     this.terminalEffectsEnabled = enabled;
     for (const view of this.surfaces.values()) {
-      view.effects.setEnabled(enabled);
-      view.effects.setFocused(view.id === this.focusedSurfaceId);
+      if (view.effects) {
+        view.effects.setEnabled(enabled);
+        view.effects.setFocused(view.id === this.focusedSurfaceId);
+      }
     }
   }
 
@@ -636,7 +717,9 @@ export class SurfaceManager {
     setPaneGap(s.paneGap);
 
     for (const view of this.surfaces.values()) {
+      if (view.surfaceType === "browser") continue;
       const t = view.term;
+      if (!t) continue;
       t.options.fontSize = s.fontSize;
       t.options.fontFamily = s.fontFamily;
       t.options.lineHeight = s.lineHeight;
@@ -647,9 +730,11 @@ export class SurfaceManager {
       // Force xterm to re-render with new colors
       t.refresh(0, t.rows - 1);
       fitSurfaceTerminal(view);
-      view.effects.setEnabled(s.terminalBloom);
-      view.effects.setIntensity(s.bloomIntensity);
-      view.effects.setFocused(view.id === this.focusedSurfaceId);
+      if (view.effects) {
+        view.effects.setEnabled(s.terminalBloom);
+        view.effects.setIntensity(s.bloomIntensity);
+        view.effects.setFocused(view.id === this.focusedSurfaceId);
+      }
     }
 
     // Update CSS custom properties — bgBase drives the entire UI chrome
@@ -674,11 +759,18 @@ export class SurfaceManager {
     root.style.setProperty("--bg-glass", `rgba(${bg}, 0.7)`);
     root.style.setProperty("--bg-glass-strong", `rgba(${bg}, 0.9)`);
 
+    // Apply dark mode to all browser panes
+    for (const view of this.surfaces.values()) {
+      if (view.surfaceType === "browser" && view.browserView) {
+        browserPaneApplyDarkMode(view.browserView, s.browserForceDarkMode);
+      }
+    }
+
     // Re-report size for active surface
     const active = this.focusedSurfaceId
       ? this.surfaces.get(this.focusedSurfaceId)
       : null;
-    if (active) {
+    if (active?.term) {
       this.onResize(active.id, active.term.cols, active.term.rows);
     }
 
@@ -694,6 +786,7 @@ export class SurfaceManager {
   setFontSize(size: number): void {
     this.fontSize = size;
     for (const view of this.surfaces.values()) {
+      if (view.surfaceType === "browser" || !view.term) continue;
       view.term.options.fontSize = size;
       fitSurfaceTerminal(view);
     }
@@ -701,7 +794,7 @@ export class SurfaceManager {
     const active = this.focusedSurfaceId
       ? this.surfaces.get(this.focusedSurfaceId)
       : null;
-    if (active) {
+    if (active?.term) {
       this.onResize(active.id, active.term.cols, active.term.rows);
     }
   }
@@ -792,9 +885,9 @@ export class SurfaceManager {
     const view = this.focusedSurfaceId
       ? this.surfaces.get(this.focusedSurfaceId)
       : null;
-    if (view) {
+    if (view?.searchAddon) {
       view.searchAddon.clearDecorations();
-      view.term.focus();
+      view.term?.focus();
     }
   }
 
@@ -804,7 +897,7 @@ export class SurfaceManager {
     const view = this.focusedSurfaceId
       ? this.surfaces.get(this.focusedSurfaceId)
       : null;
-    view?.searchAddon.findNext(query);
+    view?.searchAddon?.findNext(query);
   }
 
   private searchPrevious(): void {
@@ -813,12 +906,12 @@ export class SurfaceManager {
     const view = this.focusedSurfaceId
       ? this.surfaces.get(this.focusedSurfaceId)
       : null;
-    view?.searchAddon.findPrevious(query);
+    view?.searchAddon?.findPrevious(query);
   }
 
   readScreen(surfaceId: string, lines?: number, scrollback?: boolean): string {
     const view = this.surfaces.get(surfaceId);
-    if (!view) return "";
+    if (!view || !view.term) return "";
 
     const buf = view.term.buffer.active;
     const rows = view.term.rows;
@@ -845,6 +938,136 @@ export class SurfaceManager {
       result.push(line ? line.translateToString(true) : "");
     }
     return result.join("\n");
+  }
+
+  // ── Browser pane actions ──
+
+  browserNavigateTo(surfaceId: string | null, url: string): void {
+    const id = surfaceId ?? this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) browserPaneNavigateTo(view.browserView, url);
+  }
+
+  browserGoBack(surfaceId?: string | null): void {
+    const id = surfaceId ?? this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) browserPaneGoBack(view.browserView);
+  }
+
+  browserGoForward(surfaceId?: string | null): void {
+    const id = surfaceId ?? this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) browserPaneGoForward(view.browserView);
+  }
+
+  browserReload(surfaceId?: string | null): void {
+    const id = surfaceId ?? this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) browserPaneReload(view.browserView);
+  }
+
+  browserEvalJs(surfaceId: string | null, script: string, reqId?: string): void {
+    const id = surfaceId ?? this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) browserPaneEvalJs(view.browserView, script, reqId);
+  }
+
+  browserFindInPage(surfaceId?: string | null, query?: string): void {
+    const id = surfaceId ?? this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) browserPaneFindInPage(view.browserView, query ?? "");
+  }
+
+  browserStopFind(surfaceId?: string | null): void {
+    const id = surfaceId ?? this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) browserPaneStopFind(view.browserView);
+  }
+
+  browserToggleDevTools(surfaceId?: string | null): void {
+    const id = surfaceId ?? this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) browserPaneToggleDevTools(view.browserView);
+  }
+
+  focusBrowserAddressBar(): void {
+    const id = this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) browserPaneFocusAddressBar(view.browserView);
+  }
+
+  browserZoomIn(): void {
+    const id = this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) {
+      const newZoom = Math.min(5.0, (view.browserView.zoom || 1.0) + 0.1);
+      view.browserView.zoom = newZoom;
+      // Notify bun for persistence
+      window.dispatchEvent(
+        new CustomEvent("ht-browser-zoom", {
+          detail: { surfaceId: id, zoom: newZoom },
+        }),
+      );
+    }
+  }
+
+  browserZoomOut(): void {
+    const id = this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) {
+      const newZoom = Math.max(0.25, (view.browserView.zoom || 1.0) - 0.1);
+      view.browserView.zoom = newZoom;
+      window.dispatchEvent(
+        new CustomEvent("ht-browser-zoom", {
+          detail: { surfaceId: id, zoom: newZoom },
+        }),
+      );
+    }
+  }
+
+  browserZoomReset(): void {
+    const id = this.focusedSurfaceId;
+    if (!id) return;
+    const view = this.surfaces.get(id);
+    if (view?.browserView) {
+      view.browserView.zoom = 1.0;
+      window.dispatchEvent(
+        new CustomEvent("ht-browser-zoom", {
+          detail: { surfaceId: id, zoom: 1.0 },
+        }),
+      );
+    }
+  }
+
+  /** Hide all browser webview overlays (called when overlays open). */
+  hideBrowserWebviews(): void {
+    for (const view of this.surfaces.values()) {
+      if (view.browserView) browserPaneSetHidden(view.browserView, true);
+    }
+  }
+
+  /** Show browser webview overlays for the active workspace. */
+  showBrowserWebviews(): void {
+    const ws = this.activeWorkspace();
+    if (!ws) return;
+    for (const sid of ws.surfaceIds) {
+      const view = this.surfaces.get(sid);
+      if (view?.browserView) {
+        browserPaneSetHidden(view.browserView, false);
+        browserPaneSyncDimensions(view.browserView);
+      }
+    }
   }
 
   // Workspace navigation
@@ -934,6 +1157,8 @@ export class SurfaceManager {
       surfaceTitles?: Record<string, string>;
       surfaceCwds?: Record<string, string>;
       selectedCwd?: string;
+      surfaceUrls?: Record<string, string>;
+      surfaceTypes?: Record<string, "terminal" | "browser">;
     }[];
     activeWorkspaceId: string | null;
   } {
@@ -941,14 +1166,22 @@ export class SurfaceManager {
       workspaces: this.workspaces.map((ws) => {
         const surfaceIds = ws.layout.getAllSurfaceIds();
         const surfaceTitles: Record<string, string> = {};
-        // Live cwds from the metadata poller so a restart can reopen each
-        // shell in the directory it was running in, not $HOME.
         const surfaceCwds: Record<string, string> = {};
+        const surfaceUrls: Record<string, string> = {};
+        const surfaceTypes: Record<string, "terminal" | "browser"> = {};
         for (const sid of surfaceIds) {
-          const title = this.surfaces.get(sid)?.title;
+          const view = this.surfaces.get(sid);
+          const title = view?.title;
           if (title) surfaceTitles[sid] = title;
-          const cwd = this.metadata.get(sid)?.cwd;
-          if (cwd) surfaceCwds[sid] = cwd;
+          if (view?.surfaceType === "browser") {
+            surfaceTypes[sid] = "browser";
+            if (view.browserView) {
+              surfaceUrls[sid] = view.browserView.currentUrl;
+            }
+          } else {
+            const cwd = this.metadata.get(sid)?.cwd;
+            if (cwd) surfaceCwds[sid] = cwd;
+          }
         }
         const pinned = this.selectedCwds.get(ws.id);
         return {
@@ -966,6 +1199,10 @@ export class SurfaceManager {
           surfaceCwds:
             Object.keys(surfaceCwds).length > 0 ? surfaceCwds : undefined,
           selectedCwd: pinned,
+          surfaceUrls:
+            Object.keys(surfaceUrls).length > 0 ? surfaceUrls : undefined,
+          surfaceTypes:
+            Object.keys(surfaceTypes).length > 0 ? surfaceTypes : undefined,
         };
       }),
       activeWorkspaceId: this.workspaces[this.activeWorkspaceIndex]?.id ?? null,
@@ -1079,6 +1316,10 @@ export class SurfaceManager {
     for (const view of this.surfaces.values()) {
       const inActive = activeWs?.surfaceIds.has(view.id) ?? false;
       view.container.style.display = inActive ? "flex" : "none";
+      // Manage browser webview OOPIF overlay visibility
+      if (view.browserView) {
+        browserPaneSetHidden(view.browserView, !inActive);
+      }
     }
 
     if (activeWs) {
@@ -1240,6 +1481,87 @@ export class SurfaceManager {
         ? `Workspace ${String(this.activeWorkspaceIndex + 1).padStart(2, "0")}`
         : "No Workspace";
     }
+  }
+
+  private createBrowserSurfaceView(
+    surfaceId: string,
+    url: string,
+  ): SurfaceView {
+    const browserView = createBrowserPaneView(
+      surfaceId,
+      url,
+      {
+        onNavigated: (sid, navUrl, navTitle) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-browser-navigated", {
+              detail: { surfaceId: sid, url: navUrl, title: navTitle },
+            }),
+          );
+        },
+        onTitleChanged: (sid, newTitle) => {
+          const view = this.surfaces.get(sid);
+          if (view) {
+            view.title = newTitle;
+            view.titleEl.textContent = newTitle;
+          }
+          window.dispatchEvent(
+            new CustomEvent("ht-browser-title-changed", {
+              detail: { surfaceId: sid, title: newTitle },
+            }),
+          );
+          this.updateSidebar();
+        },
+        onNewWindow: (sid, newUrl) => {
+          // Open links from the page in the same browser pane
+          const view = this.surfaces.get(sid);
+          if (view?.browserView) {
+            browserPaneNavigateTo(view.browserView, newUrl);
+          }
+        },
+        onFocus: (sid) => {
+          this.focusSurface(sid);
+        },
+        onClose: (sid) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-close-surface", {
+              detail: { surfaceId: sid },
+            }),
+          );
+        },
+        onSplit: (sid, direction) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-split", {
+              detail: { surfaceId: sid, direction },
+            }),
+          );
+        },
+        onEvalResult: (sid, reqId, result, error) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-browser-eval-result", {
+              detail: { surfaceId: sid, reqId, result, error },
+            }),
+          );
+        },
+      },
+    );
+
+    this.terminalContainer.appendChild(browserView.container);
+
+    return {
+      id: surfaceId,
+      surfaceType: "browser",
+      term: null,
+      fitAddon: null,
+      searchAddon: null,
+      effects: null,
+      panelManager: null,
+      panelsEl: null,
+      browserView,
+      container: browserView.container,
+      titleEl: browserView.titleEl,
+      chipsEl: browserView.chipsEl,
+      title: browserView.title,
+    };
   }
 
   private createSurfaceView(surfaceId: string, title: string): SurfaceView {
@@ -1406,13 +1728,15 @@ export class SurfaceManager {
 
     return {
       id: surfaceId,
+      surfaceType: "terminal" as const,
       term,
       fitAddon,
       searchAddon,
       effects,
       panelManager,
-      container,
       panelsEl,
+      browserView: null,
+      container,
       titleEl: barTitle,
       chipsEl,
       title,
@@ -1763,10 +2087,19 @@ export class SurfaceManager {
     for (const surfaceId of ws.surfaceIds) {
       const view = this.surfaces.get(surfaceId);
       if (!view) continue;
-      fitSurfaceTerminal(view);
-      view.effects.setFocused(view.id === this.focusedSurfaceId);
-      this.onResize(surfaceId, view.term.cols, view.term.rows);
-      view.panelManager.updateInlinePanels();
+      if (view.surfaceType === "browser") {
+        // Browser panes: sync the OOPIF overlay dimensions
+        if (view.browserView) {
+          browserPaneSyncDimensions(view.browserView);
+        }
+      } else {
+        fitSurfaceTerminal(view);
+        view.effects?.setFocused(view.id === this.focusedSurfaceId);
+        if (view.term) {
+          this.onResize(surfaceId, view.term.cols, view.term.rows);
+        }
+        view.panelManager?.updateInlinePanels();
+      }
     }
   }
 
@@ -2033,10 +2366,11 @@ function formatGitTooltip(g: NonNullable<SurfaceMetadata["git"]>): string {
  * cell dimensions the render service computed.
  */
 function fitSurfaceTerminal(view: {
-  term: Terminal;
-  fitAddon: FitAddon;
+  term: Terminal | null;
+  fitAddon: FitAddon | null;
 }): void {
   const term = view.term;
+  if (!term || !view.fitAddon) return;
   if (!term.element?.parentElement) return;
 
   const core = (

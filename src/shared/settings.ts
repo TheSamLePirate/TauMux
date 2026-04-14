@@ -53,6 +53,16 @@ export interface AppSettings {
   // Advanced
   paneGap: number;
   sidebarWidth: number;
+
+  // Browser
+  /** Search engine for browser address bar non-URL queries. */
+  browserSearchEngine: "google" | "duckduckgo" | "bing" | "kagi";
+  /** Default URL when opening a new browser pane (empty = about:blank). */
+  browserHomePage: string;
+  /** Force dark mode on web pages via CSS injection. */
+  browserForceDarkMode: boolean;
+  /** Open terminal URL clicks in the built-in browser instead of externally. */
+  browserInterceptTerminalLinks: boolean;
 }
 
 export interface ThemePreset {
@@ -433,6 +443,11 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
 
   paneGap: 2,
   sidebarWidth: 320,
+
+  browserSearchEngine: "google",
+  browserHomePage: "",
+  browserForceDarkMode: false,
+  browserInterceptTerminalLinks: false,
 };
 
 function clamp(v: number, min: number, max: number): number {
@@ -450,6 +465,15 @@ export function validateSettings(s: AppSettings): AppSettings {
     webMirrorPort: clamp(Math.round(s.webMirrorPort), 1, 65535),
     paneGap: clamp(Math.round(s.paneGap), 0, 20),
     sidebarWidth: clamp(Math.round(s.sidebarWidth), 200, 600),
+    browserSearchEngine:
+      s.browserSearchEngine === "duckduckgo" ||
+      s.browserSearchEngine === "bing" ||
+      s.browserSearchEngine === "kagi"
+        ? s.browserSearchEngine
+        : "google",
+    browserHomePage: (s.browserHomePage ?? "").trim(),
+    browserForceDarkMode: !!s.browserForceDarkMode,
+    browserInterceptTerminalLinks: !!s.browserInterceptTerminalLinks,
     cursorStyle:
       s.cursorStyle === "bar" || s.cursorStyle === "underline"
         ? s.cursorStyle
