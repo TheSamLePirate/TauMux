@@ -31,6 +31,7 @@ import {
   formatWindowTitle,
   MENU_ACTIONS,
 } from "./native-menus";
+import { normalizeMenuActionEvent } from "./menu-events";
 import { SettingsManager } from "./settings-manager";
 
 const configDir = join(Utils.paths.config, "hyperterm-canvas");
@@ -277,15 +278,13 @@ const mainWindow = new BrowserWindow({
 ApplicationMenu.setApplicationMenu(buildApplicationMenu());
 
 ApplicationMenu.on("application-menu-clicked", (event) => {
-  handleMenuAction(
-    (event as { data: { action: string; data?: unknown } }).data,
-  );
+  const menuEvent = normalizeMenuActionEvent(event);
+  if (menuEvent) handleMenuAction(menuEvent);
 });
 
 ContextMenu.on("context-menu-clicked", (event) => {
-  handleMenuAction(
-    (event as { data: { action: string; data?: unknown } }).data,
-  );
+  const menuEvent = normalizeMenuActionEvent(event);
+  if (menuEvent) handleMenuAction(menuEvent);
 });
 
 // Wire session callbacks → RPC → webview + web mirror

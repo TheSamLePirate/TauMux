@@ -1326,6 +1326,7 @@ export class SurfaceManager {
 
     bar.addEventListener("contextmenu", (e) => {
       e.preventDefault();
+      this.focusSurface(surfaceId);
       const detail: SurfaceContextMenuRequest = {
         kind: "surface",
         surfaceId,
@@ -1333,9 +1334,11 @@ export class SurfaceManager {
           this.surfaces.get(surfaceId)?.title ??
           barTitle.textContent ??
           surfaceId,
+        x: e.clientX,
+        y: e.clientY,
       };
       window.dispatchEvent(
-        new CustomEvent("ht-open-context-menu", {
+        new CustomEvent("ht-open-surface-context-menu", {
           detail,
         }),
       );

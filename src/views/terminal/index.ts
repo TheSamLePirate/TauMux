@@ -2,6 +2,7 @@ import { Electroview } from "electrobun/view";
 import type {
   HyperTermRPC,
   NativeContextMenuRequest,
+  SurfaceContextMenuRequest,
 } from "../../shared/types";
 import {
   type AppSettings,
@@ -675,6 +676,110 @@ function selectAll() {
   surfaceManager.getActiveTerm()?.selectAll();
 }
 
+let surfaceContextMenuEl: HTMLDivElement | null = null;
+
+function ensureSurfaceContextMenu(): HTMLDivElement {
+  if (surfaceContextMenuEl) return surfaceContextMenuEl;
+
+  const el = document.createElement("div");
+  el.className = "surface-context-menu";
+  el.setAttribute("aria-hidden", "true");
+  el.addEventListener("contextmenu", (e) => e.preventDefault());
+  document.body.appendChild(el);
+  surfaceContextMenuEl = el;
+  return el;
+}
+
+function hideSurfaceContextMenu(): void {
+  if (!surfaceContextMenuEl) return;
+  surfaceContextMenuEl.classList.remove("surface-context-menu-visible");
+  surfaceContextMenuEl.setAttribute("aria-hidden", "true");
+}
+
+function createSurfaceContextMenuItem(
+  label: string,
+  onSelect: () => void,
+  tone: "default" | "danger" = "default",
+): HTMLButtonElement {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.tabIndex = -1;
+  item.className = `surface-context-menu-item${tone === "danger" ? " surface-context-menu-item-danger" : ""}`;
+  item.textContent = label;
+  item.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+  });
+  item.addEventListener("click", () => {
+    hideSurfaceContextMenu();
+    onSelect();
+  });
+  return item;
+}
+
+function createSurfaceContextMenuDivider(): HTMLDivElement {
+  const divider = document.createElement("div");
+  divider.className = "surface-context-menu-divider";
+  return divider;
+}
+
+function showSurfaceContextMenu(detail: SurfaceContextMenuRequest): void {
+  const menu = ensureSurfaceContextMenu();
+  const title =
+    surfaceManager.getSurfaceTitle(detail.surfaceId) ??
+    detail.title ??
+    detail.surfaceId;
+
+  surfaceManager.focusSurface(detail.surfaceId);
+  menu.replaceChildren(
+    createSurfaceContextMenuItem("Rename Pane…", () => {
+      void promptRenameSurface(detail.surfaceId, title);
+    }),
+    createSurfaceContextMenuDivider(),
+    createSurfaceContextMenuItem("Split Right", () => {
+      surfaceManager.focusSurface(detail.surfaceId);
+      requestSplit("horizontal");
+    }),
+    createSurfaceContextMenuItem("Split Down", () => {
+      surfaceManager.focusSurface(detail.surfaceId);
+      requestSplit("vertical");
+    }),
+    createSurfaceContextMenuDivider(),
+    createSurfaceContextMenuItem("Copy", () => {
+      surfaceManager.focusSurface(detail.surfaceId);
+      copySelection();
+    }),
+    createSurfaceContextMenuItem("Paste", () => {
+      surfaceManager.focusSurface(detail.surfaceId);
+      pasteClipboard();
+    }),
+    createSurfaceContextMenuDivider(),
+    createSurfaceContextMenuItem(
+      "Close Pane",
+      () => {
+        rpc.send("closeSurface", { surfaceId: detail.surfaceId });
+      },
+      "danger",
+    ),
+  );
+
+  menu.classList.add("surface-context-menu-visible");
+  menu.setAttribute("aria-hidden", "false");
+
+  const margin = 8;
+  const x = detail.x ?? window.innerWidth / 2;
+  const y = detail.y ?? window.innerHeight / 2;
+
+  requestAnimationFrame(() => {
+    const maxX = Math.max(margin, window.innerWidth - menu.offsetWidth - margin);
+    const maxY = Math.max(
+      margin,
+      window.innerHeight - menu.offsetHeight - margin,
+    );
+    menu.style.left = `${Math.max(margin, Math.min(x, maxX))}px`;
+    menu.style.top = `${Math.max(margin, Math.min(y, maxY))}px`;
+  });
+}
+
 async function promptRenameWorkspace(workspaceId: string, name: string) {
   const nextName = await showPromptDialog({
     title: "Rename Workspace",
@@ -724,6 +829,13 @@ window.addEventListener("ht-open-context-menu", (e: Event) => {
   const detail = (e as CustomEvent<NativeContextMenuRequest>).detail;
   if (detail) {
     rpc.send("showContextMenu", detail);
+  }
+});
+
+window.addEventListener("ht-open-surface-context-menu", (e: Event) => {
+  const detail = (e as CustomEvent<SurfaceContextMenuRequest>).detail;
+  if (detail) {
+    showSurfaceContextMenu(detail);
   }
 });
 
@@ -930,10 +1042,19 @@ document.addEventListener(
 
 document.addEventListener(
   "mousedown",
-  () => {
+  (e) => {
     clearTypingFocusMode();
+    if (
+      surfaceContextMenuEl &&
+      surfaceContextMenuEl.classList.contains("surface-context-menu-visible")
+    ) {
+      const target = e.target;
+      if (!(target instanceof Node) || !surfaceContextMenuEl.contains(target)) {
+        hideSurfaceContextMenu();
+      }
+    }
   },
-  { passive: true },
+  { passive: true, capture: true },
 );
 
 titlebarEl.addEventListener("dblclick", () => {
@@ -985,8 +1106,19 @@ window.addEventListener("ht-select-workspace-cwd", (e: Event) => {
 function reportVisibility(): void {
   rpc.send("windowVisibility", { visible: !document.hidden });
 }
-document.addEventListener("visibilitychange", reportVisibility);
+document.addEventListener("visibilitychange", () => {
+  hideSurfaceContextMenu();
+  reportVisibility();
+});
 reportVisibility();
+
+window.addEventListener("blur", () => {
+  hideSurfaceContextMenu();
+});
+
+window.addEventListener("resize", () => {
+  hideSurfaceContextMenu();
+});
 
 window.addEventListener("ht-clear-notifications", () => {
   clearTypingFocusMode();

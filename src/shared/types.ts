@@ -225,6 +225,8 @@ export interface SurfaceContextMenuRequest {
   surfaceId: string;
   title: string;
   workspaceId?: string;
+  x?: number;
+  y?: number;
 }
 
 export type NativeContextMenuRequest =

@@ -2380,6 +2380,65 @@ body.terminal-typing .panel {
   border-bottom: 1.5px solid var(--accent-primary);
 }
 
+.surface-context-menu {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1900;
+  min-width: 184px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(168, 85, 247, 0.08), transparent 22%),
+    rgba(8, 8, 11, 0.94);
+  border: 1px solid rgba(234, 179, 8, 0.32);
+  box-shadow:
+    0 22px 54px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(234, 179, 8, 0.05);
+  backdrop-filter: blur(18px) saturate(150%);
+  opacity: 0;
+  transform: translateY(4px) scale(0.98);
+  pointer-events: none;
+  user-select: none;
+}
+
+.surface-context-menu-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.surface-context-menu-item {
+  min-height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-main);
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.surface-context-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-strong);
+}
+
+.surface-context-menu-item-danger:hover {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fecaca;
+}
+
+.surface-context-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .prompt-overlay {
   position: fixed;
   inset: 0;
