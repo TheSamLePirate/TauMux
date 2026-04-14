@@ -549,6 +549,21 @@ export function createRpcHandler(
 
     // ── Browser ──
 
+    // ── Agent ──
+
+    "agent.create": () => {
+      dispatch("createAgentSurface", {});
+      return "OK";
+    },
+
+    "agent.create_split": (params) => {
+      const dir = params["direction"] as string;
+      const direction =
+        dir === "down" || dir === "vertical" ? "vertical" : "horizontal";
+      dispatch("splitAgentSurface", { direction });
+      return "OK";
+    },
+
     "browser.list": () => {
       return (browserSurfaces?.getAllSurfaces() ?? []).map((s) => ({
         id: s.id,

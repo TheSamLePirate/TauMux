@@ -127,7 +127,7 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       closeSurface: (payload) => {
         if (piAgentManager.isAgentSurface(payload.surfaceId)) {
           piAgentManager.removeAgent(payload.surfaceId);
-          rpc.send("agentSurfaceClosed", { surfaceId: payload.surfaceId });
+          sendWebviewAction("agentSurfaceClosed", { surfaceId: payload.surfaceId });
         } else if (browserSurfaces.isBrowserSurface(payload.surfaceId)) {
           browserSurfaces.closeSurface(payload.surfaceId);
         } else {
@@ -620,20 +620,22 @@ function createAgentWorkspaceSurface(
     skills,
   });
 
-  // Wire events to webview
   agent.onEvent = (event) => {
-    rpc.send("agentEvent", { agentId: agent.id, event });
+    sendWebviewAction("agentEvent", { agentId: agent.id, event });
   };
   agent.onExit = (code) => {
-    rpc.send("agentEvent", {
+    sendWebviewAction("agentEvent", {
       agentId: agent.id,
       event: { type: "agent_exit", code },
     });
   };
 
   focusedSurfaceId = agent.id;
-  rpc.send("agentSurfaceCreated", { surfaceId: agent.id, agentId: agent.id });
-  void agent.start();
+  sendWebviewAction("agentSurfaceCreated", {
+    surfaceId: agent.id,
+    agentId: agent.id,
+  });
+  void agent.start().catch((err) => console.error("[agent] start failed:", err));
 }
 
 function splitAgentSurface(
@@ -655,17 +657,17 @@ function splitAgentSurface(
   });
 
   agent.onEvent = (event) => {
-    rpc.send("agentEvent", { agentId: agent.id, event });
+    sendWebviewAction("agentEvent", { agentId: agent.id, event });
   };
   agent.onExit = (code) => {
-    rpc.send("agentEvent", {
+    sendWebviewAction("agentEvent", {
       agentId: agent.id,
       event: { type: "agent_exit", code },
     });
   };
 
   focusedSurfaceId = agent.id;
-  rpc.send("agentSurfaceCreated", {
+  sendWebviewAction("agentSurfaceCreated", {
     surfaceId: agent.id,
     agentId: agent.id,
     splitFrom: splitFrom ?? undefined,
@@ -710,7 +712,7 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
       if (surfaceId) {
         if (piAgentManager.isAgentSurface(surfaceId)) {
           piAgentManager.removeAgent(surfaceId);
-          rpc.send("agentSurfaceClosed", { surfaceId });
+          sendWebviewAction("agentSurfaceClosed", { surfaceId });
         } else if (browserSurfaces.isBrowserSurface(surfaceId)) {
           browserSurfaces.closeSurface(surfaceId);
         } else {
@@ -1208,8 +1210,17 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
   for (const ws of persisted.workspaces) {
     const leafIds = collectLeafIds(ws.layout);
     for (const oldId of leafIds) {
-      const isBrowser = ws.surfaceTypes?.[oldId] === "browser";
-      if (isBrowser) {
+      const surfType = ws.surfaceTypes?.[oldId];
+      if (surfType === "agent") {
+        // Agent surfaces are not restored — they require a fresh pi process.
+        // Create a terminal surface instead as a placeholder.
+        const cwd = ws.surfaceCwds?.[oldId];
+        const newId = sessions.createSurface(cols, rows, cwd);
+        surfaceMapping[oldId] = newId;
+        const title = sessions.getSurface(newId)?.title ?? "shell";
+        rpc.send("surfaceCreated", { surfaceId: newId, title });
+        broadcastSurfaceCreated(newId, title);
+      } else if (surfType === "browser") {
         const url = ws.surfaceUrls?.[oldId] ?? "about:blank";
         const newId = browserSurfaces.createSurface(url);
         surfaceMapping[oldId] = newId;

@@ -103,24 +103,8 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
       browserSurfaceClosed: (payload) => {
         surfaceManager.removeBrowserSurface(payload.surfaceId);
       },
-      agentSurfaceCreated: (payload) => {
-        if (payload.splitFrom && payload.direction) {
-          surfaceManager.addAgentSurfaceAsSplit(
-            payload.surfaceId,
-            payload.agentId,
-            payload.splitFrom,
-            payload.direction,
-          );
-        } else {
-          surfaceManager.addAgentSurface(payload.surfaceId, payload.agentId);
-        }
-      },
-      agentEvent: (payload) => {
-        surfaceManager.handleAgentEvent(payload.agentId, payload.event);
-      },
-      agentSurfaceClosed: (payload) => {
-        surfaceManager.removeAgentSurface(payload.surfaceId);
-      },
+      // Agent surface messages are routed via socketAction (proven channel)
+      // rather than dedicated RPC message types.
       sidebandMeta: (payload) => {
         surfaceManager.handleSidebandMeta(payload.surfaceId, payload);
       },
@@ -1643,6 +1627,33 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
           | "error"
           | undefined) ?? "info";
       if (message) showToast(message, level);
+      break;
+    }
+    // ── Agent surface actions ──
+    case "agentSurfaceCreated": {
+      showToast("Creating agent pane...", "info");
+      const sid = payload["surfaceId"] as string;
+      const aid = payload["agentId"] as string;
+      const splitFrom = payload["splitFrom"] as string | undefined;
+      const dir = payload["direction"] as "horizontal" | "vertical" | undefined;
+      if (splitFrom && dir) {
+        surfaceManager.addAgentSurfaceAsSplit(sid, aid, splitFrom, dir);
+      } else {
+        surfaceManager.addAgentSurface(sid, aid);
+      }
+      break;
+    }
+    case "agentEvent": {
+      const agentId = payload["agentId"] as string;
+      const event = payload["event"] as Record<string, unknown>;
+      if (agentId && event) {
+        surfaceManager.handleAgentEvent(agentId, event);
+      }
+      break;
+    }
+    case "agentSurfaceClosed": {
+      const sid = payload["surfaceId"] as string;
+      if (sid) surfaceManager.removeAgentSurface(sid);
       break;
     }
   }

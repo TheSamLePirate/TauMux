@@ -84,18 +84,22 @@ export class PiAgentInstance {
 
     const cwd = this.config.cwd ?? process.cwd();
 
-    this.proc = Bun.spawn(args, {
-      cwd,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...process.env,
-        // Ensure pi doesn't try to use the terminal
-        TERM: "dumb",
-        NO_COLOR: "1",
-      },
-    });
+    try {
+      this.proc = Bun.spawn(args, {
+        cwd,
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          TERM: "dumb",
+          NO_COLOR: "1",
+        },
+      });
+    } catch (err) {
+      this.dead = true;
+      throw err;
+    }
 
     // Read stdout (JSON-RPC events)
     this.readStdout();
