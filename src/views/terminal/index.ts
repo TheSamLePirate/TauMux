@@ -17,7 +17,6 @@ import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";
 import { SurfaceDetailsPanel } from "./surface-details";
 import { showToast } from "./toast";
-import { startMouseDebug } from "./mouse-debug";
 
 // Declared before rpc so handlers can reference it; assigned after rpc is created.
 // eslint-disable-next-line prefer-const
@@ -1552,7 +1551,3 @@ window.addEventListener("ht-workspace-changed", syncToolbarState);
 
 syncSidebarState();
 syncToolbarState();
-
-// Temporary mouse hit-test overlay. Toggle with Ctrl+Alt+Shift+M.
-// See src/views/terminal/mouse-debug.ts.
-startMouseDebug();
