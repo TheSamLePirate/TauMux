@@ -5358,7 +5358,7 @@ body::after {
     "Segoe UI",
     system-ui,
     sans-serif;
-  --titlebar-height: 52px;
+  --titlebar-height: 32px;
   --t3-background: color-mix(in srgb, #0a0a0a 95%, white);
   --t3-foreground: #f5f5f5;
   --t3-card: color-mix(in srgb, var(--t3-background) 98%, white);
@@ -5419,8 +5419,8 @@ body::after {
 
 #titlebar {
   height: var(--titlebar-height);
-  padding: 0 8px 0 68px;
-  gap: 4px;
+  padding: 0 10px 0 76px;
+  gap: 10px;
   top: var(--window-frame-width);
   left: var(--window-frame-width);
   right: var(--window-frame-width);
@@ -5431,7 +5431,7 @@ body::after {
 #titlebar-leading,
 .titlebar-section,
 #titlebar-center {
-  gap: 3px;
+  gap: 6px;
 }
 
 #titlebar-copy {
@@ -5468,7 +5468,7 @@ body::after {
 }
 
 #titlebar-text {
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1;
 }
@@ -5494,15 +5494,16 @@ body::after {
 }
 
 .titlebar-info {
-  min-height: 14px;
-  padding: 0 4px;
+  min-height: 22px;
+  padding: 0 8px;
+  gap: 5px;
   color: var(--t3-muted-foreground);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.01em;
   line-height: 1;
   text-transform: none;
-  border-radius: 6px;
+  border-radius: 7px;
 }
 
 .titlebar-info-primary,
@@ -5516,29 +5517,29 @@ body::after {
 }
 
 #titlebar .toolbar-icon-strip {
-  gap: 1px;
-  padding: 1px;
-  border-radius: 5px;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
 }
 
 #titlebar .toolbar-icon-btn {
-  width: 14px;
-  height: 14px;
-  min-width: 14px;
-  min-height: 14px;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
   padding: 0;
-  border-radius: 4px;
+  border-radius: 6px;
   line-height: 1;
 }
 
 #titlebar .toolbar-icon-btn .ht-icon {
-  width: 8px;
-  height: 8px;
+  width: 14px;
+  height: 14px;
 }
 
 .titlebar-info .ht-icon {
-  width: 7px;
-  height: 7px;
+  width: 12px;
+  height: 12px;
 }
 
 #titlebar .toolbar-icon-btn:hover,
