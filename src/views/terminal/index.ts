@@ -802,7 +802,7 @@ async function promptRenameSurface(surfaceId: string, title: string) {
     confirmLabel: "Rename",
   });
   if (nextName) {
-    surfaceManager.renameSurface(surfaceId, nextName);
+    rpc.send("renameSurface", { surfaceId, title: nextName });
   }
 }
 
@@ -1172,6 +1172,12 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
       if (id) {
         void promptRenameSurface(id, title);
       }
+      break;
+    }
+    case "renameSurface": {
+      const id = payload["surfaceId"] as string;
+      const title = payload["title"] as string;
+      if (id && title) surfaceManager.renameSurface(id, title);
       break;
     }
     case "setWorkspaceColor": {

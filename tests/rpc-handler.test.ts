@@ -181,6 +181,14 @@ describe("RPC Handler", () => {
     expect(dispatched[0].payload["surfaceId"]).toBe("surface:5");
   });
 
+  test("surface.rename dispatches renameSurface", () => {
+    const handler = setup();
+    handler("surface.rename", { surface_id: "surface:5", name: "Server" });
+    expect(dispatched[0].action).toBe("renameSurface");
+    expect(dispatched[0].payload["surfaceId"]).toBe("surface:5");
+    expect(dispatched[0].payload["title"]).toBe("Server");
+  });
+
   test("surface.send_text writes to PTY", async () => {
     const handler = setup();
     let received = "";

@@ -104,6 +104,15 @@ describe("SessionManager", () => {
     expect(sessions.getAllSurfaces().length).toBe(3);
   });
 
+  test("renameSurface updates the stored title", () => {
+    sessions = new SessionManager("/bin/sh");
+    const id = sessions.createSurface(80, 24);
+
+    sessions.renameSurface(id, "Server");
+
+    expect(sessions.getSurface(id)?.title).toBe("Server");
+  });
+
   test("destroy cleans up all surfaces", () => {
     sessions = new SessionManager("/bin/sh");
     sessions.createSurface(80, 24);

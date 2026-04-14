@@ -931,6 +931,7 @@ export class SurfaceManager {
       surfaceIds: string[];
       focusedSurfaceId: string | null;
       layout: import("../../shared/types").PaneNode;
+      surfaceTitles?: Record<string, string>;
       surfaceCwds?: Record<string, string>;
       selectedCwd?: string;
     }[];
@@ -939,10 +940,13 @@ export class SurfaceManager {
     return {
       workspaces: this.workspaces.map((ws) => {
         const surfaceIds = ws.layout.getAllSurfaceIds();
+        const surfaceTitles: Record<string, string> = {};
         // Live cwds from the metadata poller so a restart can reopen each
         // shell in the directory it was running in, not $HOME.
         const surfaceCwds: Record<string, string> = {};
         for (const sid of surfaceIds) {
+          const title = this.surfaces.get(sid)?.title;
+          if (title) surfaceTitles[sid] = title;
           const cwd = this.metadata.get(sid)?.cwd;
           if (cwd) surfaceCwds[sid] = cwd;
         }
@@ -957,6 +961,8 @@ export class SurfaceManager {
               ? this.focusedSurfaceId
               : null,
           layout: ws.layout.root,
+          surfaceTitles:
+            Object.keys(surfaceTitles).length > 0 ? surfaceTitles : undefined,
           surfaceCwds:
             Object.keys(surfaceCwds).length > 0 ? surfaceCwds : undefined,
           selectedCwd: pinned,

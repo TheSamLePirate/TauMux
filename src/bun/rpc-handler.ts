@@ -78,6 +78,8 @@ export interface WorkspaceSnapshot {
   surfaceIds: string[];
   focusedSurfaceId: string | null;
   layout: PaneNode;
+  /** Persisted display title per surface id (pane rename). */
+  surfaceTitles?: Record<string, string>;
   /** Live cwd per surface; persisted so restarts reopen shells in place. */
   surfaceCwds?: Record<string, string>;
   /** User-pinned cwd that drives the sidebar package.json card. */
@@ -351,6 +353,14 @@ export function createRpcHandler(
       const id =
         (params["surface_id"] as string) ?? (params["surface"] as string);
       if (id) dispatch("focusSurface", { surfaceId: id });
+      return "OK";
+    },
+
+    "surface.rename": (params) => {
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
+      const title = (params["name"] as string) ?? (params["title"] as string);
+      if (id && title) dispatch("renameSurface", { surfaceId: id, title });
       return "OK";
     },
 

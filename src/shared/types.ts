@@ -31,6 +31,8 @@ export interface PersistedWorkspace {
   color: string;
   layout: PaneNode;
   focusedSurfaceId: string | null;
+  /** Persisted display title per surface id (pane rename). */
+  surfaceTitles?: Record<string, string>;
   /** Live cwd of each surface at save-time, so restored shells can spawn at
    *  the same directory they were running in. Derived from the metadata
    *  poller; entries without a known cwd are omitted. */
@@ -261,6 +263,7 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       };
       closeSurface: { surfaceId: string };
       focusSurface: { surfaceId: string };
+      renameSurface: { surfaceId: string; title: string };
 
       // Panels
       panelEvent: PanelEvent & { surfaceId: string };
@@ -277,6 +280,8 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
           surfaceIds: string[];
           focusedSurfaceId: string | null;
           layout: PaneNode;
+          /** Persisted display title per surface id (pane rename). */
+          surfaceTitles?: Record<string, string>;
           /** Live cwd per surface so restart can reopen shells in place. */
           surfaceCwds?: Record<string, string>;
           /** User-pinned workspace cwd (drives package.json card). */

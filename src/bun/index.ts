@@ -121,6 +121,12 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
           surfaceId: payload.surfaceId,
         });
       },
+      renameSurface: (payload) => {
+        dispatch("renameSurface", {
+          surfaceId: payload.surfaceId,
+          title: payload.title,
+        });
+      },
       panelEvent: (payload) => {
         sessions.sendEvent(payload.surfaceId, payload);
         // Broadcast panel position/size changes to web clients
@@ -165,6 +171,7 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
             surfaceIds: ws.surfaceIds,
             focusedSurfaceId: ws.focusedSurfaceId,
             layout: ws.layout,
+            surfaceTitles: ws.surfaceTitles,
           })),
           activeWorkspaceId: payload.activeWorkspaceId,
           focusedSurfaceId,
@@ -342,6 +349,10 @@ let webServer: WebServer | null = null;
 
 function broadcastSurfaceCreated(surfaceId: string, title: string): void {
   webServer?.broadcast({ type: "surfaceCreated", surfaceId, title });
+}
+
+function broadcastSurfaceRenamed(surfaceId: string, title: string): void {
+  webServer?.broadcast({ type: "surfaceRenamed", surfaceId, title });
 }
 
 function sendWebviewAction(
@@ -637,6 +648,23 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     createWorkspaceSurface(80, 24, payload["cwd"] as string | undefined);
   } else if (action === "splitSurface") {
     splitSurface(payload["direction"] as "horizontal" | "vertical");
+  } else if (action === "renameSurface") {
+    const surfaceId = payload["surfaceId"];
+    const title = payload["title"];
+    if (typeof surfaceId === "string" && typeof title === "string" && title) {
+      sessions.renameSurface(surfaceId, title);
+      const workspace = workspaceState.find((ws) =>
+        ws.surfaceIds.includes(surfaceId),
+      );
+      if (workspace) {
+        workspace.surfaceTitles = {
+          ...(workspace.surfaceTitles ?? {}),
+          [surfaceId]: title,
+        };
+      }
+      scheduleLayoutSave();
+      broadcastSurfaceRenamed(surfaceId, title);
+    }
   } else if (action === "notification") {
     // Broadcast notification to web clients
     const notifications = payload["notifications"] as unknown[];
@@ -792,6 +820,7 @@ function saveLayout(): void {
         color: ws.color,
         layout: ws.layout,
         focusedSurfaceId: ws.focusedSurfaceId,
+        surfaceTitles: ws.surfaceTitles,
         surfaceCwds: ws.surfaceCwds,
         selectedCwd: ws.selectedCwd,
       })),
@@ -869,6 +898,8 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
       const cwd = ws.surfaceCwds?.[oldId];
       const newId = sessions.createSurface(cols, rows, cwd);
       surfaceMapping[oldId] = newId;
+      const restoredTitle = ws.surfaceTitles?.[oldId];
+      if (restoredTitle) sessions.renameSurface(newId, restoredTitle);
       const title = sessions.getSurface(newId)?.title ?? "shell";
       rpc.send("surfaceCreated", { surfaceId: newId, title });
       broadcastSurfaceCreated(newId, title);
@@ -882,6 +913,13 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
   const remappedLayout: PersistedLayout = {
     ...persisted,
     workspaces: persisted.workspaces.map((ws) => {
+      const remappedTitles: Record<string, string> = {};
+      if (ws.surfaceTitles) {
+        for (const [oldId, title] of Object.entries(ws.surfaceTitles)) {
+          const newId = surfaceMapping[oldId];
+          if (newId) remappedTitles[newId] = title;
+        }
+      }
       const remappedCwds: Record<string, string> = {};
       if (ws.surfaceCwds) {
         for (const [oldId, cwd] of Object.entries(ws.surfaceCwds)) {
@@ -895,6 +933,8 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
         focusedSurfaceId: ws.focusedSurfaceId
           ? (surfaceMapping[ws.focusedSurfaceId] ?? null)
           : null,
+        surfaceTitles:
+          Object.keys(remappedTitles).length > 0 ? remappedTitles : undefined,
         surfaceCwds:
           Object.keys(remappedCwds).length > 0 ? remappedCwds : undefined,
       };

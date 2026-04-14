@@ -186,6 +186,12 @@ export class SessionManager {
     this.surfaces.get(surfaceId)?.pty.write(data);
   }
 
+  renameSurface(surfaceId: string, title: string): void {
+    const surface = this.surfaces.get(surfaceId);
+    if (!surface || !title) return;
+    surface.title = title;
+  }
+
   resize(surfaceId: string, cols: number, rows: number): void {
     const surface = this.surfaces.get(surfaceId);
     if (!surface) return;
