@@ -127,7 +127,9 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       closeSurface: (payload) => {
         if (piAgentManager.isAgentSurface(payload.surfaceId)) {
           piAgentManager.removeAgent(payload.surfaceId);
-          sendWebviewAction("agentSurfaceClosed", { surfaceId: payload.surfaceId });
+          sendWebviewAction("agentSurfaceClosed", {
+            surfaceId: payload.surfaceId,
+          });
         } else if (browserSurfaces.isBrowserSurface(payload.surfaceId)) {
           browserSurfaces.closeSurface(payload.surfaceId);
         } else {
@@ -342,7 +344,8 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       },
       agentPrompt: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "prompt", message: payload.message });
+        if (agent)
+          agent.sendNoWait({ type: "prompt", message: payload.message });
       },
       agentAbort: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
@@ -350,11 +353,20 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       },
       agentSetModel: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "set_model", provider: payload.provider, modelId: payload.modelId });
+        if (agent)
+          agent.sendNoWait({
+            type: "set_model",
+            provider: payload.provider,
+            modelId: payload.modelId,
+          });
       },
       agentSetThinking: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "set_thinking_level", level: payload.level });
+        if (agent)
+          agent.sendNoWait({
+            type: "set_thinking_level",
+            level: payload.level,
+          });
       },
       agentNewSession: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
@@ -375,6 +387,106 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       agentExtensionUIResponse: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
         if (agent) agent.respondToExtensionUI(payload.id, payload.response);
+      },
+      agentSteer: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.steer(payload.message);
+      },
+      agentFollowUp: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.followUp(payload.message);
+      },
+      agentBash: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "bash",
+            command: payload.command,
+            ...(payload.timeout != null ? { timeout: payload.timeout } : {}),
+          });
+      },
+      agentAbortBash: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.abortBash();
+      },
+      agentCycleModel: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "cycle_model" });
+      },
+      agentCycleThinking: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "cycle_thinking_level" });
+      },
+      agentGetCommands: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "get_commands" });
+      },
+      agentGetSessionStats: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "get_session_stats" });
+      },
+      agentGetForkMessages: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "get_fork_messages" });
+      },
+      agentGetLastAssistantText: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "get_last_assistant_text" });
+      },
+      agentSetSteeringMode: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({ type: "set_steering_mode", mode: payload.mode });
+      },
+      agentSetFollowUpMode: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({ type: "set_follow_up_mode", mode: payload.mode });
+      },
+      agentSetAutoCompaction: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "set_auto_compaction",
+            enabled: payload.enabled,
+          });
+      },
+      agentSetAutoRetry: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "set_auto_retry",
+            enabled: payload.enabled,
+          });
+      },
+      agentAbortRetry: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.abortRetry();
+      },
+      agentSetSessionName: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({ type: "set_session_name", name: payload.name });
+      },
+      agentSwitchSession: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "switch_session",
+            sessionPath: payload.sessionPath,
+          });
+      },
+      agentFork: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "fork", entryId: payload.entryId });
+      },
+      agentExportHtml: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent)
+          agent.sendNoWait({
+            type: "export_html",
+            ...(payload.outputPath ? { outputPath: payload.outputPath } : {}),
+          });
       },
     },
   },
@@ -469,7 +581,11 @@ sessions.onSidebandDataFailed = (surfaceId, id, reason) => {
 sessions.onSurfaceClosed = (surfaceId) => {
   rpc.send("surfaceClosed", { surfaceId });
   webServer?.broadcast({ type: "surfaceClosed", surfaceId });
-  if (sessions.surfaceCount === 0 && browserSurfaces.surfaceCount === 0 && piAgentManager.agentCount === 0) {
+  if (
+    sessions.surfaceCount === 0 &&
+    browserSurfaces.surfaceCount === 0 &&
+    piAgentManager.agentCount === 0
+  ) {
     mainWindow.close();
   }
 };
@@ -477,7 +593,11 @@ sessions.onSurfaceClosed = (surfaceId) => {
 browserSurfaces.onSurfaceClosed = (surfaceId) => {
   rpc.send("browserSurfaceClosed", { surfaceId });
   webServer?.broadcast({ type: "browserSurfaceClosed", surfaceId });
-  if (sessions.surfaceCount === 0 && browserSurfaces.surfaceCount === 0 && piAgentManager.agentCount === 0) {
+  if (
+    sessions.surfaceCount === 0 &&
+    browserSurfaces.surfaceCount === 0 &&
+    piAgentManager.agentCount === 0
+  ) {
     mainWindow.close();
   }
 };
@@ -605,9 +725,17 @@ function resolveHtCliSkillPath(): string {
 }
 
 function createAgentWorkspaceSurface(
-  opts: { provider?: string; model?: string; thinkingLevel?: string; cwd?: string } = {},
+  opts: {
+    provider?: string;
+    model?: string;
+    thinkingLevel?: string;
+    cwd?: string;
+  } = {},
 ): void {
-  const cwd = opts.cwd ?? metadataPoller.getSnapshot(focusedSurfaceId ?? "")?.cwd ?? process.cwd();
+  const cwd =
+    opts.cwd ??
+    metadataPoller.getSnapshot(focusedSurfaceId ?? "")?.cwd ??
+    process.cwd();
   const skills: string[] = [];
   const skillPath = resolveHtCliSkillPath();
   if (existsSync(skillPath)) skills.push(skillPath);
@@ -635,15 +763,25 @@ function createAgentWorkspaceSurface(
     surfaceId: agent.id,
     agentId: agent.id,
   });
-  void agent.start().catch((err) => console.error("[agent] start failed:", err));
+  void agent
+    .start()
+    .catch((err) => console.error("[agent] start failed:", err));
 }
 
 function splitAgentSurface(
   direction: "horizontal" | "vertical",
-  opts: { provider?: string; model?: string; thinkingLevel?: string; cwd?: string } = {},
+  opts: {
+    provider?: string;
+    model?: string;
+    thinkingLevel?: string;
+    cwd?: string;
+  } = {},
 ): void {
   const splitFrom = focusedSurfaceId;
-  const cwd = opts.cwd ?? metadataPoller.getSnapshot(splitFrom ?? "")?.cwd ?? process.cwd();
+  const cwd =
+    opts.cwd ??
+    metadataPoller.getSnapshot(splitFrom ?? "")?.cwd ??
+    process.cwd();
   const skills: string[] = [];
   const skillPath = resolveHtCliSkillPath();
   if (existsSync(skillPath)) skills.push(skillPath);
@@ -989,11 +1127,23 @@ function dispatch(action: string, payload: Record<string, unknown>) {
   } else if (action === "createBrowserSurface") {
     createBrowserWorkspaceSurface(payload["url"] as string | undefined);
   } else if (action === "createAgentSurface") {
-    createAgentWorkspaceSurface(payload as { provider?: string; model?: string; thinkingLevel?: string; cwd?: string });
+    createAgentWorkspaceSurface(
+      payload as {
+        provider?: string;
+        model?: string;
+        thinkingLevel?: string;
+        cwd?: string;
+      },
+    );
   } else if (action === "splitAgentSurface") {
     splitAgentSurface(
       (payload["direction"] as "horizontal" | "vertical") || "horizontal",
-      payload as { provider?: string; model?: string; thinkingLevel?: string; cwd?: string },
+      payload as {
+        provider?: string;
+        model?: string;
+        thinkingLevel?: string;
+        cwd?: string;
+      },
     );
   } else if (action === "splitBrowserSurface") {
     splitBrowserSurface(

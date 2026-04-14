@@ -410,6 +410,44 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
         id: string;
         response: Record<string, unknown>;
       };
+      /** Queue a steering message during agent streaming. */
+      agentSteer: { agentId: string; message: string };
+      /** Queue a follow-up message for after agent finishes. */
+      agentFollowUp: { agentId: string; message: string };
+      /** Execute a bash command via the agent. */
+      agentBash: { agentId: string; command: string; timeout?: number };
+      /** Abort a running bash command. */
+      agentAbortBash: { agentId: string };
+      /** Cycle to the next model. */
+      agentCycleModel: { agentId: string };
+      /** Cycle to the next thinking level. */
+      agentCycleThinking: { agentId: string };
+      /** Get available slash commands. */
+      agentGetCommands: { agentId: string };
+      /** Get session stats (tokens, cost, context). */
+      agentGetSessionStats: { agentId: string };
+      /** Get messages available for forking. */
+      agentGetForkMessages: { agentId: string };
+      /** Get last assistant message text (for copy). */
+      agentGetLastAssistantText: { agentId: string };
+      /** Set steering mode. */
+      agentSetSteeringMode: { agentId: string; mode: string };
+      /** Set follow-up mode. */
+      agentSetFollowUpMode: { agentId: string; mode: string };
+      /** Enable/disable auto-compaction. */
+      agentSetAutoCompaction: { agentId: string; enabled: boolean };
+      /** Enable/disable auto-retry. */
+      agentSetAutoRetry: { agentId: string; enabled: boolean };
+      /** Cancel in-progress retry. */
+      agentAbortRetry: { agentId: string };
+      /** Set session display name. */
+      agentSetSessionName: { agentId: string; name: string };
+      /** Switch to a different session. */
+      agentSwitchSession: { agentId: string; sessionPath: string };
+      /** Fork from a previous user message. */
+      agentFork: { agentId: string; entryId: string };
+      /** Export session to HTML. */
+      agentExportHtml: { agentId: string; outputPath?: string };
     };
   };
   webview: {

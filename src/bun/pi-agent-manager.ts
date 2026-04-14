@@ -5,8 +5,6 @@
  * and browser panes.
  */
 
-
-
 export interface PiAgentConfig {
   provider?: string;
   model?: string;
@@ -42,22 +40,32 @@ async function resolvePiBinary(): Promise<string> {
   if (_resolvedPiPath) return _resolvedPiPath;
 
   // 1. Already on PATH?
-  const direct = Bun.spawnSync(["which", "pi"], { stdout: "pipe", stderr: "pipe" });
+  const direct = Bun.spawnSync(["which", "pi"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   if (direct.exitCode === 0) {
     const p = new TextDecoder().decode(direct.stdout).trim();
-    if (p) { _resolvedPiPath = p; return p; }
+    if (p) {
+      _resolvedPiPath = p;
+      return p;
+    }
   }
 
   // 2. Ask the user's login shell for the full PATH and resolve from there.
   //    This handles nvm, volta, fnm, brew, mise, asdf, etc.
   const shell = process.env["SHELL"] || "/bin/zsh";
-  const login = Bun.spawnSync(
-    [shell, "-ilc", "which pi"],
-    { stdout: "pipe", stderr: "pipe", env: { ...process.env, HOME: process.env["HOME"] ?? "" } },
-  );
+  const login = Bun.spawnSync([shell, "-ilc", "which pi"], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, HOME: process.env["HOME"] ?? "" },
+  });
   if (login.exitCode === 0) {
     const p = new TextDecoder().decode(login.stdout).trim();
-    if (p) { _resolvedPiPath = p; return p; }
+    if (p) {
+      _resolvedPiPath = p;
+      return p;
+    }
   }
 
   // 3. Common known locations
@@ -72,8 +80,13 @@ async function resolvePiBinary(): Promise<string> {
   for (const c of candidates) {
     try {
       const f = Bun.file(c);
-      if (await f.exists()) { _resolvedPiPath = c; return c; }
-    } catch { /* skip */ }
+      if (await f.exists()) {
+        _resolvedPiPath = c;
+        return c;
+      }
+    } catch {
+      /* skip */
+    }
   }
 
   // 4. Fallback — hope it's on PATH at runtime
@@ -109,7 +122,7 @@ export class PiAgentInstance {
   }
 
   async start(): Promise<void> {
-    const piPath = this.config.piBinary ?? await resolvePiBinary();
+    const piPath = this.config.piBinary ?? (await resolvePiBinary());
     const args = [piPath, "--mode", "rpc", "--no-session"];
 
     if (this.config.provider) {
@@ -138,15 +151,17 @@ export class PiAgentInstance {
     let shellPath = process.env["PATH"] ?? "";
     try {
       const shell = process.env["SHELL"] || "/bin/zsh";
-      const r = Bun.spawnSync(
-        [shell, "-ilc", "echo $PATH"],
-        { stdout: "pipe", stderr: "pipe" },
-      );
+      const r = Bun.spawnSync([shell, "-ilc", "echo $PATH"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       if (r.exitCode === 0) {
         const p = new TextDecoder().decode(r.stdout).trim();
         if (p) shellPath = p;
       }
-    } catch { /* keep existing PATH */ }
+    } catch {
+      /* keep existing PATH */
+    }
 
     try {
       this.proc = Bun.spawn(args, {
@@ -287,7 +302,9 @@ export class PiAgentInstance {
       setTimeout(() => {
         if (this.responseWaiters.has(id)) {
           this.responseWaiters.delete(id);
-          reject(new Error(`Timeout waiting for response to ${command["type"]}`));
+          reject(
+            new Error(`Timeout waiting for response to ${command["type"]}`),
+          );
         }
       }, timeoutMs);
     });
@@ -354,14 +371,111 @@ export class PiAgentInstance {
   }
 
   /** Respond to an extension UI request. */
-  respondToExtensionUI(
-    id: string,
-    response: Record<string, unknown>,
-  ): void {
+  respondToExtensionUI(id: string, response: Record<string, unknown>): void {
     this.sendNoWait({
       type: "extension_ui_response",
       id,
       ...response,
+    });
+  }
+
+  /** Queue a steering message (delivered during streaming). */
+  steer(message: string): void {
+    this.sendNoWait({ type: "steer", message });
+  }
+
+  /** Queue a follow-up message (delivered after agent finishes). */
+  followUp(message: string): void {
+    this.sendNoWait({ type: "follow_up", message });
+  }
+
+  /** Execute a bash command via the agent. */
+  async bash(command: string, timeout?: number): Promise<unknown> {
+    return await this.send(
+      {
+        type: "bash",
+        command,
+        ...(timeout != null ? { timeout } : {}),
+      },
+      timeout ? timeout + 5000 : 60000,
+    );
+  }
+
+  /** Abort a running bash command. */
+  abortBash(): void {
+    this.sendNoWait({ type: "abort_bash" });
+  }
+
+  /** Cycle to the next available model. */
+  async cycleModel(): Promise<unknown> {
+    return await this.send({ type: "cycle_model" });
+  }
+
+  /** Cycle to the next thinking level. */
+  async cycleThinkingLevel(): Promise<unknown> {
+    return await this.send({ type: "cycle_thinking_level" });
+  }
+
+  /** Get available slash commands. */
+  async getCommands(): Promise<unknown> {
+    return await this.send({ type: "get_commands" });
+  }
+
+  /** Get messages available for forking. */
+  async getForkMessages(): Promise<unknown> {
+    return await this.send({ type: "get_fork_messages" });
+  }
+
+  /** Get the last assistant message text. */
+  async getLastAssistantText(): Promise<unknown> {
+    return await this.send({ type: "get_last_assistant_text" });
+  }
+
+  /** Set steering mode ("all" | "one-at-a-time"). */
+  async setSteeringMode(mode: string): Promise<void> {
+    await this.send({ type: "set_steering_mode", mode });
+  }
+
+  /** Set follow-up mode ("all" | "one-at-a-time"). */
+  async setFollowUpMode(mode: string): Promise<void> {
+    await this.send({ type: "set_follow_up_mode", mode });
+  }
+
+  /** Enable or disable auto-compaction. */
+  async setAutoCompaction(enabled: boolean): Promise<void> {
+    await this.send({ type: "set_auto_compaction", enabled });
+  }
+
+  /** Enable or disable auto-retry on transient errors. */
+  async setAutoRetry(enabled: boolean): Promise<void> {
+    await this.send({ type: "set_auto_retry", enabled });
+  }
+
+  /** Cancel an in-progress retry. */
+  abortRetry(): void {
+    this.sendNoWait({ type: "abort_retry" });
+  }
+
+  /** Set the session display name. */
+  async setSessionName(name: string): Promise<void> {
+    await this.send({ type: "set_session_name", name });
+  }
+
+  /** Switch to a different session file. */
+  async switchSession(sessionPath: string): Promise<unknown> {
+    return await this.send({ type: "switch_session", sessionPath });
+  }
+
+  /** Fork from a previous user message. */
+  async fork(entryId: string): Promise<unknown> {
+    return await this.send({ type: "fork", entryId });
+  }
+
+  /** Export session to HTML. */
+  async exportHtml(outputPath?: string): Promise<unknown> {
+    return await this.send({
+      type: "export_html",
+      ...(outputPath ? { outputPath } : {}),
     });
   }
 
@@ -389,9 +503,7 @@ export class PiAgentManager {
   private counter = 0;
 
   /** Callbacks wired by the main process. */
-  onEvent:
-    | ((agentId: string, event: PiAgentEvent) => void)
-    | null = null;
+  onEvent: ((agentId: string, event: PiAgentEvent) => void) | null = null;
   onExit: ((agentId: string, code: number) => void) | null = null;
 
   createAgent(config: PiAgentConfig): PiAgentInstance {

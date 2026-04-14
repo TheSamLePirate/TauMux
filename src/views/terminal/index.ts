@@ -563,16 +563,14 @@ function buildPaletteCommands(): PaletteCommand[] {
       category: "Agent",
       label: "Split Agent Right",
       description: "Split a pi coding agent alongside the current pane.",
-      action: () =>
-        rpc.send("splitAgentSurface", { direction: "horizontal" }),
+      action: () => rpc.send("splitAgentSurface", { direction: "horizontal" }),
     },
     {
       id: "agent-split-down",
       category: "Agent",
       label: "Split Agent Down",
       description: "Split a pi coding agent below the current pane.",
-      action: () =>
-        rpc.send("splitAgentSurface", { direction: "vertical" }),
+      action: () => rpc.send("splitAgentSurface", { direction: "vertical" }),
     },
     {
       id: "show-pane-info",
@@ -1337,7 +1335,10 @@ window.addEventListener("ht-agent-prompt", (e: Event) => {
   const detail = (e as CustomEvent).detail;
   if (detail?.agentId && detail?.message) {
     surfaceManager.agentAddUserMessage(detail.agentId, detail.message);
-    rpc.send("agentPrompt", { agentId: detail.agentId, message: detail.message });
+    rpc.send("agentPrompt", {
+      agentId: detail.agentId,
+      message: detail.message,
+    });
   }
 });
 
@@ -1362,7 +1363,10 @@ window.addEventListener("ht-agent-set-model", (e: Event) => {
 window.addEventListener("ht-agent-set-thinking", (e: Event) => {
   const detail = (e as CustomEvent).detail;
   if (detail?.agentId && detail?.level) {
-    rpc.send("agentSetThinking", { agentId: detail.agentId, level: detail.level });
+    rpc.send("agentSetThinking", {
+      agentId: detail.agentId,
+      level: detail.level,
+    });
   }
 });
 
@@ -1400,7 +1404,171 @@ window.addEventListener("ht-agent-extension-ui-response", (e: Event) => {
     rpc.send("agentExtensionUIResponse", {
       agentId: detail.agentId,
       id: detail.id,
-      response: { cancelled: detail.cancelled ?? true },
+      response: detail.response ?? { cancelled: detail.cancelled ?? true },
+    });
+  }
+});
+
+window.addEventListener("ht-agent-steer", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.message) {
+    rpc.send("agentSteer", {
+      agentId: detail.agentId,
+      message: detail.message,
+    });
+  }
+});
+
+window.addEventListener("ht-agent-follow-up", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.message) {
+    rpc.send("agentFollowUp", {
+      agentId: detail.agentId,
+      message: detail.message,
+    });
+  }
+});
+
+window.addEventListener("ht-agent-bash", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.command) {
+    rpc.send("agentBash", {
+      agentId: detail.agentId,
+      command: detail.command,
+      timeout: detail.timeout,
+    });
+  }
+});
+
+window.addEventListener("ht-agent-abort-bash", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentAbortBash", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-cycle-model", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentCycleModel", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-cycle-thinking", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentCycleThinking", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-get-commands", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentGetCommands", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-get-session-stats", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentGetSessionStats", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-get-fork-messages", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentGetForkMessages", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-get-last-assistant-text", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentGetLastAssistantText", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-set-steering-mode", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.mode) {
+    rpc.send("agentSetSteeringMode", {
+      agentId: detail.agentId,
+      mode: detail.mode,
+    });
+  }
+});
+
+window.addEventListener("ht-agent-set-follow-up-mode", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.mode) {
+    rpc.send("agentSetFollowUpMode", {
+      agentId: detail.agentId,
+      mode: detail.mode,
+    });
+  }
+});
+
+window.addEventListener("ht-agent-set-auto-compaction", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.enabled != null) {
+    rpc.send("agentSetAutoCompaction", {
+      agentId: detail.agentId,
+      enabled: detail.enabled,
+    });
+  }
+});
+
+window.addEventListener("ht-agent-set-auto-retry", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.enabled != null) {
+    rpc.send("agentSetAutoRetry", {
+      agentId: detail.agentId,
+      enabled: detail.enabled,
+    });
+  }
+});
+
+window.addEventListener("ht-agent-abort-retry", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentAbortRetry", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-set-session-name", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.name) {
+    rpc.send("agentSetSessionName", {
+      agentId: detail.agentId,
+      name: detail.name,
+    });
+  }
+});
+
+window.addEventListener("ht-agent-switch-session", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.sessionPath) {
+    rpc.send("agentSwitchSession", {
+      agentId: detail.agentId,
+      sessionPath: detail.sessionPath,
+    });
+  }
+});
+
+window.addEventListener("ht-agent-fork", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.entryId) {
+    rpc.send("agentFork", { agentId: detail.agentId, entryId: detail.entryId });
+  }
+});
+
+window.addEventListener("ht-agent-export-html", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentExportHtml", {
+      agentId: detail.agentId,
+      outputPath: detail.outputPath,
     });
   }
 });
