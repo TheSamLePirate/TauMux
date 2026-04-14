@@ -1635,19 +1635,11 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
       const aid = payload["agentId"] as string;
       const splitFrom = payload["splitFrom"] as string | undefined;
       const dir = payload["direction"] as "horizontal" | "vertical" | undefined;
-      if (!sid || !aid) {
-        showToast(`Agent: missing sid=${sid} aid=${aid}`, "error");
-        break;
-      }
-      try {
-        if (splitFrom && dir) {
-          surfaceManager.addAgentSurfaceAsSplit(sid, aid, splitFrom, dir);
-        } else {
-          surfaceManager.addAgentSurface(sid, aid);
-        }
-        showToast(`Agent workspace created (${surfaceManager.workspaceCount} ws)`, "success");
-      } catch (err) {
-        showToast(`Agent error: ${String(err)}`, "error");
+      if (!sid || !aid) break;
+      if (splitFrom && dir) {
+        surfaceManager.addAgentSurfaceAsSplit(sid, aid, splitFrom, dir);
+      } else {
+        surfaceManager.addAgentSurface(sid, aid);
       }
       break;
     }

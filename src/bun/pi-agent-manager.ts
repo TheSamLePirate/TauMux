@@ -330,7 +330,7 @@ export class PiAgentManager {
   onExit: ((agentId: string, code: number) => void) | null = null;
 
   createAgent(config: PiAgentConfig): PiAgentInstance {
-    const id = `agent:${++this.counter}`;
+    const id = `agent-${++this.counter}`;
     const instance = new PiAgentInstance(id, config);
 
     instance.onEvent = (event) => {
