@@ -1631,15 +1631,23 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
     }
     // ── Agent surface actions ──
     case "agentSurfaceCreated": {
-      showToast("Creating agent pane...", "info");
       const sid = payload["surfaceId"] as string;
       const aid = payload["agentId"] as string;
       const splitFrom = payload["splitFrom"] as string | undefined;
       const dir = payload["direction"] as "horizontal" | "vertical" | undefined;
-      if (splitFrom && dir) {
-        surfaceManager.addAgentSurfaceAsSplit(sid, aid, splitFrom, dir);
-      } else {
-        surfaceManager.addAgentSurface(sid, aid);
+      if (!sid || !aid) {
+        showToast(`Agent: missing sid=${sid} aid=${aid}`, "error");
+        break;
+      }
+      try {
+        if (splitFrom && dir) {
+          surfaceManager.addAgentSurfaceAsSplit(sid, aid, splitFrom, dir);
+        } else {
+          surfaceManager.addAgentSurface(sid, aid);
+        }
+        showToast(`Agent workspace created (${surfaceManager.workspaceCount} ws)`, "success");
+      } catch (err) {
+        showToast(`Agent error: ${String(err)}`, "error");
       }
       break;
     }
