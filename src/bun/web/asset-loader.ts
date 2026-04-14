@@ -1,12 +1,35 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
 // Read xterm.js assets at module load time. In dev mode they live under
 // node_modules in the project root. In a packaged Electrobun app they are
 // copied to the vendor/ directory next to the bun/ bundle via electrobun.config copy.
+//
+// In a packaged .app the bundled bun code lives at `app/bun/index.js`, so
+// `import.meta.dir` resolves to `app/bun/` and the vendor dir is at
+// `../vendor`. The original source tree nests asset-loader one level
+// deeper (src/bun/web/asset-loader.ts), which doesn't change the runtime
+// layout — the bundle is still one file at app/bun/. We probe both
+// relative depths so dev (source-run) and packaged (bundled-run) both
+// find the assets.
 
-// Vendor directory inside the packaged .app (app/vendor/ sits next to app/bun/)
-const VENDOR_DIR = resolve(import.meta.dir, "../../vendor");
+function findVendorDir(): string {
+  const candidates = [
+    resolve(import.meta.dir, "../vendor"),
+    resolve(import.meta.dir, "../../vendor"),
+    resolve(import.meta.dir, "../../../vendor"),
+  ];
+  for (const dir of candidates) {
+    try {
+      if (statSync(dir).isDirectory()) return dir;
+    } catch {
+      /* try next */
+    }
+  }
+  return candidates[0]!;
+}
+
+const VENDOR_DIR = findVendorDir();
 
 // Map from dev-mode paths (relative to project root) to vendor filenames.
 // Keeping this flat makes it explicit which assets we bundle into the .app.

@@ -45,8 +45,8 @@ export interface AppSettings {
   // Network
   webMirrorPort: number;
   autoStartWebMirror: boolean;
-  /** Bind address for the web mirror. Defaults to 127.0.0.1 (loopback
-   *  only). Set to "0.0.0.0" to expose on the LAN. */
+  /** Bind address for the web mirror. Defaults to 0.0.0.0 (LAN-visible).
+   *  Set to "127.0.0.1" to restrict to the local machine. */
   webMirrorBind: "127.0.0.1" | "0.0.0.0";
   /** Optional auth token. When set, GET / and WS upgrade require
    *  `?t=<token>`. Empty string disables auth (back-compat default). */
@@ -444,7 +444,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
 
   webMirrorPort: 3000,
   autoStartWebMirror: false,
-  webMirrorBind: "127.0.0.1",
+  webMirrorBind: "0.0.0.0",
   webMirrorAuthToken: "",
 
   packageRunner: "bun",
@@ -471,7 +471,7 @@ export function validateSettings(s: AppSettings): AppSettings {
     terminalBgOpacity: clamp(s.terminalBgOpacity, 0, 1),
     bloomIntensity: clamp(s.bloomIntensity, 0, 2),
     webMirrorPort: clamp(Math.round(s.webMirrorPort), 1, 65535),
-    webMirrorBind: s.webMirrorBind === "0.0.0.0" ? "0.0.0.0" : "127.0.0.1",
+    webMirrorBind: s.webMirrorBind === "127.0.0.1" ? "127.0.0.1" : "0.0.0.0",
     webMirrorAuthToken: (s.webMirrorAuthToken ?? "").trim(),
     paneGap: clamp(Math.round(s.paneGap), 0, 20),
     sidebarWidth: clamp(Math.round(s.sidebarWidth), 200, 600),

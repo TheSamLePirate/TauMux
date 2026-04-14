@@ -384,7 +384,7 @@ See [`doc/system-browser-pane.md`](doc/system-browser-pane.md) for the full refe
 
 ## Web mirror
 
-Open from the sidebar footer or `ht` — the mirror runs on `http://127.0.0.1:3000` by default (loopback only). Flip `webMirrorBind` to `0.0.0.0` to expose it on the LAN, and set `webMirrorAuthToken` to require `?t=<token>` (or `Authorization: Bearer <token>`) on every request. Terminal output, sideband panels, metadata chips, and notifications all stream over a single WebSocket. Port chips open `http://<host>:<port>` in a new tab — handy for poking a dev server from a phone on the same Wi-Fi.
+Open from the sidebar footer or `ht` — the mirror runs on `http://<laptop-ip>:3000` by default, reachable from anything on the LAN. Set `webMirrorBind` to `127.0.0.1` to restrict to the local machine, and set `webMirrorAuthToken` to require `?t=<token>` (or `Authorization: Bearer <token>`) on every request. Terminal output, sideband panels, metadata chips, and notifications all stream over a single WebSocket. Port chips open `http://<host>:<port>` in a new tab — handy for poking a dev server from a phone on the same Wi-Fi.
 
 Auto-start is off by default; enable it in **Settings → Network → Auto-start Web Mirror**, or set `HYPERTERM_WEB_PORT` in the env to force-enable.
 

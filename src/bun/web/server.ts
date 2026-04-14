@@ -67,7 +67,7 @@ export class WebServer {
     private getAppState: () => AppState,
     private getFocusedSurfaceId: () => string | null,
     private getSidebarVisible: () => boolean = () => true,
-    private bind: "127.0.0.1" | "0.0.0.0" = "127.0.0.1",
+    private bind: "127.0.0.1" | "0.0.0.0" = "0.0.0.0",
     private authToken: string = "",
   ) {}
 
