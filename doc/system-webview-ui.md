@@ -1,6 +1,8 @@
 # HyperTerm Canvas: Webview & UI System Guide
 
-The frontend of HyperTerm Canvas runs inside an [Electrobun](https://electrobun.dev) Webview. This environment is responsible for taking the raw data provided by the Bun backend and turning it into a beautiful, interactive, Catppuccin-themed user interface.
+The frontend of HyperTerm Canvas runs inside an [Electrobun](https://electrobun.dev) Webview. This environment is responsible for taking the raw data provided by the Bun backend and turning it into a beautiful, interactive, macOS-oriented terminal workspace UI.
+
+For the visual system and styling rules that govern this UI, see [system-webview-design-guidelines.md](system-webview-design-guidelines.md).
 
 This guide details how the UI is structured, how the tiling window manager works, and how to interact with the visual components.
 

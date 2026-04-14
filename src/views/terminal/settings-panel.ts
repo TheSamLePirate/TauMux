@@ -83,10 +83,25 @@ export class SettingsPanel {
     const header = document.createElement("div");
     header.className = "settings-header";
 
+    const titleCopy = document.createElement("div");
+    titleCopy.className = "settings-header-copy";
+
+    const eyebrowEl = document.createElement("span");
+    eyebrowEl.className = "settings-header-eyebrow";
+    eyebrowEl.textContent = "Preferences";
+    titleCopy.appendChild(eyebrowEl);
+
     const titleEl = document.createElement("span");
     titleEl.className = "settings-header-title";
     titleEl.textContent = "Settings";
-    header.appendChild(titleEl);
+    titleCopy.appendChild(titleEl);
+
+    const subtitleEl = document.createElement("span");
+    subtitleEl.className = "settings-header-subtitle";
+    subtitleEl.textContent = "Terminal behavior, appearance, and workspace chrome";
+    titleCopy.appendChild(subtitleEl);
+
+    header.appendChild(titleCopy);
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "settings-close-btn";

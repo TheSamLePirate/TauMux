@@ -13,6 +13,7 @@ export class CommandPalette {
   private overlay: HTMLDivElement;
   private input: HTMLInputElement;
   private resultsEl: HTMLDivElement;
+  private resultsMetaEl: HTMLSpanElement;
   private commands: PaletteCommand[] = [];
   private filtered: PaletteCommand[] = [];
   private selectedIndex = 0;
@@ -37,7 +38,7 @@ export class CommandPalette {
     this.input = document.createElement("input");
     this.input.className = "palette-input";
     this.input.type = "text";
-    this.input.placeholder = "command";
+    this.input.placeholder = "Search commands, panes, and workspaces";
     this.input.autocomplete = "off";
     this.input.autocapitalize = "off";
     this.input.spellcheck = false;
@@ -48,6 +49,37 @@ export class CommandPalette {
     this.resultsEl = document.createElement("div");
     this.resultsEl.className = "palette-results";
     container.appendChild(this.resultsEl);
+
+    const footer = document.createElement("div");
+    footer.className = "palette-footer";
+
+    this.resultsMetaEl = document.createElement("span");
+    this.resultsMetaEl.className = "palette-footer-summary";
+    footer.appendChild(this.resultsMetaEl);
+
+    const hints = document.createElement("div");
+    hints.className = "palette-footer-hints";
+    for (const [key, label] of [
+      ["\u2191\u2193", "Navigate"],
+      ["Enter", "Run"],
+      ["Esc", "Close"],
+    ]) {
+      const hint = document.createElement("span");
+      hint.className = "palette-footer-hint";
+
+      const keyEl = document.createElement("kbd");
+      keyEl.className = "palette-footer-key";
+      keyEl.textContent = key;
+      hint.appendChild(keyEl);
+
+      const labelEl = document.createElement("span");
+      labelEl.textContent = label;
+      hint.appendChild(labelEl);
+
+      hints.appendChild(hint);
+    }
+    footer.appendChild(hints);
+    container.appendChild(footer);
 
     this.overlay.appendChild(container);
     document.body.appendChild(this.overlay);
@@ -180,6 +212,7 @@ export class CommandPalette {
 
     const maxShow = 12;
     const items = this.filtered.slice(0, maxShow);
+    this.resultsMetaEl.textContent = `${this.filtered.length} match${this.filtered.length === 1 ? "" : "es"}`;
 
     for (let i = 0; i < items.length; i++) {
       const cmd = items[i];

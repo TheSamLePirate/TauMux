@@ -5,6 +5,12 @@ import {
   ContextMenu,
   Utils,
 } from "electrobun/bun";
+// Internal Electrobun native bridge used to resize the root BrowserView and
+// expose a true native window frame around the webview.
+import {
+  native,
+  toCString,
+} from "../../node_modules/electrobun/dist-macos-arm64/api/bun/proc/native";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
@@ -50,6 +56,7 @@ let workspaceState: WorkspaceSnapshot[] = [];
 
 let activeWorkspaceId: string | null = null;
 let sidebarVisible = true;
+const WINDOW_FRAME_INSET = 2;
 
 function getAppState(): AppState {
   return {
@@ -268,7 +275,7 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
 const mainWindow = new BrowserWindow({
   title: "HyperTerm Canvas",
   titleBarStyle: "hiddenInset",
-  transparent: true,
+  transparent: false,
   styleMask: {
     UnifiedTitleAndToolbar: false,
   },
@@ -281,6 +288,38 @@ const mainWindow = new BrowserWindow({
   },
   rpc,
 });
+
+function applyNativeWindowFrameInset(width: number, height: number): void {
+  const webview = mainWindow.webview;
+  if (!webview?.ptr) return;
+
+  const inset = WINDOW_FRAME_INSET;
+  const innerWidth = Math.max(1, width - inset * 2);
+  const innerHeight = Math.max(1, height - inset * 2);
+
+  native.symbols.resizeWebview(
+    webview.ptr,
+    inset,
+    inset,
+    innerWidth,
+    innerHeight,
+    toCString("[]"),
+  );
+}
+
+applyNativeWindowFrameInset(mainWindow.frame.width, mainWindow.frame.height);
+
+mainWindow.on(
+  "resize",
+  (event: unknown) => {
+    const resized = event as
+      | { data?: { width?: number; height?: number } }
+      | undefined;
+    const width = resized?.data?.width ?? mainWindow.frame.width;
+    const height = resized?.data?.height ?? mainWindow.frame.height;
+    applyNativeWindowFrameInset(width, height);
+  },
+);
 
 ApplicationMenu.setApplicationMenu(buildApplicationMenu());
 

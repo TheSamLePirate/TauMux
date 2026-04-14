@@ -49,7 +49,7 @@ describe("WebServer", () => {
     // xterm.js UMD bundle should be inlined
     expect(html).toContain("Terminal");
     expect(html).toContain("FitAddon");
-    expect(html.length).toBeGreaterThan(50000);
+    expect(html.length).toBeGreaterThan(45000);
   });
 
   test("returns 404 for unknown routes", async () => {

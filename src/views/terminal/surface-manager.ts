@@ -23,29 +23,29 @@ import type {
 import { WORKSPACE_COLORS } from "../../shared/workspace-colors";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
 
-const obsidianGlassTheme = {
-  background: "rgba(9, 9, 11, 0)",
-  foreground: "#f4f4f5",
+const defaultGlassTheme = {
+  background: "rgba(10, 10, 10, 0)",
+  foreground: "#f5f7fb",
   cursor: "#eab308",
-  cursorAccent: "#09090b",
-  selectionBackground: "rgba(168, 85, 247, 0.24)",
-  selectionForeground: "#f4f4f5",
-  black: "#18181b",
+  cursorAccent: "#0a0a0a",
+  selectionBackground: "rgba(234, 179, 8, 0.2)",
+  selectionForeground: "#f5f7fb",
+  black: "#0a0a0a",
   red: "#f87171",
   green: "#4ade80",
-  yellow: "#eab308",
-  blue: "#c4b5fd",
-  magenta: "#a855f7",
-  cyan: "#67e8f9",
-  white: "#e4e4e7",
-  brightBlack: "#52525b",
-  brightRed: "#fb7185",
+  yellow: "#f59e0b",
+  blue: "#a1a1aa",
+  magenta: "#c4c4cf",
+  cyan: "#d7dae1",
+  white: "#d7dce7",
+  brightBlack: "#5c6270",
+  brightRed: "#fca5a5",
   brightGreen: "#86efac",
-  brightYellow: "#facc15",
-  brightBlue: "#ddd6fe",
-  brightMagenta: "#d8b4fe",
-  brightCyan: "#a5f3fc",
-  brightWhite: "#fafafa",
+  brightYellow: "#fbbf24",
+  brightBlue: "#c7cad2",
+  brightMagenta: "#d7dae1",
+  brightCyan: "#e5e7eb",
+  brightWhite: "#f5f7fb",
 };
 
 const PANE_DRAG_THRESHOLD = 8;
@@ -628,7 +628,7 @@ export class SurfaceManager {
       foreground: s.foregroundColor,
       cursor: s.accentColor,
       cursorAccent: `rgb(${bg})`,
-      selectionBackground: `rgba(${secRgb}, 0.28)`,
+      selectionBackground: `rgba(${accRgb}, 0.22)`,
       selectionForeground: s.foregroundColor,
       ...s.ansiColors,
     };
@@ -1366,7 +1366,7 @@ export class SurfaceManager {
     this.terminalContainer.appendChild(container);
 
     const term = new Terminal({
-      theme: obsidianGlassTheme,
+      theme: defaultGlassTheme,
       fontFamily:
         "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Berkeley Mono', 'SF Mono', 'Menlo', monospace",
       fontSize: this.fontSize,
@@ -1784,6 +1784,19 @@ export class SurfaceManager {
     if (bounds.w === 0 || bounds.h === 0) return;
 
     const rects = ws.layout.computeRects(bounds);
+    let bottomRightSurfaceId: string | null = null;
+    let bottomMost = -1;
+    let rightMost = -1;
+
+    for (const [surfaceId, rect] of rects) {
+      const bottom = rect.y + rect.h;
+      const right = rect.x + rect.w;
+      if (bottom > bottomMost || (bottom === bottomMost && right > rightMost)) {
+        bottomMost = bottom;
+        rightMost = right;
+        bottomRightSurfaceId = surfaceId;
+      }
+    }
 
     for (const [surfaceId, rect] of rects) {
       const view = this.surfaces.get(surfaceId);
@@ -1795,6 +1808,10 @@ export class SurfaceManager {
       s.width = `${rect.w}px`;
       s.height = `${rect.h}px`;
       s.display = "flex";
+      view.container.classList.toggle(
+        "surface-window-corner",
+        surfaceId === bottomRightSurfaceId,
+      );
     }
 
     this.renderDividers(ws, bounds);
