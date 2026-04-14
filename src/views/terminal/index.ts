@@ -103,6 +103,24 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
       browserSurfaceClosed: (payload) => {
         surfaceManager.removeBrowserSurface(payload.surfaceId);
       },
+      agentSurfaceCreated: (payload) => {
+        if (payload.splitFrom && payload.direction) {
+          surfaceManager.addAgentSurfaceAsSplit(
+            payload.surfaceId,
+            payload.agentId,
+            payload.splitFrom,
+            payload.direction,
+          );
+        } else {
+          surfaceManager.addAgentSurface(payload.surfaceId, payload.agentId);
+        }
+      },
+      agentEvent: (payload) => {
+        surfaceManager.handleAgentEvent(payload.agentId, payload.event);
+      },
+      agentSurfaceClosed: (payload) => {
+        surfaceManager.removeAgentSurface(payload.surfaceId);
+      },
       sidebandMeta: (payload) => {
         surfaceManager.handleSidebandMeta(payload.surfaceId, payload);
       },
@@ -548,6 +566,29 @@ function buildPaletteCommands(): PaletteCommand[] {
       label: "New Browser Workspace",
       description: "Open a new workspace with a browser pane.",
       action: () => rpc.send("createBrowserSurface", {}),
+    },
+    {
+      id: "agent-new",
+      category: "Agent",
+      label: "New Agent Workspace",
+      description: "Open a pi coding agent in a new workspace.",
+      action: () => rpc.send("createAgentSurface", {}),
+    },
+    {
+      id: "agent-split-right",
+      category: "Agent",
+      label: "Split Agent Right",
+      description: "Split a pi coding agent alongside the current pane.",
+      action: () =>
+        rpc.send("splitAgentSurface", { direction: "horizontal" }),
+    },
+    {
+      id: "agent-split-down",
+      category: "Agent",
+      label: "Split Agent Down",
+      description: "Split a pi coding agent below the current pane.",
+      action: () =>
+        rpc.send("splitAgentSurface", { direction: "vertical" }),
     },
     {
       id: "show-pane-info",
@@ -1304,6 +1345,80 @@ window.addEventListener("ht-browser-error", (e: Event) => {
 
 window.addEventListener("ht-clear-logs", () => {
   surfaceManager.clearLogs();
+});
+
+// ── Agent pane events ──
+
+window.addEventListener("ht-agent-prompt", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.message) {
+    surfaceManager.agentAddUserMessage(detail.agentId, detail.message);
+    rpc.send("agentPrompt", { agentId: detail.agentId, message: detail.message });
+  }
+});
+
+window.addEventListener("ht-agent-abort", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentAbort", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-set-model", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.provider && detail?.modelId) {
+    rpc.send("agentSetModel", {
+      agentId: detail.agentId,
+      provider: detail.provider,
+      modelId: detail.modelId,
+    });
+  }
+});
+
+window.addEventListener("ht-agent-set-thinking", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.level) {
+    rpc.send("agentSetThinking", { agentId: detail.agentId, level: detail.level });
+  }
+});
+
+window.addEventListener("ht-agent-new-session", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentNewSession", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-compact", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentCompact", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-get-models", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentGetModels", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-get-state", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentGetState", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-extension-ui-response", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId && detail?.id) {
+    rpc.send("agentExtensionUIResponse", {
+      agentId: detail.agentId,
+      id: detail.id,
+      response: { cancelled: detail.cancelled ?? true },
+    });
+  }
 });
 
 window.addEventListener("ht-split", (e: Event) => {

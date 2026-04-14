@@ -23,6 +23,13 @@ import type {
 import { WORKSPACE_COLORS } from "../../shared/workspace-colors";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
 import {
+  type AgentPaneView,
+  createAgentPaneView,
+  agentPanelHandleEvent,
+  agentPanelAddUserMessage,
+  agentPanelFocusInput,
+} from "./agent-panel";
+import {
   type BrowserPaneView,
   createBrowserPaneView,
   browserPaneNavigateTo,
@@ -68,7 +75,7 @@ const PANE_DRAG_THRESHOLD = 8;
 
 interface SurfaceView {
   id: string;
-  surfaceType: "terminal" | "browser";
+  surfaceType: "terminal" | "browser" | "agent";
   // Terminal-specific (null for browser panes)
   term: Terminal | null;
   fitAddon: FitAddon | null;
@@ -78,6 +85,8 @@ interface SurfaceView {
   panelsEl: HTMLDivElement | null;
   // Browser-specific (null for terminal panes)
   browserView: BrowserPaneView | null;
+  // Agent-specific (null for non-agent panes)
+  agentView: AgentPaneView | null;
   // Shared
   container: HTMLDivElement;
   titleEl: HTMLSpanElement;
@@ -269,6 +278,72 @@ export class SurfaceManager {
   /** Remove a browser surface (same as removeSurface — shared logic). */
   removeBrowserSurface(surfaceId: string): void {
     this.removeSurface(surfaceId);
+  }
+
+  /** Add an agent surface as a new workspace. */
+  addAgentSurface(surfaceId: string, agentId: string): void {
+    const view = this.createAgentSurfaceView(surfaceId, agentId);
+    this.surfaces.set(surfaceId, view);
+
+    const ws: Workspace = {
+      id: `ws:${++this.wsCounter}`,
+      layout: new PaneLayout(surfaceId),
+      surfaceIds: new Set([surfaceId]),
+      name: "Pi Agent",
+      color: WORKSPACE_COLORS[(this.wsCounter - 1) % WORKSPACE_COLORS.length],
+      status: new Map(),
+      progress: null,
+      logs: [],
+    };
+    this.workspaces.push(ws);
+    this.switchToWorkspace(this.workspaces.length - 1);
+    this.updateSidebar();
+    this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+  }
+
+  /** Add an agent surface as a split within the active workspace. */
+  addAgentSurfaceAsSplit(
+    surfaceId: string,
+    agentId: string,
+    splitFrom: string,
+    direction: "horizontal" | "vertical",
+  ): void {
+    const view = this.createAgentSurfaceView(surfaceId, agentId);
+    this.surfaces.set(surfaceId, view);
+
+    const ws = this.activeWorkspace();
+    if (!ws) return;
+
+    ws.layout.splitSurface(splitFrom, direction, surfaceId);
+    ws.surfaceIds.add(surfaceId);
+
+    this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+  }
+
+  /** Remove an agent surface (same as removeSurface — shared logic). */
+  removeAgentSurface(surfaceId: string): void {
+    this.removeSurface(surfaceId);
+  }
+
+  /** Handle a pi agent event for the corresponding agent surface. */
+  handleAgentEvent(agentId: string, event: Record<string, unknown>): void {
+    const view = this.surfaces.get(agentId);
+    if (!view?.agentView) return;
+    agentPanelHandleEvent(view.agentView, event);
+  }
+
+  /** Send a user message to an agent panel's display. */
+  agentAddUserMessage(agentId: string, text: string): void {
+    const view = this.surfaces.get(agentId);
+    if (!view?.agentView) return;
+    agentPanelAddUserMessage(view.agentView, text);
+  }
+
+  /** Focus the agent panel input. */
+  agentFocusInput(agentId: string): void {
+    const view = this.surfaces.get(agentId);
+    if (!view?.agentView) return;
+    agentPanelFocusInput(view.agentView);
   }
 
   /** Add a surface as a split within the active workspace. */
@@ -497,7 +572,7 @@ export class SurfaceManager {
     return view.term;
   }
 
-  getActiveSurfaceType(): "terminal" | "browser" | null {
+  getActiveSurfaceType(): "terminal" | "browser" | "agent" | null {
     if (!this.focusedSurfaceId) return null;
     return this.surfaces.get(this.focusedSurfaceId)?.surfaceType ?? null;
   }
@@ -1158,7 +1233,7 @@ export class SurfaceManager {
       surfaceCwds?: Record<string, string>;
       selectedCwd?: string;
       surfaceUrls?: Record<string, string>;
-      surfaceTypes?: Record<string, "terminal" | "browser">;
+      surfaceTypes?: Record<string, "terminal" | "browser" | "agent">;
     }[];
     activeWorkspaceId: string | null;
   } {
@@ -1168,7 +1243,7 @@ export class SurfaceManager {
         const surfaceTitles: Record<string, string> = {};
         const surfaceCwds: Record<string, string> = {};
         const surfaceUrls: Record<string, string> = {};
-        const surfaceTypes: Record<string, "terminal" | "browser"> = {};
+        const surfaceTypes: Record<string, "terminal" | "browser" | "agent"> = {};
         for (const sid of surfaceIds) {
           const view = this.surfaces.get(sid);
           const title = view?.title;
@@ -1178,6 +1253,8 @@ export class SurfaceManager {
             if (view.browserView) {
               surfaceUrls[sid] = view.browserView.currentUrl;
             }
+          } else if (view?.surfaceType === "agent") {
+            surfaceTypes[sid] = "agent";
           } else {
             const cwd = this.metadata.get(sid)?.cwd;
             if (cwd) surfaceCwds[sid] = cwd;
@@ -1571,10 +1648,91 @@ export class SurfaceManager {
       panelManager: null,
       panelsEl: null,
       browserView,
+      agentView: null,
       container: browserView.container,
       titleEl: browserView.titleEl,
       chipsEl: browserView.chipsEl,
       title: browserView.title,
+    };
+  }
+
+  private createAgentSurfaceView(
+    surfaceId: string,
+    agentId: string,
+  ): SurfaceView {
+    const agentView = createAgentPaneView(surfaceId, agentId, {
+      onSendPrompt: (aid, message) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-agent-prompt", { detail: { agentId: aid, message } }),
+        );
+      },
+      onAbort: (aid) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-agent-abort", { detail: { agentId: aid } }),
+        );
+      },
+      onSetModel: (aid, provider, modelId) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-agent-set-model", { detail: { agentId: aid, provider, modelId } }),
+        );
+      },
+      onSetThinking: (aid, level) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-agent-set-thinking", { detail: { agentId: aid, level } }),
+        );
+      },
+      onNewSession: (aid) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-agent-new-session", { detail: { agentId: aid } }),
+        );
+      },
+      onCompact: (aid) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-agent-compact", { detail: { agentId: aid } }),
+        );
+      },
+      onClose: (sid) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-close-surface", { detail: { surfaceId: sid } }),
+        );
+      },
+      onSplit: (sid, direction) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-split", { detail: { surfaceId: sid, direction } }),
+        );
+      },
+      onFocus: (sid) => {
+        this.focusSurface(sid);
+      },
+      onGetModels: (aid) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-agent-get-models", { detail: { agentId: aid } }),
+        );
+      },
+      onGetState: (aid) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-agent-get-state", { detail: { agentId: aid } }),
+        );
+      },
+    });
+
+    this.terminalContainer.appendChild(agentView.container);
+
+    return {
+      id: surfaceId,
+      surfaceType: "agent",
+      term: null,
+      fitAddon: null,
+      searchAddon: null,
+      effects: null,
+      panelManager: null,
+      panelsEl: null,
+      browserView: null,
+      agentView,
+      container: agentView.container,
+      titleEl: agentView.titleEl,
+      chipsEl: agentView.chipsEl,
+      title: agentView.title,
     };
   }
 
@@ -1750,6 +1908,7 @@ export class SurfaceManager {
       panelManager,
       panelsEl,
       browserView: null,
+      agentView: null,
       container,
       titleEl: barTitle,
       chipsEl,

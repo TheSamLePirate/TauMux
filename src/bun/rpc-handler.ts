@@ -88,8 +88,8 @@ export interface WorkspaceSnapshot {
   selectedCwd?: string;
   /** Persisted URL per browser surface id for restore. */
   surfaceUrls?: Record<string, string>;
-  /** Surface type per surface id (only stored for "browser"). */
-  surfaceTypes?: Record<string, "terminal" | "browser">;
+  /** Surface type per surface id (only stored for "browser" or "agent"). */
+  surfaceTypes?: Record<string, "terminal" | "browser" | "agent">;
 }
 
 type Handler = (params: Record<string, unknown>) => unknown;

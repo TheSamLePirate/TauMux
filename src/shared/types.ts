@@ -14,8 +14,9 @@ export interface PaneLeaf {
   type: "leaf";
   surfaceId: string;
   /** Surface kind. Omitted or "terminal" = terminal PTY pane.
-   *  "browser" = embedded web browser pane. */
-  surfaceType?: "terminal" | "browser";
+   *  "browser" = embedded web browser pane.
+   *  "agent" = pi coding agent pane. */
+  surfaceType?: "terminal" | "browser" | "agent";
 }
 
 export type PaneNode = PaneSplit | PaneLeaf;
@@ -44,8 +45,8 @@ export interface PersistedWorkspace {
   selectedCwd?: string;
   /** Persisted URL per browser surface id for restore. */
   surfaceUrls?: Record<string, string>;
-  /** Surface type per surface id (only stored for "browser"; terminal is the default). */
-  surfaceTypes?: Record<string, "terminal" | "browser">;
+  /** Surface type per surface id (only stored for "browser" or "agent"; terminal is the default). */
+  surfaceTypes?: Record<string, "terminal" | "browser" | "agent">;
 }
 
 export interface PersistedLayout {
@@ -295,8 +296,8 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
           selectedCwd?: string;
           /** Persisted URL per browser surface id for restore. */
           surfaceUrls?: Record<string, string>;
-          /** Surface type per surface id (only stored for "browser"). */
-          surfaceTypes?: Record<string, "terminal" | "browser">;
+          /** Surface type per surface id (only stored for "browser" or "agent"). */
+          surfaceTypes?: Record<string, "terminal" | "browser" | "agent">;
         }[];
         activeWorkspaceId: string | null;
       };
@@ -372,6 +373,43 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
         result?: string;
         error?: string;
       };
+
+      // ── Agent surface lifecycle (webview → bun) ──
+      createAgentSurface: {
+        provider?: string;
+        model?: string;
+        thinkingLevel?: string;
+        cwd?: string;
+      };
+      splitAgentSurface: {
+        direction: "horizontal" | "vertical";
+        provider?: string;
+        model?: string;
+        thinkingLevel?: string;
+        cwd?: string;
+      };
+      /** Prompt sent from the webview agent panel to bun. */
+      agentPrompt: { agentId: string; message: string };
+      /** Abort the current agent operation. */
+      agentAbort: { agentId: string };
+      /** Set the agent's model. */
+      agentSetModel: { agentId: string; provider: string; modelId: string };
+      /** Set the agent's thinking level. */
+      agentSetThinking: { agentId: string; level: string };
+      /** Start a new agent session. */
+      agentNewSession: { agentId: string };
+      /** Compact the agent session. */
+      agentCompact: { agentId: string };
+      /** Request available models from the agent. */
+      agentGetModels: { agentId: string };
+      /** Request current agent state. */
+      agentGetState: { agentId: string };
+      /** Respond to an extension UI request. */
+      agentExtensionUIResponse: {
+        agentId: string;
+        id: string;
+        response: Record<string, unknown>;
+      };
     };
   };
   webview: {
@@ -444,6 +482,21 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       };
       /** Bun asks webview to close a browser surface (e.g. from socket API). */
       browserSurfaceClosed: { surfaceId: string };
+
+      // ── Agent surface lifecycle (bun → webview) ──
+      agentSurfaceCreated: {
+        surfaceId: string;
+        agentId: string;
+        splitFrom?: string;
+        direction?: "horizontal" | "vertical";
+      };
+      /** Bun forwards pi agent events to the webview. */
+      agentEvent: {
+        agentId: string;
+        event: Record<string, unknown>;
+      };
+      /** Bun asks webview to close an agent surface. */
+      agentSurfaceClosed: { surfaceId: string };
     };
   };
 }
