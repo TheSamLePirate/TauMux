@@ -245,7 +245,11 @@ const THINKING_COLORS: Record<string, string> = {
 const BUILTIN_COMMANDS: SlashCommand[] = [
   { name: "/model", description: "Switch model", source: "builtin" },
   { name: "/new", description: "Start a new session", source: "builtin" },
-  { name: "/resume", description: "Open another session by path", source: "builtin" },
+  {
+    name: "/resume",
+    description: "Open another session by path",
+    source: "builtin",
+  },
   { name: "/name", description: "Set session display name", source: "builtin" },
   {
     name: "/session",
@@ -417,8 +421,16 @@ export function createAgentPaneView(
   // Toolbar action buttons
   const actionDefs: [string, string, () => void][] = [
     ["\u21bb New", "New session", () => callbacks.onNewSession(agentId)],
-    ["\u25f3 Session", "Show session info", () => executeBuiltinCommand(view, callbacks, "/session")],
-    ["\u2442 Fork", "Fork from an earlier message", () => dispatch("ht-agent-get-fork-messages", { agentId })],
+    [
+      "\u25f3 Session",
+      "Show session info",
+      () => executeBuiltinCommand(view, callbacks, "/session"),
+    ],
+    [
+      "\u2442 Fork",
+      "Fork from an earlier message",
+      () => dispatch("ht-agent-get-fork-messages", { agentId }),
+    ],
     ["\u2699 Settings", "Agent settings", () => showSettingsDialog(view)],
     ["\u2298 Compact", "Compact context", () => callbacks.onCompact(agentId)],
     [
@@ -561,7 +573,8 @@ export function createAgentPaneView(
   inputBarEl.appendChild(inputWrap);
 
   const attachmentTrayEl = document.createElement("div");
-  attachmentTrayEl.className = "agent-attachment-tray agent-attachment-tray-hidden";
+  attachmentTrayEl.className =
+    "agent-attachment-tray agent-attachment-tray-hidden";
   inputWrap.appendChild(attachmentTrayEl);
 
   const sendBtn = document.createElement("button");
@@ -837,7 +850,10 @@ export function agentPanelHandleEvent(
       if (!s.isStreaming)
         el.streamingIndicator.classList.add("agent-streaming-bar-hidden");
       if (event["success"] === false && event["finalError"]) {
-        addSystemMessage(view, `Retry failed: ${event["finalError"] as string}`);
+        addSystemMessage(
+          view,
+          `Retry failed: ${event["finalError"] as string}`,
+        );
       }
       syncFooter(view);
       break;
@@ -1700,7 +1716,10 @@ function renderDialog(view: AgentPaneView): void {
           .filter(Boolean)
           .join("\n")
           .toLowerCase();
-        return !view._state.sessionListFilter || hay.includes(view._state.sessionListFilter);
+        return (
+          !view._state.sessionListFilter ||
+          hay.includes(view._state.sessionListFilter)
+        );
       });
       if (filtered.length === 0) {
         const empty = document.createElement("div");
@@ -1818,10 +1837,7 @@ function renderDialog(view: AgentPaneView): void {
       () => {
         dispatch("ht-agent-set-steering-mode", {
           agentId: view.agentId,
-          mode:
-            view._state.steeringMode === "all"
-              ? "one-at-a-time"
-              : "all",
+          mode: view._state.steeringMode === "all" ? "one-at-a-time" : "all",
         });
         dismissDialog(view);
       },
@@ -1835,10 +1851,7 @@ function renderDialog(view: AgentPaneView): void {
       () => {
         dispatch("ht-agent-set-follow-up-mode", {
           agentId: view.agentId,
-          mode:
-            view._state.followUpMode === "all"
-              ? "one-at-a-time"
-              : "all",
+          mode: view._state.followUpMode === "all" ? "one-at-a-time" : "all",
         });
         dismissDialog(view);
       },
@@ -2116,18 +2129,47 @@ function renderStream(view: AgentPaneView): void {
   const { currentText, autoScroll } = view._state;
 
   let el = messagesEl.querySelector(".agent-msg-live") as HTMLDivElement | null;
+  let contentEl: HTMLDivElement | null = null;
+  let cursor: HTMLSpanElement | null = null;
   if (!el) {
     el = document.createElement("div");
     el.className = "agent-msg agent-msg-assistant agent-msg-live";
+    contentEl = document.createElement("div");
+    contentEl.className = "agent-msg-content";
+    cursor = document.createElement("span");
+    cursor.className = "agent-cursor";
+    contentEl.appendChild(cursor);
+    el.appendChild(contentEl);
     messagesEl.appendChild(el);
+  } else {
+    // Reuse the existing subtree. Recreating contentEl on every token
+    // meant the full markdown-HTML + cursor were rebuilt per delta,
+    // which is the dominant cost on long streams (O(N) DOM work × N
+    // tokens = O(N²) wall time). Updating innerHTML in place plus a
+    // length guard cuts it to O(N) effective.
+    contentEl = el.querySelector(".agent-msg-content") as HTMLDivElement | null;
+    if (!contentEl) {
+      contentEl = document.createElement("div");
+      contentEl.className = "agent-msg-content";
+      el.appendChild(contentEl);
+    }
+    cursor = contentEl.querySelector(".agent-cursor") as HTMLSpanElement | null;
   }
-  const contentEl = document.createElement("div");
-  contentEl.className = "agent-msg-content";
-  contentEl.innerHTML = mdLite(currentText);
-  const cursor = document.createElement("span");
-  cursor.className = "agent-cursor";
-  contentEl.appendChild(cursor);
-  el.replaceChildren(contentEl);
+
+  // Skip the mdLite + innerHTML write entirely when the text hasn't
+  // changed since the last render (renderStream is triggered by more
+  // than just new tokens).
+  const lastLen = Number(el.dataset["renderedLen"] ?? "-1");
+  if (lastLen !== currentText.length) {
+    const html = mdLite(currentText);
+    contentEl.innerHTML = html;
+    if (!cursor) {
+      cursor = document.createElement("span");
+      cursor.className = "agent-cursor";
+    }
+    contentEl.appendChild(cursor);
+    el.dataset["renderedLen"] = String(currentText.length);
+  }
 
   if (autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
 }
@@ -2182,7 +2224,10 @@ function renderToolCall(view: AgentPaneView, tcId: string): void {
   if (view._state.autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function buildToolCallEl(view: AgentPaneView, tc: ToolCallState): HTMLDivElement {
+function buildToolCallEl(
+  view: AgentPaneView,
+  tc: ToolCallState,
+): HTMLDivElement {
   const el = document.createElement("div");
   el.className = `agent-tc${tc.isRunning ? " agent-tc-run" : ""}${tc.isError ? " agent-tc-err" : " agent-tc-ok"}`;
   el.dataset["tcid"] = tc.id;
@@ -2261,7 +2306,8 @@ function renderDropdowns(view: AgentPaneView): void {
     } else {
       const hint = document.createElement("div");
       hint.className = "agent-dd-hint";
-      hint.textContent = "Click to switch. Click the scope dot to include/exclude from Ctrl+P cycling.";
+      hint.textContent =
+        "Click to switch. Click the scope dot to include/exclude from Ctrl+P cycling.";
       modelSelectorEl.appendChild(hint);
 
       const byProvider = new Map<string, typeof s.availableModels>();
@@ -2285,12 +2331,15 @@ function renderDropdowns(view: AgentPaneView): void {
           const scope = document.createElement("span");
           scope.className = `agent-model-scope${s.scopedModelIds.has(scopedModelKey(m)) ? " agent-model-scope-on" : ""}`;
           scope.title = "Toggle scoped model cycling";
-          scope.textContent = s.scopedModelIds.has(scopedModelKey(m)) ? "●" : "○";
+          scope.textContent = s.scopedModelIds.has(scopedModelKey(m))
+            ? "●"
+            : "○";
           scope.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
             const key = scopedModelKey(m);
-            if (s.scopedModelIds.has(key) && s.scopedModelIds.size > 1) s.scopedModelIds.delete(key);
+            if (s.scopedModelIds.has(key) && s.scopedModelIds.size > 1)
+              s.scopedModelIds.delete(key);
             else s.scopedModelIds.add(key);
             renderDropdowns(view);
             renderModelMeta(view);
@@ -2373,7 +2422,9 @@ function toModelSummary(rec: Record<string, unknown>): AgentModelSummary {
   };
 }
 
-function scopedModelKey(model: Pick<AgentModelSummary, "provider" | "id">): string {
+function scopedModelKey(
+  model: Pick<AgentModelSummary, "provider" | "id">,
+): string {
   return `${model.provider}/${model.id}`;
 }
 
@@ -2384,13 +2435,20 @@ function buildModelBadges(model: AgentModelSummary): HTMLElement[] {
     badge.textContent = text;
     return badge;
   };
-  const badges: HTMLElement[] = [mk(model.provider, "agent-model-badge-provider")];
+  const badges: HTMLElement[] = [
+    mk(model.provider, "agent-model-badge-provider"),
+  ];
   if (model.reasoning) badges.push(mk("reasoning"));
   if (model.input?.includes("image")) badges.push(mk("vision"));
   if (model.contextWindow) badges.push(mk(`${fmtK(model.contextWindow)} ctx`));
   if (model.maxTokens) badges.push(mk(`${fmtK(model.maxTokens)} out`));
   if (model.cost?.input != null && model.cost?.output != null) {
-    badges.push(mk(`$${model.cost.input}/$${model.cost.output}`, "agent-model-badge-cost"));
+    badges.push(
+      mk(
+        `$${model.cost.input}/$${model.cost.output}`,
+        "agent-model-badge-cost",
+      ),
+    );
   }
   return badges;
 }
@@ -2415,7 +2473,9 @@ function renderModelMeta(view: AgentPaneView): void {
 function cycleScopedModel(view: AgentPaneView, direction: 1 | -1): boolean {
   const models = view._state.availableModels;
   if (!models || models.length === 0) return false;
-  const scoped = models.filter((model) => view._state.scopedModelIds.has(scopedModelKey(model)));
+  const scoped = models.filter((model) =>
+    view._state.scopedModelIds.has(scopedModelKey(model)),
+  );
   if (scoped.length === 0) return false;
   const currentIndex = Math.max(
     0,
@@ -2425,7 +2485,8 @@ function cycleScopedModel(view: AgentPaneView, direction: 1 | -1): boolean {
         model.id === view._state.model?.id,
     ),
   );
-  const next = scoped[(currentIndex + direction + scoped.length) % scoped.length];
+  const next =
+    scoped[(currentIndex + direction + scoped.length) % scoped.length];
   dispatch("ht-agent-set-model", {
     agentId: view.agentId,
     provider: next.provider,
@@ -2485,7 +2546,9 @@ function handleResponse(
   if (cmd === "get_available_models" && data) {
     const arr = (data as { models?: unknown[] }).models;
     if (Array.isArray(arr)) {
-      s.availableModels = arr.map((m) => toModelSummary(m as Record<string, unknown>));
+      s.availableModels = arr.map((m) =>
+        toModelSummary(m as Record<string, unknown>),
+      );
       if (s.scopedModelIds.size === 0) {
         for (const model of s.availableModels) {
           s.scopedModelIds.add(scopedModelKey(model));
@@ -2903,10 +2966,7 @@ function showSettingsDialog(view: AgentPaneView): void {
   renderDialog(view);
 }
 
-function showSwitchSessionDialog(
-  view: AgentPaneView,
-  initialValue = "",
-): void {
+function showSwitchSessionDialog(view: AgentPaneView, initialValue = ""): void {
   view._state.activeDialog = {
     id: "__switch_session__",
     method: "switch_session",
@@ -3084,9 +3144,7 @@ function createMsgEl(agentId: string, msg: ChatMessage): HTMLDivElement {
       body.textContent = msg.content.slice(0, 2000);
       el.appendChild(body);
     }
-    el.appendChild(
-      buildToolActions(agentId, msg.toolArgs, msg.content),
-    );
+    el.appendChild(buildToolActions(agentId, msg.toolArgs, msg.content));
     if (msg.images?.length) el.appendChild(buildImageGallery(msg.images));
     return el;
   }
@@ -3261,8 +3319,7 @@ function extractContent(content: unknown): string {
     .map((c) => {
       const rec = c as Record<string, unknown>;
       if (typeof rec["text"] === "string") return rec["text"] as string;
-      if (typeof rec["thinking"] === "string")
-        return rec["thinking"] as string;
+      if (typeof rec["thinking"] === "string") return rec["thinking"] as string;
       return "";
     })
     .join("");

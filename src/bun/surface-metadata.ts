@@ -419,6 +419,9 @@ interface PkgCacheEntry {
 export class SurfaceMetadataPoller {
   private timer: ReturnType<typeof setInterval> | null = null;
   private inFlight = false;
+  /** Fenced once stop() has been called. An in-flight tick must not
+   *  repopulate caches the stop call just cleared. */
+  private stopped = false;
   private last = new Map<string, SurfaceMetadata>();
   /** cwd → git snapshot + freshness. Reuses across ticks (TTL gated). */
   private gitCache = new Map<string, GitCacheEntry>();
@@ -437,6 +440,7 @@ export class SurfaceMetadataPoller {
 
   start(): void {
     if (this.timer) return;
+    this.stopped = false;
     this.timer = setInterval(() => {
       void this.tick();
     }, this.intervalMs);
@@ -444,6 +448,7 @@ export class SurfaceMetadataPoller {
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.last.clear();
@@ -470,9 +475,10 @@ export class SurfaceMetadataPoller {
   }
 
   private async tick(): Promise<void> {
-    if (this.inFlight) return;
+    if (this.inFlight || this.stopped) return;
     this.inFlight = true;
     try {
+      if (this.stopped) return;
       const surfaces = this.sessions
         .getAllSurfaces()
         .filter(
@@ -663,58 +669,96 @@ export class SurfaceMetadataPoller {
 
 // --- Subprocess runners ----------------------------------------------------
 
-async function runPs(): Promise<Map<number, PsRow> | null> {
+/** Default timeout applied to every metadata subprocess. If ps/lsof/git
+ *  hangs (slow NFS, contended FS lock) we must not wedge the poller —
+ *  the next tick will retry. */
+const SUBPROCESS_TIMEOUT_MS = 5000;
+
+/** Run a command and return {stdout, exitCode} or null if it failed, was
+ *  killed by the timeout, or threw at spawn. Stderr is consumed in
+ *  parallel so the child cannot deadlock by filling a 64 KiB pipe
+ *  buffer. On timeout the process is explicitly killed and reaped so we
+ *  don't leak zombies. */
+async function runSubprocess(
+  argv: string[],
+  opts: { cwd?: string; env?: Record<string, string | undefined> } = {},
+  timeoutMs: number = SUBPROCESS_TIMEOUT_MS,
+): Promise<{ stdout: string; exitCode: number } | null> {
+  let proc: ReturnType<typeof Bun.spawn> | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
   try {
-    const proc = Bun.spawn(
-      ["ps", "-axo", "pid,ppid,pgid,stat,%cpu,rss,args", "-ww"],
-      {
-        stdout: "pipe",
-        stderr: "pipe",
-        // Force POSIX locale so CPU% always formats as "0.4" (not "0,4"
-        // in locales like fr_FR, de_DE).
-        env: { ...process.env, LC_ALL: "C", LANG: "C" },
-      },
-    );
-    const [out, code] = await Promise.all([
+    const spawnOpts: Parameters<typeof Bun.spawn>[1] = {
+      stdout: "pipe",
+      stderr: "pipe",
+    };
+    if (opts.cwd) spawnOpts.cwd = opts.cwd;
+    if (opts.env) spawnOpts.env = opts.env;
+    proc = Bun.spawn(argv, spawnOpts);
+
+    timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        proc?.kill();
+      } catch {
+        /* ignore */
+      }
+    }, timeoutMs);
+    (timer as { unref?: () => void }).unref?.();
+
+    // Drain stderr in parallel so the child can't block on a full pipe
+    // (macOS pipe buffer is 64 KiB). The stderr content itself is
+    // discarded — parsers only want stdout.
+    const [stdout, , exitCode] = await Promise.all([
       new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
       proc.exited,
     ]);
-    if (code !== 0) return null;
-    return parsePs(out);
+    if (timedOut) return null;
+    return { stdout, exitCode };
   } catch {
+    try {
+      proc?.kill();
+    } catch {
+      /* ignore */
+    }
     return null;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
+}
+
+async function runPs(): Promise<Map<number, PsRow> | null> {
+  const res = await runSubprocess(
+    ["ps", "-axo", "pid,ppid,pgid,stat,%cpu,rss,args", "-ww"],
+    // Force POSIX locale so CPU% always formats as "0.4" (not "0,4"
+    // in locales like fr_FR, de_DE).
+    { env: { ...process.env, LC_ALL: "C", LANG: "C" } },
+  );
+  if (!res || res.exitCode !== 0) return null;
+  return parsePs(res.stdout);
 }
 
 async function runListeningPorts(
   pids: number[],
 ): Promise<Map<number, ListeningPort[]>> {
   if (pids.length === 0) return new Map();
-  try {
-    const proc = Bun.spawn(
-      [
-        "lsof",
-        "-nP",
-        "-iTCP",
-        "-sTCP:LISTEN",
-        "-F",
-        "pn",
-        "-w",
-        "-a",
-        "-p",
-        pids.join(","),
-      ],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    const [out] = await Promise.all([
-      new Response(proc.stdout).text(),
-      proc.exited,
-    ]);
-    // lsof exits non-zero when no matches; the empty output is a valid answer.
-    return parseListeningPorts(out);
-  } catch {
-    return new Map();
-  }
+  const res = await runSubprocess([
+    "lsof",
+    "-nP",
+    "-iTCP",
+    "-sTCP:LISTEN",
+    "-F",
+    "pn",
+    "-w",
+    "-a",
+    "-p",
+    pids.join(","),
+  ]);
+  // lsof exits non-zero when no matches; treat empty output as a valid
+  // answer rather than a failure.
+  if (!res) return new Map();
+  return parseListeningPorts(res.stdout);
 }
 
 /**
@@ -723,63 +767,41 @@ async function runListeningPorts(
  * Never throws — subprocess failures degrade gracefully to null.
  */
 async function runGit(cwd: string): Promise<GitInfo | null> {
-  try {
-    const statusProc = Bun.spawn(["git", "status", "--porcelain=v2", "-b"], {
-      cwd,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, LC_ALL: "C", LANG: "C" },
-    });
-    const [statusOut, statusCode] = await Promise.all([
-      new Response(statusProc.stdout).text(),
-      statusProc.exited,
-    ]);
-    if (statusCode !== 0) return null;
+  const gitEnv = { ...process.env, LC_ALL: "C", LANG: "C" };
+  const statusRes = await runSubprocess(
+    ["git", "status", "--porcelain=v2", "-b"],
+    { cwd, env: gitEnv },
+  );
+  if (!statusRes || statusRes.exitCode !== 0) return null;
 
-    const info = parseGitStatusV2(statusOut);
-    if (!info) return null;
+  const info = parseGitStatusV2(statusRes.stdout);
+  if (!info) return null;
 
-    // Combined staged + unstaged line counts against HEAD. Runs in parallel
-    // with the status parse; fails silently on repos with no HEAD yet.
-    try {
-      const diffProc = Bun.spawn(["git", "diff", "HEAD", "--shortstat"], {
-        cwd,
-        stdout: "pipe",
-        stderr: "pipe",
-        env: { ...process.env, LC_ALL: "C", LANG: "C" },
-      });
-      const [diffOut, diffCode] = await Promise.all([
-        new Response(diffProc.stdout).text(),
-        diffProc.exited,
-      ]);
-      if (diffCode === 0) {
-        const { insertions, deletions } = parseShortstat(diffOut);
-        info.insertions = insertions;
-        info.deletions = deletions;
-      }
-    } catch {
-      // No HEAD yet; leave zeros.
-    }
-
-    return info;
-  } catch {
-    return null;
+  const diffRes = await runSubprocess(["git", "diff", "HEAD", "--shortstat"], {
+    cwd,
+    env: gitEnv,
+  });
+  if (diffRes && diffRes.exitCode === 0) {
+    const { insertions, deletions } = parseShortstat(diffRes.stdout);
+    info.insertions = insertions;
+    info.deletions = deletions;
   }
+  return info;
 }
 
 async function runCwds(pids: number[]): Promise<Map<number, string>> {
   if (pids.length === 0) return new Map();
-  try {
-    const proc = Bun.spawn(
-      ["lsof", "-a", "-d", "cwd", "-F", "pn", "-w", "-p", pids.join(",")],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    const [out] = await Promise.all([
-      new Response(proc.stdout).text(),
-      proc.exited,
-    ]);
-    return parseCwds(out);
-  } catch {
-    return new Map();
-  }
+  const res = await runSubprocess([
+    "lsof",
+    "-a",
+    "-d",
+    "cwd",
+    "-F",
+    "pn",
+    "-w",
+    "-p",
+    pids.join(","),
+  ]);
+  if (!res) return new Map();
+  return parseCwds(res.stdout);
 }

@@ -94,7 +94,7 @@ describe("PtyManager", () => {
     expect(pty.exitCode).toBe(42);
   });
 
-  test("resizes terminal", async () => {
+  test("resizes terminal: getters reflect request AND kernel sees it", async () => {
     pty = new PtyManager();
     let output = "";
     pty.onStdout = (data) => {
@@ -102,18 +102,21 @@ describe("PtyManager", () => {
     };
 
     pty.spawn({ shell: "/bin/sh", cols: 80, rows: 24 });
+    expect(pty.cols).toBe(80);
+    expect(pty.rows).toBe(24);
 
-    // Resize should not throw
-    expect(() => pty.resize(120, 40)).not.toThrow();
+    pty.resize(120, 40);
 
-    // Verify new size via stty (requires real PTY)
+    // Internal state is updated synchronously.
+    expect(pty.cols).toBe(120);
+    expect(pty.rows).toBe(40);
+
+    // And the kernel-side PTY actually got the resize — stty size
+    // reads TIOCGWINSZ, which is set by the termios resize the
+    // terminal API issues under the hood.
     pty.write("stty size\n");
-    await waitFor(
-      () => output.includes("40 120") || output.includes("40"),
-      3000,
-    ).catch(() => {
-      // stty might not work in all shells, that's ok
-    });
+    await waitFor(() => output.includes("40 120"), 3000);
+    expect(output).toContain("40 120");
   });
 
   test("sets environment variables", async () => {

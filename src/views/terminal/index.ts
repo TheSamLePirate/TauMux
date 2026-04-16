@@ -313,6 +313,18 @@ function handleResize() {
 
 const resizeObserver = new ResizeObserver(handleResize);
 resizeObserver.observe(terminalContainerEl);
+// Disconnect the observer on navigation away / webview reload. Not
+// strictly needed in the happy path (the webview is long-lived), but
+// prevents duplicate observers if this module ever re-executes, and
+// matches the discipline we apply elsewhere (PanelManager, browser
+// pane listeners).
+window.addEventListener("pagehide", () => {
+  try {
+    resizeObserver.disconnect();
+  } catch {
+    /* ignore */
+  }
+});
 mountTitlebarIcons();
 
 setTimeout(() => {

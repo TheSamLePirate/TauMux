@@ -296,10 +296,48 @@ export function createRpcHandler(
     "surface.kill_pid": (params) => {
       const pid = Number(params["pid"]);
       if (!Number.isFinite(pid) || pid <= 0) throw new Error("pid required");
+
+      // Signal whitelist. We only ever need termination-family signals
+      // from RPC; allowing e.g. SIGSTOP would let a local client freeze
+      // arbitrary user processes.
+      const ALLOWED_SIGNALS = new Set<NodeJS.Signals>([
+        "SIGTERM",
+        "SIGINT",
+        "SIGKILL",
+        "SIGHUP",
+        "SIGQUIT",
+      ]);
       const raw = (params["signal"] as string) || "SIGTERM";
       const signal = (
         raw.startsWith("SIG") ? raw : `SIG${raw}`
       ) as NodeJS.Signals;
+      if (!ALLOWED_SIGNALS.has(signal)) {
+        throw new Error(
+          `signal ${signal} not allowed; must be one of ${[...ALLOWED_SIGNALS].join(", ")}`,
+        );
+      }
+
+      // PID must belong to a process tree we track. Without this,
+      // anything that can speak JSON-RPC to our socket (mode 0600, so
+      // any process the user runs) could kill ssh-agent, Finder, or
+      // the Electrobun parent. We rebuild the allowed set from live
+      // surface metadata — the same tree the UI exposes.
+      const allowedPids = new Set<number>();
+      for (const s of sessions.getAllSurfaces()) {
+        const snap = metadataPoller?.getSnapshot(s.id);
+        if (!snap) {
+          // Fall back to the surface's own root pid if we haven't
+          // polled yet — otherwise the first kill after app start
+          // would always reject.
+          if (typeof s.pty.pid === "number") allowedPids.add(s.pty.pid);
+          continue;
+        }
+        for (const node of snap.tree) allowedPids.add(node.pid);
+      }
+      if (!allowedPids.has(pid)) {
+        throw new Error(`pid ${pid} is not in a tracked surface tree`);
+      }
+
       try {
         process.kill(pid, signal);
       } catch (err) {
@@ -1274,8 +1312,134 @@ export function createRpcHandler(
   };
 
   return (method: string, params: Record<string, unknown>) => {
+    // Schema check runs first, before any side effects. Only sensitive
+    // methods have schemas registered; everything else falls through
+    // unchanged so we keep backwards compat with the broad existing
+    // API surface.
+    const schema = METHOD_SCHEMAS[method];
+    if (schema) validateParams(method, schema, params);
+
+    // Audit log: one line per call with the size of the params payload
+    // and the method name. No param contents — they may include tokens
+    // or user text. Written to stderr at debug level so it's trivially
+    // filterable but off-by-default in production via LOG_RPC=0.
+    if (process.env["LOG_RPC"] !== "0") {
+      try {
+        const size = JSON.stringify(params ?? {}).length;
+        console.debug(`[rpc] ${method} paramBytes=${size}`);
+      } catch {
+        /* params not serializable — ignore */
+      }
+    }
+
     const handler = methods[method];
     if (!handler) throw new Error(`Unknown method: ${method}`);
     return handler(params);
   };
+}
+
+// --- Lightweight schema helpers -------------------------------------------
+
+type ParamSpec =
+  | { type: "string"; required?: boolean; maxLength?: number }
+  | {
+      type: "number";
+      required?: boolean;
+      min?: number;
+      max?: number;
+      integer?: boolean;
+    }
+  | { type: "boolean"; required?: boolean }
+  | { type: "array"; required?: boolean; maxLength?: number };
+
+type MethodSchema = Record<string, ParamSpec>;
+
+const METHOD_SCHEMAS: Record<string, MethodSchema> = {
+  // PID ancestry + signal whitelist already enforced in the handler;
+  // this catches garbage inputs earlier with clearer errors.
+  "surface.kill_pid": {
+    pid: { type: "number", required: true, integer: true, min: 1 },
+    signal: { type: "string", maxLength: 16 },
+  },
+  "surface.kill_port": {
+    surface_id: { type: "string", maxLength: 128 },
+    surface: { type: "string", maxLength: 128 },
+    port: { type: "number", required: true, integer: true, min: 1, max: 65535 },
+  },
+  "workspace.create": {
+    cwd: { type: "string", maxLength: 4096 },
+    name: { type: "string", maxLength: 256 },
+  },
+  // Script size cap. Anything bigger than 256 KiB is almost certainly
+  // a misuse of eval; legitimate automation code fits easily.
+  "browser.eval": {
+    surface_id: { type: "string", maxLength: 128 },
+    surface: { type: "string", maxLength: 128 },
+    script: { type: "string", required: true, maxLength: 256 * 1024 },
+  },
+  "browser.click": {
+    surface_id: { type: "string", maxLength: 128 },
+    surface: { type: "string", maxLength: 128 },
+    selector: { type: "string", required: true, maxLength: 2048 },
+  },
+};
+
+function validateParams(
+  method: string,
+  schema: MethodSchema,
+  params: Record<string, unknown>,
+): void {
+  const p = params ?? {};
+  for (const [key, spec] of Object.entries(schema)) {
+    const v = p[key];
+    if (v === undefined || v === null) {
+      if (spec.required) {
+        throw new Error(`${method}: missing required param "${key}"`);
+      }
+      continue;
+    }
+    switch (spec.type) {
+      case "string":
+        if (typeof v !== "string") {
+          throw new Error(`${method}: "${key}" must be a string`);
+        }
+        if (spec.maxLength !== undefined && v.length > spec.maxLength) {
+          throw new Error(
+            `${method}: "${key}" exceeds maxLength ${spec.maxLength}`,
+          );
+        }
+        break;
+      case "number": {
+        const n = typeof v === "number" ? v : Number(v);
+        if (!Number.isFinite(n)) {
+          throw new Error(`${method}: "${key}" must be a finite number`);
+        }
+        if (spec.integer && !Number.isInteger(n)) {
+          throw new Error(`${method}: "${key}" must be an integer`);
+        }
+        if (spec.min !== undefined && n < spec.min) {
+          throw new Error(`${method}: "${key}" below min ${spec.min}`);
+        }
+        if (spec.max !== undefined && n > spec.max) {
+          throw new Error(`${method}: "${key}" above max ${spec.max}`);
+        }
+        break;
+      }
+      case "boolean":
+        if (typeof v !== "boolean") {
+          throw new Error(`${method}: "${key}" must be a boolean`);
+        }
+        break;
+      case "array":
+        if (!Array.isArray(v)) {
+          throw new Error(`${method}: "${key}" must be an array`);
+        }
+        if (spec.maxLength !== undefined && v.length > spec.maxLength) {
+          throw new Error(
+            `${method}: "${key}" exceeds maxLength ${spec.maxLength}`,
+          );
+        }
+        break;
+    }
+  }
 }

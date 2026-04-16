@@ -4,6 +4,8 @@ import { SidebandParser } from "./sideband-parser";
 import { EventWriter } from "./event-writer";
 import { Terminal as HeadlessTerminal } from "@xterm/headless";
 import { SerializeAddon } from "@xterm/addon-serialize";
+import { statSync, realpathSync } from "node:fs";
+import { isAbsolute } from "node:path";
 
 const MAX_HISTORY_BYTES = 64 * 1024; // 64KB raw byte fallback per surface
 const HEADLESS_SCROLLBACK = 2000; // bounded scrollback for the bun-side mirror
@@ -57,7 +59,7 @@ export class SessionManager {
 
   createSurface(cols: number, rows: number, cwd?: string): string {
     const id = `surface:${++this.counter}`;
-    const surfaceCwd = cwd || process.env["HOME"] || "/";
+    const surfaceCwd = resolveSafeCwd(cwd);
 
     const pty = new PtyManager();
 
@@ -304,5 +306,33 @@ export class SessionManager {
       }
     }
     this.surfaces.clear();
+  }
+}
+
+/** Accept a user-supplied cwd only if it's an absolute path that resolves
+ *  to an existing directory. Otherwise fall back to $HOME (or `/` as a
+ *  last resort). This prevents RPC callers from spawning shells at
+ *  arbitrary or nonexistent paths via `workspace.create { cwd: "…" }`.
+ *  realpath canonicalization also folds away `..` segments. */
+export function resolveSafeCwd(cwd: string | undefined): string {
+  const fallback = process.env["HOME"] || "/";
+  if (!cwd || typeof cwd !== "string") return fallback;
+  if (!isAbsolute(cwd)) {
+    console.warn(`[session] ignoring non-absolute cwd "${cwd}"`);
+    return fallback;
+  }
+  try {
+    const resolved = realpathSync(cwd);
+    const st = statSync(resolved);
+    if (!st.isDirectory()) {
+      console.warn(`[session] ignoring non-directory cwd "${cwd}"`);
+      return fallback;
+    }
+    return resolved;
+  } catch (err) {
+    console.warn(
+      `[session] ignoring unreadable cwd "${cwd}": ${err instanceof Error ? err.message : err}`,
+    );
+    return fallback;
   }
 }

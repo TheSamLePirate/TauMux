@@ -136,7 +136,8 @@ function listPiSessions(): Array<Record<string, unknown>> {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(full);
+      else if (entry.isFile() && entry.name.endsWith(".jsonl"))
+        files.push(full);
     }
   };
   try {
@@ -161,7 +162,9 @@ function listPiSessions(): Array<Record<string, unknown>> {
     .slice(0, 200);
 }
 
-function readPiSessionTree(sessionPath?: string): Array<Record<string, unknown>> {
+function readPiSessionTree(
+  sessionPath?: string,
+): Array<Record<string, unknown>> {
   if (!sessionPath || !existsSync(sessionPath)) return [];
   try {
     const lines = readFileSync(sessionPath, "utf8").split("\n").filter(Boolean);
@@ -216,7 +219,15 @@ function readPiSessionTree(sessionPath?: string): Array<Record<string, unknown>>
         role = "session";
         text = (entry["name"] as string) ?? "Session info";
       }
-      nodes.set(id, { id, parentId, timestamp, entryType, role, text, children: [] });
+      nodes.set(id, {
+        id,
+        parentId,
+        timestamp,
+        entryType,
+        role,
+        text,
+        children: [],
+      });
     }
 
     for (const node of nodes.values()) {
@@ -226,7 +237,10 @@ function readPiSessionTree(sessionPath?: string): Array<Record<string, unknown>>
     const roots = [...nodes.values()]
       .filter((node) => !node.parentId || !nodes.has(node.parentId))
       .sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
-    const activeLeaf = [...nodes.values()].sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp))).at(-1)?.id ?? null;
+    const activeLeaf =
+      [...nodes.values()]
+        .sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)))
+        .at(-1)?.id ?? null;
     const flat: Array<Record<string, unknown>> = [];
     const visit = (id: string, depth: number) => {
       const node = nodes.get(id);
@@ -1742,24 +1756,69 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
   return true;
 }
 
-// Clean up on exit
-process.on("SIGINT", () => {
-  saveLayout();
-  settingsManager.saveNow();
-  browserHistory.saveNow();
-  cookieStore.saveNow();
-  piAgentManager.dispose();
-  webServer?.stop();
-  socketServer.stop();
+// Clean up on exit. Both handlers do the same work — order matters:
+//   1. Stop background producers (metadata poller) so no new async work
+//      starts that could touch state we're about to save.
+//   2. Persist durable state (layout, settings, history, cookies).
+//   3. Dispose long-lived resources (pi agent, web server, socket, PTY
+//      sessions) so their subprocesses get a SIGKILL/close before we
+//      call process.exit.
+// A safety watchdog exits hard after 2s if any of the above wedge, so a
+// broken save path can never prevent shutdown.
+function gracefulShutdown(): void {
+  const hardExit = setTimeout(() => {
+    console.warn("[main] graceful shutdown timed out after 2s; exiting hard");
+    process.exit(1);
+  }, 2000);
+  (hardExit as { unref?: () => void }).unref?.();
+
+  try {
+    metadataPoller.stop();
+  } catch (err) {
+    console.warn("[main] metadataPoller.stop failed:", err);
+  }
+  try {
+    saveLayout();
+  } catch (err) {
+    console.warn("[main] saveLayout failed:", err);
+  }
+  try {
+    settingsManager.saveNow();
+  } catch (err) {
+    console.warn("[main] settingsManager.saveNow failed:", err);
+  }
+  try {
+    browserHistory.saveNow();
+  } catch (err) {
+    console.warn("[main] browserHistory.saveNow failed:", err);
+  }
+  try {
+    cookieStore.saveNow();
+  } catch (err) {
+    console.warn("[main] cookieStore.saveNow failed:", err);
+  }
+  try {
+    piAgentManager.dispose();
+  } catch (err) {
+    console.warn("[main] piAgentManager.dispose failed:", err);
+  }
+  try {
+    webServer?.stop();
+  } catch (err) {
+    console.warn("[main] webServer.stop failed:", err);
+  }
+  try {
+    socketServer.stop();
+  } catch (err) {
+    console.warn("[main] socketServer.stop failed:", err);
+  }
+  try {
+    sessions.destroy();
+  } catch (err) {
+    console.warn("[main] sessions.destroy failed:", err);
+  }
+  clearTimeout(hardExit);
   process.exit(0);
-});
-process.on("SIGTERM", () => {
-  saveLayout();
-  settingsManager.saveNow();
-  browserHistory.saveNow();
-  cookieStore.saveNow();
-  piAgentManager.dispose();
-  webServer?.stop();
-  socketServer.stop();
-  process.exit(0);
-});
+}
+process.on("SIGINT", gracefulShutdown);
+process.on("SIGTERM", gracefulShutdown);

@@ -516,7 +516,15 @@ function mapCommand(): RpcCall {
           value: args[1] || flags["value"],
           domain: flags["domain"],
           path: flags["path"] || "/",
-          expires: flags["expires"] ? parseInt(flags["expires"]) : 0,
+          expires: ((): number => {
+            // parseInt("garbage") returns NaN, parseInt("123abc") silently
+            // returns 123 — both are footguns for a security-relevant field.
+            // Use Number()+isFinite so bad input becomes 0 (session cookie).
+            const raw = flags["expires"];
+            if (!raw) return 0;
+            const n = Number(raw);
+            return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+          })(),
           secure: flags["secure"] === "true",
           sameSite: flags["samesite"] || "",
         },

@@ -16,12 +16,18 @@ import {
 import { NERD_FONT_REGULAR, NERD_FONT_BOLD } from "./asset-loader";
 import { buildHtmlPage, invalidatePageCache } from "./page";
 import {
+  CLIENT_MESSAGE_MAX_BYTES,
+  CLIENT_STDIN_MAX_BYTES,
   makeServerInstanceId,
   makeSessionId,
   OUTPUT_COALESCE_MS,
   OUTPUT_COALESCE_SOFT_CAP,
   SessionBuffer,
   SESSION_TTL_MS,
+  TERMINAL_COLS_MAX,
+  TERMINAL_COLS_MIN,
+  TERMINAL_ROWS_MAX,
+  TERMINAL_ROWS_MIN,
   WS_STALL_HIGH_WATER,
   WS_STALL_LOW_WATER,
   type ClientData,
@@ -79,10 +85,28 @@ export class WebServer {
   private authorized(url: URL, req: Request): boolean {
     if (!this.authToken) return true;
     const t = url.searchParams.get("t");
-    if (t && t === this.authToken) return true;
+    if (t && timingSafeEqualStr(t, this.authToken)) return true;
     const auth = req.headers.get("authorization");
-    if (auth && auth === `Bearer ${this.authToken}`) return true;
+    if (auth && timingSafeEqualStr(auth, `Bearer ${this.authToken}`))
+      return true;
     return false;
+  }
+
+  /** CSRF protection: reject WebSocket upgrades from a cross-origin page.
+   *  Native clients (curl, Bun tests, non-browser) usually omit Origin;
+   *  we allow that. Browsers always send Origin, so a mismatch is a real
+   *  cross-site request. */
+  private originAllowed(_url: URL, req: Request): boolean {
+    const origin = req.headers.get("origin");
+    if (!origin) return true;
+    let originHost: string;
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      return false;
+    }
+    const host = req.headers.get("host") ?? `${this.bind}:${this.port}`;
+    return originHost === host;
   }
 
   start(): void {
@@ -101,6 +125,8 @@ export class WebServer {
           if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
             if (!this.authorized(url, req))
               return new Response("Unauthorized", { status: 401 });
+            if (!this.originAllowed(url, req))
+              return new Response("Forbidden: cross-origin", { status: 403 });
             const resumeId = url.searchParams.get("resume") || undefined;
             const resumeSeqRaw = url.searchParams.get("seq");
             const resumeSeq =
@@ -175,6 +201,24 @@ export class WebServer {
           },
 
           message: (ws: WS, raw: string | Buffer) => {
+            // Drop oversize frames before we even parse them — a 100 MB
+            // payload from a malicious client should not reach JSON.parse.
+            const rawBytes =
+              typeof raw === "string"
+                ? new TextEncoder().encode(raw).byteLength
+                : raw.byteLength;
+            if (rawBytes > CLIENT_MESSAGE_MAX_BYTES) {
+              console.warn(
+                `[web] frame exceeded CLIENT_MESSAGE_MAX_BYTES (${rawBytes}); dropping`,
+              );
+              return;
+            }
+            const session = ws.data.session;
+            if (session && !session.consumeRateToken()) {
+              // Silently drop: a chatty client hits this briefly on
+              // startup bursts; a malicious one is effectively muted.
+              return;
+            }
             const text = typeof raw === "string" ? raw : raw.toString();
             let msg: Record<string, unknown>;
             try {
@@ -755,10 +799,19 @@ export class WebServer {
     switch (type) {
       case "stdin": {
         const surfaceId = fields["surfaceId"] as string;
-        const data = fields["data"] as string;
-        if (surfaceId && data) {
-          this.sessionsManager.writeStdin(surfaceId, data);
+        const data = fields["data"];
+        if (!surfaceId || typeof data !== "string" || data.length === 0) break;
+        // TextEncoder is avoided here: `data.length` is the JS code-unit
+        // count; every code unit is ≥1 UTF-8 byte, so the char-length cap
+        // is always at least as strict as a true byte cap. Keeps the hot
+        // path allocation-free.
+        if (data.length > CLIENT_STDIN_MAX_BYTES) {
+          console.warn(
+            `[web] stdin oversized (${data.length} chars) for surface ${surfaceId}; dropping`,
+          );
+          break;
         }
+        this.sessionsManager.writeStdin(surfaceId, data);
         break;
       }
       case "sidebarToggle": {
@@ -777,17 +830,30 @@ export class WebServer {
       }
       case "surfaceResizeRequest": {
         const surfaceId = fields["surfaceId"] as string;
-        const cols = fields["cols"];
-        const rows = fields["rows"];
+        const colsRaw = fields["cols"];
+        const rowsRaw = fields["rows"];
         if (
-          surfaceId &&
-          typeof cols === "number" &&
-          typeof rows === "number" &&
-          cols > 0 &&
-          rows > 0
+          !surfaceId ||
+          typeof colsRaw !== "number" ||
+          typeof rowsRaw !== "number" ||
+          !Number.isFinite(colsRaw) ||
+          !Number.isFinite(rowsRaw)
         ) {
-          this.onSurfaceResizeRequest?.(surfaceId, cols, rows);
+          break;
         }
+        // Clamp to sane terminal dimensions. Clients proposing 1e9×1e9
+        // would crash xterm or OOM the PTY. Under-spec values (0, NaN)
+        // are replaced with the lower bound — better a 10-col terminal
+        // than none.
+        const cols = Math.min(
+          TERMINAL_COLS_MAX,
+          Math.max(TERMINAL_COLS_MIN, Math.round(colsRaw)),
+        );
+        const rows = Math.min(
+          TERMINAL_ROWS_MAX,
+          Math.max(TERMINAL_ROWS_MIN, Math.round(rowsRaw)),
+        );
+        this.onSurfaceResizeRequest?.(surfaceId, cols, rows);
         break;
       }
       case "subscribeSurface": {
@@ -859,6 +925,24 @@ export class WebServer {
       }
     }
   }
+}
+
+/** Constant-time string compare. A short-circuiting `===` lets an
+ *  on-path attacker brute-force the auth token one byte at a time by
+ *  measuring reject latency. This runs in time proportional to the
+ *  longer of the two strings and never returns early on content. */
+export function timingSafeEqualStr(a: string, b: string): boolean {
+  // Always encode both sides so the work is independent of which is
+  // longer. The lengths themselves leak — that's accepted for auth
+  // tokens, which have a known, non-secret length.
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  if (aBytes.byteLength !== bBytes.byteLength) return false;
+  let diff = 0;
+  for (let i = 0; i < aBytes.byteLength; i++) {
+    diff |= aBytes[i]! ^ bBytes[i]!;
+  }
+  return diff === 0;
 }
 
 /** Structural equality for SurfaceMetadata, ignoring the per-tick

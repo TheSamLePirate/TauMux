@@ -111,6 +111,13 @@ Nothing else — all derived fields (e.g. the foreground command string) are com
 
 Three subprocesses per tick, total — all parsers are pure functions and exported from `surface-metadata.ts` for the test suite.
 
+Every subprocess goes through a shared `runSubprocess()` helper that:
+- drains **stderr in parallel** with stdout (macOS pipe buffers are 64 KiB — an unread stderr can wedge the child on write),
+- enforces a **5 s timeout** with an explicit `proc.kill()` on expiration, and
+- returns `null` on spawn error, non-zero exit, or timeout — the outer `tick()` then drops the affected field rather than crashing the poll loop.
+
+`stop()` sets a `stopped` flag before clearing the caches, and `tick()` short-circuits on that flag — so a `stop()` call during an in-flight tick never repopulates caches the stop just cleared.
+
 ---
 
 ## 3. The poller

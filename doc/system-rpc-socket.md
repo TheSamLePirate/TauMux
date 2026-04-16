@@ -301,12 +301,16 @@ All methods accept an optional `surface_id` in their params; if omitted, the ser
 {"id":"3","method":"surface.kill_port","params":{"port":3000,"signal":"SIGTERM"}}
 // → result: { pid, port, signal }
 
-// surface.kill_pid — kill any pid directly (used by Process Manager UI)
+// surface.kill_pid — signal a pid tracked by a surface's process tree
+// (used by the Process Manager UI). Rejects pids that aren't in a
+// live SurfaceMetadata.tree; rejects signals outside the whitelist.
 {"id":"4","method":"surface.kill_pid","params":{"pid":12346,"signal":"SIGKILL"}}
 // → result: { pid, signal }
+// → error if pid is not a descendant of any surface shell
+// → error if signal is not in { SIGTERM, SIGINT, SIGKILL, SIGHUP, SIGQUIT }
 ```
 
-All four error via thrown messages (surface server converts to `{"error":"..."}`). `signal` accepts either `SIGTERM` or `TERM`; the server rewrites to a Node-style `NodeJS.Signals` value.
+All four error via thrown messages (surface server converts to `{"error":"..."}`). `signal` accepts either `SIGTERM` or `TERM`; the server rewrites to a Node-style `NodeJS.Signals` value and then validates against the whitelist above. `surface.kill_pid` additionally requires the pid to appear in at least one surface's tracked process tree — raw `process.kill(N, SIG)` on arbitrary system pids is not reachable through the socket.
 
 ---
 
@@ -368,3 +372,19 @@ For the full method reference (including 9 cookie methods), see [`doc/system-bro
 - **No Sidebar Read API:** Currently, you can write status pills, progress, and logs to the sidebar, but there is no API method to read them back out (e.g., you cannot do `ht get-status`).
 - **Browser eval is async:** `browser.get`, `browser.is`, and `browser.wait` use a JS eval → host-message roundtrip. Results may take a few hundred milliseconds and time out after 5s (get/is) or the configured timeout (wait).
 - **Signal Handling:** While closing a pane via `ht close-surface` sends a SIGKILL to the underlying shell, deep process trees (like a spawned dev server) might occasionally be left orphaned depending on the shell configuration.
+
+## Input validation & audit log
+
+A small set of sensitive methods run through a schema check before the handler fires:
+
+| Method | Enforced constraints |
+|---|---|
+| `surface.kill_pid` | `pid` required integer ≥ 1; `signal` ≤ 16 chars, additionally whitelisted to SIGTERM/INT/KILL/HUP/QUIT; pid must be tracked by a live surface tree |
+| `surface.kill_port` | `port` required integer 1..65535 |
+| `workspace.create` | `cwd` ≤ 4096 chars; `name` ≤ 256 chars; `cwd` is realpath-resolved and must be an existing directory (falls back to `$HOME` otherwise) |
+| `browser.eval` | `script` required ≤ 256 KiB |
+| `browser.click` | `selector` required ≤ 2048 chars |
+
+Schema failures surface as `{"error":"..."}` on the JSON-RPC wire (same shape as handler errors).
+
+An **audit line** is emitted to `console.debug` for every RPC call: `[rpc] <method> paramBytes=<n>`. Parameter contents are never logged (they may contain tokens, cookies, or shell input). Set `LOG_RPC=0` in the environment to suppress the audit log entirely (e.g., in tests or high-throughput tracing).

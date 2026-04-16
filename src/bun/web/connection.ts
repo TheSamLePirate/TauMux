@@ -25,6 +25,25 @@ export const WS_STALL_HIGH_WATER = 1 * 1024 * 1024;
 /** Low-water mark to clear the stall flag (simple hysteresis). */
 export const WS_STALL_LOW_WATER = 256 * 1024;
 
+/** Max size of a single client→server frame, in bytes. Generous enough
+ *  for pastes, small enough to bound a single burst from a malicious or
+ *  buggy client. */
+export const CLIENT_MESSAGE_MAX_BYTES = 256 * 1024;
+/** Max size of a single stdin payload after decoding. Pastes on a
+ *  1000-col terminal are ~60 KB, so 64 KB is comfortable. */
+export const CLIENT_STDIN_MAX_BYTES = 64 * 1024;
+/** Token-bucket rate limit on client→server frames. The bucket
+ *  regenerates at `REFILL_PER_SEC` tokens/sec and fills to `CAPACITY`. */
+export const CLIENT_RATE_CAPACITY = 256;
+export const CLIENT_RATE_REFILL_PER_SEC = 256;
+/** Terminal resize clamps — defensive against clients that propose
+ *  ridiculous dimensions that could trigger allocation failures in
+ *  xterm.js / the PTY. */
+export const TERMINAL_COLS_MIN = 10;
+export const TERMINAL_COLS_MAX = 500;
+export const TERMINAL_ROWS_MIN = 4;
+export const TERMINAL_ROWS_MAX = 500;
+
 export interface BufferedMessage {
   seq: number;
   /** Serialized frame — either a JSON envelope string or a binary WS frame. */
@@ -53,10 +72,29 @@ export class SessionBuffer {
   outputFlushTimer: ReturnType<typeof setTimeout> | null = null;
   /** True while ws.getBufferedAmount() is past WS_STALL_HIGH_WATER. */
   stalled = false;
+  /** Token bucket for client→server frame rate limiting. */
+  rateTokens = CLIENT_RATE_CAPACITY;
+  rateLastRefillMs = Date.now();
 
   constructor(id: string, maxBytes: number = SESSION_BUFFER_MAX_BYTES) {
     this.id = id;
     this.maxBytes = maxBytes;
+  }
+
+  /** Try to consume one token. Returns false when the bucket is empty,
+   *  meaning the caller should drop the incoming frame. */
+  consumeRateToken(nowMs: number = Date.now()): boolean {
+    const elapsedSec = (nowMs - this.rateLastRefillMs) / 1000;
+    if (elapsedSec > 0) {
+      this.rateTokens = Math.min(
+        CLIENT_RATE_CAPACITY,
+        this.rateTokens + elapsedSec * CLIENT_RATE_REFILL_PER_SEC,
+      );
+      this.rateLastRefillMs = nowMs;
+    }
+    if (this.rateTokens < 1) return false;
+    this.rateTokens -= 1;
+    return true;
   }
 
   /** Append a serialized frame to the buffer, returning its assigned seq. */
@@ -109,12 +147,14 @@ export interface WS {
 }
 
 export function makeSessionId(): string {
-  // 128-bit url-safe random id. Base36 is slightly shorter than hex.
+  // 128-bit random id, hex-encoded. Uniform 32-char output, full 128 bits
+  // of entropy (no base36 per-byte truncation). Session-hijacking via
+  // guessing requires enumerating 2^128 values.
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   let s = "";
   for (let i = 0; i < bytes.length; i++) {
-    s += bytes[i]!.toString(36).padStart(2, "0");
+    s += bytes[i]!.toString(16).padStart(2, "0");
   }
   return s;
 }

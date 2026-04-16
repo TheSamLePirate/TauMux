@@ -184,6 +184,11 @@ export interface BrowserPaneView {
    *  workspace, the first toggleHidden/togglePassthrough calls no-op
    *  because webviewId is still null; a small retry loop reapplies. */
   desiredHidden: boolean;
+  /** Cleanup callbacks run on destroy: detaches webviewEl.on() handlers
+   *  and removes addEventListener bindings. Without this every closed
+   *  browser pane leaks its callback closures (which hold surfaceId and
+   *  callbacks refs). */
+  _cleanup: (() => void)[];
 }
 
 export interface BrowserPaneCallbacks {
@@ -395,6 +400,37 @@ export function createBrowserPaneView(
     findInputEl: null,
     findVisible: false,
     desiredHidden: false,
+    _cleanup: [],
+  };
+
+  /** Register a webviewEl.on(event, listener) and stash an off() hook
+   *  for destroy(). Thin helper so the rest of the wiring reads the
+   *  same. */
+  const onWV = (event: string, listener: (e: CustomEvent) => void) => {
+    webviewEl.on(event, listener);
+    view._cleanup.push(() => {
+      try {
+        webviewEl.off(event, listener);
+      } catch {
+        /* element may already be detached */
+      }
+    });
+  };
+  /** Same idea for standard addEventListener bindings. */
+  const onDom = <T extends Event>(
+    target: EventTarget,
+    event: string,
+    listener: (e: T) => void,
+    options?: AddEventListenerOptions,
+  ) => {
+    target.addEventListener(event, listener as EventListener, options);
+    view._cleanup.push(() => {
+      try {
+        target.removeEventListener(event, listener as EventListener, options);
+      } catch {
+        /* ignore */
+      }
+    });
   };
 
   // ── Event wiring ──
@@ -431,7 +467,7 @@ export function createBrowserPaneView(
   }
 
   // Navigation events
-  webviewEl.on("did-navigate", (e: CustomEvent) => {
+  onWV("did-navigate", (e: CustomEvent) => {
     const url =
       typeof e.detail === "string" ? e.detail : ((e.detail as any)?.url ?? "");
     if (!url) return;
@@ -446,7 +482,7 @@ export function createBrowserPaneView(
     updateDomainChip();
   });
 
-  webviewEl.on("did-navigate-in-page", (e: CustomEvent) => {
+  onWV("did-navigate-in-page", (e: CustomEvent) => {
     const url =
       typeof e.detail === "string" ? e.detail : ((e.detail as any)?.url ?? "");
     if (url) {
@@ -456,12 +492,12 @@ export function createBrowserPaneView(
     }
   });
 
-  webviewEl.on("will-navigate" as any, () => {
+  onWV("will-navigate", () => {
     view.isLoading = true;
     reloadBtn.classList.add("browser-loading");
   });
 
-  webviewEl.on("dom-ready", () => {
+  onWV("dom-ready", () => {
     view.isLoading = false;
     reloadBtn.classList.remove("browser-loading");
     void updateBackForwardState();
@@ -471,7 +507,7 @@ export function createBrowserPaneView(
   // Apply dark mode on initial load if URL is set
   // (further dark mode injection happens in applyDarkMode below)
 
-  webviewEl.on("host-message", (e: CustomEvent) => {
+  onWV("host-message", (e: CustomEvent) => {
     const msg = e.detail as Record<string, unknown> | null;
     if (!msg) return;
 
@@ -512,14 +548,14 @@ export function createBrowserPaneView(
     }
   });
 
-  webviewEl.on("new-window-open", (e: CustomEvent) => {
+  onWV("new-window-open", (e: CustomEvent) => {
     const url =
       typeof e.detail === "string" ? e.detail : ((e.detail as any)?.url ?? "");
     if (url) callbacks.onNewWindow(surfaceId, url);
   });
 
   // Address bar events
-  addressBar.addEventListener("keydown", (e: KeyboardEvent) => {
+  onDom<KeyboardEvent>(addressBar, "keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       const input = addressBar.value.trim();
@@ -535,14 +571,14 @@ export function createBrowserPaneView(
     e.stopPropagation();
   });
 
-  addressBar.addEventListener("focus", () => {
+  onDom(addressBar, "focus", () => {
     addressBar.select();
   });
 
   // Navigation buttons
-  backBtn.addEventListener("click", () => webviewEl.goBack());
-  forwardBtn.addEventListener("click", () => webviewEl.goForward());
-  reloadBtn.addEventListener("click", () => {
+  onDom(backBtn, "click", () => webviewEl.goBack());
+  onDom(forwardBtn, "click", () => webviewEl.goForward());
+  onDom(reloadBtn, "click", () => {
     if (view.isLoading) {
       // Stop by navigating to current URL
       webviewEl.loadURL(view.currentUrl);
@@ -551,12 +587,12 @@ export function createBrowserPaneView(
     }
   });
 
-  devToolsBtn.addEventListener("click", () => {
+  onDom(devToolsBtn, "click", () => {
     webviewEl.toggleDevTools();
   });
 
   // Focus handling
-  container.addEventListener("mousedown", () => {
+  onDom(container, "mousedown", () => {
     callbacks.onFocus(surfaceId);
   });
 
@@ -581,6 +617,21 @@ export function createBrowserPaneView(
 }
 
 // ── Public helpers called from SurfaceManager ──
+
+/** Release every listener registered against webviewEl and the address
+ *  bar / nav buttons / container. Call before removing the pane from
+ *  the DOM — otherwise the electrobun webview tag keeps our callbacks
+ *  (and their surfaceId/callbacks closures) alive indefinitely. */
+export function destroyBrowserPaneView(view: BrowserPaneView): void {
+  for (const fn of view._cleanup) {
+    try {
+      fn();
+    } catch {
+      /* ignore */
+    }
+  }
+  view._cleanup = [];
+}
 
 export function browserPaneNavigateTo(view: BrowserPaneView, url: string) {
   const resolved = isUrl(url) ? normalizeUrl(url) : url;

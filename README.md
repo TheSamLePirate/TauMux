@@ -390,6 +390,13 @@ Auto-start is off by default; enable it in **Settings → Network → Auto-start
 
 Under the hood (see [`doc/http-web-ui-refactor.md`](doc/http-web-ui-refactor.md) for the full write-up): protocol v2 envelopes with per-session sequence numbers, resume-on-reconnect backed by a 2 MB ring buffer, terminal-state-correct replay via `@xterm/headless` + `SerializeAddon`, 16 ms stdout coalescing, metadata dedup, and Graphite-themed chrome that matches the native app.
 
+**Hardening**. The mirror is still designed for trusted networks, but the surface is substantially narrower than a plain HTTP server:
+- Auth token comparison is **constant-time** (`timingSafeEqualStr`), so the token can't be brute-forced one byte at a time by latency probing.
+- WebSocket upgrades are rejected when the `Origin` header is set and doesn't match `Host` — browsers on a different site can't hijack the connection (native clients that omit `Origin`, e.g. `curl`/`ht`, still connect).
+- Every client → server frame is size-capped (256 KiB per envelope, 64 KiB per `stdin` payload) and rate-limited via a token bucket (256 frames/sec per connection); oversized or too-fast frames are dropped silently.
+- `surfaceResizeRequest` clamps cols to `[10, 500]` and rows to `[4, 500]`; unparseable values are rejected entirely rather than forwarded.
+- Session IDs are 128-bit hex from `crypto.getRandomValues` — no predictable structure for resume-ID guessing.
+
 ## Settings
 
 All settings persist to `~/Library/Application Support/hyperterm-canvas/settings.json`. Sections:

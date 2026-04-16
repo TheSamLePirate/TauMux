@@ -46,6 +46,7 @@ import {
   browserPaneApplyDarkMode,
   browserPaneInjectCookies,
   browserPaneGetCookies,
+  destroyBrowserPaneView,
 } from "./browser-pane";
 
 const defaultGlassTheme = {
@@ -470,8 +471,18 @@ export class SurfaceManager {
       this.applyLayout();
     }
 
+    // Order matters: destroy PanelManager (and its xterm subscriptions)
+    // and effects BEFORE disposing the xterm instance, otherwise
+    // subscriptions can fire against a disposed terminal or close over
+    // freed state.
+    view.panelManager?.destroy();
+    view.panelManager = null;
     view.effects?.destroy();
     view.term?.dispose();
+    // Browser panes keep webviewEl.on() handlers that close over
+    // surfaceId + callbacks; detach them explicitly or they leak for
+    // the lifetime of the electrobun <electrobun-webview> tag.
+    if (view.browserView) destroyBrowserPaneView(view.browserView);
     view.container.remove();
     this.surfaces.delete(surfaceId);
     this.metadata.delete(surfaceId);
@@ -2430,6 +2441,16 @@ export class SurfaceManager {
 // --- Surface chips renderer -------------------------------------------------
 
 function renderSurfaceChips(host: HTMLElement, meta: SurfaceMetadata): void {
+  // Bail if the chips row would be byte-identical to the last render.
+  // Metadata broadcasts at 1 Hz per surface and the poller already
+  // de-dupes equivalent snapshots — but workspace switches, focus
+  // changes, and web-mirror replays all trigger a re-render, so it's
+  // still worth skipping the DOM churn when the visible data is
+  // unchanged. Cheap hash, no JSON.stringify.
+  const sig = chipsSignature(meta);
+  if (host.dataset["chipsSig"] === sig) return;
+  host.dataset["chipsSig"] = sig;
+
   host.replaceChildren();
 
   const fg = meta.tree.find((n) => n.pid === meta.foregroundPid);
@@ -2486,6 +2507,25 @@ function buildChip(cls: string, text: string): HTMLSpanElement {
   el.className = `surface-chip ${cls}`;
   el.textContent = text;
   return el;
+}
+
+/** Terse signature of the rendered chip row. Any change in the inputs
+ *  that renderSurfaceChips actually reads produces a different string;
+ *  unchanged inputs produce the same string. Used to skip redundant
+ *  DOM rebuilds. */
+function chipsSignature(meta: SurfaceMetadata): string {
+  const fg = meta.tree.find((n) => n.pid === meta.foregroundPid);
+  const cmd = fg && meta.foregroundPid !== meta.pid ? fg.command : "";
+  const ports = meta.listeningPorts
+    .map((p) => p.port)
+    .filter((p, i, a) => a.indexOf(p) === i)
+    .join(",");
+  const git = meta.git
+    ? `${meta.git.branch ?? ""}|${meta.git.ahead}|${meta.git.behind}|` +
+      `${meta.git.staged}|${meta.git.unstaged}|${meta.git.untracked}|` +
+      `${meta.git.conflicts}|${meta.git.insertions}|${meta.git.deletions}`
+    : "";
+  return `${cmd}\u0001${meta.cwd ?? ""}\u0001${git}\u0001${ports}`;
 }
 
 /**

@@ -57,6 +57,11 @@ export class PtyManager {
 
   // Write buffer for commands sent before terminal is ready
   private writeBuffer: string[] = [];
+  /** True when the terminal handle hadn't arrived yet the last time
+   *  resize() was called. We flush the pending dimensions once the
+   *  handle is delivered, so a user who resizes the window during
+   *  shell init doesn't end up stuck at spawn-time dimensions. */
+  private pendingResize = false;
   private terminalWatchdog: ReturnType<typeof setTimeout> | null = null;
 
   // Streaming decoder to handle multi-byte UTF-8 split across chunks
@@ -92,6 +97,7 @@ export class PtyManager {
     this._exited = false;
     this._destroyed = false;
     this._exitCode = null;
+    this.pendingResize = false;
     if (this.terminalWatchdog) {
       clearTimeout(this.terminalWatchdog);
       this.terminalWatchdog = null;
@@ -148,6 +154,18 @@ export class PtyManager {
             if (this.terminalWatchdog) {
               clearTimeout(this.terminalWatchdog);
               this.terminalWatchdog = null;
+            }
+            // Apply any resize requested between spawn() and the first
+            // data callback. Without this, a user resize during shell
+            // init would be silently dropped: _cols/_rows were updated
+            // but terminal?.resize() was a no-op.
+            if (this.pendingResize) {
+              try {
+                terminal.resize(this._cols, this._rows);
+              } catch {
+                /* ignore */
+              }
+              this.pendingResize = false;
             }
             for (const buffered of this.writeBuffer) {
               terminal.write(buffered);
@@ -222,7 +240,12 @@ export class PtyManager {
   resize(cols: number, rows: number): void {
     this._cols = cols;
     this._rows = rows;
-    this.terminal?.resize(cols, rows);
+    if (this.terminal) {
+      this.terminal.resize(cols, rows);
+    } else {
+      // Flushed from the first data callback.
+      this.pendingResize = true;
+    }
   }
 
   get cols(): number {

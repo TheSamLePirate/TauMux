@@ -10,3 +10,11 @@ __pycache__/
 artifacts/
 # Web-mirror client build artifacts (produced by scripts/build-web-client.ts)
 assets/web-client/
+# Bun's incremental-build cache files land at repo root (~60 MB each)
+*.bun-build
+# Secrets / env overrides — never check these in
+.env
+.env.*
+# Local log spillage (claude session transcripts, debug logs, etc.)
+*.log
+*.jsonl

@@ -10,10 +10,17 @@ interface PendingEntry {
 const PENDING_TTL_MS = 60_000;
 const PENDING_PRUNE_INTERVAL_MS = 30_000;
 
+interface XtermDisposable {
+  dispose(): void;
+}
+
 export class PanelManager {
   private panels = new Map<string, Panel>();
   private pendingData = new Map<string, PendingEntry>();
   private pendingPruneTimer: ReturnType<typeof setInterval> | null = null;
+  /** xterm.js subscription disposables; released in destroy() so we
+   *  don't leak callbacks that close over this PanelManager. */
+  private termSubscriptions: XtermDisposable[] = [];
   private lastTerminalResize: {
     cols: number;
     rows: number;
@@ -26,9 +33,12 @@ export class PanelManager {
     private term: Terminal,
     private onEvent: (event: PanelEvent) => void,
   ) {
-    // Update inline panels on scroll
-    term.onScroll(() => this.updateInlinePanels());
-    term.onResize(() => this.updateInlinePanels());
+    // Update inline panels on scroll. xterm.js onScroll/onResize return
+    // { dispose() } — keep the handles so destroy() can release them.
+    this.termSubscriptions.push(
+      term.onScroll(() => this.updateInlinePanels()) as XtermDisposable,
+      term.onResize(() => this.updateInlinePanels()) as XtermDisposable,
+    );
 
     // Prune stale pending data entries
     this.pendingPruneTimer = setInterval(() => {
@@ -120,6 +130,14 @@ export class PanelManager {
       clearInterval(this.pendingPruneTimer);
       this.pendingPruneTimer = null;
     }
+    for (const sub of this.termSubscriptions) {
+      try {
+        sub.dispose();
+      } catch {
+        /* xterm may already be torn down — ignore */
+      }
+    }
+    this.termSubscriptions = [];
     this.pendingData.clear();
     for (const panel of this.panels.values()) {
       panel.remove();
