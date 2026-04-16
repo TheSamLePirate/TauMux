@@ -4,9 +4,12 @@
  * Stores URL, title, visit count, and last-visited timestamp.
  * Powers address bar autocomplete and the `ht browser-history` command.
  * Automatically deduplicates URLs (strips trailing slash, www prefix).
+ *
+ * File I/O is async (Bun.file/Bun.write) except saveNow() which is
+ * synchronous for SIGINT/SIGTERM shutdown.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 
 export interface BrowserHistoryEntry {
@@ -23,9 +26,12 @@ export class BrowserHistoryStore {
   private filePath: string;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** Resolves when the store has finished loading from disk. */
+  readonly ready: Promise<void>;
+
   constructor(configDir: string) {
     this.filePath = join(configDir, "browser-history.json");
-    this.load();
+    this.ready = this.loadAsync();
   }
 
   /** Record a page visit. Creates or updates the entry. */
@@ -91,10 +97,10 @@ export class BrowserHistoryStore {
     this.scheduleSave();
   }
 
-  /** Immediately flush to disk (call on shutdown). */
+  /** Immediately flush to disk synchronously (call on shutdown). */
   saveNow(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.save();
+    this.saveSync();
   }
 
   // ── Internals ──
@@ -114,10 +120,11 @@ export class BrowserHistoryStore {
     }
   }
 
-  private load(): void {
+  private async loadAsync(): Promise<void> {
     try {
-      if (!existsSync(this.filePath)) return;
-      const raw = readFileSync(this.filePath, "utf-8");
+      const file = Bun.file(this.filePath);
+      if (!(await file.exists())) return;
+      const raw = await file.text();
       const arr = JSON.parse(raw) as BrowserHistoryEntry[];
       if (!Array.isArray(arr)) return;
       for (const entry of arr) {
@@ -130,7 +137,19 @@ export class BrowserHistoryStore {
     }
   }
 
-  private save(): void {
+  private async save(): Promise<void> {
+    try {
+      const dir = dirname(this.filePath);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      const arr = [...this.entries.values()];
+      await Bun.write(this.filePath, JSON.stringify(arr));
+    } catch {
+      /* ignore write failures */
+    }
+  }
+
+  /** Synchronous save for shutdown (SIGINT/SIGTERM can't await). */
+  private saveSync(): void {
     try {
       const dir = dirname(this.filePath);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -143,6 +162,6 @@ export class BrowserHistoryStore {
 
   private scheduleSave(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => this.save(), 2000);
+    this.saveTimer = setTimeout(() => void this.save(), 2000);
   }
 }

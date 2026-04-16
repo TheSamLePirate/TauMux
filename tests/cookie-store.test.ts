@@ -4,9 +4,11 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-function makeStore(): { store: CookieStore; dir: string } {
+async function makeStore(): Promise<{ store: CookieStore; dir: string }> {
   const dir = mkdtempSync(join(tmpdir(), "ht-cookie-store-"));
-  return { store: new CookieStore(dir), dir };
+  const store = new CookieStore(dir);
+  await store.ready;
+  return { store, dir };
 }
 
 function makeCookie(overrides: Partial<CookieEntry> = {}): CookieEntry {
@@ -26,8 +28,8 @@ function makeCookie(overrides: Partial<CookieEntry> = {}): CookieEntry {
 }
 
 describe("CookieStore", () => {
-  test("set and getAll", () => {
-    const { store } = makeStore();
+  test("set and getAll", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie());
     const all = store.getAll();
     expect(all).toHaveLength(1);
@@ -35,8 +37,8 @@ describe("CookieStore", () => {
     expect(all[0].value).toBe("abc123");
   });
 
-  test("set updates existing cookie with same key", () => {
-    const { store } = makeStore();
+  test("set updates existing cookie with same key", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ value: "old" }));
     store.set(makeCookie({ value: "new" }));
     const all = store.getAll();
@@ -44,8 +46,8 @@ describe("CookieStore", () => {
     expect(all[0].value).toBe("new");
   });
 
-  test("different name/path/domain = different cookies", () => {
-    const { store } = makeStore();
+  test("different name/path/domain = different cookies", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "a", domain: ".foo.com" }));
     store.set(makeCookie({ name: "b", domain: ".foo.com" }));
     store.set(makeCookie({ name: "a", domain: ".bar.com" }));
@@ -53,8 +55,8 @@ describe("CookieStore", () => {
     expect(store.getAll()).toHaveLength(4);
   });
 
-  test("importBulk", () => {
-    const { store } = makeStore();
+  test("importBulk", async () => {
+    const { store } = await makeStore();
     const cookies = [
       makeCookie({ name: "a", domain: ".one.com" }),
       makeCookie({ name: "b", domain: ".two.com" }),
@@ -65,8 +67,8 @@ describe("CookieStore", () => {
     expect(store.getAll()).toHaveLength(2);
   });
 
-  test("getForDomain matches subdomains", () => {
-    const { store } = makeStore();
+  test("getForDomain matches subdomains", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "a", domain: ".example.com" }));
     store.set(makeCookie({ name: "b", domain: ".other.com" }));
 
@@ -75,16 +77,16 @@ describe("CookieStore", () => {
     expect(result[0].name).toBe("a");
   });
 
-  test("getForDomain matches exact domain", () => {
-    const { store } = makeStore();
+  test("getForDomain matches exact domain", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "a", domain: ".example.com" }));
 
     const result = store.getForDomain("example.com");
     expect(result).toHaveLength(1);
   });
 
-  test("getForUrl filters by path", () => {
-    const { store } = makeStore();
+  test("getForUrl filters by path", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "root", path: "/" }));
     store.set(makeCookie({ name: "api", path: "/api" }));
 
@@ -96,8 +98,8 @@ describe("CookieStore", () => {
     expect(apiResult).toHaveLength(2);
   });
 
-  test("getForUrl filters out secure cookies on http", () => {
-    const { store } = makeStore();
+  test("getForUrl filters out secure cookies on http", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "sec", secure: true }));
     store.set(makeCookie({ name: "plain", secure: false }));
 
@@ -109,8 +111,8 @@ describe("CookieStore", () => {
     expect(httpsResult).toHaveLength(2);
   });
 
-  test("getForUrl filters out httpOnly cookies", () => {
-    const { store } = makeStore();
+  test("getForUrl filters out httpOnly cookies", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "js", httpOnly: false }));
     store.set(makeCookie({ name: "http", httpOnly: true }));
 
@@ -119,8 +121,8 @@ describe("CookieStore", () => {
     expect(result[0].name).toBe("js");
   });
 
-  test("getForUrl filters out expired cookies", () => {
-    const { store } = makeStore();
+  test("getForUrl filters out expired cookies", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "valid", expires: 0 })); // session
     store.set(
       makeCookie({
@@ -136,8 +138,8 @@ describe("CookieStore", () => {
     expect(names).toEqual(["future", "valid"]);
   });
 
-  test("search by domain", () => {
-    const { store } = makeStore();
+  test("search by domain", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "a", domain: ".github.com" }));
     store.set(makeCookie({ name: "b", domain: ".google.com" }));
     store.set(makeCookie({ name: "c", domain: ".example.com" }));
@@ -147,8 +149,8 @@ describe("CookieStore", () => {
     expect(result[0].domain).toBe(".google.com");
   });
 
-  test("search by name", () => {
-    const { store } = makeStore();
+  test("search by name", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "session_id", domain: ".a.com" }));
     store.set(makeCookie({ name: "csrf_token", domain: ".b.com" }));
 
@@ -157,8 +159,8 @@ describe("CookieStore", () => {
     expect(result[0].name).toBe("csrf_token");
   });
 
-  test("delete specific cookie", () => {
-    const { store } = makeStore();
+  test("delete specific cookie", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "a", domain: ".x.com" }));
     store.set(makeCookie({ name: "b", domain: ".x.com" }));
 
@@ -167,13 +169,13 @@ describe("CookieStore", () => {
     expect(store.getAll()[0].name).toBe("b");
   });
 
-  test("delete returns false for nonexistent", () => {
-    const { store } = makeStore();
+  test("delete returns false for nonexistent", async () => {
+    const { store } = await makeStore();
     expect(store.delete(".nope.com", "/", "nope")).toBe(false);
   });
 
-  test("deleteForDomain", () => {
-    const { store } = makeStore();
+  test("deleteForDomain", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "a", domain: ".example.com" }));
     store.set(makeCookie({ name: "b", domain: ".example.com" }));
     store.set(makeCookie({ name: "c", domain: ".other.com" }));
@@ -184,31 +186,100 @@ describe("CookieStore", () => {
     expect(store.getAll()[0].domain).toBe(".other.com");
   });
 
-  test("clear", () => {
-    const { store } = makeStore();
+  test("clear", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "a", domain: ".a.com" }));
     store.set(makeCookie({ name: "b", domain: ".b.com" }));
     store.clear();
     expect(store.size).toBe(0);
   });
 
-  test("persistence round-trip", () => {
-    const { store, dir } = makeStore();
+  test("persistence round-trip", async () => {
+    const { store, dir } = await makeStore();
     store.set(makeCookie({ name: "persist", value: "test", domain: ".p.com" }));
     store.saveNow();
 
     const store2 = new CookieStore(dir);
+    await store2.ready;
     const all = store2.getAll();
     expect(all).toHaveLength(1);
     expect(all[0].name).toBe("persist");
     expect(all[0].value).toBe("test");
   });
 
-  test("exportAll returns all entries", () => {
-    const { store } = makeStore();
+  test("exportAll returns all entries", async () => {
+    const { store } = await makeStore();
     store.set(makeCookie({ name: "a", domain: ".a.com" }));
     store.set(makeCookie({ name: "b", domain: ".b.com" }));
     const exported = store.exportAll();
     expect(exported).toHaveLength(2);
+  });
+
+  // ── Domain index tests ──
+
+  test("getForUrl with many unrelated domains only returns matching", async () => {
+    const { store } = await makeStore();
+    // Insert cookies across 100 domains
+    for (let i = 0; i < 100; i++) {
+      store.set(makeCookie({ name: `c${i}`, domain: `.domain${i}.com` }));
+    }
+    // Insert 5 cookies for the target domain
+    for (let i = 0; i < 5; i++) {
+      store.set(makeCookie({ name: `target${i}`, domain: ".target.com" }));
+    }
+    const result = store.getForUrl("https://target.com/");
+    expect(result).toHaveLength(5);
+    for (const c of result) {
+      expect(c.name).toStartWith("target");
+    }
+  });
+
+  test("domain index survives set/delete/clear cycle", async () => {
+    const { store } = await makeStore();
+    store.set(makeCookie({ name: "a", domain: ".x.com" }));
+    store.set(makeCookie({ name: "b", domain: ".x.com" }));
+    store.set(makeCookie({ name: "c", domain: ".y.com" }));
+
+    // Delete one cookie from x.com
+    store.delete(".x.com", "/", "a");
+    expect(store.getForUrl("https://x.com/")).toHaveLength(1);
+    expect(store.getForUrl("https://y.com/")).toHaveLength(1);
+
+    // Clear all
+    store.clear();
+    expect(store.getForUrl("https://x.com/")).toHaveLength(0);
+    expect(store.getForUrl("https://y.com/")).toHaveLength(0);
+
+    // Re-add
+    store.set(makeCookie({ name: "d", domain: ".x.com" }));
+    expect(store.getForUrl("https://x.com/")).toHaveLength(1);
+  });
+
+  test("importBulk populates domain index correctly", async () => {
+    const { store } = await makeStore();
+    store.importBulk([
+      makeCookie({ name: "a1", domain: ".alpha.com" }),
+      makeCookie({ name: "a2", domain: ".alpha.com" }),
+      makeCookie({ name: "b1", domain: ".beta.com" }),
+    ]);
+
+    expect(store.getForUrl("https://alpha.com/")).toHaveLength(2);
+    expect(store.getForUrl("https://beta.com/")).toHaveLength(1);
+    expect(store.getForUrl("https://gamma.com/")).toHaveLength(0);
+  });
+
+  test("getForUrl matches subdomain cookies via index", async () => {
+    const { store } = await makeStore();
+    store.set(makeCookie({ name: "root", domain: ".example.com" }));
+    store.set(makeCookie({ name: "sub", domain: ".sub.example.com" }));
+
+    // sub.example.com should match both .example.com and .sub.example.com
+    const result = store.getForUrl("https://sub.example.com/");
+    expect(result).toHaveLength(2);
+
+    // example.com should only match .example.com
+    const rootResult = store.getForUrl("https://example.com/");
+    expect(rootResult).toHaveLength(1);
+    expect(rootResult[0].name).toBe("root");
   });
 });

@@ -105,13 +105,14 @@ describe("BrowserHistoryStore", () => {
     expect(urls.has("https://c.com")).toBe(true);
   });
 
-  test("persistence round-trip", () => {
+  test("persistence round-trip", async () => {
     const { store, dir } = makeStore();
     store.record("https://persistent.com", "Persistent");
     store.saveNow();
 
     // Create a new store reading from the same dir
     const store2 = new BrowserHistoryStore(dir);
+    await store2.ready;
     const results = store2.search("persistent");
     expect(results).toHaveLength(1);
     expect(results[0].url).toBe("https://persistent.com");

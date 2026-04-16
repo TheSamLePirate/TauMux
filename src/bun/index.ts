@@ -133,6 +133,12 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         splitSurface(payload.direction, undefined, payload.cwd);
       },
       closeSurface: (payload) => {
+        // Clean up any pending cookie injection debounce
+        const pendingCookie = domReadyDebounce.get(payload.surfaceId);
+        if (pendingCookie) {
+          clearTimeout(pendingCookie);
+          domReadyDebounce.delete(payload.surfaceId);
+        }
         if (piAgentManager.isAgentSurface(payload.surfaceId)) {
           piAgentManager.removeAgent(payload.surfaceId);
           sendWebviewAction("agentSurfaceClosed", {
@@ -298,12 +304,13 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       splitBrowserSurface: (payload) => {
         splitBrowserSurface(payload.direction, payload.url);
       },
-      browserNavigated: (payload) => {
+      browserNavigated: async (payload) => {
         browserSurfaces.updateNavigation(
           payload.surfaceId,
           payload.url,
           payload.title,
         );
+        await browserHistory.ready;
         browserHistory.record(payload.url, payload.title);
         webServer?.broadcast({
           type: "browserNavigated",
@@ -343,20 +350,31 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         }
       },
       browserDomReady: (payload) => {
-        const cookies = cookieStore.getForUrl(payload.url);
-        if (cookies.length > 0) {
-          rpc.send("browserInjectCookies", {
-            surfaceId: payload.surfaceId,
-            cookies: cookies.map((c) => ({
-              name: c.name,
-              value: c.value,
-              path: c.path,
-              expires: c.expires,
-              secure: c.secure,
-              sameSite: c.sameSite,
-            })),
-          });
-        }
+        const { surfaceId, url } = payload;
+        // Debounce: coalesce rapid navigations (redirects, SPA routing)
+        const existing = domReadyDebounce.get(surfaceId);
+        if (existing) clearTimeout(existing);
+        domReadyDebounce.set(
+          surfaceId,
+          setTimeout(async () => {
+            domReadyDebounce.delete(surfaceId);
+            await cookieStore.ready;
+            const cookies = cookieStore.getForUrl(url);
+            if (cookies.length > 0) {
+              rpc.send("browserInjectCookies", {
+                surfaceId,
+                cookies: cookies.map((c) => ({
+                  name: c.name,
+                  value: c.value,
+                  path: c.path,
+                  expires: c.expires,
+                  secure: c.secure,
+                  sameSite: c.sameSite,
+                })),
+              });
+            }
+          }, 50),
+        );
       },
       browserCookieAction: (payload) => {
         const { action, data, format } = payload;
@@ -546,6 +564,9 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
 
 // Pending browser eval results (socket API → webview → bun)
 const pendingBrowserEvals = new Map<string, (value: string) => void>();
+
+// Debounce cookie injection per surface to coalesce rapid navigations
+const domReadyDebounce = new Map<string, ReturnType<typeof setTimeout>>();
 
 // Create the main window
 const mainWindow = new BrowserWindow({
