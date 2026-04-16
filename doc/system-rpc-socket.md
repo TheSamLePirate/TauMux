@@ -345,9 +345,22 @@ Browser panes use `browser:N` surface IDs. Pass `surface_id` to target a specifi
 
 // Inject CSS
 {"id":"9","method":"browser.addstyle","params":{"surface_id":"browser:1","css":"body { font-size: 20px }"}}
+
+// Cookie management
+{"id":"10","method":"browser.cookie_list","params":{}}
+// → result: [{name, value, domain, path, expires, secure, httpOnly, sameSite, source, updatedAt}, ...]
+
+{"id":"11","method":"browser.cookie_import","params":{"data":"[{\"name\":\"session\",\"value\":\"abc\",\"domain\":\".example.com\"}]","format":"json"}}
+// → result: {"imported": 1}
+
+{"id":"12","method":"browser.cookie_export","params":{"format":"json"}}
+// → result: JSON string of all cookies
+
+{"id":"13","method":"browser.cookie_capture","params":{"surface_id":"browser:1"}}
+// → result: {"captured": 5, "domain": "example.com"}
 ```
 
-For the full method reference, see [`doc/system-browser-pane.md`](system-browser-pane.md) § 6.
+For the full method reference (including 9 cookie methods), see [`doc/system-browser-pane.md`](system-browser-pane.md) § 6.
 
 ## Limitations and Caveats
 

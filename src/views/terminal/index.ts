@@ -103,6 +103,30 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
       browserSurfaceClosed: (payload) => {
         surfaceManager.removeBrowserSurface(payload.surfaceId);
       },
+      browserInjectCookies: (payload) => {
+        surfaceManager.browserInjectCookies(payload.surfaceId, payload.cookies);
+      },
+      cookieExportResult: (payload) => {
+        // Trigger file download in the webview
+        try {
+          const ext = payload.format === "netscape" ? "txt" : "json";
+          const mime =
+            payload.format === "netscape" ? "text/plain" : "application/json";
+          const blob = new Blob([payload.data], { type: mime });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `cookies.${ext}`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+        } catch {
+          /* ignore download errors */
+        }
+      },
+      cookieActionResult: (payload) => {
+        if (payload.message) {
+          showToast(payload.message, "success");
+        }
+      },
       // Agent surface messages are routed via socketAction (proven channel)
       // rather than dedicated RPC message types.
       sidebandMeta: (payload) => {
@@ -1325,6 +1349,39 @@ window.addEventListener("ht-browser-error", (e: Event) => {
   }
 });
 
+window.addEventListener("ht-browser-dom-ready", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.surfaceId && detail?.url) {
+    rpc.send("browserDomReady", {
+      surfaceId: detail.surfaceId,
+      url: detail.url,
+    });
+  }
+});
+
+window.addEventListener("ht-cookie-import", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.data) {
+    rpc.send("browserCookieAction", {
+      action: "import",
+      data: detail.data,
+      format: detail.format,
+    });
+  }
+});
+
+window.addEventListener("ht-cookie-export", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  rpc.send("browserCookieAction", {
+    action: "export",
+    format: detail?.format || "json",
+  });
+});
+
+window.addEventListener("ht-cookie-clear", () => {
+  rpc.send("browserCookieAction", { action: "clear" });
+});
+
 window.addEventListener("ht-clear-logs", () => {
   surfaceManager.clearLogs();
 });
@@ -1783,6 +1840,13 @@ function handleSocketAction(action: string, payload: Record<string, unknown>) {
     }
     case "browser.toggleDevTools": {
       surfaceManager.browserToggleDevTools(payload["surfaceId"] as string);
+      break;
+    }
+    case "browser.getCookies": {
+      surfaceManager.browserGetCookies(
+        payload["surfaceId"] as string,
+        payload["reqId"] as string,
+      );
       break;
     }
     case "showToast": {

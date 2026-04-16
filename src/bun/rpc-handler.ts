@@ -1,6 +1,13 @@
 import type { SessionManager } from "./session-manager";
 import type { BrowserSurfaceManager } from "./browser-surface-manager";
 import type { BrowserHistoryStore } from "./browser-history";
+import type { CookieStore } from "./cookie-store";
+import {
+  parseJsonCookies,
+  parseNetscapeCookies,
+  exportAsJson,
+  exportAsNetscape,
+} from "./cookie-parsers";
 import type { SurfaceMetadataPoller } from "./surface-metadata";
 import type { PaneNode, PaneRect } from "../shared/types";
 
@@ -131,6 +138,7 @@ export function createRpcHandler(
   browserSurfaces?: BrowserSurfaceManager,
   browserHistory?: BrowserHistoryStore,
   pendingBrowserEvals?: Map<string, (v: string) => void>,
+  cookieStore?: CookieStore,
 ): (
   method: string,
   params: Record<string, unknown>,
@@ -591,8 +599,7 @@ export function createRpcHandler(
 
     "browser.navigate": (params) => {
       const id =
-        (params["surface_id"] as string) ??
-        (params["surface"] as string);
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const url = params["url"] as string;
       if (id && url) {
         dispatch("browser.navigateTo", { surfaceId: id, url });
@@ -602,40 +609,35 @@ export function createRpcHandler(
 
     "browser.back": (params) => {
       const id =
-        (params["surface_id"] as string) ??
-        (params["surface"] as string);
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (id) dispatch("browser.goBack", { surfaceId: id });
       return "OK";
     },
 
     "browser.forward": (params) => {
       const id =
-        (params["surface_id"] as string) ??
-        (params["surface"] as string);
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (id) dispatch("browser.goForward", { surfaceId: id });
       return "OK";
     },
 
     "browser.reload": (params) => {
       const id =
-        (params["surface_id"] as string) ??
-        (params["surface"] as string);
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (id) dispatch("browser.reload", { surfaceId: id });
       return "OK";
     },
 
     "browser.url": (params) => {
       const id =
-        (params["surface_id"] as string) ??
-        (params["surface"] as string);
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (!id) return null;
       return browserSurfaces?.getSurface(id)?.url ?? null;
     },
 
     "browser.eval": (params) => {
       const id =
-        (params["surface_id"] as string) ??
-        (params["surface"] as string);
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const script = params["script"] as string;
       if (id && script) {
         dispatch("browser.evalJs", { surfaceId: id, script });
@@ -645,8 +647,7 @@ export function createRpcHandler(
 
     "browser.find": (params) => {
       const id =
-        (params["surface_id"] as string) ??
-        (params["surface"] as string);
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const query = params["query"] as string;
       if (id && query) {
         dispatch("browser.findInPage", { surfaceId: id, query });
@@ -656,16 +657,14 @@ export function createRpcHandler(
 
     "browser.stop_find": (params) => {
       const id =
-        (params["surface_id"] as string) ??
-        (params["surface"] as string);
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (id) dispatch("browser.stopFind", { surfaceId: id });
       return "OK";
     },
 
     "browser.devtools": (params) => {
       const id =
-        (params["surface_id"] as string) ??
-        (params["surface"] as string);
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (id) dispatch("browser.toggleDevTools", { surfaceId: id });
       return "OK";
     },
@@ -679,10 +678,130 @@ export function createRpcHandler(
       return "OK";
     },
 
+    // ── Cookie management ──
+
+    "browser.cookie_list": (params) => {
+      const domain = params["domain"] as string | undefined;
+      if (domain) return cookieStore?.search(domain) ?? [];
+      return cookieStore?.getAll(500) ?? [];
+    },
+
+    "browser.cookie_get": (params) => {
+      const url = params["url"] as string;
+      if (!url) throw new Error("url required");
+      return cookieStore?.getForUrl(url) ?? [];
+    },
+
+    "browser.cookie_set": (params) => {
+      const name = params["name"] as string;
+      const value = params["value"] as string;
+      const domain = params["domain"] as string;
+      if (!name || !domain) throw new Error("name and domain required");
+      cookieStore?.set({
+        name,
+        value: value ?? "",
+        domain,
+        path: (params["path"] as string) || "/",
+        expires: Number(params["expires"] ?? 0),
+        secure: !!params["secure"],
+        httpOnly: !!params["httpOnly"],
+        sameSite:
+          (params["sameSite"] as string as "Strict" | "Lax" | "None" | "") ||
+          "",
+        source: "imported",
+        updatedAt: Date.now(),
+      });
+      return "OK";
+    },
+
+    "browser.cookie_delete": (params) => {
+      const domain = params["domain"] as string;
+      const name = params["name"] as string;
+      const path = (params["path"] as string) || "/";
+      if (!domain || !name) throw new Error("domain and name required");
+      return cookieStore?.delete(domain, path, name) ? "OK" : "NOT_FOUND";
+    },
+
+    "browser.cookie_clear": (params) => {
+      const domain = params["domain"] as string | undefined;
+      if (domain) {
+        const count = cookieStore?.deleteForDomain(domain) ?? 0;
+        return { deleted: count };
+      }
+      cookieStore?.clear();
+      return "OK";
+    },
+
+    "browser.cookie_import": (params) => {
+      const data = params["data"] as string;
+      const format = (params["format"] as string) || "json";
+      if (!data) throw new Error("data required");
+      const cookies =
+        format === "netscape"
+          ? parseNetscapeCookies(data)
+          : parseJsonCookies(data);
+      const count = cookieStore?.importBulk(cookies) ?? 0;
+      return { imported: count };
+    },
+
+    "browser.cookie_export": (params) => {
+      const format = (params["format"] as string) || "json";
+      const cookies = cookieStore?.exportAll() ?? [];
+      if (format === "netscape") return exportAsNetscape(cookies);
+      return exportAsJson(cookies);
+    },
+
+    "browser.cookie_capture": async (params) => {
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
+      if (!id) throw new Error("surface_id required");
+      const reqId = `cookie:${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      return new Promise<string>((resolve) => {
+        pendingBrowserEvals?.set(reqId, (raw) => {
+          try {
+            const data = JSON.parse(raw);
+            const url = data.url as string;
+            const hostname = new URL(url).hostname;
+            for (const c of data.cookies as Array<{
+              name: string;
+              value: string;
+            }>) {
+              cookieStore?.set({
+                name: c.name,
+                value: c.value,
+                domain: hostname,
+                path: "/",
+                expires: 0,
+                secure: url.startsWith("https"),
+                httpOnly: false,
+                sameSite: "",
+                source: "captured",
+                updatedAt: Date.now(),
+              });
+            }
+            resolve(
+              JSON.stringify({
+                captured: (data.cookies as unknown[]).length,
+                domain: hostname,
+              }),
+            );
+          } catch (e) {
+            resolve(`Error: ${e}`);
+          }
+        });
+        dispatch("browser.getCookies", { surfaceId: id, reqId });
+        setTimeout(() => {
+          if (pendingBrowserEvals?.has(reqId)) {
+            pendingBrowserEvals.delete(reqId);
+            resolve("timeout");
+          }
+        }, 5000);
+      });
+    },
+
     "browser.snapshot": (params) => {
       const id =
-        (params["surface_id"] as string) ??
-        (params["surface"] as string);
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (!id) throw new Error("surface_id required");
       // Inject a DOM snapshot script that sends results via host-message → evalResult
       const snapshotScript = `
@@ -727,8 +846,7 @@ export function createRpcHandler(
 
     "browser.close": (params) => {
       const id =
-        (params["surface_id"] as string) ??
-        (params["surface"] as string);
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (id) browserSurfaces?.closeSurface(id);
       return "OK";
     },
@@ -738,19 +856,26 @@ export function createRpcHandler(
     // They use CSS selectors and return results via the evalResult mechanism.
 
     "browser.click": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const selector = params["selector"] as string;
       if (!id || !selector) throw new Error("surface_id and selector required");
       dispatch("browser.evalJs", {
         surfaceId: id,
         script: `document.querySelector(${JSON.stringify(selector)})?.click()`,
       });
-      if (params["snapshot_after"]) dispatch("browser.evalJs", { surfaceId: id, script: SNAPSHOT_SCRIPT, reqId: `snap:${Date.now()}` });
+      if (params["snapshot_after"])
+        dispatch("browser.evalJs", {
+          surfaceId: id,
+          script: SNAPSHOT_SCRIPT,
+          reqId: `snap:${Date.now()}`,
+        });
       return "OK";
     },
 
     "browser.dblclick": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const selector = params["selector"] as string;
       if (!id || !selector) throw new Error("surface_id and selector required");
       dispatch("browser.evalJs", {
@@ -761,7 +886,8 @@ export function createRpcHandler(
     },
 
     "browser.hover": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const selector = params["selector"] as string;
       if (!id || !selector) throw new Error("surface_id and selector required");
       dispatch("browser.evalJs", {
@@ -772,7 +898,8 @@ export function createRpcHandler(
     },
 
     "browser.focus": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const selector = params["selector"] as string;
       if (!id || !selector) throw new Error("surface_id and selector required");
       dispatch("browser.evalJs", {
@@ -783,7 +910,8 @@ export function createRpcHandler(
     },
 
     "browser.check": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const selector = params["selector"] as string;
       if (!id || !selector) throw new Error("surface_id and selector required");
       dispatch("browser.evalJs", {
@@ -794,7 +922,8 @@ export function createRpcHandler(
     },
 
     "browser.uncheck": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const selector = params["selector"] as string;
       if (!id || !selector) throw new Error("surface_id and selector required");
       dispatch("browser.evalJs", {
@@ -805,7 +934,8 @@ export function createRpcHandler(
     },
 
     "browser.scroll_into_view": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const selector = params["selector"] as string;
       if (!id || !selector) throw new Error("surface_id and selector required");
       dispatch("browser.evalJs", {
@@ -816,7 +946,8 @@ export function createRpcHandler(
     },
 
     "browser.type": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const selector = params["selector"] as string;
       const text = (params["text"] as string) ?? "";
       if (!id || !selector) throw new Error("surface_id and selector required");
@@ -828,7 +959,8 @@ export function createRpcHandler(
     },
 
     "browser.fill": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const selector = params["selector"] as string;
       const text = (params["text"] as string) ?? "";
       if (!id || !selector) throw new Error("surface_id and selector required");
@@ -840,7 +972,8 @@ export function createRpcHandler(
     },
 
     "browser.press": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const key = params["key"] as string;
       if (!id || !key) throw new Error("surface_id and key required");
       dispatch("browser.evalJs", {
@@ -851,7 +984,8 @@ export function createRpcHandler(
     },
 
     "browser.select": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const selector = params["selector"] as string;
       const value = params["value"] as string;
       if (!id || !selector) throw new Error("surface_id and selector required");
@@ -863,7 +997,8 @@ export function createRpcHandler(
     },
 
     "browser.scroll": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (!id) throw new Error("surface_id required");
       const selector = params["selector"] as string | undefined;
       const dx = Number(params["dx"] ?? 0);
@@ -879,7 +1014,8 @@ export function createRpcHandler(
     },
 
     "browser.highlight": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const selector = params["selector"] as string;
       if (!id || !selector) throw new Error("surface_id and selector required");
       dispatch("browser.evalJs", {
@@ -892,7 +1028,8 @@ export function createRpcHandler(
     // ── Browser Getters ──
 
     "browser.get": async (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const what = params["what"] as string;
       if (!id || !what) throw new Error("surface_id and what required");
       const selector = params["selector"] as string | undefined;
@@ -901,8 +1038,12 @@ export function createRpcHandler(
 
       let script: string;
       switch (what) {
-        case "title": script = `document.title`; break;
-        case "url": script = `window.location.href`; break;
+        case "title":
+          script = `document.title`;
+          break;
+        case "url":
+          script = `window.location.href`;
+          break;
         case "text":
           script = selector
             ? `(document.querySelector(${JSON.stringify(selector)})?.textContent || '')`
@@ -948,10 +1089,12 @@ export function createRpcHandler(
     },
 
     "browser.is": async (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const check = params["check"] as string;
       const selector = params["selector"] as string;
-      if (!id || !check || !selector) throw new Error("surface_id, check, and selector required");
+      if (!id || !check || !selector)
+        throw new Error("surface_id, check, and selector required");
 
       let script: string;
       switch (check) {
@@ -984,7 +1127,8 @@ export function createRpcHandler(
     // ── Browser Wait ──
 
     "browser.wait": async (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (!id) throw new Error("surface_id required");
       const timeoutMs = Number(params["timeout_ms"] ?? 10000);
       const selector = params["selector"] as string | undefined;
@@ -1001,13 +1145,16 @@ export function createRpcHandler(
       } else if (urlContains) {
         condition = `window.location.href.includes(${JSON.stringify(urlContains)})`;
       } else if (loadState) {
-        condition = loadState === "complete"
-          ? `document.readyState === 'complete'`
-          : `document.readyState === 'interactive' || document.readyState === 'complete'`;
+        condition =
+          loadState === "complete"
+            ? `document.readyState === 'complete'`
+            : `document.readyState === 'interactive' || document.readyState === 'complete'`;
       } else if (fn) {
         condition = `!!(${fn})`;
       } else {
-        throw new Error("One of selector, text, url_contains, load_state, or function required");
+        throw new Error(
+          "One of selector, text, url_contains, load_state, or function required",
+        );
       }
 
       const pollScript = `
@@ -1041,7 +1188,8 @@ export function createRpcHandler(
     // ── Script/Style Injection ──
 
     "browser.addscript": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const script = params["script"] as string;
       if (!id || !script) throw new Error("surface_id and script required");
       dispatch("browser.evalJs", { surfaceId: id, script });
@@ -1049,12 +1197,13 @@ export function createRpcHandler(
     },
 
     "browser.addstyle": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       const css = params["css"] as string;
       if (!id || !css) throw new Error("surface_id and css required");
       dispatch("browser.evalJs", {
         surfaceId: id,
-        script: `(function(){var s=document.createElement('style');s.textContent=${JSON.stringify(css)};document.head.appendChild(s);})()`
+        script: `(function(){var s=document.createElement('style');s.textContent=${JSON.stringify(css)};document.head.appendChild(s);})()`,
       });
       return "OK";
     },
@@ -1062,26 +1211,30 @@ export function createRpcHandler(
     // ── Console & Errors ──
 
     "browser.console_list": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (!id) throw new Error("surface_id required");
       return browserSurfaces?.getConsoleLogs(id) ?? [];
     },
 
     "browser.console_clear": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (!id) throw new Error("surface_id required");
       browserSurfaces?.clearConsoleLogs(id);
       return "OK";
     },
 
     "browser.errors_list": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (!id) throw new Error("surface_id required");
       return browserSurfaces?.getErrors(id) ?? [];
     },
 
     "browser.errors_clear": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (!id) throw new Error("surface_id required");
       browserSurfaces?.clearErrors(id);
       return "OK";
@@ -1090,24 +1243,35 @@ export function createRpcHandler(
     // ── Browser Identify ──
 
     "browser.identify": (params) => {
-      const id = (params["surface_id"] as string) ?? (params["surface"] as string);
+      const id =
+        (params["surface_id"] as string) ?? (params["surface"] as string);
       if (id) {
         const s = browserSurfaces?.getSurface(id);
         if (!s) throw new Error(`Unknown browser surface: ${id}`);
-        return { id: s.id, url: s.url, title: s.title, zoom: s.zoom, partition: s.partition };
+        return {
+          id: s.id,
+          url: s.url,
+          title: s.title,
+          zoom: s.zoom,
+          partition: s.partition,
+        };
       }
       // Return focused if it's a browser
       const state = getState();
       const fid = state.focusedSurfaceId;
       if (fid && browserSurfaces?.isBrowserSurface(fid)) {
         const s = browserSurfaces.getSurface(fid)!;
-        return { id: s.id, url: s.url, title: s.title, zoom: s.zoom, partition: s.partition };
+        return {
+          id: s.id,
+          url: s.url,
+          title: s.title,
+          zoom: s.zoom,
+          partition: s.partition,
+        };
       }
       return null;
     },
   };
-
-
 
   return (method: string, params: Record<string, unknown>) => {
     const handler = methods[method];

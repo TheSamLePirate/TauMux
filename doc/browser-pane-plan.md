@@ -1620,6 +1620,14 @@ Use this as the `preload` attribute on the `<electrobun-webview>`:
 
 All browser panes use the same `partition="persist:browser-shared"` by default. This means cookies are shared across all browser panes — logging into GitHub in one browser pane means you're logged in everywhere. Users can configure per-surface partitions via settings or CLI if needed later.
 
+#### Cookie Store (implemented)
+
+A `CookieStore` (`src/bun/cookie-store.ts`) provides a JSON-persisted cookie store at `~/.config/hyperterm-canvas/cookie-store.json`. Users can import cookies from JSON (EditThisCookie format) or Netscape/cURL files via Settings → Browser → Cookies or via CLI (`ht browser-cookie-import`). On each page navigation (`dom-ready`), matching cookies are auto-injected via `document.cookie` through the `executeJavascript()` API.
+
+The injection flow is: `dom-ready` → webview sends `browserDomReady` RPC → bun queries `cookieStore.getForUrl()` → bun sends `browserInjectCookies` RPC → webview calls `browserPaneInjectCookies()` → `executeJavascript(document.cookie = "...")`.
+
+Limitation: HTTP-only cookies cannot be set via `document.cookie`. They are stored for reference but skipped during injection.
+
 ### 16.9 Page zoom persistence
 
 Zoom level per browser surface is tracked in `BrowserSurfaceManager` and persisted in the layout file (alongside `surfaceUrls`).
@@ -1656,6 +1664,10 @@ On restore, apply the zoom level after the webview loads.
 | `bin/ht` | **Modify** | Add all `browser-*` CLI commands, update help text |
 | `electrobun.config.ts` | Possibly **Modify** | If the webview tag script needs explicit bundling |
 | `tests/` | **New files** | Tests for `BrowserSurfaceManager`, `BrowserHistoryStore`, browser RPC methods |
+| `src/bun/cookie-store.ts` | **New** | JSON-persisted cookie store with domain matching, URL filtering, import/export, LRU eviction |
+| `src/bun/cookie-parsers.ts` | **New** | Import parsers (JSON/Netscape) and export formatters for cookie files |
+| `tests/cookie-store.test.ts` | **New** | 20 tests for CookieStore CRUD, domain matching, persistence |
+| `tests/cookie-parsers.test.ts` | **New** | 19 tests for JSON/Netscape parsing, export, round-trips |
 
 ---
 
@@ -1671,7 +1683,7 @@ On restore, apply the zoom level after the webview loads.
 | 6 | **Accessibility tree quality** — JS-based DOM snapshot is less reliable than native WKWebView accessibility API. | **Low** | **Medium** | Document that the scriptable API is "best effort". For agent automation, `eval` is more reliable than `snapshot` for specific interactions. |
 | 7 | **Performance** — Many browser panes open simultaneously could consume significant memory (each is an isolated process). | **Low** | **Medium** | Lazy-load: only show/render webview when workspace is active. When switching away, optionally `toggleHidden(true)` to reduce compositing overhead. |
 | 8 | **Electrobun version** — Features like `openDevTools()`, `findInPage()` on webview tags may depend on the Electrobun version (currently 1.16.0). | **Low** | **Medium** | Test each API call. For missing features, degrade gracefully (e.g. "DevTools not available"). |
-| 9 | **Cookie import** — cmux supports importing cookies from Chrome/Firefox/Arc. This requires native filesystem access to browser cookie databases. | **Low** | **Low** | Out of scope for v1. Mark as future enhancement. Electrobun doesn't expose this. |
+| 9 | **Cookie import** — cmux supports importing cookies from Chrome/Firefox/Arc. This requires native filesystem access to browser cookie databases. | **Low** | **Low** | ✅ Implemented via `CookieStore` + `cookie-parsers.ts`. Supports JSON (EditThisCookie) and Netscape/cURL formats. Cookies are auto-injected on navigation via `document.cookie`. Import from native browser databases (Chrome encrypted, Safari binary) remains out of scope. |
 
 ---
 
@@ -1685,6 +1697,8 @@ On restore, apply the zoom level after the webview loads.
 | `tests/browser-history.test.ts` | Record, search, dedup, normalize URLs, persistence round-trip |
 | `tests/rpc-handler-browser.test.ts` | All `browser.*` RPC methods — open, navigate, back, forward, url, eval, list, history |
 | `tests/url-helpers.test.ts` | `isUrl()`, `normalizeUrl()`, `buildSearchUrl()` — edge cases (localhost:3000, bare domains, unicode, etc.) |
+| `tests/cookie-store.test.ts` | CookieStore CRUD, domain matching, URL filtering, persistence round-trip, LRU eviction |
+| `tests/cookie-parsers.test.ts` | JSON and Netscape format parsing, export formatting, round-trip fidelity |
 
 ### 19.2 Integration tests
 

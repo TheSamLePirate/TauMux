@@ -244,6 +244,23 @@ ht browser browser:2 errors                      # list captured JS errors
 ht browser browser:2 errors clear                # clear captured errors
 ```
 
+### Cookies
+
+```bash
+ht browser-cookie-list                             # list all stored cookies
+ht browser-cookie-list example.com                 # list cookies matching domain
+ht browser-cookie-get https://example.com/path     # get cookies for a URL
+ht browser-cookie-set session abc123 --domain .example.com --secure true
+ht browser-cookie-delete .example.com session      # delete specific cookie
+ht browser-cookie-clear                            # clear all stored cookies
+ht browser-cookie-clear .example.com               # clear cookies for a domain
+ht browser-cookie-import cookies.json              # import JSON cookie file
+ht browser-cookie-import cookies.txt --format netscape  # import Netscape format
+ht browser-cookie-export                           # export all as JSON
+ht browser-cookie-export --format netscape         # export as Netscape format
+ht browser-cookie-capture --surface browser:1      # capture cookies from page
+```
+
 ### Other
 
 ```bash
@@ -330,6 +347,19 @@ All methods accept `surface_id` (or `surface`) to target a browser surface.
 | `browser.errors_list` | `surface_id` | `[{message, filename?, lineno?, timestamp}]` |
 | `browser.errors_clear` | `surface_id` | `"OK"` |
 
+### Cookies
+
+| Method | Params | Returns |
+|--------|--------|---------|
+| `browser.cookie_list` | `domain?` | `[{name, value, domain, path, expires, secure, httpOnly, sameSite, source, updatedAt}]` |
+| `browser.cookie_get` | `url` | Cookies matching URL (filtered by domain, path, secure, expiry) |
+| `browser.cookie_set` | `name, value, domain, path?, expires?, secure?, httpOnly?, sameSite?` | `"OK"` |
+| `browser.cookie_delete` | `domain, name, path?` | `"OK"` or `"NOT_FOUND"` |
+| `browser.cookie_clear` | `domain?` | `"OK"` or `{deleted: N}` |
+| `browser.cookie_import` | `data, format?` | `{imported: N}` |
+| `browser.cookie_export` | `format?` | JSON or Netscape string |
+| `browser.cookie_capture` | `surface_id` | `{captured: N, domain: "..."}` |
+
 ### Other
 
 | Method | Params | Returns |
@@ -353,7 +383,17 @@ Settings are in **Settings → Browser**:
 | Force Dark Mode | Off | Inject dark mode CSS into pages that don't provide one |
 | Intercept Terminal Links | Off | Open ⌘-clicked URLs in the built-in browser instead of externally |
 
-Settings persist to `~/Library/Application Support/hyperterm-canvas/settings.json` alongside all other app settings.
+### Cookie Management (Settings → Browser → Cookies)
+
+The Cookies subsection provides UI buttons for:
+
+| Button | Action |
+|--------|--------|
+| **Import Cookie File...** | Opens a file picker for `.json`, `.txt`, or `.cookies` files. Auto-detects JSON vs Netscape format. |
+| **Export All Cookies** | Downloads all stored cookies as a JSON file. |
+| **Clear All Cookies** | Removes all cookies from the store. |
+
+Settings persist to `~/.config/hyperterm-canvas/settings.json` alongside all other app settings.
 
 ---
 
@@ -398,6 +438,24 @@ All other URLs (http, https) are allowed.
 ### Cookie Sharing
 
 All browser panes share a `persist:browser-shared` partition. Logging into a site in one browser pane means you're logged in across all browser panes.
+
+### Cookie Store
+
+HyperTerm maintains a local cookie store that can import, export, and auto-inject cookies into browser panes:
+
+- Persisted to `~/.config/hyperterm-canvas/cookie-store.json`
+- Stores name, value, domain, path, expiry, secure flag, httpOnly flag, sameSite attribute
+- Supports import from JSON (EditThisCookie/cookie-editor format) and Netscape/cURL cookie files
+- On each page navigation (`dom-ready`), matching cookies are auto-injected via `document.cookie`
+- Cookies are matched by domain (with subdomain matching), path prefix, and secure flag
+- HTTP-only cookies are stored for reference but cannot be injected via JavaScript
+- Expired cookies are filtered out automatically
+- Capped at 50,000 entries (oldest evicted by LRU)
+
+**Limitations:**
+- Injection happens at `dom-ready`, which is after the page starts loading. Auth-critical cookies may require a page reload after first injection.
+- `document.cookie` cannot set HTTP-only cookies — these are tracked in the store but skipped during injection.
+- Secure cookies are only injected on HTTPS pages.
 
 ### Console/Error Capture
 
@@ -455,14 +513,16 @@ ht browser browser:1 addstyle "body { font-size: 18px !important; }"
 |------|------|
 | `src/bun/browser-surface-manager.ts` | Bun-side state: URL, title, zoom, console logs, errors |
 | `src/bun/browser-history.ts` | JSON-persisted history with search and dedup |
-| `src/views/terminal/browser-pane.ts` | Webview-side: DOM construction, address bar, `<electrobun-webview>` wiring, URL helpers, preload scripts, find-in-page, dark mode |
-| `src/shared/types.ts` | `PaneLeaf.surfaceType`, browser RPC messages, `PersistedWorkspace` extensions |
+| `src/bun/cookie-store.ts` | JSON-persisted cookie store with domain matching, auto-injection on navigation |
+| `src/bun/cookie-parsers.ts` | Import parsers (JSON, Netscape) and export formatters |
+| `src/views/terminal/browser-pane.ts` | Webview-side: DOM construction, address bar, `<electrobun-webview>` wiring, URL helpers, preload scripts, find-in-page, dark mode, cookie injection/extraction |
+| `src/shared/types.ts` | `PaneLeaf.surfaceType`, browser RPC messages, cookie RPC messages, `PersistedWorkspace` extensions |
 | `src/shared/settings.ts` | `browserSearchEngine`, `browserHomePage`, `browserForceDarkMode`, `browserInterceptTerminalLinks` |
-| `src/bun/rpc-handler.ts` | 40+ `browser.*` socket API methods |
-| `src/bun/index.ts` | Browser surface creation/close, RPC message handling, layout persistence |
-| `src/views/terminal/surface-manager.ts` | Browser pane integration into tiling layout, workspace switching, overlay z-ordering |
-| `src/views/terminal/index.ts` | Keyboard shortcuts, event forwarding, overlay management |
-| `src/views/terminal/settings-panel.ts` | Browser settings section |
+| `src/bun/rpc-handler.ts` | 50+ `browser.*` socket API methods (including 9 cookie methods) |
+| `src/bun/index.ts` | Browser surface creation/close, cookie injection on `browserDomReady`, RPC message handling, layout persistence |
+| `src/views/terminal/surface-manager.ts` | Browser pane integration into tiling layout, workspace switching, overlay z-ordering, cookie injection routing |
+| `src/views/terminal/index.ts` | Keyboard shortcuts, event forwarding, overlay management, cookie action event handling |
+| `src/views/terminal/settings-panel.ts` | Browser settings section with cookie import/export/clear UI |
 | `src/views/terminal/index.css` | Browser pane styles (address bar, nav buttons, find bar, etc.) |
 | `src/views/terminal/icons.ts` | `chevronLeft`, `chevronRight`, `reload`, `code` icons |
-| `bin/ht` | `ht browser <subcommand>` CLI with 30+ commands |
+| `bin/ht` | `ht browser <subcommand>` CLI with 30+ commands, `ht browser-cookie-*` cookie commands |

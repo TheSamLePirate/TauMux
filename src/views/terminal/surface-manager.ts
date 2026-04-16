@@ -44,6 +44,8 @@ import {
   browserPaneSyncDimensions,
   browserPaneSetHidden,
   browserPaneApplyDarkMode,
+  browserPaneInjectCookies,
+  browserPaneGetCookies,
 } from "./browser-pane";
 
 const defaultGlassTheme = {
@@ -1045,7 +1047,11 @@ export class SurfaceManager {
     if (view?.browserView) browserPaneReload(view.browserView);
   }
 
-  browserEvalJs(surfaceId: string | null, script: string, reqId?: string): void {
+  browserEvalJs(
+    surfaceId: string | null,
+    script: string,
+    reqId?: string,
+  ): void {
     const id = surfaceId ?? this.focusedSurfaceId;
     if (!id) return;
     const view = this.surfaces.get(id);
@@ -1071,6 +1077,26 @@ export class SurfaceManager {
     if (!id) return;
     const view = this.surfaces.get(id);
     if (view?.browserView) browserPaneToggleDevTools(view.browserView);
+  }
+
+  browserInjectCookies(
+    surfaceId: string,
+    cookies: Array<{
+      name: string;
+      value: string;
+      path: string;
+      expires: number;
+      secure: boolean;
+      sameSite: string;
+    }>,
+  ): void {
+    const view = this.surfaces.get(surfaceId);
+    if (view?.browserView) browserPaneInjectCookies(view.browserView, cookies);
+  }
+
+  browserGetCookies(surfaceId: string, reqId: string): void {
+    const view = this.surfaces.get(surfaceId);
+    if (view?.browserView) browserPaneGetCookies(view.browserView, reqId);
   }
 
   focusBrowserAddressBar(): void {
@@ -1243,7 +1269,8 @@ export class SurfaceManager {
         const surfaceTitles: Record<string, string> = {};
         const surfaceCwds: Record<string, string> = {};
         const surfaceUrls: Record<string, string> = {};
-        const surfaceTypes: Record<string, "terminal" | "browser" | "agent"> = {};
+        const surfaceTypes: Record<string, "terminal" | "browser" | "agent"> =
+          {};
         for (const sid of surfaceIds) {
           const view = this.surfaces.get(sid);
           const title = view?.title;
@@ -1564,77 +1591,80 @@ export class SurfaceManager {
     surfaceId: string,
     url: string,
   ): SurfaceView {
-    const browserView = createBrowserPaneView(
-      surfaceId,
-      url,
-      {
-        onNavigated: (sid, navUrl, navTitle) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-browser-navigated", {
-              detail: { surfaceId: sid, url: navUrl, title: navTitle },
-            }),
-          );
-        },
-        onTitleChanged: (sid, newTitle) => {
-          const view = this.surfaces.get(sid);
-          if (view) {
-            view.title = newTitle;
-            view.titleEl.textContent = newTitle;
-          }
-          window.dispatchEvent(
-            new CustomEvent("ht-browser-title-changed", {
-              detail: { surfaceId: sid, title: newTitle },
-            }),
-          );
-          this.updateSidebar();
-        },
-        onNewWindow: (sid, newUrl) => {
-          // Open links from the page in the same browser pane
-          const view = this.surfaces.get(sid);
-          if (view?.browserView) {
-            browserPaneNavigateTo(view.browserView, newUrl);
-          }
-        },
-        onFocus: (sid) => {
-          this.focusSurface(sid);
-        },
-        onClose: (sid) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-close-surface", {
-              detail: { surfaceId: sid },
-            }),
-          );
-        },
-        onSplit: (sid, direction) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-split", {
-              detail: { surfaceId: sid, direction },
-            }),
-          );
-        },
-        onEvalResult: (sid, reqId, result, error) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-browser-eval-result", {
-              detail: { surfaceId: sid, reqId, result, error },
-            }),
-          );
-        },
-        onConsoleLog: (sid, level, args, timestamp) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-browser-console-log", {
-              detail: { surfaceId: sid, level, args, timestamp },
-            }),
-          );
-        },
-        onError: (sid, message, filename, lineno, timestamp) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-browser-error", {
-              detail: { surfaceId: sid, message, filename, lineno, timestamp },
-            }),
-          );
-        },
+    const browserView = createBrowserPaneView(surfaceId, url, {
+      onNavigated: (sid, navUrl, navTitle) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-browser-navigated", {
+            detail: { surfaceId: sid, url: navUrl, title: navTitle },
+          }),
+        );
       },
-    );
+      onTitleChanged: (sid, newTitle) => {
+        const view = this.surfaces.get(sid);
+        if (view) {
+          view.title = newTitle;
+          view.titleEl.textContent = newTitle;
+        }
+        window.dispatchEvent(
+          new CustomEvent("ht-browser-title-changed", {
+            detail: { surfaceId: sid, title: newTitle },
+          }),
+        );
+        this.updateSidebar();
+      },
+      onNewWindow: (sid, newUrl) => {
+        // Open links from the page in the same browser pane
+        const view = this.surfaces.get(sid);
+        if (view?.browserView) {
+          browserPaneNavigateTo(view.browserView, newUrl);
+        }
+      },
+      onFocus: (sid) => {
+        this.focusSurface(sid);
+      },
+      onClose: (sid) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-close-surface", {
+            detail: { surfaceId: sid },
+          }),
+        );
+      },
+      onSplit: (sid, direction) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-split", {
+            detail: { surfaceId: sid, direction },
+          }),
+        );
+      },
+      onEvalResult: (sid, reqId, result, error) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-browser-eval-result", {
+            detail: { surfaceId: sid, reqId, result, error },
+          }),
+        );
+      },
+      onConsoleLog: (sid, level, args, timestamp) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-browser-console-log", {
+            detail: { surfaceId: sid, level, args, timestamp },
+          }),
+        );
+      },
+      onError: (sid, message, filename, lineno, timestamp) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-browser-error", {
+            detail: { surfaceId: sid, message, filename, lineno, timestamp },
+          }),
+        );
+      },
+      onDomReady: (sid, domUrl) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-browser-dom-ready", {
+            detail: { surfaceId: sid, url: domUrl },
+          }),
+        );
+      },
+    });
 
     this.terminalContainer.appendChild(browserView.container);
 
@@ -1663,7 +1693,9 @@ export class SurfaceManager {
     const agentView = createAgentPaneView(surfaceId, agentId, {
       onSendPrompt: (aid, message) => {
         window.dispatchEvent(
-          new CustomEvent("ht-agent-prompt", { detail: { agentId: aid, message } }),
+          new CustomEvent("ht-agent-prompt", {
+            detail: { agentId: aid, message },
+          }),
         );
       },
       onAbort: (aid) => {
@@ -1673,12 +1705,16 @@ export class SurfaceManager {
       },
       onSetModel: (aid, provider, modelId) => {
         window.dispatchEvent(
-          new CustomEvent("ht-agent-set-model", { detail: { agentId: aid, provider, modelId } }),
+          new CustomEvent("ht-agent-set-model", {
+            detail: { agentId: aid, provider, modelId },
+          }),
         );
       },
       onSetThinking: (aid, level) => {
         window.dispatchEvent(
-          new CustomEvent("ht-agent-set-thinking", { detail: { agentId: aid, level } }),
+          new CustomEvent("ht-agent-set-thinking", {
+            detail: { agentId: aid, level },
+          }),
         );
       },
       onNewSession: (aid) => {
@@ -1698,7 +1734,9 @@ export class SurfaceManager {
       },
       onSplit: (sid, direction) => {
         window.dispatchEvent(
-          new CustomEvent("ht-split", { detail: { surfaceId: sid, direction } }),
+          new CustomEvent("ht-split", {
+            detail: { surfaceId: sid, direction },
+          }),
         );
       },
       onFocus: (sid) => {
