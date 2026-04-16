@@ -163,10 +163,21 @@ function boot() {
   function connect() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const { sessionId, lastSeenSeq } = store.getState().connection;
-    const qs =
-      sessionId && lastSeenSeq >= 0
-        ? `?resume=${encodeURIComponent(sessionId)}&seq=${lastSeenSeq}`
-        : "";
+    // Preserve the auth token from the page URL (if present). Without
+    // this, loading `/?t=abc` would serve the page with the token on
+    // the HTTP request but then build a tokenless `ws://host/` URL,
+    // which the server rejects with 401. We also honor Authorization:
+    // Bearer headers on the HTTP fetch — those survive automatically —
+    // but the query-string path is the one browsers hit from a plain
+    // link, so it's the one that needs preserving here.
+    const pageT = new URLSearchParams(location.search).get("t");
+    const params = new URLSearchParams();
+    if (sessionId && lastSeenSeq >= 0) {
+      params.set("resume", sessionId);
+      params.set("seq", String(lastSeenSeq));
+    }
+    if (pageT) params.set("t", pageT);
+    const qs = params.toString() ? `?${params.toString()}` : "";
     ws = new WebSocket(proto + "//" + location.host + "/" + qs);
     ws.binaryType = "arraybuffer";
     store.dispatch({ kind: "connection/status", status: "connecting" });

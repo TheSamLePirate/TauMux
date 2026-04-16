@@ -531,7 +531,15 @@
     function connect() {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const { sessionId, lastSeenSeq } = store.getState().connection;
-      const qs = sessionId && lastSeenSeq >= 0 ? `?resume=${encodeURIComponent(sessionId)}&seq=${lastSeenSeq}` : "";
+      const pageT = new URLSearchParams(location.search).get("t");
+      const params = new URLSearchParams;
+      if (sessionId && lastSeenSeq >= 0) {
+        params.set("resume", sessionId);
+        params.set("seq", String(lastSeenSeq));
+      }
+      if (pageT)
+        params.set("t", pageT);
+      const qs = params.toString() ? `?${params.toString()}` : "";
       ws = new WebSocket(proto + "//" + location.host + "/" + qs);
       ws.binaryType = "arraybuffer";
       store.dispatch({ kind: "connection/status", status: "connecting" });

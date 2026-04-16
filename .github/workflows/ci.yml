@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  # Cancel in-progress runs for the same branch when new commits arrive.
+  # The main branch is never cancelled, so release builds always complete.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  typecheck-and-unit:
+    name: Typecheck + Bun tests
+    # macOS because the PTY tests spawn real shells and exercise macOS
+    # ps/lsof output parsers. Linux would need additional shim
+    # behavior we don't ship yet.
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Unit + integration tests
+        # Don't run with DEBUG=* etc. — the noisy [session] / [web]
+        # logs are already captured by bun:test on failure.
+        run: bun test
+
+  e2e-web-mirror:
+    name: Playwright web-mirror e2e
+    # The e2e boot script spawns a Bun subprocess that runs the real
+    # WebServer + SessionManager. macOS is required for the same
+    # reason as above (PTY/ps/lsof behavior).
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build web-client bundle
+        # Playwright loads the bundled /assets/web-client/client.js
+        # via the real WebServer, so the bundle has to exist before
+        # tests run. `bun run test` already builds it, but the e2e
+        # runner does not, so we call the build step explicitly.
+        run: bun scripts/build-web-client.ts
+
+      - name: Install Playwright browsers
+        # --with-deps would also install OS-level libraries; on macOS
+        # runners Chromium ships with everything it needs, so plain
+        # install keeps the step fast.
+        run: bunx playwright install chromium
+
+      - name: Run Playwright tests
+        # CI=1 is picked up by playwright.config.ts to enable retries
+        # and reduce worker count.
+        env:
+          CI: "1"
+        run: bun run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore

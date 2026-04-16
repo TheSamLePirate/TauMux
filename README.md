@@ -511,7 +511,9 @@ tests/                          # 220 tests across 15 files
 bun install                # dependencies
 bun start                  # dev: build + launch once
 bun dev                    # dev: build + launch with watch
-bun test                   # 220 tests
+bun test                   # unit + integration suite (349 tests, ~8s)
+bun run test:e2e           # Playwright web-mirror e2e (17 tests, ~6s)
+bun run test:all           # both
 bun run typecheck          # TypeScript check
 bun run build:cli          # standalone ./build/ht-cli binary (for other Macs)
 bun run build:dev          # dev .app (no CLI injection yet — requires stable/canary)
@@ -519,6 +521,19 @@ bun run build:stable       # stable .app + DMG + bundled ht at Contents/MacOS/ht
 ```
 
 A `postBuild` Electrobun hook (`scripts/post-build.ts`) compiles `bin/ht` targeting the build's arch and injects it into the inner bundle before tarring, so `Install 'ht' Command in PATH` works out of the box.
+
+### Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs `typecheck + bun test` and `Playwright e2e` on every push and PR. Both jobs run on `macos-latest` — the PTY / `ps` / `lsof` integration tests rely on macOS behavior, and the e2e boot script spawns a Bun subprocess that drives the real `WebServer` + `SessionManager`. Playwright only targets Chromium for now; add Firefox/WebKit under `projects:` in `playwright.config.ts` if you want wider render coverage.
+
+### End-to-end tests
+
+The `tests-e2e/` suite exercises the web mirror (HTTP + WebSocket + xterm.js rendering) through a real Chromium. Each test spawns an isolated `WebServer` in a Bun subprocess via `tests-e2e/server-boot.ts`, so workers don't share state. What's covered:
+
+- **Auth** — open access, query-string token, `Authorization: Bearer`, wrong-token 401.
+- **Origin validation** — same-host upgrade 101, cross-origin upgrade 403 even with valid token.
+- **Terminal round-trip** — browser loads the page, xterm renders, keystrokes reach the shell, stdout appears in the DOM; also the lower-level WS-only variant that bypasses the browser.
+- **Resilience** — stdin size cap doesn't kill the connection, resize clamping doesn't either, `?resume=<id>&seq=<n>` replays buffered output after a disconnect, unknown resume IDs fall back to a fresh `hello`.
 
 ## Further reading
 

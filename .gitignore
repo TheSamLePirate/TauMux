@@ -18,3 +18,7 @@ assets/web-client/
 # Local log spillage (claude session transcripts, debug logs, etc.)
 *.log
 *.jsonl
+# Playwright e2e artifacts — traces, screenshots, videos, reports
+/test-results/
+/playwright-report/
+/playwright/.cache/
