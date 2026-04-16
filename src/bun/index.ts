@@ -16,8 +16,10 @@ import { dirname, join } from "node:path";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import type { HyperTermRPC, PersistedLayout, PaneNode } from "../shared/types";
@@ -78,6 +80,181 @@ function getAppState(): AppState {
     workspaces: workspaceState,
     activeWorkspaceId,
   };
+}
+
+function getPiSessionsDir(): string {
+  return join(process.env["HOME"] ?? "", ".pi", "agent", "sessions");
+}
+
+function extractSessionPreview(sessionPath: string): {
+  name: string | null;
+  cwd: string | null;
+  firstUserText: string | null;
+} {
+  try {
+    const text = readFileSync(sessionPath, "utf8");
+    const lines = text.split("\n").filter(Boolean);
+    let name: string | null = null;
+    let cwd: string | null = null;
+    let firstUserText: string | null = null;
+    for (const line of lines) {
+      const entry = JSON.parse(line) as Record<string, unknown>;
+      if (entry["type"] === "session") {
+        cwd = (entry["cwd"] as string) ?? null;
+      }
+      if (entry["type"] === "session_info") {
+        name = (entry["name"] as string) ?? name;
+      }
+      if (entry["type"] === "message") {
+        const msg = entry["message"] as Record<string, unknown> | undefined;
+        if (msg?.["role"] === "user" && !firstUserText) {
+          const content = msg["content"];
+          if (typeof content === "string") firstUserText = content;
+          else if (Array.isArray(content)) {
+            firstUserText = content
+              .map((part) => {
+                const rec = part as Record<string, unknown>;
+                return (rec["text"] as string) ?? "";
+              })
+              .join("");
+          }
+        }
+      }
+    }
+    return { name, cwd, firstUserText };
+  } catch {
+    return { name: null, cwd: null, firstUserText: null };
+  }
+}
+
+function listPiSessions(): Array<Record<string, unknown>> {
+  const root = getPiSessionsDir();
+  if (!existsSync(root)) return [];
+
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(full);
+    }
+  };
+  try {
+    walk(root);
+  } catch {
+    return [];
+  }
+
+  return files
+    .map((path) => {
+      const stat = statSync(path);
+      const preview = extractSessionPreview(path);
+      return {
+        path,
+        updatedAt: stat.mtimeMs,
+        name: preview.name,
+        cwd: preview.cwd,
+        preview: preview.firstUserText,
+      };
+    })
+    .sort((a, b) => (b["updatedAt"] as number) - (a["updatedAt"] as number))
+    .slice(0, 200);
+}
+
+function readPiSessionTree(sessionPath?: string): Array<Record<string, unknown>> {
+  if (!sessionPath || !existsSync(sessionPath)) return [];
+  try {
+    const lines = readFileSync(sessionPath, "utf8").split("\n").filter(Boolean);
+    const nodes = new Map<
+      string,
+      {
+        id: string;
+        parentId: string | null;
+        timestamp: string | null;
+        entryType: string;
+        role: string;
+        text: string;
+        children: string[];
+      }
+    >();
+
+    for (const line of lines) {
+      const entry = JSON.parse(line) as Record<string, unknown>;
+      const id = entry["id"] as string | undefined;
+      if (!id) continue;
+      const parentId = (entry["parentId"] as string | null) ?? null;
+      const entryType = (entry["type"] as string) ?? "unknown";
+      const timestamp = (entry["timestamp"] as string) ?? null;
+      let role = entryType;
+      let text = "";
+      if (entryType === "message") {
+        const msg = entry["message"] as Record<string, unknown> | undefined;
+        role = (msg?.["role"] as string) ?? "message";
+        const content = msg?.["content"];
+        if (typeof content === "string") text = content;
+        else if (Array.isArray(content)) {
+          text = content
+            .map((part) => {
+              const rec = part as Record<string, unknown>;
+              return (
+                (rec["text"] as string) ??
+                (rec["thinking"] as string) ??
+                (rec["label"] as string) ??
+                ""
+              );
+            })
+            .join(" ");
+        }
+      } else if (entryType === "compaction") {
+        text = (entry["summary"] as string) ?? "Compaction";
+      } else if (entryType === "branch_summary") {
+        text = (entry["summary"] as string) ?? "Branch summary";
+      } else if (entryType === "label") {
+        role = "label";
+        text = (entry["label"] as string) ?? "Label";
+      } else if (entryType === "session_info") {
+        role = "session";
+        text = (entry["name"] as string) ?? "Session info";
+      }
+      nodes.set(id, { id, parentId, timestamp, entryType, role, text, children: [] });
+    }
+
+    for (const node of nodes.values()) {
+      if (node.parentId) nodes.get(node.parentId)?.children.push(node.id);
+    }
+
+    const roots = [...nodes.values()]
+      .filter((node) => !node.parentId || !nodes.has(node.parentId))
+      .sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
+    const activeLeaf = [...nodes.values()].sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp))).at(-1)?.id ?? null;
+    const flat: Array<Record<string, unknown>> = [];
+    const visit = (id: string, depth: number) => {
+      const node = nodes.get(id);
+      if (!node) return;
+      flat.push({
+        id: node.id,
+        parentId: node.parentId,
+        depth,
+        role: node.role,
+        entryType: node.entryType,
+        text: node.text,
+        timestamp: node.timestamp,
+        childCount: node.children.length,
+        active: node.id === activeLeaf,
+      });
+      node.children
+        .sort((a, b) => {
+          const na = nodes.get(a);
+          const nb = nodes.get(b);
+          return String(na?.timestamp).localeCompare(String(nb?.timestamp));
+        })
+        .forEach((childId) => visit(childId, depth + 1));
+    };
+    roots.forEach((root) => visit(root.id, 0));
+    return flat;
+  } catch {
+    return [];
+  }
 }
 
 // Define RPC handlers
@@ -415,7 +592,11 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       agentPrompt: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
         if (agent)
-          agent.sendNoWait({ type: "prompt", message: payload.message });
+          agent.sendNoWait({
+            type: "prompt",
+            message: payload.message,
+            ...(payload.images?.length ? { images: payload.images } : {}),
+          });
       },
       agentAbort: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
@@ -460,11 +641,21 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       },
       agentSteer: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.steer(payload.message);
+        if (agent)
+          agent.sendNoWait({
+            type: "steer",
+            message: payload.message,
+            ...(payload.images?.length ? { images: payload.images } : {}),
+          });
       },
       agentFollowUp: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.followUp(payload.message);
+        if (agent)
+          agent.sendNoWait({
+            type: "follow_up",
+            message: payload.message,
+            ...(payload.images?.length ? { images: payload.images } : {}),
+          });
       },
       agentBash: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
@@ -494,6 +685,34 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
       agentGetSessionStats: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
         if (agent) agent.sendNoWait({ type: "get_session_stats" });
+      },
+      agentGetMessages: (payload) => {
+        const agent = piAgentManager.getAgent(payload.agentId);
+        if (agent) agent.sendNoWait({ type: "get_messages" });
+      },
+      agentListSessions: (payload) => {
+        sendWebviewAction("agentEvent", {
+          agentId: payload.agentId,
+          event: {
+            type: "response",
+            command: "list_sessions",
+            success: true,
+            data: { sessions: listPiSessions() },
+          },
+        });
+      },
+      agentGetSessionTree: (payload) => {
+        sendWebviewAction("agentEvent", {
+          agentId: payload.agentId,
+          event: {
+            type: "response",
+            command: "get_session_tree",
+            success: true,
+            data: {
+              tree: readPiSessionTree(payload.sessionPath),
+            },
+          },
+        });
       },
       agentGetForkMessages: (payload) => {
         const agent = piAgentManager.getAgent(payload.agentId);
@@ -1270,7 +1489,12 @@ const socketHandler = createRpcHandler(
   pendingBrowserEvals,
   cookieStore,
 );
-const socketServer = new SocketServer("/tmp/hyperterm.sock", socketHandler);
+const socketPath = join(configDir, "hyperterm.sock");
+// Ensure the config directory exists before binding the socket
+if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
+// Expose path to child shells so the `ht` CLI can locate the server
+process.env["HT_SOCKET_PATH"] = socketPath;
+const socketServer = new SocketServer(socketPath, socketHandler);
 socketServer.start();
 
 // Auto-start web mirror server

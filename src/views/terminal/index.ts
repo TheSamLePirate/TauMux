@@ -1391,10 +1391,15 @@ window.addEventListener("ht-clear-logs", () => {
 window.addEventListener("ht-agent-prompt", (e: Event) => {
   const detail = (e as CustomEvent).detail;
   if (detail?.agentId && detail?.message) {
-    surfaceManager.agentAddUserMessage(detail.agentId, detail.message);
+    surfaceManager.agentAddUserMessage(
+      detail.agentId,
+      detail.message,
+      detail.images,
+    );
     rpc.send("agentPrompt", {
       agentId: detail.agentId,
       message: detail.message,
+      images: detail.images,
     });
   }
 });
@@ -1472,6 +1477,7 @@ window.addEventListener("ht-agent-steer", (e: Event) => {
     rpc.send("agentSteer", {
       agentId: detail.agentId,
       message: detail.message,
+      images: detail.images,
     });
   }
 });
@@ -1482,6 +1488,7 @@ window.addEventListener("ht-agent-follow-up", (e: Event) => {
     rpc.send("agentFollowUp", {
       agentId: detail.agentId,
       message: detail.message,
+      images: detail.images,
     });
   }
 });
@@ -1529,6 +1536,30 @@ window.addEventListener("ht-agent-get-session-stats", (e: Event) => {
   const detail = (e as CustomEvent).detail;
   if (detail?.agentId) {
     rpc.send("agentGetSessionStats", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-get-messages", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentGetMessages", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-list-sessions", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentListSessions", { agentId: detail.agentId });
+  }
+});
+
+window.addEventListener("ht-agent-get-session-tree", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (detail?.agentId) {
+    rpc.send("agentGetSessionTree", {
+      agentId: detail.agentId,
+      sessionPath: detail.sessionPath,
+    });
   }
 });
 

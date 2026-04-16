@@ -335,10 +335,19 @@ export class SurfaceManager {
   }
 
   /** Send a user message to an agent panel's display. */
-  agentAddUserMessage(agentId: string, text: string): void {
+  agentAddUserMessage(
+    agentId: string,
+    text: string,
+    images?: {
+      type: "image";
+      data: string;
+      mimeType: string;
+      fileName?: string;
+    }[],
+  ): void {
     const view = this.surfaces.get(agentId);
     if (!view?.agentView) return;
-    agentPanelAddUserMessage(view.agentView, text);
+    agentPanelAddUserMessage(view.agentView, text, images);
   }
 
   /** Focus the agent panel input. */
@@ -1691,10 +1700,10 @@ export class SurfaceManager {
     agentId: string,
   ): SurfaceView {
     const agentView = createAgentPaneView(surfaceId, agentId, {
-      onSendPrompt: (aid, message) => {
+      onSendPrompt: (aid, message, images) => {
         window.dispatchEvent(
           new CustomEvent("ht-agent-prompt", {
-            detail: { agentId: aid, message },
+            detail: { agentId: aid, message, images },
           }),
         );
       },

@@ -17,7 +17,11 @@ import { createIcon } from "./icons";
 // ── Public interfaces ──
 
 export interface AgentPanelCallbacks {
-  onSendPrompt: (agentId: string, message: string) => void;
+  onSendPrompt: (
+    agentId: string,
+    message: string,
+    images?: ImageAttachment[],
+  ) => void;
   onAbort: (agentId: string) => void;
   onSetModel: (agentId: string, provider: string, modelId: string) => void;
   onSetThinking: (agentId: string, level: string) => void;
@@ -30,6 +34,13 @@ export interface AgentPanelCallbacks {
   onGetState: (agentId: string) => void;
 }
 
+interface ImageAttachment {
+  type: "image";
+  data: string;
+  mimeType: string;
+  fileName?: string;
+}
+
 interface ChatMessage {
   role: "user" | "assistant" | "system" | "tool" | "bash";
   content: string;
@@ -40,12 +51,17 @@ interface ChatMessage {
   /** For bash messages */
   command?: string;
   exitCode?: number;
+  truncated?: boolean;
+  fullOutputPath?: string | null;
+  images?: ImageAttachment[];
+  toolArgs?: unknown;
 }
 
 interface ToolCallState {
   id: string;
   name: string;
   args: string;
+  rawArgs?: unknown;
   result?: string;
   isError?: boolean;
   isRunning: boolean;
@@ -71,16 +87,32 @@ export interface AgentPaneView {
   _elements: AgentPanelElements;
 }
 
+interface AgentModelSummary {
+  provider: string;
+  id: string;
+  name: string;
+  reasoning?: boolean;
+  input?: string[];
+  contextWindow?: number;
+  maxTokens?: number;
+  cost?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+  };
+}
+
 interface AgentPanelState {
   messages: ChatMessage[];
   currentText: string;
   currentThinking: string;
   isStreaming: boolean;
   isCompacting: boolean;
-  model: { provider: string; id: string; name: string } | null;
+  model: AgentModelSummary | null;
   thinkingLevel: string;
   toolCalls: Map<string, ToolCallState>;
-  availableModels: { provider: string; id: string; name: string }[] | null;
+  availableModels: AgentModelSummary[] | null;
   sessionStats: {
     tokens?: {
       input: number;
@@ -95,6 +127,13 @@ interface AgentPanelState {
       contextWindow: number;
       percent: number | null;
     };
+    sessionFile?: string;
+    sessionId?: string;
+    userMessages?: number;
+    assistantMessages?: number;
+    toolCalls?: number;
+    toolResults?: number;
+    totalMessages?: number;
   } | null;
   autoScroll: boolean;
   showModelSelector: boolean;
@@ -103,10 +142,40 @@ interface AgentPanelState {
   turnCount: number;
   totalToolCalls: number;
   sessionName: string | null;
+  sessionFile: string | null;
+  sessionId: string | null;
+  messageCount: number;
+  pendingMessageCount: number;
+  autoCompactionEnabled: boolean;
+  autoRetryEnabled: boolean;
   steeringMode: string;
   followUpMode: string;
   pendingSteer: number;
   pendingFollowUp: number;
+  widgetsAbove: Map<string, string[]>;
+  widgetsBelow: Map<string, string[]>;
+  pendingImages: ImageAttachment[];
+  dragActive: boolean;
+  scopedModelIds: Set<string>;
+  sessionList: {
+    path: string;
+    updatedAt: number;
+    name?: string | null;
+    cwd?: string | null;
+    preview?: string | null;
+  }[];
+  sessionListFilter: string;
+  sessionTree: {
+    id: string;
+    parentId: string | null;
+    depth: number;
+    role: string;
+    entryType: string;
+    text: string;
+    timestamp?: string | null;
+    childCount: number;
+    active: boolean;
+  }[];
   /** Available slash commands from pi */
   commands: SlashCommand[];
   /** Is the slash command dropdown visible? */
@@ -150,6 +219,10 @@ interface AgentPanelElements {
   dialogOverlay: HTMLDivElement;
   sessionNameEl: HTMLSpanElement;
   statsEl: HTMLDivElement;
+  widgetsAboveEl: HTMLDivElement;
+  widgetsBelowEl: HTMLDivElement;
+  attachmentTrayEl: HTMLDivElement;
+  modelMetaEl: HTMLDivElement;
 }
 
 const THINKING_LEVELS = [
@@ -172,6 +245,7 @@ const THINKING_COLORS: Record<string, string> = {
 const BUILTIN_COMMANDS: SlashCommand[] = [
   { name: "/model", description: "Switch model", source: "builtin" },
   { name: "/new", description: "Start a new session", source: "builtin" },
+  { name: "/resume", description: "Open another session by path", source: "builtin" },
   { name: "/name", description: "Set session display name", source: "builtin" },
   {
     name: "/session",
@@ -343,6 +417,9 @@ export function createAgentPaneView(
   // Toolbar action buttons
   const actionDefs: [string, string, () => void][] = [
     ["\u21bb New", "New session", () => callbacks.onNewSession(agentId)],
+    ["\u25f3 Session", "Show session info", () => executeBuiltinCommand(view, callbacks, "/session")],
+    ["\u2442 Fork", "Fork from an earlier message", () => dispatch("ht-agent-get-fork-messages", { agentId })],
+    ["\u2699 Settings", "Agent settings", () => showSettingsDialog(view)],
     ["\u2298 Compact", "Compact context", () => callbacks.onCompact(agentId)],
     [
       "\u2398 Copy",
@@ -365,6 +442,10 @@ export function createAgentPaneView(
   }
 
   body.appendChild(toolbarEl);
+
+  const modelMetaEl = document.createElement("div");
+  modelMetaEl.className = "agent-model-meta";
+  body.appendChild(modelMetaEl);
 
   // ── Session stats row ──
   const statsEl = document.createElement("div");
@@ -392,6 +473,10 @@ export function createAgentPaneView(
   messagesEl.className = "agent-messages";
   appendWelcome(messagesEl);
   body.appendChild(messagesEl);
+
+  const widgetsAboveEl = document.createElement("div");
+  widgetsAboveEl.className = "agent-widgets agent-widgets-above";
+  body.appendChild(widgetsAboveEl);
 
   // ── Context meter ──
   const contextMeter = document.createElement("div");
@@ -442,6 +527,29 @@ export function createAgentPaneView(
   inputEl.addEventListener("keydown", (e) =>
     handleInputKeydown(e, view, callbacks),
   );
+  inputEl.addEventListener("paste", (e) => {
+    void handlePasteImages(e, view);
+  });
+  inputEl.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    view._state.dragActive = true;
+    syncInputDecorations(view);
+  });
+  inputEl.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    view._state.dragActive = true;
+    syncInputDecorations(view);
+  });
+  inputEl.addEventListener("dragleave", () => {
+    view._state.dragActive = false;
+    syncInputDecorations(view);
+  });
+  inputEl.addEventListener("drop", (e) => {
+    e.preventDefault();
+    view._state.dragActive = false;
+    syncInputDecorations(view);
+    void handleDropImages(e, view);
+  });
   inputWrap.appendChild(inputEl);
 
   // Input hint
@@ -451,6 +559,10 @@ export function createAgentPaneView(
   inputWrap.appendChild(inputHint);
 
   inputBarEl.appendChild(inputWrap);
+
+  const attachmentTrayEl = document.createElement("div");
+  attachmentTrayEl.className = "agent-attachment-tray agent-attachment-tray-hidden";
+  inputWrap.appendChild(attachmentTrayEl);
 
   const sendBtn = document.createElement("button");
   sendBtn.className = "agent-send-btn";
@@ -466,6 +578,11 @@ export function createAgentPaneView(
   inputBarEl.appendChild(sendBtn);
 
   body.appendChild(inputBarEl);
+
+  const widgetsBelowEl = document.createElement("div");
+  widgetsBelowEl.className = "agent-widgets agent-widgets-below";
+  body.appendChild(widgetsBelowEl);
+
   container.appendChild(body);
 
   container.addEventListener("mousedown", () => callbacks.onFocus(surfaceId));
@@ -493,10 +610,24 @@ export function createAgentPaneView(
     turnCount: 0,
     totalToolCalls: 0,
     sessionName: null,
+    sessionFile: null,
+    sessionId: null,
+    messageCount: 0,
+    pendingMessageCount: 0,
+    autoCompactionEnabled: true,
+    autoRetryEnabled: true,
     steeringMode: "all",
     followUpMode: "all",
     pendingSteer: 0,
     pendingFollowUp: 0,
+    widgetsAbove: new Map(),
+    widgetsBelow: new Map(),
+    pendingImages: [],
+    dragActive: false,
+    scopedModelIds: new Set(),
+    sessionList: [],
+    sessionListFilter: "",
+    sessionTree: [],
     commands: [...BUILTIN_COMMANDS],
     showSlashMenu: false,
     slashFilter: "",
@@ -523,6 +654,10 @@ export function createAgentPaneView(
     dialogOverlay,
     sessionNameEl,
     statsEl,
+    widgetsAboveEl,
+    widgetsBelowEl,
+    attachmentTrayEl,
+    modelMetaEl,
   };
 
   const view: AgentPaneView = {
@@ -541,6 +676,7 @@ export function createAgentPaneView(
     callbacks.onGetState(agentId);
     dispatch("ht-agent-get-commands", { agentId });
     dispatch("ht-agent-get-session-stats", { agentId });
+    dispatch("ht-agent-get-messages", { agentId });
   }, 300);
 
   return view;
@@ -611,6 +747,7 @@ export function agentPanelHandleEvent(
         id: tcId,
         name: event["toolName"] as string,
         args: formatArgs(event["args"]),
+        rawArgs: event["args"],
         isRunning: true,
         collapsed: false,
         startTime: Date.now(),
@@ -657,13 +794,30 @@ export function agentPanelHandleEvent(
       setStreamLabel(el, "Compacting context\u2026");
       break;
 
-    case "compaction_end":
+    case "compaction_end": {
       s.isCompacting = false;
       if (!s.isStreaming)
         el.streamingIndicator.classList.add("agent-streaming-bar-hidden");
-      addSystemMessage(view, "Context compacted successfully");
+      if (event["aborted"]) {
+        addSystemMessage(view, "Context compaction aborted");
+      } else if (event["errorMessage"]) {
+        addSystemMessage(
+          view,
+          `Context compaction failed: ${event["errorMessage"] as string}`,
+        );
+      } else {
+        const reason = (event["reason"] as string) ?? "manual";
+        const willRetry = Boolean(event["willRetry"]);
+        addSystemMessage(
+          view,
+          `Context compacted (${reason})${willRetry ? ", retrying request…" : ""}`,
+        );
+      }
+      dispatch("ht-agent-get-state", { agentId: view.agentId });
+      dispatch("ht-agent-get-session-stats", { agentId: view.agentId });
       syncFooter(view);
       break;
+    }
 
     case "auto_retry_start":
       s.retryState = {
@@ -682,13 +836,23 @@ export function agentPanelHandleEvent(
       s.retryState = null;
       if (!s.isStreaming)
         el.streamingIndicator.classList.add("agent-streaming-bar-hidden");
+      if (event["success"] === false && event["finalError"]) {
+        addSystemMessage(view, `Retry failed: ${event["finalError"] as string}`);
+      }
       syncFooter(view);
       break;
 
     case "queue_update": {
-      s.pendingSteer = (event["pendingSteer"] as number) ?? 0;
-      s.pendingFollowUp = (event["pendingFollowUp"] as number) ?? 0;
+      const steering = event["steering"];
+      const followUp = event["followUp"];
+      s.pendingSteer = Array.isArray(steering)
+        ? steering.length
+        : ((event["pendingSteer"] as number) ?? 0);
+      s.pendingFollowUp = Array.isArray(followUp)
+        ? followUp.length
+        : ((event["pendingFollowUp"] as number) ?? 0);
       updateChips(view);
+      syncFooter(view);
       break;
     }
 
@@ -708,6 +872,13 @@ export function agentPanelHandleEvent(
       handleExtUI(view, event);
       break;
 
+    case "extension_error": {
+      const extensionPath = (event["extensionPath"] as string) ?? "extension";
+      const error = (event["error"] as string) ?? "Unknown extension error";
+      addSystemMessage(view, `Extension error in ${extensionPath}: ${error}`);
+      break;
+    }
+
     case "agent_exit": {
       s.isStreaming = false;
       flushStreaming(view);
@@ -724,10 +895,12 @@ export function agentPanelHandleEvent(
 export function agentPanelAddUserMessage(
   view: AgentPaneView,
   text: string,
+  images?: ImageAttachment[],
 ): void {
   view._state.messages.push({
     role: "user",
     content: text,
+    images: images?.length ? images : undefined,
     timestamp: Date.now(),
   });
   renderAllMessages(view);
@@ -799,6 +972,7 @@ function handleInputKeydown(
         addSystemMessage(view, `$ ${cmd}`);
         dispatch("ht-agent-bash", { agentId: view.agentId, command: cmd });
         view._elements.inputEl.value = "";
+        clearPendingImages(view);
         autoResize(view._elements.inputEl);
       }
     } else {
@@ -811,12 +985,20 @@ function handleInputKeydown(
   if (e.key === "Enter" && e.altKey) {
     e.preventDefault();
     const text = view._elements.inputEl.value.trim();
-    if (text && s.isStreaming) {
-      dispatch("ht-agent-follow-up", { agentId: view.agentId, message: text });
-      addSystemMessage(view, `Queued follow-up: ${text}`);
+    if ((text || s.pendingImages.length > 0) && s.isStreaming) {
+      dispatch("ht-agent-follow-up", {
+        agentId: view.agentId,
+        message: text,
+        images: s.pendingImages,
+      });
+      addSystemMessage(
+        view,
+        `Queued follow-up: ${text || `${s.pendingImages.length} image${s.pendingImages.length === 1 ? "" : "s"}`}`,
+      );
       view._elements.inputEl.value = "";
+      clearPendingImages(view);
       autoResize(view._elements.inputEl);
-    } else if (text) {
+    } else if (text || s.pendingImages.length > 0) {
       submitInput(view, cb);
     }
     return;
@@ -833,10 +1015,13 @@ function handleInputKeydown(
     return;
   }
 
-  // Ctrl+P: cycle model
+  // Ctrl+P / Shift+Ctrl+P: cycle model within local scope when available
   if (e.key === "p" && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
-    dispatch("ht-agent-cycle-model", { agentId: view.agentId });
+    const direction: 1 | -1 = e.shiftKey ? -1 : 1;
+    if (!cycleScopedModel(view, direction)) {
+      dispatch("ht-agent-cycle-model", { agentId: view.agentId });
+    }
     return;
   }
 
@@ -850,19 +1035,128 @@ function handleInputKeydown(
 
 function submitInput(view: AgentPaneView, cb: AgentPanelCallbacks): void {
   const text = view._elements.inputEl.value.trim();
-  if (!text) return;
+  const images = [...view._state.pendingImages];
+  if (!text && images.length === 0) return;
 
   hideSlashMenu(view);
 
   if (view._state.isStreaming) {
-    // During streaming, submit acts as steer
-    dispatch("ht-agent-steer", { agentId: view.agentId, message: text });
-    addSystemMessage(view, `Steering: ${text}`);
+    dispatch("ht-agent-steer", {
+      agentId: view.agentId,
+      message: text,
+      images,
+    });
+    addSystemMessage(
+      view,
+      `Steering: ${text || `${images.length} image${images.length === 1 ? "" : "s"}`}`,
+    );
   } else {
-    cb.onSendPrompt(view.agentId, text);
+    cb.onSendPrompt(view.agentId, text, images);
   }
   view._elements.inputEl.value = "";
+  clearPendingImages(view);
   autoResize(view._elements.inputEl);
+}
+
+async function handlePasteImages(
+  e: ClipboardEvent,
+  view: AgentPaneView,
+): Promise<void> {
+  const items = Array.from(e.clipboardData?.items ?? []);
+  const files = items
+    .filter((item) => item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
+  if (files.length === 0) return;
+  e.preventDefault();
+  await addPendingImages(view, files);
+}
+
+async function handleDropImages(
+  e: DragEvent,
+  view: AgentPaneView,
+): Promise<void> {
+  const files = Array.from(e.dataTransfer?.files ?? []).filter((file) =>
+    file.type.startsWith("image/"),
+  );
+  if (files.length === 0) return;
+  await addPendingImages(view, files);
+}
+
+async function addPendingImages(
+  view: AgentPaneView,
+  files: File[],
+): Promise<void> {
+  const images = await Promise.all(files.map(fileToImageAttachment));
+  view._state.pendingImages.push(...images.filter(Boolean));
+  renderAttachmentTray(view);
+  syncInputDecorations(view);
+}
+
+function clearPendingImages(view: AgentPaneView): void {
+  view._state.pendingImages = [];
+  renderAttachmentTray(view);
+  syncInputDecorations(view);
+}
+
+function renderAttachmentTray(view: AgentPaneView): void {
+  const { attachmentTrayEl } = view._elements;
+  const { pendingImages } = view._state;
+  attachmentTrayEl.innerHTML = "";
+  attachmentTrayEl.classList.toggle(
+    "agent-attachment-tray-hidden",
+    pendingImages.length === 0,
+  );
+  for (const [index, img] of pendingImages.entries()) {
+    const chip = document.createElement("div");
+    chip.className = "agent-attachment-chip";
+    const thumb = document.createElement("img");
+    thumb.className = "agent-attachment-thumb";
+    thumb.src = `data:${img.mimeType};base64,${img.data}`;
+    chip.appendChild(thumb);
+    const label = document.createElement("span");
+    label.className = "agent-attachment-label";
+    label.textContent = img.fileName ?? img.mimeType;
+    chip.appendChild(label);
+    const rm = document.createElement("button");
+    rm.className = "agent-attachment-remove";
+    rm.textContent = "×";
+    rm.title = "Remove image";
+    rm.addEventListener("click", () => {
+      view._state.pendingImages.splice(index, 1);
+      renderAttachmentTray(view);
+      syncInputDecorations(view);
+    });
+    chip.appendChild(rm);
+    attachmentTrayEl.appendChild(chip);
+  }
+}
+
+function syncInputDecorations(view: AgentPaneView): void {
+  view._elements.inputBarEl.classList.toggle(
+    "agent-input-bar-drop",
+    view._state.dragActive,
+  );
+  view._elements.inputEl.classList.toggle(
+    "agent-input-with-attachments",
+    view._state.pendingImages.length > 0,
+  );
+}
+
+async function fileToImageAttachment(file: File): Promise<ImageAttachment> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  const [, payload = ""] = dataUrl.split(",");
+  return {
+    type: "image",
+    data: payload,
+    mimeType: file.type || "image/png",
+    fileName: file.name,
+  };
 }
 
 // ── Slash commands ──
@@ -963,6 +1257,10 @@ function executeSlashCommand(
     case "/new":
       cb.onNewSession(agentId);
       break;
+    case "/resume":
+      if (args) showSwitchSessionDialog(view, args);
+      else dispatch("ht-agent-list-sessions", { agentId });
+      break;
     case "/model":
       if (args) {
         // Try to match model by name
@@ -1009,6 +1307,7 @@ function executeSlashCommand(
       }
       break;
     case "/session":
+      dispatch("ht-agent-get-state", { agentId });
       dispatch("ht-agent-get-session-stats", { agentId });
       showSessionStats(view);
       break;
@@ -1027,8 +1326,10 @@ function executeSlashCommand(
       addSystemMessage(view, "Fetching fork points\u2026");
       break;
     case "/tree":
-      dispatch("ht-agent-get-fork-messages", { agentId });
-      addSystemMessage(view, "Loading session tree\u2026");
+      dispatch("ht-agent-get-session-tree", {
+        agentId,
+        sessionPath: view._state.sessionFile ?? undefined,
+      });
       break;
     case "/settings":
       showSettingsDialog(view);
@@ -1048,6 +1349,15 @@ function executeSlashCommand(
       cb.onSendPrompt(agentId, raw);
       break;
   }
+}
+
+function executeBuiltinCommand(
+  view: AgentPaneView,
+  cb: AgentPanelCallbacks,
+  command: string,
+): void {
+  view._elements.inputEl.value = command;
+  executeSlashCommand(view, cb);
 }
 
 // ── Extension UI ──
@@ -1089,9 +1399,26 @@ function handleExtUI(view: AgentPaneView, ev: Record<string, unknown>): void {
   }
 
   if (method === "setWidget") {
-    // Render as a system message for now
-    const content = ev["content"] as string;
-    if (content) addSystemMessage(view, content);
+    const key = ev["widgetKey"] as string;
+    const placement = (ev["widgetPlacement"] as string) ?? "aboveEditor";
+    const lines = Array.isArray(ev["widgetLines"])
+      ? (ev["widgetLines"] as string[])
+      : null;
+    const target =
+      placement === "belowEditor"
+        ? view._state.widgetsBelow
+        : view._state.widgetsAbove;
+    if (key && lines && lines.length > 0) target.set(key, lines);
+    else if (key) target.delete(key);
+    renderWidgets(view);
+    return;
+  }
+
+  if (method === "set_editor_text") {
+    const text = (ev["text"] as string) ?? "";
+    view._elements.inputEl.value = text;
+    autoResize(view._elements.inputEl);
+    view._elements.inputEl.focus();
     return;
   }
 
@@ -1106,12 +1433,18 @@ function handleExtUI(view: AgentPaneView, ev: Record<string, unknown>): void {
 
   // Dialog methods
   if (method === "select") {
-    const options =
-      (ev["options"] as {
-        label: string;
-        value: string;
-        description?: string;
-      }[]) ?? [];
+    const rawOptions = (ev["options"] as unknown[]) ?? [];
+    const options = rawOptions.map((option) => {
+      if (typeof option === "string") {
+        return { label: option, value: option };
+      }
+      const rec = option as Record<string, unknown>;
+      return {
+        label: (rec["label"] as string) ?? (rec["value"] as string) ?? "",
+        value: (rec["value"] as string) ?? (rec["label"] as string) ?? "",
+        description: rec["description"] as string | undefined,
+      };
+    });
     view._state.activeDialog = {
       id,
       method,
@@ -1250,7 +1583,7 @@ function renderDialog(view: AgentPaneView): void {
         dispatch("ht-agent-extension-ui-response", {
           agentId: view.agentId,
           id: d.id,
-          response: { value },
+          response: { confirmed: value },
         });
         view._state.activeDialog = null;
         dialogOverlay.classList.add("agent-dialog-hidden");
@@ -1260,7 +1593,7 @@ function renderDialog(view: AgentPaneView): void {
     modal.appendChild(actions);
   }
 
-  if (d.method === "input") {
+  if (d.method === "input" || d.method === "switch_session") {
     const input = document.createElement("input");
     input.className = "agent-dialog-input";
     input.type = "text";
@@ -1271,11 +1604,21 @@ function renderDialog(view: AgentPaneView): void {
     });
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
-        dispatch("ht-agent-extension-ui-response", {
-          agentId: view.agentId,
-          id: d.id,
-          response: { value: input.value },
-        });
+        if (d.method === "switch_session") {
+          const sessionPath = input.value.trim();
+          if (sessionPath) {
+            dispatch("ht-agent-switch-session", {
+              agentId: view.agentId,
+              sessionPath,
+            });
+          }
+        } else {
+          dispatch("ht-agent-extension-ui-response", {
+            agentId: view.agentId,
+            id: d.id,
+            response: { value: input.value },
+          });
+        }
         view._state.activeDialog = null;
         dialogOverlay.classList.add("agent-dialog-hidden");
       }
@@ -1287,13 +1630,23 @@ function renderDialog(view: AgentPaneView): void {
     actions.className = "agent-dialog-actions";
     const okBtn = document.createElement("button");
     okBtn.className = "agent-dialog-btn agent-dialog-btn-primary";
-    okBtn.textContent = "OK";
+    okBtn.textContent = d.method === "switch_session" ? "Open" : "OK";
     okBtn.addEventListener("click", () => {
-      dispatch("ht-agent-extension-ui-response", {
-        agentId: view.agentId,
-        id: d.id,
-        response: { value: input.value },
-      });
+      if (d.method === "switch_session") {
+        const sessionPath = input.value.trim();
+        if (sessionPath) {
+          dispatch("ht-agent-switch-session", {
+            agentId: view.agentId,
+            sessionPath,
+          });
+        }
+      } else {
+        dispatch("ht-agent-extension-ui-response", {
+          agentId: view.agentId,
+          id: d.id,
+          response: { value: input.value },
+        });
+      }
       view._state.activeDialog = null;
       dialogOverlay.classList.add("agent-dialog-hidden");
     });
@@ -1330,6 +1683,232 @@ function renderDialog(view: AgentPaneView): void {
     modal.appendChild(actions);
   }
 
+  if (d.method === "session_browser") {
+    const search = document.createElement("input");
+    search.className = "agent-dialog-input";
+    search.placeholder = "Search by name, cwd, preview, or path";
+    search.value = view._state.sessionListFilter;
+    modal.appendChild(search);
+
+    const list = document.createElement("div");
+    list.className = "agent-dialog-list agent-dialog-list-large";
+    const renderList = () => {
+      view._state.sessionListFilter = search.value.toLowerCase();
+      list.innerHTML = "";
+      const filtered = view._state.sessionList.filter((session) => {
+        const hay = [session.name, session.cwd, session.preview, session.path]
+          .filter(Boolean)
+          .join("\n")
+          .toLowerCase();
+        return !view._state.sessionListFilter || hay.includes(view._state.sessionListFilter);
+      });
+      if (filtered.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "agent-dialog-opt-desc";
+        empty.textContent = "No matching sessions.";
+        list.appendChild(empty);
+      }
+      for (const session of filtered) {
+        const btn = document.createElement("button");
+        btn.className = "agent-dialog-option";
+        const title = document.createElement("span");
+        title.textContent = session.name || session.preview || session.path;
+        btn.appendChild(title);
+        const desc = document.createElement("span");
+        desc.className = "agent-dialog-opt-desc";
+        desc.textContent = `${session.cwd ?? ""} • ${new Date(session.updatedAt).toLocaleString()}\n${session.path}`;
+        btn.appendChild(desc);
+        btn.addEventListener("click", () => {
+          dispatch("ht-agent-switch-session", {
+            agentId: view.agentId,
+            sessionPath: session.path,
+          });
+          view._state.activeDialog = null;
+          dialogOverlay.classList.add("agent-dialog-hidden");
+        });
+        list.appendChild(btn);
+      }
+    };
+    search.addEventListener("input", renderList);
+    renderList();
+    modal.appendChild(list);
+
+    const actions = document.createElement("div");
+    actions.className = "agent-dialog-actions";
+    const manualBtn = document.createElement("button");
+    manualBtn.className = "agent-dialog-btn";
+    manualBtn.textContent = "Open by path…";
+    manualBtn.addEventListener("click", () => {
+      showSwitchSessionDialog(view);
+    });
+    actions.appendChild(manualBtn);
+    modal.appendChild(actions);
+    setTimeout(() => search.focus(), 30);
+  }
+
+  if (d.method === "tree_browser") {
+    const list = document.createElement("div");
+    list.className = "agent-dialog-list agent-dialog-list-large";
+    if (view._state.sessionTree.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "agent-dialog-opt-desc";
+      empty.textContent = "No session tree data available.";
+      list.appendChild(empty);
+    }
+    for (const node of view._state.sessionTree) {
+      const btn = document.createElement("button");
+      btn.className = "agent-dialog-option agent-tree-node";
+      btn.style.paddingLeft = `${10 + node.depth * 18}px`;
+      if (node.active) btn.classList.add("agent-dialog-option-sel");
+      const title = document.createElement("span");
+      title.innerHTML = `<span class="agent-tree-role agent-tree-role-${escapeHtml(node.role)}">${escapeHtml(node.role)}</span> ${escapeHtml(node.text.slice(0, 120) || node.entryType)}`;
+      btn.appendChild(title);
+      const desc = document.createElement("span");
+      desc.className = "agent-dialog-opt-desc";
+      desc.textContent = `${node.timestamp ?? ""}${node.active ? " • active leaf" : ""}${node.childCount > 0 ? ` • ${node.childCount} child${node.childCount === 1 ? "" : "ren"}` : ""}`;
+      btn.appendChild(desc);
+      btn.addEventListener("click", () => {
+        if (node.role === "user") {
+          dispatch("ht-agent-fork", {
+            agentId: view.agentId,
+            entryId: node.id,
+          });
+        } else {
+          addSystemMessage(
+            view,
+            "Only user nodes can currently be branched via RPC; select a user node to fork from that point.",
+          );
+        }
+        view._state.activeDialog = null;
+        dialogOverlay.classList.add("agent-dialog-hidden");
+      });
+      list.appendChild(btn);
+    }
+    modal.appendChild(list);
+  }
+
+  if (d.method === "settings") {
+    const list = document.createElement("div");
+    list.className = "agent-dialog-list";
+
+    const addToggle = (
+      label: string,
+      value: string,
+      description: string,
+      action: () => void,
+      active = false,
+    ) => {
+      const btn = document.createElement("button");
+      btn.className = `agent-dialog-option${active ? " agent-dialog-option-sel" : ""}`;
+      const lbl = document.createElement("span");
+      lbl.textContent = `${label}: ${value}`;
+      btn.appendChild(lbl);
+      const desc = document.createElement("span");
+      desc.className = "agent-dialog-opt-desc";
+      desc.textContent = description;
+      btn.appendChild(desc);
+      btn.addEventListener("click", action);
+      list.appendChild(btn);
+    };
+
+    addToggle(
+      "Steering delivery",
+      view._state.steeringMode,
+      "Choose whether queued steering messages are delivered all at once or one at a time.",
+      () => {
+        dispatch("ht-agent-set-steering-mode", {
+          agentId: view.agentId,
+          mode:
+            view._state.steeringMode === "all"
+              ? "one-at-a-time"
+              : "all",
+        });
+        dismissDialog(view);
+      },
+      true,
+    );
+
+    addToggle(
+      "Follow-up delivery",
+      view._state.followUpMode,
+      "Choose whether follow-up messages are delivered all at once or one at a time.",
+      () => {
+        dispatch("ht-agent-set-follow-up-mode", {
+          agentId: view.agentId,
+          mode:
+            view._state.followUpMode === "all"
+              ? "one-at-a-time"
+              : "all",
+        });
+        dismissDialog(view);
+      },
+    );
+
+    addToggle(
+      "Auto compaction",
+      view._state.autoCompactionEnabled ? "on" : "off",
+      "Automatically compact the session when context pressure gets high.",
+      () => {
+        dispatch("ht-agent-set-auto-compaction", {
+          agentId: view.agentId,
+          enabled: !view._state.autoCompactionEnabled,
+        });
+        dismissDialog(view);
+      },
+    );
+
+    addToggle(
+      "Auto retry",
+      view._state.autoRetryEnabled ? "on" : "off",
+      "Retry transient provider failures like rate limits or overloaded responses.",
+      () => {
+        dispatch("ht-agent-set-auto-retry", {
+          agentId: view.agentId,
+          enabled: !view._state.autoRetryEnabled,
+        });
+        dismissDialog(view);
+      },
+    );
+
+    addToggle(
+      "Scoped models",
+      `${view._state.scopedModelIds.size}`,
+      "Ctrl+P cycles only models included in the scope. Manage the scope from the model picker.",
+      () => {
+        view._state.showModelSelector = true;
+        view._state.showThinkingSelector = false;
+        renderDropdowns(view);
+        dismissDialog(view);
+        dispatch("ht-agent-get-models", { agentId: view.agentId });
+      },
+    );
+
+    addToggle(
+      "Resume browser",
+      "open",
+      "Browse recent pi sessions with metadata instead of typing a path manually.",
+      () => {
+        dismissDialog(view);
+        dispatch("ht-agent-list-sessions", { agentId: view.agentId });
+      },
+    );
+
+    addToggle(
+      "Tree browser",
+      "open",
+      "Browse the current session tree and fork from earlier user nodes.",
+      () => {
+        dismissDialog(view);
+        dispatch("ht-agent-get-session-tree", {
+          agentId: view.agentId,
+          sessionPath: view._state.sessionFile ?? undefined,
+        });
+      },
+    );
+
+    modal.appendChild(list);
+  }
+
   // Cancel button for all dialogs
   const cancelBtn = document.createElement("button");
   cancelBtn.className = "agent-dialog-cancel";
@@ -1352,11 +1931,13 @@ function renderDialog(view: AgentPaneView): void {
 function dismissDialog(view: AgentPaneView): void {
   const d = view._state.activeDialog;
   if (d) {
-    dispatch("ht-agent-extension-ui-response", {
-      agentId: view.agentId,
-      id: d.id,
-      response: { cancelled: true },
-    });
+    if (!d.id.startsWith("__")) {
+      dispatch("ht-agent-extension-ui-response", {
+        agentId: view.agentId,
+        id: d.id,
+        response: { cancelled: true },
+      });
+    }
     view._state.activeDialog = null;
     view._elements.dialogOverlay.classList.add("agent-dialog-hidden");
   }
@@ -1382,6 +1963,7 @@ function flushStreaming(view: AgentPaneView): void {
         role: "tool",
         content: tc.result ?? "",
         toolName: tc.name,
+        toolArgs: tc.rawArgs,
         isError: tc.isError,
         timestamp: Date.now(),
       });
@@ -1422,15 +2004,35 @@ function setStreamLabel(el: AgentPanelElements, text: string): void {
 
 function syncFooter(view: AgentPaneView): void {
   const { footerEl, contextMeterFill, contextMeterLabel } = view._elements;
-  const { model, thinkingLevel, sessionStats, turnCount, totalToolCalls } =
-    view._state;
+  const {
+    model,
+    thinkingLevel,
+    sessionStats,
+    turnCount,
+    totalToolCalls,
+    sessionName,
+    messageCount,
+    pendingSteer,
+    pendingFollowUp,
+    steeringMode,
+    followUpMode,
+    autoCompactionEnabled,
+    autoRetryEnabled,
+  } = view._state;
   const txt = footerEl.querySelector(".agent-footer-text") as HTMLElement;
 
   const parts: string[] = [];
+  if (sessionName) parts.push(sessionName);
   if (model) parts.push(model.name || model.id);
   if (thinkingLevel !== "off") parts.push(`thinking:${thinkingLevel}`);
   if (turnCount > 0) parts.push(`${turnCount} turns`);
+  if (messageCount > 0) parts.push(`${messageCount} msgs`);
   if (totalToolCalls > 0) parts.push(`${totalToolCalls} tools`);
+  if (pendingSteer > 0) parts.push(`${pendingSteer} steer(${steeringMode})`);
+  if (pendingFollowUp > 0)
+    parts.push(`${pendingFollowUp} follow(${followUpMode})`);
+  if (!autoCompactionEnabled) parts.push("compact:off");
+  if (!autoRetryEnabled) parts.push("retry:off");
   if (sessionStats?.cost != null)
     parts.push(`$${sessionStats.cost.toFixed(4)}`);
   if (sessionStats?.tokens?.total) {
@@ -1499,11 +2101,11 @@ function renderAllMessages(view: AgentPaneView): void {
   }
 
   for (const msg of messages) {
-    messagesEl.appendChild(createMsgEl(msg));
+    messagesEl.appendChild(createMsgEl(view.agentId, msg));
   }
 
   for (const [, tc] of view._state.toolCalls) {
-    messagesEl.appendChild(buildToolCallEl(tc));
+    messagesEl.appendChild(buildToolCallEl(view, tc));
   }
 
   if (autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1568,7 +2170,7 @@ function renderToolCall(view: AgentPaneView, tcId: string): void {
   const existing = messagesEl.querySelector(
     `[data-tcid="${tcId}"]`,
   ) as HTMLDivElement | null;
-  const el = buildToolCallEl(tc);
+  const el = buildToolCallEl(view, tc);
   if (existing) {
     existing.replaceWith(el);
   } else {
@@ -1580,7 +2182,7 @@ function renderToolCall(view: AgentPaneView, tcId: string): void {
   if (view._state.autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function buildToolCallEl(tc: ToolCallState): HTMLDivElement {
+function buildToolCallEl(view: AgentPaneView, tc: ToolCallState): HTMLDivElement {
   const el = document.createElement("div");
   el.className = `agent-tc${tc.isRunning ? " agent-tc-run" : ""}${tc.isError ? " agent-tc-err" : " agent-tc-ok"}`;
   el.dataset["tcid"] = tc.id;
@@ -1631,7 +2233,6 @@ function buildToolCallEl(tc: ToolCallState): HTMLDivElement {
   if (tc.result !== undefined) {
     const body = document.createElement("pre");
     body.className = `agent-tc-body${tc.collapsed ? " agent-tc-body-hidden" : ""}`;
-    // Highlight diffs
     if (tc.name === "Edit" || tc.name === "Write") {
       body.innerHTML = highlightDiff(tc.result.slice(0, 4000));
     } else {
@@ -1639,6 +2240,8 @@ function buildToolCallEl(tc: ToolCallState): HTMLDivElement {
     }
     el.appendChild(body);
   }
+
+  el.appendChild(buildToolActions(view.agentId, tc.rawArgs, tc.result));
 
   return el;
 }
@@ -1656,6 +2259,11 @@ function renderDropdowns(view: AgentPaneView): void {
       ld.innerHTML = `<span class="agent-dd-spinner"></span> Loading models\u2026`;
       modelSelectorEl.appendChild(ld);
     } else {
+      const hint = document.createElement("div");
+      hint.className = "agent-dd-hint";
+      hint.textContent = "Click to switch. Click the scope dot to include/exclude from Ctrl+P cycling.";
+      modelSelectorEl.appendChild(hint);
+
       const byProvider = new Map<string, typeof s.availableModels>();
       for (const m of s.availableModels) {
         const g = byProvider.get(m.provider) ?? [];
@@ -1669,11 +2277,38 @@ function renderDropdowns(view: AgentPaneView): void {
         modelSelectorEl.appendChild(gh);
         for (const m of models) {
           const item = document.createElement("button");
-          item.className = "agent-dd-item";
+          item.className = "agent-dd-item agent-dd-item-model";
           if (s.model?.provider === m.provider && s.model?.id === m.id) {
             item.classList.add("agent-dd-item-active");
           }
-          item.textContent = m.name || m.id;
+
+          const scope = document.createElement("span");
+          scope.className = `agent-model-scope${s.scopedModelIds.has(scopedModelKey(m)) ? " agent-model-scope-on" : ""}`;
+          scope.title = "Toggle scoped model cycling";
+          scope.textContent = s.scopedModelIds.has(scopedModelKey(m)) ? "●" : "○";
+          scope.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const key = scopedModelKey(m);
+            if (s.scopedModelIds.has(key) && s.scopedModelIds.size > 1) s.scopedModelIds.delete(key);
+            else s.scopedModelIds.add(key);
+            renderDropdowns(view);
+            renderModelMeta(view);
+          });
+          item.appendChild(scope);
+
+          const main = document.createElement("div");
+          main.className = "agent-dd-model-main";
+          const label = document.createElement("div");
+          label.className = "agent-dd-model-name";
+          label.textContent = m.name || m.id;
+          main.appendChild(label);
+          const meta = document.createElement("div");
+          meta.className = "agent-dd-model-meta";
+          meta.append(...buildModelBadges(m));
+          main.appendChild(meta);
+          item.appendChild(main);
+
           item.addEventListener("click", () => {
             s.showModelSelector = false;
             renderDropdowns(view);
@@ -1725,6 +2360,80 @@ function renderDropdowns(view: AgentPaneView): void {
   }
 }
 
+function toModelSummary(rec: Record<string, unknown>): AgentModelSummary {
+  return {
+    provider: (rec["provider"] as string) ?? "",
+    id: (rec["id"] as string) ?? "",
+    name: (rec["name"] as string) ?? (rec["id"] as string) ?? "",
+    reasoning: rec["reasoning"] as boolean | undefined,
+    input: Array.isArray(rec["input"]) ? (rec["input"] as string[]) : undefined,
+    contextWindow: rec["contextWindow"] as number | undefined,
+    maxTokens: rec["maxTokens"] as number | undefined,
+    cost: (rec["cost"] as AgentModelSummary["cost"]) ?? undefined,
+  };
+}
+
+function scopedModelKey(model: Pick<AgentModelSummary, "provider" | "id">): string {
+  return `${model.provider}/${model.id}`;
+}
+
+function buildModelBadges(model: AgentModelSummary): HTMLElement[] {
+  const mk = (text: string, cls = "") => {
+    const badge = document.createElement("span");
+    badge.className = `agent-model-badge${cls ? ` ${cls}` : ""}`;
+    badge.textContent = text;
+    return badge;
+  };
+  const badges: HTMLElement[] = [mk(model.provider, "agent-model-badge-provider")];
+  if (model.reasoning) badges.push(mk("reasoning"));
+  if (model.input?.includes("image")) badges.push(mk("vision"));
+  if (model.contextWindow) badges.push(mk(`${fmtK(model.contextWindow)} ctx`));
+  if (model.maxTokens) badges.push(mk(`${fmtK(model.maxTokens)} out`));
+  if (model.cost?.input != null && model.cost?.output != null) {
+    badges.push(mk(`$${model.cost.input}/$${model.cost.output}`, "agent-model-badge-cost"));
+  }
+  return badges;
+}
+
+function renderModelMeta(view: AgentPaneView): void {
+  const { modelMetaEl } = view._elements;
+  modelMetaEl.innerHTML = "";
+  const model = view._state.model;
+  if (!model) {
+    modelMetaEl.style.display = "none";
+    return;
+  }
+  modelMetaEl.style.display = "flex";
+  const badges = buildModelBadges(model);
+  for (const badge of badges) modelMetaEl.appendChild(badge);
+  const scope = document.createElement("span");
+  scope.className = "agent-model-badge agent-model-badge-scope";
+  scope.textContent = `${view._state.scopedModelIds.size || 0} scoped`;
+  modelMetaEl.appendChild(scope);
+}
+
+function cycleScopedModel(view: AgentPaneView, direction: 1 | -1): boolean {
+  const models = view._state.availableModels;
+  if (!models || models.length === 0) return false;
+  const scoped = models.filter((model) => view._state.scopedModelIds.has(scopedModelKey(model)));
+  if (scoped.length === 0) return false;
+  const currentIndex = Math.max(
+    0,
+    scoped.findIndex(
+      (model) =>
+        model.provider === view._state.model?.provider &&
+        model.id === view._state.model?.id,
+    ),
+  );
+  const next = scoped[(currentIndex + direction + scoped.length) % scoped.length];
+  dispatch("ht-agent-set-model", {
+    agentId: view.agentId,
+    provider: next.provider,
+    modelId: next.id,
+  });
+  return true;
+}
+
 function handleResponse(
   view: AgentPaneView,
   ev: Record<string, unknown>,
@@ -1735,9 +2444,15 @@ function handleResponse(
   const ok = ev["success"] as boolean;
   const data = ev["data"] as Record<string, unknown> | undefined;
 
-  if (cmd === "get_state" && ok && data) {
+  if (!ok) {
+    const error = (ev["error"] as string) ?? `Command failed: ${cmd}`;
+    addSystemMessage(view, error);
+    return;
+  }
+
+  if (cmd === "get_state" && data) {
     if (data["model"]) {
-      s.model = data["model"] as AgentPanelState["model"];
+      s.model = toModelSummary(data["model"] as Record<string, unknown>);
       el.modelBtnLabel.textContent = s.model?.name ?? s.model?.id ?? "No model";
     }
     if (data["thinkingLevel"]) {
@@ -1750,50 +2465,49 @@ function handleResponse(
         dot.style.background =
           THINKING_COLORS[s.thinkingLevel] ?? "var(--text-dim)";
     }
-    if (data["sessionName"]) {
-      s.sessionName = data["sessionName"] as string;
-      el.sessionNameEl.textContent = s.sessionName;
-    }
-    if (data["steeringMode"]) s.steeringMode = data["steeringMode"] as string;
-    if (data["followUpMode"]) s.followUpMode = data["followUpMode"] as string;
+    s.sessionName = (data["sessionName"] as string) ?? null;
+    el.sessionNameEl.textContent = s.sessionName ?? "";
+    s.sessionFile = (data["sessionFile"] as string) ?? null;
+    s.sessionId = (data["sessionId"] as string) ?? null;
+    s.messageCount = (data["messageCount"] as number) ?? s.messageCount;
+    s.pendingMessageCount =
+      (data["pendingMessageCount"] as number) ?? s.pendingMessageCount;
+    s.autoCompactionEnabled =
+      (data["autoCompactionEnabled"] as boolean) ?? s.autoCompactionEnabled;
+    s.steeringMode = (data["steeringMode"] as string) ?? s.steeringMode;
+    s.followUpMode = (data["followUpMode"] as string) ?? s.followUpMode;
     s.isStreaming = (data["isStreaming"] as boolean) ?? false;
     syncStreamingUI(view);
+    syncFooter(view);
+    renderModelMeta(view);
   }
 
-  if (cmd === "get_available_models" && ok && data) {
+  if (cmd === "get_available_models" && data) {
     const arr = (data as { models?: unknown[] }).models;
     if (Array.isArray(arr)) {
-      s.availableModels = arr.map((m: unknown) => {
-        const rec = m as Record<string, unknown>;
-        return {
-          provider: (rec["provider"] as string) ?? "",
-          id: (rec["id"] as string) ?? "",
-          name: (rec["name"] as string) ?? (rec["id"] as string) ?? "",
-        };
-      });
+      s.availableModels = arr.map((m) => toModelSummary(m as Record<string, unknown>));
+      if (s.scopedModelIds.size === 0) {
+        for (const model of s.availableModels) {
+          s.scopedModelIds.add(scopedModelKey(model));
+        }
+      }
       renderDropdowns(view);
+      renderModelMeta(view);
     }
   }
 
-  if (cmd === "set_model" && ok && data) {
-    s.model = {
-      provider: (data["provider"] as string) ?? "",
-      id: (data["id"] as string) ?? "",
-      name: (data["name"] as string) ?? (data["id"] as string) ?? "",
-    };
+  if (cmd === "set_model" && data) {
+    s.model = toModelSummary(data);
     el.modelBtnLabel.textContent = s.model.name;
     addSystemMessage(view, `Model: ${s.model.name}`);
     syncFooter(view);
+    renderModelMeta(view);
   }
 
-  if (cmd === "cycle_model" && ok && data) {
+  if (cmd === "cycle_model" && data) {
     const m = data["model"] as Record<string, unknown> | undefined;
     if (m) {
-      s.model = {
-        provider: (m["provider"] as string) ?? "",
-        id: (m["id"] as string) ?? "",
-        name: (m["name"] as string) ?? (m["id"] as string) ?? "",
-      };
+      s.model = toModelSummary(m);
       el.modelBtnLabel.textContent = s.model.name;
       addSystemMessage(view, `Model: ${s.model.name}`);
     }
@@ -1808,9 +2522,10 @@ function handleResponse(
           THINKING_COLORS[s.thinkingLevel] ?? "var(--text-dim)";
     }
     syncFooter(view);
+    renderModelMeta(view);
   }
 
-  if (cmd === "cycle_thinking_level" && ok && data) {
+  if (cmd === "cycle_thinking_level" && data) {
     if (data["level"]) {
       s.thinkingLevel = data["level"] as string;
       el.thinkingBtnLabel.textContent = s.thinkingLevel;
@@ -1825,17 +2540,78 @@ function handleResponse(
     syncFooter(view);
   }
 
-  if (cmd === "set_thinking_level" && ok) {
-    // Updated via get_state
+  if (cmd === "set_thinking_level") {
+    dispatch("ht-agent-get-state", { agentId: view.agentId });
   }
 
-  if (cmd === "get_session_stats" && ok && data) {
+  if (cmd === "set_steering_mode") {
+    if (data?.["mode"]) s.steeringMode = data["mode"] as string;
+    dispatch("ht-agent-get-state", { agentId: view.agentId });
+    addSystemMessage(view, `Steering delivery: ${s.steeringMode}`);
+    syncFooter(view);
+  }
+
+  if (cmd === "set_follow_up_mode") {
+    if (data?.["mode"]) s.followUpMode = data["mode"] as string;
+    dispatch("ht-agent-get-state", { agentId: view.agentId });
+    addSystemMessage(view, `Follow-up delivery: ${s.followUpMode}`);
+    syncFooter(view);
+  }
+
+  if (cmd === "set_auto_compaction") {
+    s.autoCompactionEnabled =
+      typeof data?.["enabled"] === "boolean"
+        ? Boolean(data["enabled"])
+        : !s.autoCompactionEnabled;
+    addSystemMessage(
+      view,
+      `Auto compaction ${s.autoCompactionEnabled ? "enabled" : "disabled"}`,
+    );
+    dispatch("ht-agent-get-state", { agentId: view.agentId });
+    syncFooter(view);
+  }
+
+  if (cmd === "set_auto_retry") {
+    s.autoRetryEnabled =
+      typeof data?.["enabled"] === "boolean"
+        ? Boolean(data["enabled"])
+        : !s.autoRetryEnabled;
+    addSystemMessage(
+      view,
+      `Auto retry ${s.autoRetryEnabled ? "enabled" : "disabled"}`,
+    );
+    dispatch("ht-agent-get-state", { agentId: view.agentId });
+    syncFooter(view);
+  }
+
+  if (cmd === "abort_retry") {
+    s.retryState = null;
+    addSystemMessage(view, "Retry aborted");
+  }
+
+  if (cmd === "get_session_stats" && data) {
     s.sessionStats = data as AgentPanelState["sessionStats"];
+    if (data["sessionFile"]) s.sessionFile = data["sessionFile"] as string;
+    if (data["sessionId"]) s.sessionId = data["sessionId"] as string;
+    if (typeof data["totalMessages"] === "number") {
+      s.messageCount = data["totalMessages"] as number;
+    }
     syncFooter(view);
     renderStats(view);
   }
 
-  if (cmd === "new_session" && ok) {
+  if (cmd === "get_messages" && data) {
+    const messages = Array.isArray(data["messages"])
+      ? (data["messages"] as Record<string, unknown>[])
+      : [];
+    s.messages = messages.flatMap(convertAgentMessageToChatMessages);
+    s.turnCount = s.messages.filter((m) => m.role === "assistant").length;
+    s.totalToolCalls = s.messages.filter((m) => m.role === "tool").length;
+    renderAllMessages(view);
+    syncFooter(view);
+  }
+
+  if (cmd === "new_session") {
     s.messages = [];
     s.currentText = "";
     s.currentThinking = "";
@@ -1844,33 +2620,45 @@ function handleResponse(
     s.totalToolCalls = 0;
     s.sessionStats = null;
     s.sessionName = null;
+    s.widgetsAbove.clear();
+    s.widgetsBelow.clear();
+    s.sessionTree = [];
+    s.sessionList = [];
+    renderWidgets(view);
+    s.sessionFile = null;
+    s.sessionId = null;
+    s.messageCount = 0;
     el.sessionNameEl.textContent = "";
     renderAllMessages(view);
     syncFooter(view);
     addSystemMessage(view, "New session started");
+    dispatch("ht-agent-get-state", { agentId: view.agentId });
+    dispatch("ht-agent-get-session-stats", { agentId: view.agentId });
+    dispatch("ht-agent-get-messages", { agentId: view.agentId });
   }
 
-  if (cmd === "get_commands" && ok && data) {
-    const arr = data as unknown;
-    if (Array.isArray(arr)) {
-      const piCmds: SlashCommand[] = (arr as Record<string, unknown>[]).map(
-        (c) => ({
-          name: `/${c["name"] as string}`,
-          description: (c["description"] as string) ?? "",
-          source: (c["source"] as SlashCommand["source"]) ?? "extension",
-        }),
-      );
-      // Merge with builtins, avoiding duplicates
-      const builtinNames = new Set(BUILTIN_COMMANDS.map((c) => c.name));
-      s.commands = [
-        ...BUILTIN_COMMANDS,
-        ...piCmds.filter((c) => !builtinNames.has(c.name)),
-      ];
-    }
+  if (cmd === "get_commands" && data) {
+    const arr = Array.isArray(data["commands"])
+      ? (data["commands"] as Record<string, unknown>[])
+      : Array.isArray(data)
+        ? (data as unknown as Record<string, unknown>[])
+        : [];
+    const piCmds: SlashCommand[] = arr
+      .filter((c) => typeof c["name"] === "string")
+      .map((c) => ({
+        name: `/${c["name"] as string}`,
+        description: (c["description"] as string) ?? "",
+        source: (c["source"] as SlashCommand["source"]) ?? "extension",
+      }));
+    const builtinNames = new Set(BUILTIN_COMMANDS.map((c) => c.name));
+    s.commands = [
+      ...BUILTIN_COMMANDS,
+      ...piCmds.filter((c) => !builtinNames.has(c.name)),
+    ];
   }
 
-  if (cmd === "get_last_assistant_text" && ok && data) {
-    const text = (data as { text?: string }).text;
+  if (cmd === "get_last_assistant_text" && data) {
+    const text = (data as { text?: string | null }).text;
     if (text) {
       navigator.clipboard.writeText(text).then(() => {
         addSystemMessage(view, "Copied last response to clipboard");
@@ -1880,36 +2668,86 @@ function handleResponse(
     }
   }
 
-  if (cmd === "export_html" && ok && data) {
+  if (cmd === "export_html" && data) {
     const path = (data as { path?: string }).path;
     addSystemMessage(view, path ? `Exported to ${path}` : "Session exported");
   }
 
-  if (cmd === "get_fork_messages" && ok && data) {
-    const arr = data as unknown;
-    if (Array.isArray(arr) && arr.length > 0) {
-      showForkDialog(view, arr as { entryId: string; text: string }[]);
+  if (cmd === "switch_session") {
+    const cancelled = Boolean(data?.["cancelled"]);
+    addSystemMessage(
+      view,
+      cancelled ? "Session switch cancelled" : "Session switched",
+    );
+    if (!cancelled) {
+      dispatch("ht-agent-get-state", { agentId: view.agentId });
+      dispatch("ht-agent-get-session-stats", { agentId: view.agentId });
+      dispatch("ht-agent-get-messages", { agentId: view.agentId });
+      dispatch("ht-agent-get-session-tree", { agentId: view.agentId });
+    }
+  }
+
+  if (cmd === "list_sessions" && data) {
+    s.sessionList = Array.isArray(data["sessions"])
+      ? (data["sessions"] as AgentPanelState["sessionList"])
+      : [];
+    showSessionBrowserDialog(view);
+  }
+
+  if (cmd === "get_session_tree" && data) {
+    s.sessionTree = Array.isArray(data["tree"])
+      ? (data["tree"] as AgentPanelState["sessionTree"])
+      : [];
+    showTreeDialog(view);
+  }
+
+  if (cmd === "get_fork_messages" && data) {
+    const arr = Array.isArray(data["messages"])
+      ? (data["messages"] as { entryId: string; text: string }[])
+      : Array.isArray(data)
+        ? (data as unknown as { entryId: string; text: string }[])
+        : [];
+    if (arr.length > 0) {
+      showForkDialog(view, arr);
     } else {
       addSystemMessage(view, "No fork points available");
     }
   }
 
-  if (cmd === "set_session_name" && ok) {
-    const name = ev["name"] as string;
-    if (name) {
-      s.sessionName = name;
-      el.sessionNameEl.textContent = name;
+  if (cmd === "fork") {
+    const cancelled = Boolean(data?.["cancelled"]);
+    const text = (data?.["text"] as string) ?? "";
+    addSystemMessage(
+      view,
+      cancelled
+        ? "Fork cancelled"
+        : `Forked session${text ? ` from: ${text.slice(0, 80)}` : ""}`,
+    );
+    if (!cancelled) {
+      dispatch("ht-agent-get-state", { agentId: view.agentId });
+      dispatch("ht-agent-get-session-stats", { agentId: view.agentId });
+      dispatch("ht-agent-get-messages", { agentId: view.agentId });
     }
   }
 
-  if (cmd === "bash" && ok && data) {
+  if (cmd === "set_session_name") {
+    const name = (data?.["name"] as string) ?? (ev["name"] as string) ?? "";
+    s.sessionName = name || null;
+    el.sessionNameEl.textContent = name;
+    syncFooter(view);
+  }
+
+  if (cmd === "bash" && data) {
     const output = (data as { output?: string }).output ?? "";
     const exitCode = (data as { exitCode?: number }).exitCode ?? 0;
     s.messages.push({
       role: "bash",
       content: output,
       exitCode,
-      command: (data as { command?: string }).command,
+      command: (data as { command?: string }).command ?? undefined,
+      truncated: Boolean((data as { truncated?: boolean }).truncated),
+      fullOutputPath:
+        (data as { fullOutputPath?: string | null }).fullOutputPath ?? null,
       timestamp: Date.now(),
     });
     renderAllMessages(view);
@@ -1917,6 +2755,90 @@ function handleResponse(
 }
 
 // ── Special views ──
+
+function convertAgentMessageToChatMessages(
+  message: Record<string, unknown>,
+): ChatMessage[] {
+  const role = message["role"] as string;
+  const timestamp = (message["timestamp"] as number) ?? Date.now();
+
+  if (role === "user") {
+    return [
+      {
+        role: "user",
+        content: extractTextBlocks(message["content"]),
+        images: extractImageBlocks(message["content"]),
+        timestamp,
+      },
+    ];
+  }
+
+  if (role === "assistant") {
+    return [
+      {
+        role: "assistant",
+        content: extractTextBlocks(message["content"]),
+        thinking: extractThinkingBlocks(message["content"]),
+        timestamp,
+      },
+    ];
+  }
+
+  if (role === "toolResult") {
+    return [
+      {
+        role: "tool",
+        content: extractContent(message["content"]),
+        toolName: (message["toolName"] as string) ?? "tool",
+        isError: Boolean(message["isError"]),
+        images: extractImageBlocks(message["content"]),
+        timestamp,
+      },
+    ];
+  }
+
+  if (role === "bashExecution") {
+    return [
+      {
+        role: "bash",
+        content: (message["output"] as string) ?? "",
+        command: (message["command"] as string) ?? "bash",
+        exitCode: (message["exitCode"] as number) ?? 0,
+        truncated: Boolean(message["truncated"]),
+        fullOutputPath: (message["fullOutputPath"] as string | null) ?? null,
+        timestamp,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function renderWidgets(view: AgentPaneView): void {
+  const render = (target: HTMLDivElement, widgets: Map<string, string[]>) => {
+    target.innerHTML = "";
+    for (const [key, lines] of widgets) {
+      const card = document.createElement("div");
+      card.className = "agent-widget";
+      card.dataset["widgetKey"] = key;
+
+      const hdr = document.createElement("div");
+      hdr.className = "agent-widget-key";
+      hdr.textContent = key;
+      card.appendChild(hdr);
+
+      const body = document.createElement("pre");
+      body.className = "agent-widget-body";
+      body.textContent = lines.join("\n");
+      card.appendChild(body);
+      target.appendChild(card);
+    }
+    target.style.display = widgets.size > 0 ? "grid" : "none";
+  };
+
+  render(view._elements.widgetsAboveEl, view._state.widgetsAbove);
+  render(view._elements.widgetsBelowEl, view._state.widgetsBelow);
+}
 
 function showSessionStats(view: AgentPaneView): void {
   const el = view._elements;
@@ -1935,6 +2857,18 @@ function renderStats(view: AgentPaneView): void {
   statsEl.innerHTML = "";
 
   const items: [string, string][] = [];
+  if (st.sessionId) items.push(["Session ID", st.sessionId]);
+  if (st.sessionFile) items.push(["Session File", st.sessionFile]);
+  if (typeof st.userMessages === "number")
+    items.push(["User", String(st.userMessages)]);
+  if (typeof st.assistantMessages === "number")
+    items.push(["Assistant", String(st.assistantMessages)]);
+  if (typeof st.toolCalls === "number")
+    items.push(["Tool Calls", String(st.toolCalls)]);
+  if (typeof st.toolResults === "number")
+    items.push(["Tool Results", String(st.toolResults)]);
+  if (typeof st.totalMessages === "number")
+    items.push(["Messages", String(st.totalMessages)]);
   if (st.tokens) {
     items.push(["Input", fmtK(st.tokens.input)]);
     items.push(["Output", fmtK(st.tokens.output)]);
@@ -1959,17 +2893,57 @@ function renderStats(view: AgentPaneView): void {
 }
 
 function showSettingsDialog(view: AgentPaneView): void {
-  const s = view._state;
-  const lines: string[] = [
-    `Model: ${s.model?.name ?? "none"}`,
-    `Thinking: ${s.thinkingLevel}`,
-    `Steering: ${s.steeringMode}`,
-    `Follow-up: ${s.followUpMode}`,
-    "",
-    "Use /model, /compact, or toolbar buttons to change settings.",
-    "Ctrl+P to cycle models, Shift+Tab to cycle thinking.",
-  ];
-  addSystemMessage(view, lines.join("\n"));
+  view._state.activeDialog = {
+    id: "__settings__",
+    method: "settings",
+    title: "Agent settings",
+    selectedIndex: 0,
+    inputValue: "",
+  };
+  renderDialog(view);
+}
+
+function showSwitchSessionDialog(
+  view: AgentPaneView,
+  initialValue = "",
+): void {
+  view._state.activeDialog = {
+    id: "__switch_session__",
+    method: "switch_session",
+    title: "Open session",
+    message:
+      "Enter an absolute session file path (.jsonl) created by pi. You can also use /resume without arguments for the session browser.",
+    placeholder: "/Users/you/.pi/agent/sessions/.../session.jsonl",
+    defaultValue: initialValue,
+    selectedIndex: 0,
+    inputValue: initialValue,
+  };
+  renderDialog(view);
+}
+
+function showSessionBrowserDialog(view: AgentPaneView): void {
+  view._state.activeDialog = {
+    id: "__session_browser__",
+    method: "session_browser",
+    title: "Recent pi sessions",
+    message: "Open a previous session or fall back to manual path entry.",
+    selectedIndex: 0,
+    inputValue: view._state.sessionListFilter,
+  };
+  renderDialog(view);
+}
+
+function showTreeDialog(view: AgentPaneView): void {
+  view._state.activeDialog = {
+    id: "__tree__",
+    method: "tree_browser",
+    title: "Session tree",
+    message:
+      "Browse the current session tree. Selecting a user node creates a forked session from that point.",
+    selectedIndex: 0,
+    inputValue: "",
+  };
+  renderDialog(view);
 }
 
 function showHotkeysMessage(view: AgentPaneView): void {
@@ -1979,10 +2953,12 @@ function showHotkeysMessage(view: AgentPaneView): void {
     "  Shift+Enter    New line",
     "  Alt+Enter      Queue follow-up",
     "  Escape         Abort / dismiss",
-    "  Ctrl+P         Cycle model",
+    "  Ctrl+P         Cycle scoped models forward",
+    "  Shift+Ctrl+P   Cycle scoped models backward",
     "  Shift+Tab      Cycle thinking level",
     "  /              Open command menu",
     "  !command       Execute bash command",
+    "  Paste/drop     Attach image to next prompt",
   ];
   addSystemMessage(view, lines.join("\n"));
 }
@@ -2050,18 +3026,21 @@ function appendWelcome(parent: HTMLDivElement): void {
   el.innerHTML = `
     <div class="agent-welcome-glyph">\u2726</div>
     <div class="agent-welcome-title">Pi Agent</div>
-    <div class="agent-welcome-desc">AI coding assistant with full tool access and the HyperTerm Canvas skill.</div>
+    <div class="agent-welcome-desc">AI coding assistant with full tool access, image prompts, session browsing, tree branching, and the HyperTerm Canvas skill.</div>
     <div class="agent-welcome-shortcuts">
       <div class="agent-welcome-shortcut"><kbd>/</kbd><span>Commands</span></div>
       <div class="agent-welcome-shortcut"><kbd>Enter</kbd><span>Send</span></div>
       <div class="agent-welcome-shortcut"><kbd>Ctrl+P</kbd><span>Model</span></div>
       <div class="agent-welcome-shortcut"><kbd>Shift+Tab</kbd><span>Thinking</span></div>
       <div class="agent-welcome-shortcut"><kbd>Alt+Enter</kbd><span>Follow-up</span></div>
+      <div class="agent-welcome-shortcut"><kbd>Paste</kbd><span>Image</span></div>
       <div class="agent-welcome-shortcut"><kbd>Esc</kbd><span>Abort</span></div>
     </div>
     <div class="agent-welcome-actions">
       <button class="agent-welcome-btn" data-cmd="/help">Show commands</button>
       <button class="agent-welcome-btn" data-cmd="/session">Session info</button>
+      <button class="agent-welcome-btn" data-cmd="/resume">Resume</button>
+      <button class="agent-welcome-btn" data-cmd="/tree">Tree</button>
     </div>
   `;
   parent.appendChild(el);
@@ -2084,7 +3063,7 @@ function appendWelcome(parent: HTMLDivElement): void {
   });
 }
 
-function createMsgEl(msg: ChatMessage): HTMLDivElement {
+function createMsgEl(agentId: string, msg: ChatMessage): HTMLDivElement {
   const el = document.createElement("div");
   el.className = `agent-msg agent-msg-${msg.role}`;
 
@@ -2105,6 +3084,10 @@ function createMsgEl(msg: ChatMessage): HTMLDivElement {
       body.textContent = msg.content.slice(0, 2000);
       el.appendChild(body);
     }
+    el.appendChild(
+      buildToolActions(agentId, msg.toolArgs, msg.content),
+    );
+    if (msg.images?.length) el.appendChild(buildImageGallery(msg.images));
     return el;
   }
 
@@ -2120,6 +3103,19 @@ function createMsgEl(msg: ChatMessage): HTMLDivElement {
       body.textContent = msg.content.slice(0, 4000);
       el.appendChild(body);
     }
+    if (msg.truncated && msg.fullOutputPath) {
+      const note = document.createElement("div");
+      note.className = "agent-dialog-opt-desc";
+      note.textContent = `Full output saved to ${msg.fullOutputPath}`;
+      el.appendChild(note);
+    }
+    el.appendChild(
+      buildToolActions(
+        agentId,
+        { command: msg.command, fullOutputPath: msg.fullOutputPath },
+        msg.content,
+      ),
+    );
     return el;
   }
 
@@ -2140,6 +3136,10 @@ function createMsgEl(msg: ChatMessage): HTMLDivElement {
     el.appendChild(time);
   }
 
+  if (msg.images?.length) {
+    el.appendChild(buildImageGallery(msg.images));
+  }
+
   const content = document.createElement("div");
   content.className = "agent-msg-content";
   if (msg.role === "assistant") {
@@ -2151,6 +3151,91 @@ function createMsgEl(msg: ChatMessage): HTMLDivElement {
   }
   el.appendChild(content);
   return el;
+}
+
+function buildToolActions(
+  agentId: string,
+  args: unknown,
+  result?: string,
+): HTMLDivElement {
+  const row = document.createElement("div");
+  row.className = "agent-tool-actions";
+
+  const addBtn = (label: string, title: string, onClick: () => void) => {
+    const btn = document.createElement("button");
+    btn.className = "agent-tool-action-btn";
+    btn.textContent = label;
+    btn.title = title;
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onClick();
+    });
+    row.appendChild(btn);
+  };
+
+  const parsed = parseToolArgs(args);
+  if (parsed.command) {
+    addBtn("Rerun", "Run this command again via pi bash", () => {
+      dispatch("ht-agent-bash", { agentId, command: parsed.command });
+    });
+    addBtn("Copy cmd", "Copy command", () => {
+      void navigator.clipboard.writeText(parsed.command ?? "");
+    });
+  }
+  if (parsed.path) {
+    addBtn("Copy path", "Copy affected path", () => {
+      void navigator.clipboard.writeText(parsed.path ?? "");
+    });
+  }
+  if (result) {
+    addBtn("Copy output", "Copy tool output", () => {
+      void navigator.clipboard.writeText(result);
+    });
+  }
+
+  row.classList.toggle("agent-tool-actions-empty", row.children.length === 0);
+  return row;
+}
+
+function buildImageGallery(images: ImageAttachment[]): HTMLDivElement {
+  const wrap = document.createElement("div");
+  wrap.className = "agent-image-gallery";
+  for (const img of images) {
+    const image = document.createElement("img");
+    image.className = "agent-image-thumb";
+    image.src = `data:${img.mimeType};base64,${img.data}`;
+    image.alt = img.fileName ?? img.mimeType;
+    wrap.appendChild(image);
+  }
+  return wrap;
+}
+
+function parseToolArgs(args: unknown): {
+  command?: string;
+  path?: string;
+  pattern?: string;
+  url?: string;
+  fullOutputPath?: string | null;
+} {
+  if (!args) return {};
+  if (typeof args === "object") {
+    const rec = args as Record<string, unknown>;
+    return {
+      command: rec["command"] as string | undefined,
+      path:
+        (rec["path"] as string | undefined) ??
+        (rec["file_path"] as string | undefined),
+      pattern: rec["pattern"] as string | undefined,
+      url: rec["url"] as string | undefined,
+      fullOutputPath: rec["fullOutputPath"] as string | null | undefined,
+    };
+  }
+  try {
+    return parseToolArgs(JSON.parse(String(args)));
+  } catch {
+    return {};
+  }
 }
 
 function formatArgs(args: unknown): string {
@@ -2169,8 +3254,58 @@ function formatArgs(args: unknown): string {
 }
 
 function extractContent(content: unknown): string {
+  if (content == null) return "";
+  if (typeof content === "string") return content;
   if (!Array.isArray(content)) return String(content);
-  return content.map((c: { text?: string }) => c.text ?? "").join("");
+  return content
+    .map((c) => {
+      const rec = c as Record<string, unknown>;
+      if (typeof rec["text"] === "string") return rec["text"] as string;
+      if (typeof rec["thinking"] === "string")
+        return rec["thinking"] as string;
+      return "";
+    })
+    .join("");
+}
+
+function extractTextBlocks(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return extractContent(content);
+  return content
+    .map((c) => {
+      const rec = c as Record<string, unknown>;
+      return rec["type"] === "text" ? ((rec["text"] as string) ?? "") : "";
+    })
+    .join("");
+}
+
+function extractThinkingBlocks(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .map((c) => {
+      const rec = c as Record<string, unknown>;
+      return rec["type"] === "thinking"
+        ? ((rec["thinking"] as string) ?? "")
+        : "";
+    })
+    .join("");
+  return text || undefined;
+}
+
+function extractImageBlocks(content: unknown): ImageAttachment[] | undefined {
+  if (!Array.isArray(content)) return undefined;
+  const images = content
+    .map((c) => {
+      const rec = c as Record<string, unknown>;
+      if (rec["type"] !== "image") return null;
+      return {
+        type: "image" as const,
+        data: (rec["data"] as string) ?? "",
+        mimeType: (rec["mimeType"] as string) ?? "image/png",
+      };
+    })
+    .filter((img): img is ImageAttachment => Boolean(img?.data));
+  return images.length ? images : undefined;
 }
 
 function autoResize(el: HTMLTextAreaElement): void {

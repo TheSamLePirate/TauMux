@@ -393,7 +393,11 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
         cwd?: string;
       };
       /** Prompt sent from the webview agent panel to bun. */
-      agentPrompt: { agentId: string; message: string };
+      agentPrompt: {
+        agentId: string;
+        message: string;
+        images?: { type: "image"; data: string; mimeType: string }[];
+      };
       /** Abort the current agent operation. */
       agentAbort: { agentId: string };
       /** Set the agent's model. */
@@ -415,9 +419,17 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
         response: Record<string, unknown>;
       };
       /** Queue a steering message during agent streaming. */
-      agentSteer: { agentId: string; message: string };
+      agentSteer: {
+        agentId: string;
+        message: string;
+        images?: { type: "image"; data: string; mimeType: string }[];
+      };
       /** Queue a follow-up message for after agent finishes. */
-      agentFollowUp: { agentId: string; message: string };
+      agentFollowUp: {
+        agentId: string;
+        message: string;
+        images?: { type: "image"; data: string; mimeType: string }[];
+      };
       /** Execute a bash command via the agent. */
       agentBash: { agentId: string; command: string; timeout?: number };
       /** Abort a running bash command. */
@@ -430,6 +442,12 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       agentGetCommands: { agentId: string };
       /** Get session stats (tokens, cost, context). */
       agentGetSessionStats: { agentId: string };
+      /** Get full session message history. */
+      agentGetMessages: { agentId: string };
+      /** List recent pi session files for browsing/resume UI. */
+      agentListSessions: { agentId: string };
+      /** Read and summarize a session file tree for branch browsing. */
+      agentGetSessionTree: { agentId: string; sessionPath?: string };
       /** Get messages available for forking. */
       agentGetForkMessages: { agentId: string };
       /** Get last assistant message text (for copy). */
