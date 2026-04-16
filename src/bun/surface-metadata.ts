@@ -447,6 +447,8 @@ export class SurfaceMetadataPoller {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.last.clear();
+    this.gitCache.clear();
+    this.pkgCache.clear();
   }
 
   /** Adjust tick interval at runtime. Restarts the timer if already running. */
@@ -483,7 +485,14 @@ export class SurfaceMetadataPoller {
       for (const k of [...this.last.keys()]) {
         if (!live.has(k)) this.last.delete(k);
       }
-      if (surfaces.length === 0) return;
+      if (surfaces.length === 0) {
+        // No active terminals — release cached data that would otherwise
+        // sit in memory indefinitely (pkgCache / gitCache are only pruned
+        // inside resolvePackage / resolveGit which are skipped when empty).
+        this.gitCache.clear();
+        this.pkgCache.clear();
+        return;
+      }
 
       const psMap = await runPs();
       if (!psMap) return;

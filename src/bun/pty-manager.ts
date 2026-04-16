@@ -42,6 +42,7 @@ export class PtyManager {
   private terminal: BunTerminal | null = null;
   private _pid: number | null = null;
   private _exited = false;
+  private _destroyed = false;
   private _exitCode: number | null = null;
   private _sidebandFds: SidebandFds = {
     metaFd: null,
@@ -56,6 +57,7 @@ export class PtyManager {
 
   // Write buffer for commands sent before terminal is ready
   private writeBuffer: string[] = [];
+  private terminalWatchdog: ReturnType<typeof setTimeout> | null = null;
 
   // Streaming decoder to handle multi-byte UTF-8 split across chunks
   private stdoutDecoder = new TextDecoder("utf-8", { fatal: false });
@@ -88,7 +90,12 @@ export class PtyManager {
 
   spawn(opts: PtySpawnOptions): number {
     this._exited = false;
+    this._destroyed = false;
     this._exitCode = null;
+    if (this.terminalWatchdog) {
+      clearTimeout(this.terminalWatchdog);
+      this.terminalWatchdog = null;
+    }
     this._cols = opts.cols;
     this._rows = opts.rows;
     this._sidebandFds = { metaFd: null, dataFd: null, eventFd: null };
@@ -126,7 +133,7 @@ export class PtyManager {
       HYPERTERM_EVENT_FD: "5",
       // New structured channel map
       HYPERTERM_CHANNELS: JSON.stringify(channelMap),
-      HT_SOCKET_PATH: "/tmp/hyperterm.sock",
+      HT_SOCKET_PATH: process.env["HT_SOCKET_PATH"] || "/tmp/hyperterm.sock",
     };
 
     this.proc = Bun.spawn([opts.shell, ...(opts.args ?? [])], {
@@ -138,6 +145,10 @@ export class PtyManager {
         data: (terminal: BunTerminal, data: Uint8Array) => {
           if (!this.terminal) {
             this.terminal = terminal;
+            if (this.terminalWatchdog) {
+              clearTimeout(this.terminalWatchdog);
+              this.terminalWatchdog = null;
+            }
             for (const buffered of this.writeBuffer) {
               terminal.write(buffered);
             }
@@ -173,6 +184,21 @@ export class PtyManager {
     }
 
     this.trackExit();
+
+    // Watchdog: the Bun terminal API only provides the terminal handle via
+    // the first data callback.  If the spawned process is completely silent
+    // (no output at all), the handle is never delivered and buffered writes
+    // are stuck.  Detect this and log a warning so it's diagnosable.
+    this.terminalWatchdog = setTimeout(() => {
+      this.terminalWatchdog = null;
+      if (!this.terminal && !this._exited && this.writeBuffer.length > 0) {
+        console.warn(
+          `[pty ${this._pid}] Terminal produced no initial output; ` +
+            `${this.writeBuffer.length} write(s) stuck in buffer`,
+        );
+      }
+    }, 5000);
+
     return this.proc.pid;
   }
 
@@ -185,6 +211,10 @@ export class PtyManager {
     if (this.terminal) {
       this.terminal.write(data);
     } else {
+      // Terminal handle is received via the first data callback.  If the
+      // spawned process is completely silent, writes will be buffered
+      // indefinitely.  The spawn() watchdog timer logs a warning if this
+      // condition persists.
       this.writeBuffer.push(data);
     }
   }
@@ -210,6 +240,11 @@ export class PtyManager {
   }
 
   destroy(): void {
+    this._destroyed = true;
+    if (this.terminalWatchdog) {
+      clearTimeout(this.terminalWatchdog);
+      this.terminalWatchdog = null;
+    }
     if (this.proc && !this._exited) {
       this.proc.kill(9);
     }
@@ -220,6 +255,17 @@ export class PtyManager {
 
   private trackExit(): void {
     this.proc?.exited.then((code) => {
+      // If destroy() was already called, the object is dead — skip callbacks
+      // to avoid executing logic on a torn-down instance (the OS still reaps
+      // the process and resolves this promise after kill(9)).
+      if (this._destroyed) return;
+
+      // Flush any trailing bytes left in the streaming UTF-8 decoder.
+      // Without this final decode(), an incomplete multi-byte character at
+      // the very end of the stream would be silently lost.
+      const remaining = this.stdoutDecoder.decode();
+      if (remaining) this.onStdout?.(remaining);
+
       this._exited = true;
       this._exitCode = code;
       this.onExit?.(code);
