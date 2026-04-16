@@ -178,8 +178,11 @@ Global shortcuts (sidebar, palette, workspace nav) work regardless of surface ty
 ### Overlay z-ordering
 Because `<electrobun-webview>` renders as a native layer above the parent webview, browser panes are hidden via `toggleHidden()` when overlays (command palette, settings, process manager, dialogs) open, and restored when they close.
 
+### Cookie management
+Browser panes support importing cookies from JSON (EditThisCookie) or Netscape/cURL files via **Settings → Browser → Cookies** or the CLI (`ht browser-cookie-import`). Imported cookies are auto-injected into matching domains on each navigation. See [`system-browser-pane.md`](system-browser-pane.md) § 10 for details.
+
 ### Automation
-See [`system-browser-pane.md`](system-browser-pane.md) for the full browser automation API — 40+ commands for navigation, DOM interaction, waiting, inspection, script injection, and console/error capture.
+See [`system-browser-pane.md`](system-browser-pane.md) for the full browser automation API — 50+ commands for navigation, DOM interaction, waiting, inspection, script injection, cookie management, and console/error capture.
 
 ## 8. UI Architecture & Performance Notes
 

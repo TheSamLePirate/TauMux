@@ -193,6 +193,7 @@ export interface BrowserPaneCallbacks {
   onFocus: (surfaceId: string) => void;
   onClose: (surfaceId: string) => void;
   onSplit: (surfaceId: string, direction: "horizontal" | "vertical") => void;
+  onDomReady?: (surfaceId: string, url: string) => void;
   onEvalResult?: (
     surfaceId: string,
     reqId: string,
@@ -464,6 +465,7 @@ export function createBrowserPaneView(
     view.isLoading = false;
     reloadBtn.classList.remove("browser-loading");
     void updateBackForwardState();
+    callbacks.onDomReady?.(surfaceId, view.currentUrl);
   });
 
   // Apply dark mode on initial load if URL is set
@@ -755,6 +757,53 @@ function applyHiddenState(view: BrowserPaneView): void {
   if (w.webviewId === null || w.webviewId === undefined) {
     setTimeout(() => applyHiddenState(view), 50);
   }
+}
+
+export function browserPaneInjectCookies(
+  view: BrowserPaneView,
+  cookies: Array<{
+    name: string;
+    value: string;
+    path: string;
+    expires: number;
+    secure: boolean;
+    sameSite: string;
+  }>,
+): void {
+  if (cookies.length === 0) return;
+  const statements = cookies.map((c) => {
+    const parts = [
+      `${encodeURIComponent(c.name)}=${encodeURIComponent(c.value)}`,
+    ];
+    if (c.path) parts.push(`path=${c.path}`);
+    if (c.expires > 0) {
+      parts.push(`expires=${new Date(c.expires * 1000).toUTCString()}`);
+    }
+    if (c.secure) parts.push("secure");
+    if (c.sameSite) parts.push(`samesite=${c.sameSite}`);
+    return `document.cookie = ${JSON.stringify(parts.join("; "))};`;
+  });
+  view.webviewEl.executeJavascript(statements.join("\n"));
+}
+
+export function browserPaneGetCookies(
+  view: BrowserPaneView,
+  reqId: string,
+): void {
+  const script = `
+    (function() {
+      var cookies = document.cookie.split('; ').filter(Boolean).map(function(c) {
+        var eq = c.indexOf('=');
+        return { name: c.substring(0, eq), value: c.substring(eq + 1) };
+      });
+      window.__electrobunSendToHost({
+        type: "evalResult",
+        reqId: ${JSON.stringify(reqId)},
+        result: JSON.stringify({ url: window.location.href, cookies: cookies })
+      });
+    })()
+  `;
+  view.webviewEl.executeJavascript(script);
 }
 
 const DARK_MODE_CSS = `

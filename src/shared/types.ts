@@ -373,6 +373,10 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
         result?: string;
         error?: string;
       };
+      /** Webview notifies bun when a browser pane's DOM is ready (for cookie injection). */
+      browserDomReady: { surfaceId: string; url: string };
+      /** Webview forwards a cookie action (import/export/clear) from settings panel. */
+      browserCookieAction: { action: string; data?: string; format?: string };
 
       // ── Agent surface lifecycle (webview → bun) ──
       createAgentSurface: {
@@ -520,6 +524,22 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       };
       /** Bun asks webview to close a browser surface (e.g. from socket API). */
       browserSurfaceClosed: { surfaceId: string };
+      /** Bun sends cookies for injection into a browser pane. */
+      browserInjectCookies: {
+        surfaceId: string;
+        cookies: Array<{
+          name: string;
+          value: string;
+          path: string;
+          expires: number;
+          secure: boolean;
+          sameSite: string;
+        }>;
+      };
+      /** Cookie export data from bun to webview (for file download). */
+      cookieExportResult: { data: string; format: string };
+      /** Cookie action result notification. */
+      cookieActionResult: { action: string; message: string };
 
       // ── Agent surface lifecycle (bun → webview) ──
       agentSurfaceCreated: {

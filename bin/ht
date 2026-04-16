@@ -497,6 +497,74 @@ function mapCommand(): RpcCall {
     case "list-browsers":
       return { method: "browser.list", params: {} };
 
+    // Cookie commands
+    case "browser-cookie-list":
+      return {
+        method: "browser.cookie_list",
+        params: { domain: args[0] || flags["domain"] },
+      };
+    case "browser-cookie-get":
+      return {
+        method: "browser.cookie_get",
+        params: { url: args[0] || flags["url"] },
+      };
+    case "browser-cookie-set":
+      return {
+        method: "browser.cookie_set",
+        params: {
+          name: args[0] || flags["name"],
+          value: args[1] || flags["value"],
+          domain: flags["domain"],
+          path: flags["path"] || "/",
+          expires: flags["expires"] ? parseInt(flags["expires"]) : 0,
+          secure: flags["secure"] === "true",
+          sameSite: flags["samesite"] || "",
+        },
+      };
+    case "browser-cookie-delete":
+      return {
+        method: "browser.cookie_delete",
+        params: {
+          domain: args[0] || flags["domain"],
+          name: args[1] || flags["name"],
+          path: flags["path"] || "/",
+        },
+      };
+    case "browser-cookie-clear":
+      return {
+        method: "browser.cookie_clear",
+        params: { domain: args[0] || flags["domain"] },
+      };
+    case "browser-cookie-import": {
+      const filePath = args[0] || flags["file"];
+      let fileData = "";
+      if (filePath) {
+        try {
+          fileData = require("fs").readFileSync(filePath, "utf-8");
+        } catch (e) {
+          console.error(`Failed to read file: ${filePath}`);
+          process.exit(1);
+        }
+      }
+      return {
+        method: "browser.cookie_import",
+        params: {
+          data: fileData,
+          format: flags["format"] || "json",
+        },
+      };
+    }
+    case "browser-cookie-export":
+      return {
+        method: "browser.cookie_export",
+        params: { format: flags["format"] || "json" },
+      };
+    case "browser-cookie-capture":
+      return {
+        method: "browser.cookie_capture",
+        params: { surface_id: flags["surface"] },
+      };
+
     // tmux compat alias
     case "capture-pane":
       return {
@@ -845,6 +913,16 @@ Browser (use: ht browser [surface] <subcommand> [args...]):
   ht browser history [clear]                Browser history
   ht browser list                           List all browser surfaces
   ht browser [S] close                      Close browser surface
+
+  Cookie Management (use: ht browser-cookie-<cmd>):
+  browser-cookie-list [domain]              List stored cookies
+  browser-cookie-get <url>                  Get cookies matching a URL
+  browser-cookie-set <name> <value> --domain <d> [--path /] [--secure true]
+  browser-cookie-delete <domain> <name>     Delete a specific cookie
+  browser-cookie-clear [domain]             Clear cookies (all or per-domain)
+  browser-cookie-import <file> [--format json|netscape]  Import cookie file
+  browser-cookie-export [--format json|netscape]         Export all cookies
+  browser-cookie-capture [--surface S]      Capture cookies from current page
 
   [S] = optional --surface browser:N or positional browser:N
 

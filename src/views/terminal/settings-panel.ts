@@ -104,7 +104,8 @@ export class SettingsPanel {
 
     const subtitleEl = document.createElement("span");
     subtitleEl.className = "settings-header-subtitle";
-    subtitleEl.textContent = "Terminal behavior, appearance, and workspace chrome";
+    subtitleEl.textContent =
+      "Terminal behavior, appearance, and workspace chrome";
     titleCopy.appendChild(subtitleEl);
 
     header.appendChild(titleCopy);
@@ -505,7 +506,9 @@ export class SettingsPanel {
       "Force Dark Mode",
       s.browserForceDarkMode,
       "browserForceDarkMode",
-      { note: "Inject dark mode CSS into web pages that don't provide a dark theme." },
+      {
+        note: "Inject dark mode CSS into web pages that don't provide a dark theme.",
+      },
     );
 
     this.toggleField(
@@ -513,8 +516,93 @@ export class SettingsPanel {
       "Intercept Terminal Links",
       s.browserInterceptTerminalLinks,
       "browserInterceptTerminalLinks",
-      { note: "Open ⌘-clicked URLs in the built-in browser instead of the system browser." },
+      {
+        note: "Open ⌘-clicked URLs in the built-in browser instead of the system browser.",
+      },
     );
+
+    // ── Cookies subsection ──
+    this.sectionTitle(c, "Cookies");
+    this.sectionDesc(
+      c,
+      "Import cookies for use across browser pane sessions. Cookies are auto-injected into matching domains on navigation.",
+    );
+
+    const cookieActionsWrap = document.createElement("div");
+    cookieActionsWrap.className = "settings-field";
+    cookieActionsWrap.style.flexDirection = "column";
+    cookieActionsWrap.style.alignItems = "flex-start";
+    cookieActionsWrap.style.gap = "8px";
+
+    // Hidden file input for import
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".json,.txt,.cookies";
+    fileInput.style.display = "none";
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = reader.result as string;
+        // Auto-detect format: JSON starts with [ or {, otherwise Netscape
+        const format =
+          text.trimStart().startsWith("[") || text.trimStart().startsWith("{")
+            ? "json"
+            : "netscape";
+        window.dispatchEvent(
+          new CustomEvent("ht-cookie-import", {
+            detail: { data: text, format },
+          }),
+        );
+      };
+      reader.readAsText(file);
+      // Reset so the same file can be re-imported
+      fileInput.value = "";
+    });
+    cookieActionsWrap.appendChild(fileInput);
+
+    const btnRow = document.createElement("div");
+    btnRow.style.display = "flex";
+    btnRow.style.gap = "8px";
+    btnRow.style.flexWrap = "wrap";
+
+    const importBtn = document.createElement("button");
+    importBtn.className = "settings-reset-btn";
+    importBtn.textContent = "Import Cookie File\u2026";
+    importBtn.style.marginTop = "0";
+    importBtn.addEventListener("click", () => fileInput.click());
+    btnRow.appendChild(importBtn);
+
+    const exportBtn = document.createElement("button");
+    exportBtn.className = "settings-reset-btn";
+    exportBtn.textContent = "Export All Cookies";
+    exportBtn.style.marginTop = "0";
+    exportBtn.addEventListener("click", () => {
+      window.dispatchEvent(
+        new CustomEvent("ht-cookie-export", { detail: { format: "json" } }),
+      );
+    });
+    btnRow.appendChild(exportBtn);
+
+    const clearBtn = document.createElement("button");
+    clearBtn.className = "settings-reset-btn";
+    clearBtn.textContent = "Clear All Cookies";
+    clearBtn.style.marginTop = "0";
+    clearBtn.addEventListener("click", () => {
+      window.dispatchEvent(new CustomEvent("ht-cookie-clear"));
+    });
+    btnRow.appendChild(clearBtn);
+
+    cookieActionsWrap.appendChild(btnRow);
+
+    const noteEl = document.createElement("div");
+    noteEl.className = "settings-field-note";
+    noteEl.textContent =
+      "Supports JSON (EditThisCookie format) and Netscape/cURL cookie files. HTTP-only cookies are stored but cannot be injected via JavaScript.";
+    cookieActionsWrap.appendChild(noteEl);
+
+    c.appendChild(cookieActionsWrap);
   }
 
   private renderAdvanced(c: HTMLElement, s: AppSettings): void {

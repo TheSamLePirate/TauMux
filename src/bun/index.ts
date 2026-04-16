@@ -24,6 +24,13 @@ import type { HyperTermRPC, PersistedLayout, PaneNode } from "../shared/types";
 import { SessionManager } from "./session-manager";
 import { BrowserSurfaceManager } from "./browser-surface-manager";
 import { BrowserHistoryStore } from "./browser-history";
+import { CookieStore } from "./cookie-store";
+import {
+  parseJsonCookies,
+  parseNetscapeCookies,
+  exportAsJson,
+  exportAsNetscape,
+} from "./cookie-parsers";
 import { SocketServer } from "./socket-server";
 import { SurfaceMetadataPoller } from "./surface-metadata";
 import { WebServer } from "./web-server";
@@ -51,6 +58,7 @@ const sessions = new SessionManager(settingsManager.get().shellPath);
 const piAgentManager = new PiAgentManager();
 const browserSurfaces = new BrowserSurfaceManager();
 const browserHistory = new BrowserHistoryStore(configDir);
+const cookieStore = new CookieStore(configDir);
 const metadataPoller = new SurfaceMetadataPoller(sessions);
 let initialResizeReceived = false;
 
@@ -332,6 +340,50 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
           resolve(
             payload.error ? `Error: ${payload.error}` : (payload.result ?? ""),
           );
+        }
+      },
+      browserDomReady: (payload) => {
+        const cookies = cookieStore.getForUrl(payload.url);
+        if (cookies.length > 0) {
+          rpc.send("browserInjectCookies", {
+            surfaceId: payload.surfaceId,
+            cookies: cookies.map((c) => ({
+              name: c.name,
+              value: c.value,
+              path: c.path,
+              expires: c.expires,
+              secure: c.secure,
+              sameSite: c.sameSite,
+            })),
+          });
+        }
+      },
+      browserCookieAction: (payload) => {
+        const { action, data, format } = payload;
+        if (action === "import" && data) {
+          const cookies =
+            format === "netscape"
+              ? parseNetscapeCookies(data)
+              : parseJsonCookies(data);
+          const count = cookieStore.importBulk(cookies);
+          rpc.send("cookieActionResult", {
+            action: "import",
+            message: `Imported ${count} cookies`,
+          });
+        } else if (action === "export") {
+          const all = cookieStore.exportAll();
+          const out =
+            format === "netscape" ? exportAsNetscape(all) : exportAsJson(all);
+          rpc.send("cookieExportResult", {
+            data: out,
+            format: format || "json",
+          });
+        } else if (action === "clear") {
+          cookieStore.clear();
+          rpc.send("cookieActionResult", {
+            action: "clear",
+            message: "All cookies cleared",
+          });
         }
       },
 
@@ -1195,6 +1247,7 @@ const socketHandler = createRpcHandler(
   browserSurfaces,
   browserHistory,
   pendingBrowserEvals,
+  cookieStore,
 );
 const socketServer = new SocketServer("/tmp/hyperterm.sock", socketHandler);
 socketServer.start();
@@ -1449,6 +1502,7 @@ process.on("SIGINT", () => {
   saveLayout();
   settingsManager.saveNow();
   browserHistory.saveNow();
+  cookieStore.saveNow();
   piAgentManager.dispose();
   webServer?.stop();
   socketServer.stop();
@@ -1458,6 +1512,7 @@ process.on("SIGTERM", () => {
   saveLayout();
   settingsManager.saveNow();
   browserHistory.saveNow();
+  cookieStore.saveNow();
   piAgentManager.dispose();
   webServer?.stop();
   socketServer.stop();
