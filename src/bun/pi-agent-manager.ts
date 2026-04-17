@@ -43,6 +43,7 @@ async function resolvePiBinary(): Promise<string> {
   const direct = Bun.spawnSync(["which", "pi"], {
     stdout: "pipe",
     stderr: "pipe",
+    env: { ...process.env, LC_ALL: "C", LANG: "C" },
   });
   if (direct.exitCode === 0) {
     const p = new TextDecoder().decode(direct.stdout).trim();
@@ -58,7 +59,12 @@ async function resolvePiBinary(): Promise<string> {
   const login = Bun.spawnSync([shell, "-ilc", "which pi"], {
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, HOME: process.env["HOME"] ?? "" },
+    env: {
+      ...process.env,
+      HOME: process.env["HOME"] ?? "",
+      LC_ALL: "C",
+      LANG: "C",
+    },
   });
   if (login.exitCode === 0) {
     const p = new TextDecoder().decode(login.stdout).trim();
@@ -154,6 +160,7 @@ export class PiAgentInstance {
       const r = Bun.spawnSync([shell, "-ilc", "echo $PATH"], {
         stdout: "pipe",
         stderr: "pipe",
+        env: { ...process.env, LC_ALL: "C", LANG: "C" },
       });
       if (r.exitCode === 0) {
         const p = new TextDecoder().decode(r.stdout).trim();

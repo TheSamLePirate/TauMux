@@ -24,6 +24,11 @@ export const OUTPUT_COALESCE_SOFT_CAP = 8 * 1024;
 export const WS_STALL_HIGH_WATER = 1 * 1024 * 1024;
 /** Low-water mark to clear the stall flag (simple hysteresis). */
 export const WS_STALL_LOW_WATER = 256 * 1024;
+/** How long a stall can last before we force-close the ws. After a
+ *  close the session survives for SESSION_TTL_MS so the client reconnects
+ *  with ?resume= and gets delta replay — that's strictly better than
+ *  leaving it silently receiving nothing. */
+export const WS_STALL_KICK_MS = 10_000;
 
 /** Max size of a single client→server frame, in bytes. Generous enough
  *  for pastes, small enough to bound a single burst from a malicious or
@@ -72,6 +77,10 @@ export class SessionBuffer {
   outputFlushTimer: ReturnType<typeof setTimeout> | null = null;
   /** True while ws.getBufferedAmount() is past WS_STALL_HIGH_WATER. */
   stalled = false;
+  /** Timestamp (ms) when the session first became stalled. Cleared when
+   *  the stall resolves. Used to kick a persistently-stalled ws so the
+   *  client can reconnect and resume. */
+  stalledAt: number | null = null;
   /** Token bucket for client→server frame rate limiting. */
   rateTokens = CLIENT_RATE_CAPACITY;
   rateLastRefillMs = Date.now();
@@ -131,7 +140,9 @@ export class SessionBuffer {
 
 export interface ClientData {
   clientId: string;
-  session: SessionBuffer;
+  /** Null between `server.upgrade()` and the `open()` callback. Once
+   *  open() runs, this is always non-null for the life of the ws. */
+  session: SessionBuffer | null;
   /** Present only during upgrade handoff — cleared after open(). */
   resumeId?: string;
   resumeSeq?: number;
@@ -161,6 +172,45 @@ export function makeSessionId(): string {
 
 export function makeServerInstanceId(): string {
   return makeSessionId();
+}
+
+/** Decide what to do with an outbound ws.send call given the ws buffer
+ *  pressure. Pure so we can unit-test the hysteresis + kick timing
+ *  without standing up a real WebSocket.
+ *
+ *  Returns one of:
+ *   - `"send"`: clear to send; mutates session to reset any stall flag.
+ *   - `"skip"`: ws is stalled, don't send. The caller has already
+ *      buffered the message on the session so a resume can replay it.
+ *   - `"kick"`: stall has outlasted WS_STALL_KICK_MS. The caller should
+ *      close the ws; the session survives TTL so the client can resume.
+ *      Still returns `"skip"`-semantics for this call (don't send).
+ */
+export function decideBackpressure(
+  session: SessionBuffer,
+  buffered: number,
+  nowMs: number = Date.now(),
+): "send" | "skip" | "kick" {
+  if (session.stalled) {
+    if (buffered <= WS_STALL_LOW_WATER) {
+      session.stalled = false;
+      session.stalledAt = null;
+      return "send";
+    }
+    if (
+      session.stalledAt !== null &&
+      nowMs - session.stalledAt >= WS_STALL_KICK_MS
+    ) {
+      return "kick";
+    }
+    return "skip";
+  }
+  if (buffered >= WS_STALL_HIGH_WATER) {
+    session.stalled = true;
+    session.stalledAt = nowMs;
+    return "skip";
+  }
+  return "send";
 }
 
 function byteLength(s: string): number {

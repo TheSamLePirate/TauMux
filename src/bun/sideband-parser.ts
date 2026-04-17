@@ -4,6 +4,11 @@ import type { SidebandMetaMessage } from "../shared/types";
 const DEFAULT_READ_TIMEOUT_MS = 5000;
 /** Max queued binary reads per channel before rejecting new ones */
 const MAX_CHANNEL_QUEUE_DEPTH = 64;
+/** Hard cap on a single binary payload. A writer advertising a larger
+ *  byteLength is rejected before we allocate any buffers — prevents a
+ *  malicious or buggy producer from OOMing the host by claiming a 1 GB
+ *  frame. 16 MiB is comfortably above any realistic image/SVG payload. */
+export const MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
 
 interface ChannelState {
   reader: ReadableStreamDefaultReader<Uint8Array>;
@@ -188,6 +193,29 @@ export class SidebandParser {
             `Invalid "byteLength" (${msg.byteLength}) for id="${msg.id}"`,
           ),
         );
+        continue;
+      }
+      // Oversized frames are a protocol violation. The data stream is
+      // now corrupted — we can't skip ahead because we don't know how
+      // many bytes to skip (the writer can lie about byteLength). Abort
+      // the channel the same way we do on timeout, and report failure
+      // so the UI can signal the broken panel. A subsequent `flush`
+      // command from the writer resets the channel.
+      if (msg.byteLength !== undefined && msg.byteLength > MAX_MESSAGE_BYTES) {
+        this.onError?.(
+          "meta-validate",
+          new Error(
+            `byteLength ${msg.byteLength} exceeds MAX_MESSAGE_BYTES (${MAX_MESSAGE_BYTES}) for id="${msg.id}"`,
+          ),
+        );
+        const channelName =
+          msg.dataChannel ?? SidebandParser.DEFAULT_DATA_CHANNEL;
+        this.onDataFailed?.(msg.id, "byteLength exceeds maximum");
+        const ch = this.channels.get(channelName);
+        if (ch) {
+          ch.aborted = true;
+          ch.leftover = null;
+        }
         continue;
       }
 

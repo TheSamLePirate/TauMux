@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from "bun:test";
-import { SidebandParser } from "../src/bun/sideband-parser";
+import { MAX_MESSAGE_BYTES, SidebandParser } from "../src/bun/sideband-parser";
 import type { SidebandMetaMessage } from "../src/shared/types";
 
 async function waitFor(
@@ -367,6 +367,36 @@ describe("SidebandParser", () => {
     await waitFor(() => failed.length >= 1, 3000);
     expect(failed[0].id).toBe("timeout1");
     expect(failed[0].reason).toContain("Timeout");
+  });
+
+  test("rejects byteLength above MAX_MESSAGE_BYTES without allocating", async () => {
+    const oversize = MAX_MESSAGE_BYTES + 1;
+    const meta = JSON.stringify({
+      id: "huge",
+      type: "image",
+      byteLength: oversize,
+    });
+    const child = spawnWriter([meta]);
+    cleanup = child.cleanup;
+
+    const errors: { source: string; message: string }[] = [];
+    const failed: { id: string; reason: string }[] = [];
+    const receivedMeta: SidebandMetaMessage[] = [];
+
+    parser = SidebandParser.fromFds(child.metaFd, child.dataFd);
+    parser.onMeta = (msg) => receivedMeta.push(msg);
+    parser.onDataFailed = (id, reason) => failed.push({ id, reason });
+    parser.onError = (source, err) =>
+      errors.push({ source, message: err.message });
+    parser.start();
+
+    await waitFor(() => failed.length >= 1);
+    expect(failed[0].id).toBe("huge");
+    expect(failed[0].reason).toContain("byteLength");
+    expect(errors[0].source).toBe("meta-validate");
+    expect(errors[0].message).toContain("MAX_MESSAGE_BYTES");
+    // Oversized meta is rejected, not dispatched.
+    expect(receivedMeta.length).toBe(0);
   });
 
   test("flush command resets channel state", async () => {

@@ -18,6 +18,7 @@ import { buildHtmlPage, invalidatePageCache } from "./page";
 import {
   CLIENT_MESSAGE_MAX_BYTES,
   CLIENT_STDIN_MAX_BYTES,
+  decideBackpressure,
   makeServerInstanceId,
   makeSessionId,
   OUTPUT_COALESCE_MS,
@@ -28,8 +29,6 @@ import {
   TERMINAL_COLS_MIN,
   TERMINAL_ROWS_MAX,
   TERMINAL_ROWS_MIN,
-  WS_STALL_HIGH_WATER,
-  WS_STALL_LOW_WATER,
   type ClientData,
   type WS,
 } from "./connection";
@@ -135,9 +134,8 @@ export class WebServer {
                 : undefined;
             const data: ClientData = {
               clientId: `web:${++this.clientCounter}`,
-              // Placeholder — replaced in open() once we decide
-              // resume-vs-fresh.
-              session: null as unknown as SessionBuffer,
+              // Filled in open() once we decide resume-vs-fresh.
+              session: null,
               resumeId,
               resumeSeq,
             };
@@ -372,8 +370,10 @@ export class WebServer {
   // ------------------------------------------------------------------
 
   private sendHello(ws: WS): void {
+    const session = ws.data.session;
+    if (!session) return;
     const payload: HelloPayload = {
-      sessionId: ws.data.session.id,
+      sessionId: session.id,
       serverInstanceId: this.serverInstanceId,
       protocolVersion: WEB_PROTOCOL_VERSION,
       capabilities: [],
@@ -387,7 +387,7 @@ export class WebServer {
     );
     if (activeWs) {
       for (const sid of activeWs.surfaceIds) {
-        ws.data.session.subscribedSurfaceIds.add(sid);
+        session.subscribedSurfaceIds.add(sid);
         const history = this.sessionsManager.getOutputHistory(sid);
         if (history) {
           this.sendTo(ws, "history", { surfaceId: sid, data: history });
@@ -447,18 +447,24 @@ export class WebServer {
 
   /** Send with backpressure tracking. If the underlying WS is stalled,
    *  we skip the actual `ws.send` call — the message stays in the
-   *  session buffer and will be replayed on resume. */
+   *  session buffer so a resume can replay it. If the stall persists
+   *  past WS_STALL_KICK_MS we force-close the ws; the session survives
+   *  TTL so the client reconnects with ?resume= and catches up via
+   *  delta replay rather than silently receiving nothing. */
   private wsSend(session: SessionBuffer, data: string | Uint8Array): void {
     const ws = session.ws;
     if (!ws) return;
     const buffered = ws.getBufferedAmount?.() ?? 0;
-    if (session.stalled) {
-      if (buffered <= WS_STALL_LOW_WATER) session.stalled = false;
-      else return;
-    } else if (buffered >= WS_STALL_HIGH_WATER) {
-      session.stalled = true;
+    const decision = decideBackpressure(session, buffered);
+    if (decision === "kick") {
+      try {
+        ws.close();
+      } catch {
+        /* already closing */
+      }
       return;
     }
+    if (decision === "skip") return;
     try {
       if (typeof data === "string") ws.send(data);
       else ws.send(data.buffer as ArrayBuffer);
@@ -788,6 +794,8 @@ export class WebServer {
   private handleClientMessage(ws: WS, raw: Record<string, unknown>): void {
     const type = raw["type"];
     if (typeof type !== "string") return;
+    const session = ws.data.session;
+    if (!session) return;
     const isEnvelope =
       raw["v"] === WEB_PROTOCOL_VERSION &&
       typeof raw["payload"] === "object" &&
@@ -859,7 +867,7 @@ export class WebServer {
       case "subscribeSurface": {
         const surfaceId = fields["surfaceId"] as string;
         if (!surfaceId) break;
-        ws.data.session.subscribedSurfaceIds.add(surfaceId);
+        session.subscribedSurfaceIds.add(surfaceId);
         const history = this.sessionsManager.getOutputHistory(surfaceId);
         if (history) {
           this.sendTo(ws, "history", { surfaceId, data: history });
@@ -872,9 +880,9 @@ export class WebServer {
         const state = this.getAppState();
         const targetWs = state.workspaces.find((w) => w.id === workspaceId);
         if (!targetWs) break;
-        ws.data.session.subscribedSurfaceIds.clear();
+        session.subscribedSurfaceIds.clear();
         for (const sid of targetWs.surfaceIds) {
-          ws.data.session.subscribedSurfaceIds.add(sid);
+          session.subscribedSurfaceIds.add(sid);
           const wsHistory = this.sessionsManager.getOutputHistory(sid);
           if (wsHistory) {
             this.sendTo(ws, "history", { surfaceId: sid, data: wsHistory });
