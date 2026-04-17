@@ -39,6 +39,20 @@ export default {
     mac: {
       icons: "icon.iconset",
       bundleCEF: false,
+      // Entitlements that require a matching Info.plist usage-description
+      // string. Without these keys in the bundle's Info.plist, macOS
+      // silently denies the underlying TCC capability and never shows the
+      // app in System Settings → Privacy & Security, so the user has no
+      // way to grant access. Strings here become the "{app} would like
+      // to access your camera/microphone" explanations in the system
+      // permission prompt. Needed for demo_webcam.ts (AVFoundation capture
+      // via ffmpeg subprocess) and any script that captures mic audio.
+      entitlements: {
+        "com.apple.security.device.camera":
+          "HyperTerm Canvas needs camera access so scripts like demo_webcam.ts can stream the webcam into a sideband panel.",
+        "com.apple.security.device.microphone":
+          "HyperTerm Canvas needs microphone access so scripts can capture and display audio-reactive visualisations.",
+      },
     },
     linux: {
       icon: "assets/images/icon.png",
