@@ -20,6 +20,11 @@ import { showToast } from "./toast";
 import { registerAgentEvents } from "./agent-events";
 import { registerBrowserEvents } from "./browser-events";
 import { createSocketActionDispatcher } from "./socket-actions";
+import {
+  type Binding,
+  dispatchKeyboardEvent,
+  keyMatch,
+} from "./keyboard-shortcuts";
 
 // Declared before rpc so handlers can reference it; assigned after rpc is created.
 // eslint-disable-next-line prefer-const
@@ -969,6 +974,346 @@ splitDownBtn?.addEventListener("click", () => {
   requestSplit("vertical");
 });
 
+// ---- Keyboard shortcuts (data-driven) --------------------------------------
+//
+// The prologue handles typing-focus mode and the two full-screen overlay
+// preemptions (settings panel swallows everything except Escape; the
+// command palette swallows everything once we're past the high-priority
+// bindings). All other shortcuts are expressed as Binding entries — adding
+// a new one means appending a row, and a future help dialog or command
+// palette can enumerate the same array to drive its own UI.
+
+interface KeyCtx {
+  activeSurfaceType: string | null;
+}
+
+const isDigit1to9 = (k: string) => k >= "1" && k <= "9";
+
+const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
+  // Overlays: Process Manager / Surface Details can be dismissed with Escape.
+  {
+    id: "process-manager.dismiss",
+    description: "Close Process Manager",
+    category: "Overlays",
+    when: () => processManagerPanel.isVisible(),
+    match: keyMatch({ key: "Escape" }),
+    action: () => toggleProcessManager(),
+  },
+  {
+    id: "surface-details.dismiss",
+    description: "Close Surface Details",
+    category: "Overlays",
+    when: () => surfaceDetailsPanel.isVisible(),
+    match: keyMatch({ key: "Escape" }),
+    action: () => {
+      surfaceDetailsPanel.hide();
+      surfaceManager.showBrowserWebviews();
+      syncPaletteCommands();
+    },
+  },
+
+  // Browser pane — context-specific shortcuts.
+  {
+    id: "browser.focus-address-bar",
+    description: "Focus address bar",
+    category: "Browser",
+    when: (ctx) => ctx.activeSurfaceType === "browser",
+    match: keyMatch({ key: "l", meta: true, shift: false, alt: false }),
+    action: () => surfaceManager.focusBrowserAddressBar(),
+  },
+  {
+    id: "browser.back",
+    description: "Navigate back",
+    category: "Browser",
+    when: (ctx) => ctx.activeSurfaceType === "browser",
+    match: keyMatch({ key: "[", meta: true, shift: false }),
+    action: () => surfaceManager.browserGoBack(),
+  },
+  {
+    id: "browser.forward",
+    description: "Navigate forward",
+    category: "Browser",
+    when: (ctx) => ctx.activeSurfaceType === "browser",
+    match: keyMatch({ key: "]", meta: true, shift: false }),
+    action: () => surfaceManager.browserGoForward(),
+  },
+  {
+    id: "browser.reload",
+    description: "Reload page",
+    category: "Browser",
+    when: (ctx) => ctx.activeSurfaceType === "browser",
+    match: keyMatch({ key: "r", meta: true, shift: false, alt: false }),
+    action: () => surfaceManager.browserReload(),
+  },
+  {
+    id: "browser.toggle-devtools",
+    description: "Toggle DevTools",
+    category: "Browser",
+    when: (ctx) => ctx.activeSurfaceType === "browser",
+    match: keyMatch({ key: "i", meta: true, alt: true, caseInsensitive: true }),
+    action: () => surfaceManager.browserToggleDevTools(),
+  },
+  {
+    id: "browser.find",
+    description: "Find in page",
+    category: "Browser",
+    when: (ctx) => ctx.activeSurfaceType === "browser",
+    match: keyMatch({ key: "f", meta: true, shift: false }),
+    action: () => surfaceManager.browserFindInPage(),
+  },
+  {
+    id: "browser.zoom-in",
+    description: "Zoom in",
+    category: "Browser",
+    when: (ctx) => ctx.activeSurfaceType === "browser",
+    match: keyMatch({
+      key: (k) => k === "=" || k === "+",
+      meta: true,
+      shift: false,
+    }),
+    action: () => surfaceManager.browserZoomIn(),
+  },
+  {
+    id: "browser.zoom-out",
+    description: "Zoom out",
+    category: "Browser",
+    when: (ctx) => ctx.activeSurfaceType === "browser",
+    match: keyMatch({ key: "-", meta: true, shift: false }),
+    action: () => surfaceManager.browserZoomOut(),
+  },
+  {
+    id: "browser.zoom-reset",
+    description: "Reset zoom",
+    category: "Browser",
+    when: (ctx) => ctx.activeSurfaceType === "browser",
+    match: keyMatch({ key: "0", meta: true, shift: false }),
+    action: () => surfaceManager.browserZoomReset(),
+  },
+
+  // Workspace / pane
+  {
+    id: "sidebar.toggle",
+    description: "Toggle sidebar",
+    category: "View",
+    match: keyMatch({ key: "b", meta: true, shift: false }),
+    action: () => toggleSidebar(),
+  },
+  {
+    id: "surface.new",
+    description: "New terminal pane",
+    category: "Surface",
+    match: keyMatch({ key: "n", meta: true, shift: false }),
+    action: () => rpc.send("createSurface", {}),
+  },
+  {
+    id: "surface.split-horizontal",
+    description: "Split right",
+    category: "Surface",
+    match: keyMatch({ key: "d", meta: true, shift: false }),
+    action: () => requestSplit("horizontal"),
+  },
+  {
+    id: "surface.split-vertical",
+    description: "Split down",
+    category: "Surface",
+    match: keyMatch({ key: "D", meta: true, shift: true }),
+    action: () => requestSplit("vertical"),
+  },
+  {
+    id: "surface.close",
+    description: "Close pane",
+    category: "Surface",
+    match: keyMatch({ key: "w", meta: true, shift: false }),
+    action: () => {
+      const id = surfaceManager.getActiveSurfaceId();
+      if (id) rpc.send("closeSurface", { surfaceId: id });
+    },
+  },
+  {
+    id: "surface.close-shift",
+    description: "Close pane (⌘⇧W)",
+    category: "Surface",
+    match: keyMatch({ key: "W", meta: true, shift: true }),
+    action: () => {
+      const id = surfaceManager.getActiveSurfaceId();
+      if (id) rpc.send("closeSurface", { surfaceId: id });
+    },
+  },
+
+  // Focus navigation
+  {
+    id: "focus.left",
+    description: "Focus pane left",
+    category: "Focus",
+    match: keyMatch({ key: "ArrowLeft", meta: true, alt: true }),
+    action: () => surfaceManager.focusDirection("left"),
+  },
+  {
+    id: "focus.right",
+    description: "Focus pane right",
+    category: "Focus",
+    match: keyMatch({ key: "ArrowRight", meta: true, alt: true }),
+    action: () => surfaceManager.focusDirection("right"),
+  },
+  {
+    id: "focus.up",
+    description: "Focus pane up",
+    category: "Focus",
+    match: keyMatch({ key: "ArrowUp", meta: true, alt: true }),
+    action: () => surfaceManager.focusDirection("up"),
+  },
+  {
+    id: "focus.down",
+    description: "Focus pane down",
+    category: "Focus",
+    match: keyMatch({ key: "ArrowDown", meta: true, alt: true }),
+    action: () => surfaceManager.focusDirection("down"),
+  },
+
+  // Workspace cycling
+  {
+    id: "workspace.next",
+    description: "Next workspace",
+    category: "Workspace",
+    match: keyMatch({ key: "]", meta: true, ctrl: true }),
+    action: () => surfaceManager.nextWorkspace(),
+  },
+  {
+    id: "workspace.prev",
+    description: "Previous workspace",
+    category: "Workspace",
+    match: keyMatch({ key: "[", meta: true, ctrl: true }),
+    action: () => surfaceManager.prevWorkspace(),
+  },
+  {
+    id: "workspace.jump",
+    description: "Jump to workspace 1–9",
+    category: "Workspace",
+    match: keyMatch({
+      key: isDigit1to9,
+      meta: true,
+      shift: false,
+      ctrl: false,
+    }),
+    action: (e) => surfaceManager.focusWorkspaceByIndex(parseInt(e.key) - 1),
+  },
+
+  // Font size
+  {
+    id: "font.bigger",
+    description: "Increase font size",
+    category: "View",
+    match: keyMatch({
+      key: (k) => k === "=" || k === "+",
+      meta: true,
+      shift: false,
+    }),
+    action: () => changeFontSize(1),
+  },
+  {
+    id: "font.smaller",
+    description: "Decrease font size",
+    category: "View",
+    match: keyMatch({ key: "-", meta: true, shift: false }),
+    action: () => changeFontSize(-1),
+  },
+  {
+    id: "font.reset",
+    description: "Reset font size",
+    category: "View",
+    match: keyMatch({ key: "0", meta: true, shift: false }),
+    action: () => resetFontSize(),
+  },
+
+  // Terminal search
+  {
+    id: "terminal.search",
+    description: "Find in terminal",
+    category: "Terminal",
+    match: keyMatch({ key: "f", meta: true, shift: false }),
+    action: () => surfaceManager.toggleSearchBar(),
+  },
+
+  // Clipboard
+  {
+    id: "clipboard.copy",
+    description: "Copy",
+    category: "Clipboard",
+    match: keyMatch({ key: "c", meta: true }),
+    action: () => copySelection(),
+    // copySelection relies on the default system copy behavior staying
+    // available for editable inputs, so no preventDefault here.
+    noPreventDefault: true,
+  },
+  {
+    id: "clipboard.paste",
+    description: "Paste",
+    category: "Clipboard",
+    match: keyMatch({ key: "v", meta: true }),
+    action: (e) => {
+      if (pasteClipboard()) e.preventDefault();
+      // else: let native paste handle editable inputs.
+    },
+    noPreventDefault: true,
+  },
+];
+
+// The high-priority bindings must fire even when the palette is visible
+// (⌘⇧P toggles the palette, ⌘, opens settings, ⌘⌥P toggles process mgr).
+const HIGH_PRIORITY_BINDINGS: Binding<KeyCtx>[] = [
+  {
+    id: "app.settings",
+    description: "Open settings",
+    category: "App",
+    match: keyMatch({ key: ",", meta: true }),
+    action: () => openSettings(),
+  },
+  {
+    id: "app.command-palette",
+    description: "Open command palette",
+    category: "App",
+    match: keyMatch({
+      key: "p",
+      meta: true,
+      shift: true,
+      caseInsensitive: true,
+    }),
+    action: () => openCommandPalette(),
+  },
+  {
+    id: "app.process-manager",
+    description: "Toggle Process Manager",
+    category: "App",
+    match: keyMatch({ key: "p", meta: true, alt: true, caseInsensitive: true }),
+    action: () => toggleProcessManager(),
+  },
+  {
+    id: "app.surface-info",
+    description: "Toggle Surface Info",
+    category: "App",
+    match: keyMatch({
+      key: "i",
+      meta: true,
+      shift: false,
+      alt: false,
+      caseInsensitive: true,
+    }),
+    action: () => toggleFocusedSurfaceInfo(),
+  },
+  {
+    id: "app.split-browser",
+    description: "Split with browser",
+    category: "Surface",
+    match: keyMatch({
+      key: "l",
+      meta: true,
+      shift: true,
+      caseInsensitive: true,
+    }),
+    action: () => rpc.send("splitBrowserSurface", { direction: "horizontal" }),
+  },
+];
+
 document.addEventListener("keydown", (e) => {
   if (
     !e.metaKey &&
@@ -980,7 +1325,7 @@ document.addEventListener("keydown", (e) => {
     setTypingFocusMode();
   }
 
-  // Settings panel takes priority
+  // Settings panel takes priority — swallow everything except Escape.
   if (settingsPanel.isVisible()) {
     if (e.key === "Escape") {
       e.preventDefault();
@@ -990,215 +1335,16 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  if (e.metaKey && e.key === ",") {
-    e.preventDefault();
-    openSettings();
-    return;
-  }
+  const ctx: KeyCtx = {
+    activeSurfaceType: surfaceManager.getActiveSurfaceType(),
+  };
 
-  if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "p") {
-    e.preventDefault();
-    openCommandPalette();
-    return;
-  }
+  if (dispatchKeyboardEvent(e, HIGH_PRIORITY_BINDINGS, ctx)) return;
 
-  if (e.metaKey && e.altKey && e.key.toLowerCase() === "p") {
-    e.preventDefault();
-    toggleProcessManager();
-    return;
-  }
-
-  if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "i") {
-    e.preventDefault();
-    toggleFocusedSurfaceInfo();
-    return;
-  }
-
-  if (processManagerPanel.isVisible() && e.key === "Escape") {
-    e.preventDefault();
-    toggleProcessManager();
-    return;
-  }
-
-  if (surfaceDetailsPanel.isVisible() && e.key === "Escape") {
-    e.preventDefault();
-    surfaceDetailsPanel.hide();
-    surfaceManager.showBrowserWebviews();
-    syncPaletteCommands();
-    return;
-  }
-
+  // Command palette visible — block the rest of the bindings.
   if (palette.isVisible()) return;
 
-  // ⌘⇧L — Open browser in split
-  if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "l") {
-    e.preventDefault();
-    rpc.send("splitBrowserSurface", { direction: "horizontal" });
-    return;
-  }
-
-  // Browser-specific shortcuts when a browser pane is focused
-  const activeSurfaceType = surfaceManager.getActiveSurfaceType();
-  if (activeSurfaceType === "browser") {
-    if (e.metaKey && !e.shiftKey && !e.altKey && e.key === "l") {
-      e.preventDefault();
-      surfaceManager.focusBrowserAddressBar();
-      return;
-    }
-    if (e.metaKey && !e.shiftKey && e.key === "[") {
-      e.preventDefault();
-      surfaceManager.browserGoBack();
-      return;
-    }
-    if (e.metaKey && !e.shiftKey && e.key === "]") {
-      e.preventDefault();
-      surfaceManager.browserGoForward();
-      return;
-    }
-    if (e.metaKey && !e.shiftKey && !e.altKey && e.key === "r") {
-      e.preventDefault();
-      surfaceManager.browserReload();
-      return;
-    }
-    if (e.metaKey && e.altKey && e.key.toLowerCase() === "i") {
-      e.preventDefault();
-      surfaceManager.browserToggleDevTools();
-      return;
-    }
-    if (e.metaKey && !e.shiftKey && e.key === "f") {
-      e.preventDefault();
-      surfaceManager.browserFindInPage();
-      return;
-    }
-    if (e.metaKey && !e.shiftKey && (e.key === "=" || e.key === "+")) {
-      e.preventDefault();
-      surfaceManager.browserZoomIn();
-      return;
-    }
-    if (e.metaKey && !e.shiftKey && e.key === "-") {
-      e.preventDefault();
-      surfaceManager.browserZoomOut();
-      return;
-    }
-    if (e.metaKey && !e.shiftKey && e.key === "0") {
-      e.preventDefault();
-      surfaceManager.browserZoomReset();
-      return;
-    }
-  }
-
-  if (e.metaKey && !e.shiftKey && e.key === "b") {
-    e.preventDefault();
-    toggleSidebar();
-    return;
-  }
-
-  if (e.metaKey && !e.shiftKey && e.key === "n") {
-    e.preventDefault();
-    rpc.send("createSurface", {});
-    return;
-  }
-
-  if (e.metaKey && !e.shiftKey && e.key === "d") {
-    e.preventDefault();
-    requestSplit("horizontal");
-    return;
-  }
-
-  if (e.metaKey && e.shiftKey && e.key === "D") {
-    e.preventDefault();
-    requestSplit("vertical");
-    return;
-  }
-
-  if (e.metaKey && !e.shiftKey && e.key === "w") {
-    e.preventDefault();
-    const id = surfaceManager.getActiveSurfaceId();
-    if (id) rpc.send("closeSurface", { surfaceId: id });
-    return;
-  }
-
-  if (e.metaKey && e.shiftKey && e.key === "W") {
-    e.preventDefault();
-    const id = surfaceManager.getActiveSurfaceId();
-    if (id) rpc.send("closeSurface", { surfaceId: id });
-    return;
-  }
-
-  if (e.metaKey && e.altKey && e.key === "ArrowLeft") {
-    e.preventDefault();
-    surfaceManager.focusDirection("left");
-    return;
-  }
-  if (e.metaKey && e.altKey && e.key === "ArrowRight") {
-    e.preventDefault();
-    surfaceManager.focusDirection("right");
-    return;
-  }
-  if (e.metaKey && e.altKey && e.key === "ArrowUp") {
-    e.preventDefault();
-    surfaceManager.focusDirection("up");
-    return;
-  }
-  if (e.metaKey && e.altKey && e.key === "ArrowDown") {
-    e.preventDefault();
-    surfaceManager.focusDirection("down");
-    return;
-  }
-
-  if (e.ctrlKey && e.metaKey && e.key === "]") {
-    e.preventDefault();
-    surfaceManager.nextWorkspace();
-    return;
-  }
-
-  if (e.ctrlKey && e.metaKey && e.key === "[") {
-    e.preventDefault();
-    surfaceManager.prevWorkspace();
-    return;
-  }
-
-  if (e.metaKey && !e.shiftKey && !e.ctrlKey && e.key >= "1" && e.key <= "9") {
-    e.preventDefault();
-    surfaceManager.focusWorkspaceByIndex(parseInt(e.key) - 1);
-    return;
-  }
-
-  // Font size: Cmd+= (increase), Cmd+- (decrease), Cmd+0 (reset)
-  if (e.metaKey && !e.shiftKey && (e.key === "=" || e.key === "+")) {
-    e.preventDefault();
-    changeFontSize(1);
-    return;
-  }
-  if (e.metaKey && !e.shiftKey && e.key === "-") {
-    e.preventDefault();
-    changeFontSize(-1);
-    return;
-  }
-  if (e.metaKey && !e.shiftKey && e.key === "0") {
-    e.preventDefault();
-    resetFontSize();
-    return;
-  }
-
-  // Terminal search: Cmd+F
-  if (e.metaKey && !e.shiftKey && e.key === "f") {
-    e.preventDefault();
-    surfaceManager.toggleSearchBar();
-    return;
-  }
-
-  if (e.metaKey && e.key === "c") {
-    copySelection();
-    return;
-  }
-
-  if (e.metaKey && e.key === "v") {
-    if (pasteClipboard()) {
-      e.preventDefault();
-    }
-    // else: let native paste handle editable inputs
-  }
+  dispatchKeyboardEvent(e, KEYBOARD_BINDINGS, ctx);
 });
 
 document.addEventListener(
