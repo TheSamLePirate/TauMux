@@ -27,6 +27,8 @@
 import { ht } from "./hyperterm";
 import { encodePNG } from "./png";
 
+declare const process: any;
+
 // =============================================================================
 // CHAPTER 1: INITIALIZATION & SAFETY CHECKS
 // =============================================================================
@@ -93,7 +95,8 @@ function generateHudHtml(): string {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      height: 100%;
+      height: 50px;
+      width: 100%;
       box-sizing: border-box;
       user-select: none;
     ">
@@ -202,7 +205,8 @@ function generateControlHtml(): string {
       color: #cdd6f4;
       font-family: sans-serif;
       padding: 16px;
-      height: 100%;
+      height: 200px;
+      width: 250px;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;

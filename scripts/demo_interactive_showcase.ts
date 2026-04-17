@@ -40,7 +40,9 @@ let lastAction = "System booted.";
 // 2. STDIN KEYBOARD INTERCEPTION
 // -----------------------------------------------------------------------------
 // We capture raw keystrokes from the user!
-process.stdin.setRawMode(true);
+if (process.stdin.isTTY && typeof process.stdin.setRawMode === "function") {
+  process.stdin.setRawMode(true);
+}
 process.stdin.resume();
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (key: string) => {
@@ -78,7 +80,7 @@ function generateControlHtml() {
     color: #1e1e2e; padding: 12px; border-radius: 6px; font-weight: bold; text-align: center; margin-bottom: 15px; cursor: pointer; user-select: none;
   `;
   return `
-    <div style="font-family: sans-serif; background: #1e1e2e; color: #cdd6f4; border: 2px solid #89b4fa; border-radius: 8px; padding: 15px; height: 100%; box-sizing: border-box; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
+    <div style="font-family: sans-serif; background: #1e1e2e; color: #cdd6f4; border: 2px solid #89b4fa; border-radius: 8px; padding: 15px; width: ${controlWidth}px; height: ${controlHeight}px; box-sizing: border-box; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
       <h3 style="margin-top: 0; color: #f9e2af; font-size: 16px; border-bottom: 1px solid #45475a; padding-bottom: 8px;">🎮 Command Center</h3>
       
       <!-- Button A: Spawn -->
@@ -321,9 +323,9 @@ function spawnFallingBlock() {
 // -----------------------------------------------------------------------------
 // 6. HUD STATUS BAR (Fixed)
 // -----------------------------------------------------------------------------
-function generateHud() {
+function generateHud(w: number) {
   return `
-    <div style="font-family: monospace; background: rgba(17,17,27,0.9); border: 1px solid #45475a; border-radius: 8px; color: #a6adc8; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 -4px 10px rgba(0,0,0,0.3);">
+    <div style="font-family: monospace; background: rgba(17,17,27,0.9); border: 1px solid #45475a; border-radius: 8px; color: #a6adc8; padding: 12px 20px; width: ${w}px; height: 50px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 -4px 10px rgba(0,0,0,0.3);">
       <div>
         <span style="color:#f38ba8; font-weight:bold;">KEYBOARD:</span> 
         <span style="background:#313244; color:#cdd6f4; padding:2px 6px; border-radius:4px;">${lastKey}</span>
@@ -338,7 +340,7 @@ function generateHud() {
   `;
 }
 
-const hudId = ht.showHtml(generateHud(), {
+const hudId = ht.showHtml(generateHud(760), {
   position: "fixed",
   x: 20, y: 350, width: 760, height: 50, zIndex: 9999
 });
@@ -354,7 +356,7 @@ function updateHud() {
   }
   
   if (activePanels.has(hudId)) {
-    ht.update(hudId, { data: generateHud(), y: newY, width: newW });
+    ht.update(hudId, { data: generateHud(newW), y: newY, width: newW });
   }
 }
 
@@ -367,7 +369,7 @@ ht.onTerminalResize((dims) => {
 // -----------------------------------------------------------------------------
 // 7. CLEANUP
 // -----------------------------------------------------------------------------
-ht.onError((code, message) => console.error(`\n[Error] ${code}: ${message}`));
+ht.onError((code, message, ref) => console.error(`\n[Error] ${code}: ${message}`, ref ? `(ref: ${ref})` : ""));
 
 const cleanup = () => {
   clearInterval(canvasLoop);

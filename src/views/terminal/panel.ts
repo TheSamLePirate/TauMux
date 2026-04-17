@@ -78,6 +78,10 @@ export class Panel {
 
     this.syncClasses();
     this.applyMeta(meta);
+    if (meta.data !== undefined) {
+      this.contentEl.innerHTML = meta.data;
+      this.hasContent = true;
+    }
     this.setupDrag();
     this.setupResize();
     this.setupInteractive(meta.interactive ?? false);
