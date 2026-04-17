@@ -679,6 +679,12 @@ const SUBPROCESS_TIMEOUT_MS = 5000;
  *  parallel so the child cannot deadlock by filling a 64 KiB pipe
  *  buffer. On timeout the process is explicitly killed and reaped so we
  *  don't leak zombies. */
+// One-shot diagnostic: whenever a metadata subprocess command fails with
+// ENOENT (binary missing from PATH), emit a single console warning per
+// binary name. Repeated failures stay silent — a system without `lsof`
+// would otherwise spam 1 warning/sec from the 1 Hz poller.
+const _missingBinariesWarned = new Set<string>();
+
 async function runSubprocess(
   argv: string[],
   opts: { cwd?: string; env?: Record<string, string | undefined> } = {},
@@ -720,11 +726,26 @@ async function runSubprocess(
     ]);
     if (timedOut) return null;
     return { stdout, exitCode };
-  } catch {
+  } catch (err) {
     try {
       proc?.kill();
     } catch {
       /* ignore */
+    }
+    // Distinguish "binary not in PATH" from generic spawn failures so
+    // users see *why* metadata is empty. Log once per binary to avoid
+    // spamming the 1 Hz poller.
+    const msg = err instanceof Error ? err.message : String(err);
+    const binary = argv[0];
+    if (
+      /ENOENT|posix_spawn.+ENOENT|No such file or directory/i.test(msg) &&
+      binary &&
+      !_missingBinariesWarned.has(binary)
+    ) {
+      _missingBinariesWarned.add(binary);
+      console.warn(
+        `[metadata] \`${binary}\` not found on PATH — related chips will stay empty`,
+      );
     }
     return null;
   } finally {

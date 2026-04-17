@@ -17,6 +17,13 @@ export function registerNotification(
 ): Record<string, Handler> {
   const { dispatch, notifications } = deps;
 
+  // Cap the in-memory notification history. Without this, a script
+  // that spams `ht notify` in a loop would grow the list unboundedly —
+  // every broadcast also marshals the whole list over RPC. 500 is plenty
+  // for human consumption and keeps the broadcast payload small enough
+  // that the WS frame never hits CLIENT_MESSAGE_MAX_BYTES.
+  const MAX_NOTIFICATIONS = 500;
+
   return {
     "notification.create": (params) => {
       const surfaceId = params["surface_id"] as string | undefined;
@@ -29,6 +36,9 @@ export function registerNotification(
         surfaceId,
       };
       notifications.list.push(n);
+      while (notifications.list.length > MAX_NOTIFICATIONS) {
+        notifications.list.shift();
+      }
       dispatch("notification", {
         surfaceId: surfaceId ?? null,
         latest: {

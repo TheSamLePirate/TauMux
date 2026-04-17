@@ -88,6 +88,21 @@ function extractDomain(url: string): string {
   }
 }
 
+/** Lazily create + return a `.browser-pane-error-overlay` inside the
+ *  given container. The overlay is shown via the `browser-pane-errored`
+ *  class on the container (see index.css) and carries the failure
+ *  message from `did-fail-load`. */
+function ensureErrorOverlay(container: HTMLElement): HTMLDivElement {
+  let overlay = container.querySelector<HTMLDivElement>(
+    ".browser-pane-error-overlay",
+  );
+  if (overlay) return overlay;
+  overlay = document.createElement("div");
+  overlay.className = "browser-pane-error-overlay";
+  container.appendChild(overlay);
+  return overlay;
+}
+
 // ── Console capture preload script ──
 
 const CONSOLE_CAPTURE_PRELOAD = `
@@ -495,6 +510,9 @@ export function createBrowserPaneView(
   onWV("will-navigate", () => {
     view.isLoading = true;
     reloadBtn.classList.add("browser-loading");
+    // Clear any prior error state so the failure overlay doesn't stick
+    // around when the user retries or types a different URL.
+    container.classList.remove("browser-pane-errored");
   });
 
   onWV("dom-ready", () => {
@@ -502,6 +520,25 @@ export function createBrowserPaneView(
     reloadBtn.classList.remove("browser-loading");
     void updateBackForwardState();
     callbacks.onDomReady?.(surfaceId, view.currentUrl);
+  });
+
+  // Load failures used to silently leave the pane on a blank page with no
+  // user-visible feedback. Surface them via a lightweight overlay so the
+  // user knows *something* went wrong and can retry or edit the URL.
+  onWV("did-fail-load", (e: CustomEvent) => {
+    view.isLoading = false;
+    reloadBtn.classList.remove("browser-loading");
+    const detail = (e.detail as Record<string, unknown> | null) ?? {};
+    const errorDescription =
+      (detail["errorDescription"] as string) ??
+      (detail["error"] as string) ??
+      "Failed to load";
+    const code =
+      typeof detail["errorCode"] === "number"
+        ? ` (${detail["errorCode"]})`
+        : "";
+    ensureErrorOverlay(container).textContent = `${errorDescription}${code}`;
+    container.classList.add("browser-pane-errored");
   });
 
   // Apply dark mode on initial load if URL is set

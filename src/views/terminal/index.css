@@ -2508,6 +2508,28 @@ body.terminal-typing .panel {
   box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.16);
 }
 
+/* Browser pane load-failure overlay. The `browser-pane-errored` class is
+ * toggled on the surface's container by `did-fail-load`; the overlay's
+ * text content is the error description. Invisible otherwise so the
+ * live page isn't overlaid during normal browsing. */
+.browser-pane-error-overlay {
+  position: absolute;
+  inset: 48px 0 0 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 40px;
+  text-align: center;
+  color: rgba(239, 68, 68, 0.95);
+  background: rgba(30, 30, 46, 0.96);
+  font: 500 13px/1.55 -apple-system, system-ui, sans-serif;
+  z-index: 4;
+  pointer-events: none;
+}
+.surface-browser.browser-pane-errored .browser-pane-error-overlay {
+  display: flex;
+}
+
 .prompt-input-invalid {
   /* Fired by prompt-dialog.ts submit() when the user hits Enter on an
    * empty value. Short horizontal shake + red border flash so the user

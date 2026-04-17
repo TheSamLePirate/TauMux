@@ -171,6 +171,27 @@ describe("SessionManager", () => {
     expect(received.some((d) => d.includes("/tmp"))).toBe(true);
   });
 
+  test("falls back to /bin/zsh when the configured shell does not exist", () => {
+    // Shell settings field is user-editable — a typo used to throw out of
+    // `pty.spawn` with no feedback. Now the constructor rejects the bad
+    // path and uses the $SHELL / /bin/zsh fallback.
+    sessions = new SessionManager("/definitely/not/a/shell-xyz");
+    const id = sessions.createSurface(80, 24);
+    // Surface registers even though the user supplied a bogus shell.
+    expect(sessions.getSurface(id)).toBeTruthy();
+    // And the PTY pid is a real live process (the fallback shell).
+    expect(sessions.getSurface(id)!.pty.pid).toBeGreaterThan(0);
+  });
+
+  test("setShell validates the new path too, not just the constructor", () => {
+    sessions = new SessionManager("/bin/sh");
+    // Reject an invalid path mid-run; subsequent surfaces still spawn.
+    sessions.setShell("/bin/not-a-real-shell");
+    const id = sessions.createSurface(80, 24);
+    expect(sessions.getSurface(id)).toBeTruthy();
+    expect(sessions.getSurface(id)!.pty.pid).toBeGreaterThan(0);
+  });
+
   test("rejects bogus cwd and falls back to HOME", () => {
     sessions = new SessionManager("/bin/sh");
     const id = sessions.createSurface(

@@ -10,6 +10,38 @@ import { isAbsolute } from "node:path";
 const MAX_HISTORY_BYTES = 64 * 1024; // 64KB raw byte fallback per surface
 const HEADLESS_SCROLLBACK = 2000; // bounded scrollback for the bun-side mirror
 
+/** Pick a sensible shell binary, defaulting off the caller's input but
+ *  degrading safely when the path doesn't exist. Logs once per unique
+ *  bad path so the user sees why their setting was ignored. */
+const _rejectedShells = new Set<string>();
+function resolveShell(shell: string | undefined): string {
+  const candidate = shell || process.env["SHELL"] || "/bin/zsh";
+  try {
+    if (isAbsolute(candidate) && statSync(candidate).isFile()) {
+      return candidate;
+    }
+  } catch {
+    /* stat failed — fall through to warning + fallback */
+  }
+  // Not an absolute path or doesn't exist — first fall back to $SHELL, then
+  // /bin/zsh. Log once per bad value so recurring startups don't spam.
+  if (!_rejectedShells.has(candidate)) {
+    _rejectedShells.add(candidate);
+    console.warn(
+      `[session] shellPath "${candidate}" is not an executable file; falling back to /bin/zsh`,
+    );
+  }
+  const envShell = process.env["SHELL"];
+  try {
+    if (envShell && isAbsolute(envShell) && statSync(envShell).isFile()) {
+      return envShell;
+    }
+  } catch {
+    /* ignore */
+  }
+  return "/bin/zsh";
+}
+
 export interface Surface {
   id: string;
   pty: PtyManager;
@@ -49,12 +81,15 @@ export class SessionManager {
   onSurfaceExit: ((surfaceId: string, exitCode: number) => void) | null = null;
 
   constructor(shell?: string) {
-    this.shell = shell || process.env["SHELL"] || "/bin/zsh";
+    this.shell = resolveShell(shell);
   }
 
-  /** Update the shell used for new surfaces. Does not affect existing PTYs. */
+  /** Update the shell used for new surfaces. Does not affect existing PTYs.
+   *  When the supplied path is missing/unreadable, falls back to the same
+   *  defaults the constructor uses so the user can't settings-panel
+   *  themselves into a state where no new shells spawn. */
   setShell(shell: string): void {
-    this.shell = shell || process.env["SHELL"] || "/bin/zsh";
+    this.shell = resolveShell(shell);
   }
 
   createSurface(cols: number, rows: number, cwd?: string): string {
@@ -119,15 +154,31 @@ export class SessionManager {
     console.log(
       `[session] spawning ${id} with shell ${this.shell} at cwd ${surfaceCwd}`,
     );
-    // Spawn the PTY
-    pty.spawn({
-      shell: this.shell,
-      args: ["-l"],
-      cols,
-      rows,
-      cwd: surfaceCwd,
-      env: { HT_SURFACE: id },
-    });
+    // Spawn the PTY. If the shell path is bad or posix_spawn fails, don't
+    // let the exception blow up the whole session-create path — log, mark
+    // the surface as failed, and let the close callback tear down any
+    // half-registered state.
+    try {
+      pty.spawn({
+        shell: this.shell,
+        args: ["-l"],
+        cols,
+        rows,
+        cwd: surfaceCwd,
+        env: { HT_SURFACE: id },
+      });
+    } catch (err) {
+      console.error(
+        `[session] spawn failed for ${id} (shell=${this.shell}):`,
+        err instanceof Error ? err.message : err,
+      );
+      // Fire the same exit callback the shell would on a clean quit —
+      // downstream handlers remove the surface from the layout.
+      queueMicrotask(() => {
+        this.onSurfaceExit?.(id, 127); // 127 = "command not found" convention
+        this.closeSurface(id);
+      });
+    }
 
     // Set up sideband channels
     const fds = pty.sidebandFds;
