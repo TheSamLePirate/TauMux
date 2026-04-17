@@ -457,7 +457,9 @@ src/
     sideband-parser.ts          # Multi-channel JSONL + binary reader
     event-writer.ts             # fd 5 JSONL event writer (incl. system errors)
     socket-server.ts            # Unix socket JSON-RPC server
-    rpc-handler.ts              # All socket methods (incl. surface.metadata/open/kill)
+    rpc-handler.ts              # Dispatcher that merges per-domain handlers
+    rpc-handlers/               # system / workspace / surface / sidebar / pane / notification / agent / browser-*
+      shared.ts                 # METHOD_SCHEMAS + validateParams + geometry helpers
     surface-metadata.ts         # Poller + ps/lsof parsers + diff + emit
     settings-manager.ts         # Load/save + debounced persist
     web-server.ts               # Re-export shim → src/bun/web/
@@ -473,21 +475,40 @@ src/
     settings.ts                 # AppSettings schema + validation + theme presets
   views/terminal/               # Electrobun webview
     index.html                  # Entry HTML
-    index.ts                    # RPC handlers, keybinds, CustomEvent wiring
+    index.ts                    # RPC handlers + data-driven keydown dispatch + CustomEvent wiring
     index.css                   # All styles (theme variables drive everything)
+    keyboard-shortcuts.ts       # Binding<Ctx>[] + dispatch helpers
     surface-manager.ts          # Workspaces, pane layout, xterm + browser instances, chip rendering
     browser-pane.ts             # Browser pane: <electrobun-webview>, address bar, nav, preload
     pane-layout.ts              # Binary tree split computation
+    pane-drag.ts                # Drop-position overlay + commit state machine
     panel-manager.ts            # Sideband panel lifecycle
     panel.ts                    # Single panel (drag, resize, render)
     content-renderers.ts        # Extensible content renderer registry
     sidebar.ts                  # Workspaces, status pills, port chips, fg command
+    sidebar-state.ts            # Pure projection used by Sidebar render
     process-manager.ts          # ⌘⌥P overlay — every process, CPU/MEM, kill
     settings-panel.ts           # Full settings UI (general, appearance, theme, effects, network, browser, advanced)
     terminal-effects.ts         # WebGL bloom layer
+    terminal-search.ts          # ⌘F search bar
     command-palette.ts          # ⌘⇧P fuzzy command search
     toast.ts                    # In-webview toast notifications
     prompt-dialog.ts            # Rename prompts
+    agent-panel*.ts             # Pi agent panel: utils / messages / model / response / dialogs / slash
+    agent-events.ts             # ht-agent-* CustomEvent → RPC bridge
+    browser-events.ts           # ht-browser-* CustomEvent → RPC bridge
+    socket-actions.ts           # Socket API action dispatch table
+  web-client/                   # Web-mirror client (built into assets/web-client/client.js)
+    main.ts                     # Entry; composes transport + views
+    store.ts                    # Reducer-driven AppState (no DOM imports — bun-test friendly)
+    transport.ts                # WebSocket v2 envelope layer, reconnect, resume
+    protocol-dispatcher.ts      # Server-message → store-action dispatch
+    sidebar.ts                  # Mirror sidebar render + event wiring
+    layout.ts                   # Pure computeRects + applyLayout DOM pass
+    panel-interaction.ts        # Pointer / drag / resize gesture routing
+    panel-renderers.ts          # Sideband content renderer registry
+    icons.ts                    # Inline SVG chrome icons
+    client.css                  # Mirror-only styles (shared tokens via web-theme-tokens.css)
 bin/ht                          # CLI (compiled into .app via postBuild hook)
 scripts/
   hyperterm.py / hyperterm.ts   # Client libs
@@ -502,7 +523,8 @@ doc/
   system-webview-ui.md
   system-process-metadata.md    # Full spec for the metadata pipeline
   system-browser-pane.md        # Browser pane: architecture, API, automation, settings
-tests/                          # 220 tests across 15 files
+tests/                          # 666 tests across 44 files (bun test)
+tests-e2e/                      # 43 Playwright web-mirror specs (bun run test:e2e)
 ```
 
 ## Development
@@ -511,8 +533,8 @@ tests/                          # 220 tests across 15 files
 bun install                # dependencies
 bun start                  # dev: build + launch once
 bun dev                    # dev: build + launch with watch
-bun test                   # unit + integration suite (349 tests, ~8s)
-bun run test:e2e           # Playwright web-mirror e2e (17 tests, ~6s)
+bun test                   # unit + integration suite (666 tests across 44 files, ~9s)
+bun run test:e2e           # Playwright web-mirror e2e (43 tests)
 bun run test:all           # both
 bun run typecheck          # TypeScript check
 bun run build:cli          # standalone ./build/ht-cli binary (for other Macs)

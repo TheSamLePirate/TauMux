@@ -25,9 +25,12 @@ This document is in two parts:
 | M9 | Client resize proposals via ResizeObserver + FitAddon (opt-in) | ✅ done |
 | M10 | Docs refresh | ✅ done |
 
-Tests: 256/256 passing across 21 files (bun test). Typecheck clean.
+Tests: 666 passing across 44 files (bun test) + 43 Playwright e2e (bun run test:e2e). Typecheck + lint clean.
 
-**New files.** `src/bun/web/{asset-loader,connection,page,server,state-store}.ts`, `src/shared/web-protocol.ts`, `src/shared/web-theme-tokens.css`, `src/web-client/{main,store,icons}.ts`, `src/web-client/client.css`, `scripts/build-web-client.ts`, `tests/{web-protocol,web-resume,web-coalescer,web-auth,web-client-store,session-history}.test.ts`.
+**New files** (at M10 close). `src/bun/web/{asset-loader,connection,page,server,state-store}.ts`, `src/shared/web-protocol.ts`, `src/shared/web-theme-tokens.css`, `src/web-client/{main,store,icons}.ts`, `src/web-client/client.css`, `scripts/build-web-client.ts`, `tests/{web-protocol,web-resume,web-coalescer,web-auth,web-client-store,session-history}.test.ts`.
+
+**Post-M10 extractions** (on `refactor-code-as-best-practice`). `src/web-client/main.ts` further shrank 1133 → 701 LOC by peeling off:
+`src/web-client/{transport,protocol-dispatcher,panel-renderers,sidebar,layout,panel-interaction}.ts`, each paired with a focused test file. `SidebandMetaMessage` and `PanelEvent` became discriminated unions in `src/shared/types.ts`, narrowed at the wire boundary so flush ops can't leak into the render path. The Electrobun message handlers in `src/bun/index.ts` are now gated by `satisfies BunMessageHandlers` for compile-time coverage.
 
 **Legacy.** `src/bun/web-server.ts` is now a 4-line re-export shim so existing imports keep working. The old 1.5k-line blob is gone.
 
@@ -133,6 +136,18 @@ Non-goals (explicitly out of scope for this refactor):
 - E2E browser automation tests. We rely on protocol-level integration tests against a headless WS client.
 
 ### 2.2 Target architecture
+
+> **Note on current state.** The target-layout sketch below is the
+> original plan. What actually landed is flatter: `src/web-client/`
+> uses top-level files (`main.ts`, `store.ts`, `transport.ts`,
+> `protocol-dispatcher.ts`, `sidebar.ts`, `layout.ts`,
+> `panel-interaction.ts`, `panel-renderers.ts`, `icons.ts`,
+> `client.css`) instead of the `store/` / `transport/` / `view/` /
+> `theme/` subdirectories. `src/bun/web/` has `server.ts`,
+> `connection.ts`, `asset-loader.ts`, `page.ts`, `state-store.ts`
+> (broadcaster + snapshot logic live inside `connection.ts` and
+> `server.ts`). Shared CSS is at `src/shared/web-theme-tokens.css`;
+> the legacy `src/bun/web-server.ts` is a 4-line re-export shim.
 
 ```
 src/bun/web/

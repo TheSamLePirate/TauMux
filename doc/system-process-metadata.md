@@ -300,7 +300,7 @@ The POSIX foreground process group convention matches what `tmux` shows as `pane
 
 ### Web mirror
 
-Same shape as the native pane header, rendered in plain JS inside `buildHtmlPage()` in `src/bun/web-server.ts`. `case "surfaceMetadata":` caches the snapshot keyed by surfaceId and calls `renderPaneChips(chipsEl, meta)`. Port chips open `http://${location.hostname}:${port}` so LAN clients (your phone) hit the laptop's IP automatically.
+Same shape as the native pane header, rendered in `src/web-client/main.ts`. Surface metadata flows in as a store action (`panel/metadata`); the render pass then calls `renderPaneChips(chipsEl, meta)` against the pane's chips host. Port chips open `http://${location.hostname}:${port}` so LAN clients (your phone) hit the laptop's IP automatically.
 
 ### `ht` CLI
 
@@ -477,6 +477,6 @@ macOS doesn't have `/proc`. Linux does, but `lsof` is faster at scanning listeni
 - `src/views/terminal/surface-manager.ts` — pane chips + sidebar aggregation
 - `src/views/terminal/process-manager.ts` — `⌘⌥P` overlay
 - `src/views/terminal/sidebar.ts` — workspace port chips + fg command
-- `src/bun/web-server.ts` — web-mirror chip parity
+- `src/bun/web/server.ts` + `src/web-client/main.ts` — web-mirror chip parity (server caches metadata, client renders with `renderPaneChips`)
 - `bin/ht` — CLI commands (`metadata`, `cwd`, `ps`, `ports`, `open`, `kill`)
 - `tests/surface-metadata.test.ts` — parser + tree + fg detection + diff tests

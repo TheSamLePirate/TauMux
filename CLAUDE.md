@@ -33,8 +33,18 @@ Bun Main Process (src/bun/)
   ├── SocketServer — JSON-RPC over /tmp/hyperterm.sock (for `ht` CLI)
   ├── SidebandParser / EventWriter — fd 3/4/5 protocol
   ├── SettingsManager — debounced JSON persistence
-  ├── WebServer — optional WebSocket mirror (HTML bundle inlined)
+  ├── WebServer — optional WebSocket mirror (serves src/web-client/ bundle)
   └── Electrobun RPC ↔ Webview
+
+Web mirror client (src/web-client/)
+  ├── main.ts                — entry; wires transport + protocol + views
+  ├── store.ts               — reducer-driven AppState (framework-free)
+  ├── transport.ts           — WebSocket v2 envelopes, reconnect, resume
+  ├── protocol-dispatcher.ts — server-message → store-action dispatch
+  ├── sidebar.ts             — workspace list, notifications, logs
+  ├── layout.ts              — pure computeRects + applyLayout DOM pass
+  ├── panel-interaction.ts   — pointer/drag/resize gesture routing
+  └── panel-renderers.ts     — sideband content renderer registry
 
 Electrobun Webview (src/views/terminal/)
   ├── SurfaceManager — workspaces, pane tree layout, xterm.js instances, chip rendering
@@ -54,7 +64,7 @@ Electrobun Webview (src/views/terminal/)
 - **Keyboard never goes to panels or chips.** All keystrokes go to xterm.js → stdin. Panels are visual output + mouse interaction; chips are mouse / keyboard-activation only.
 - **Each content block = its own DOM element.** Not a single shared canvas. Independent panels with CSS transforms.
 - **No sandboxing of fd4 content** for now. HTML/SVG from fd4 is rendered directly. Scripts are trusted.
-- **Electrobun RPC is the webview bridge.** Socket RPC is the CLI/external bridge. They share the handler registry in `src/bun/rpc-handler.ts`.
+- **Electrobun RPC is the webview bridge.** Socket RPC is the CLI/external bridge. They share the handler registry aggregated in `src/bun/rpc-handler.ts` from per-domain modules under `src/bun/rpc-handlers/` (system / workspace / surface / sidebar / pane / notification / agent / browser-*). The Electrobun-facing handlers in `src/bun/index.ts` are gated by `satisfies BunMessageHandlers` so any new method in `HyperTermRPC["bun"]["messages"]` without a wired handler fails the typecheck.
 - **Metadata pipeline never touches the PTY.** `SurfaceMetadataPoller` reads pids we already own and runs `ps` / `lsof` — if it breaks, the terminal keeps working.
 
 ## Directory Roles
@@ -62,7 +72,7 @@ Electrobun Webview (src/views/terminal/)
 - `src/bun/` — Main process. PTY management, sideband parsing, metadata poller, settings, socket + RPC, web mirror. Runs in Bun.
 - `src/views/terminal/` — Webview code. xterm.js, chip rendering, pane layout, process manager, settings panel, sidebar. Runs in system WebView.
 - `src/shared/` — Types shared between bun and webview. RPC contracts, `SurfaceMetadata`, `AppSettings`, sideband protocol types.
-- `tests/` — Bun test files (134 tests across 10 files). Parser tests for `ps` / `lsof` output, PTY manager, sideband parser, RPC handler, pane layout.
+- `tests/` — Bun test files (666 tests across 44 files). Parser tests (`ps` / `lsof` / sideband), PTY manager, RPC handlers, pane layout, web-client reducer + view modules, agent-panel sub-modules, SurfaceManager smoke suite. `bunfig.toml` scopes bare `bun test` to this directory so `tests-e2e/` Playwright specs are not picked up.
 - `scripts/` — Demo scripts + client libraries (Python, TS) for the sideband protocol. Also build hooks (`post-build.ts` for CLI injection into the .app, `build-cli.ts` for standalone binary).
 - `doc/` — Extensive subsystem docs (PTY, RPC, sideband, canvas panels, webview UI, process metadata).
 
@@ -79,6 +89,7 @@ Electrobun Webview (src/views/terminal/)
 ## Common Patterns
 
 - **Adding a settings field** — extend `AppSettings` + `DEFAULT_SETTINGS` + `validateSettings`; add field renderer in `SettingsPanel`; read in `SurfaceManager.applySettings` for webview concerns or in the `updateSettings` RPC handler for bun concerns. See how `shellPath`, `webMirrorPort`, `paneGap`, `bloomIntensity` are threaded end-to-end.
-- **Adding a socket/CLI command** — add method in `rpc-handler.ts` (namespace `system.*`, `workspace.*`, `surface.*`, `sidebar.*`, `notification.*`, `pane.*`); add case in `bin/ht mapCommand`; optionally add a formatter in `formatOutput`.
+- **Adding a socket/CLI command** — add method in the matching `src/bun/rpc-handlers/<domain>.ts` (system / workspace / surface / sidebar / pane / notification / agent / browser-*); it auto-merges into the dispatch table via `createRpcHandler` in `src/bun/rpc-handler.ts`. Then add a case in `bin/ht mapCommand`; optionally add a formatter in `formatOutput`.
+- **Adding a keyboard shortcut** — append a `Binding<KeyCtx>` entry to `KEYBOARD_BINDINGS` (or `HIGH_PRIORITY_BINDINGS` for shortcuts that must fire even when the palette is visible) in `src/views/terminal/index.ts`. Use `keyMatch({ key, meta?, shift?, ctrl?, alt? })` for the matcher. `id` / `description` / `category` are there so a future help dialog or command palette can enumerate the same array.
 - **Adding a metadata field** — see `doc/system-process-metadata.md` § 7.
 - **Adding a pane-bar chip** — extend `renderSurfaceChips` in `surface-manager.ts`; matching CSS in `index.css`. Same class conventions (`surface-chip`, `chip-*` variants).
