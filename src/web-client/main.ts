@@ -19,8 +19,9 @@ import {
   type Store,
 } from "./store";
 import { ICONS } from "./icons";
-import { WEB_PROTOCOL_VERSION } from "../shared/web-protocol";
 import { createPanelRendererRegistry } from "./panel-renderers";
+import { createProtocolDispatcher } from "./protocol-dispatcher";
+import { createTransport } from "./transport";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -133,24 +134,8 @@ function boot() {
   > = {};
 
   // ------------------------------------------------------------------
-  // Transport
+  // Transport + protocol dispatch
   // ------------------------------------------------------------------
-
-  let ws: WebSocket | null = null;
-  let reconnectDelay = 1000;
-  function sendMsg(type: string, payload: Record<string, unknown>) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    const s = store.getState();
-    ws.send(
-      JSON.stringify({
-        v: WEB_PROTOCOL_VERSION,
-        ack:
-          s.connection.lastSeenSeq >= 0 ? s.connection.lastSeenSeq : undefined,
-        type,
-        payload,
-      }),
-    );
-  }
 
   function setDotFromState(state: AppState) {
     dotEl.className =
@@ -161,217 +146,27 @@ function boot() {
           : "";
   }
 
-  function connect() {
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const { sessionId, lastSeenSeq } = store.getState().connection;
-    // Preserve the auth token from the page URL (if present). Without
-    // this, loading `/?t=abc` would serve the page with the token on
-    // the HTTP request but then build a tokenless `ws://host/` URL,
-    // which the server rejects with 401. We also honor Authorization:
-    // Bearer headers on the HTTP fetch — those survive automatically —
-    // but the query-string path is the one browsers hit from a plain
-    // link, so it's the one that needs preserving here.
-    const pageT = new URLSearchParams(location.search).get("t");
-    const params = new URLSearchParams();
-    if (sessionId && lastSeenSeq >= 0) {
-      params.set("resume", sessionId);
-      params.set("seq", String(lastSeenSeq));
-    }
-    if (pageT) params.set("t", pageT);
-    const qs = params.toString() ? `?${params.toString()}` : "";
-    ws = new WebSocket(proto + "//" + location.host + "/" + qs);
-    ws.binaryType = "arraybuffer";
-    store.dispatch({ kind: "connection/status", status: "connecting" });
-
-    ws.onopen = () => {
-      reconnectDelay = 1000;
-      store.dispatch({ kind: "connection/status", status: "connected" });
-    };
-
-    ws.onmessage = (event: MessageEvent) => {
-      if (event.data instanceof ArrayBuffer) {
-        const buf = new Uint8Array(event.data);
-        const dv = new DataView(event.data);
-        const hLen = dv.getUint32(0, false);
-        let hdr: any;
-        try {
-          hdr = JSON.parse(new TextDecoder().decode(buf.subarray(4, 4 + hLen)));
-        } catch {
-          return;
-        }
-        const payload = buf.subarray(4 + hLen);
-        if (typeof hdr.seq === "number")
-          store.dispatch({ kind: "connection/seq", seq: hdr.seq });
-        if (hdr.type === "sidebandData") renderPanelData(hdr.id, payload, true);
-        return;
-      }
-      let msg: any;
-      try {
-        msg = JSON.parse(event.data);
-      } catch {
-        return;
-      }
-      if (typeof msg.seq === "number")
-        store.dispatch({ kind: "connection/seq", seq: msg.seq });
-      const type = msg.type as string;
-      const p =
-        msg && typeof msg.payload === "object" && msg.payload !== null
-          ? msg.payload
-          : msg;
-      if (!type) return;
-      handleServerMessage(type, p);
-    };
-
-    ws.onclose = () => {
-      store.dispatch({ kind: "connection/status", status: "disconnected" });
-      // Keep session id + lastSeenSeq — the reconnect attempt will use them
-      // to resume. State is preserved across brief disconnects; a fresh
-      // hello from the server (with a new sessionId) will overwrite it.
-      setTimeout(() => {
-        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
-        connect();
-      }, reconnectDelay);
-    };
-    ws.onerror = () => {};
-  }
-
-  function handleServerMessage(type: string, p: any) {
-    switch (type) {
-      case "hello": {
-        store.dispatch({
-          kind: "connection/hello",
-          sessionId: p.sessionId,
-          serverInstanceId: p.serverInstanceId,
-          lastSeenSeq: store.getState().connection.lastSeenSeq,
-        });
-        if (p.snapshot)
-          store.dispatch({ kind: "snapshot/apply", snapshot: p.snapshot });
-        if (p.sessionId)
-          console.info("[web] session", p.sessionId, "v", p.protocolVersion);
-        break;
-      }
-      case "snapshot":
-        store.dispatch({ kind: "snapshot/apply", snapshot: p });
-        break;
-      case "history": {
-        // Imperative — xterm buffer isn't state.
-        const ref = terms[p.surfaceId];
-        if (ref) {
-          ref.term.reset();
-          ref.term.write(p.data);
-        }
-        break;
-      }
-      case "output": {
-        const ref = terms[p.surfaceId];
-        if (ref) ref.term.write(p.data);
-        break;
-      }
-      case "resize":
-        store.dispatch({
-          kind: "surface/resized",
-          surfaceId: p.surfaceId,
-          cols: p.cols,
-          rows: p.rows,
-        });
-        break;
-      case "surfaceCreated":
-        store.dispatch({
-          kind: "surface/created",
-          surfaceId: p.surfaceId,
-          title: p.title || p.surfaceId,
-        });
-        sendMsg("subscribeSurface", { surfaceId: p.surfaceId });
-        break;
-      case "surfaceRenamed":
-        store.dispatch({
-          kind: "surface/renamed",
-          surfaceId: p.surfaceId,
-          title: p.title,
-        });
-        break;
-      case "surfaceClosed":
-        store.dispatch({ kind: "surface/closed", surfaceId: p.surfaceId });
-        break;
-      case "surfaceExited":
-        // Informational; surfaceClosed does the teardown.
-        break;
-      case "nativeViewport":
-        store.dispatch({
-          kind: "native-viewport",
-          width: p.width,
-          height: p.height,
-        });
-        break;
-      case "layoutChanged":
-        store.dispatch({
-          kind: "layout/changed",
-          workspaces: p.workspaces ?? [],
-          activeWorkspaceId: p.activeWorkspaceId ?? null,
-          focusedSurfaceId: p.focusedSurfaceId ?? null,
-        });
-        break;
-      case "focusChanged":
-        store.dispatch({ kind: "focus/set", surfaceId: p.surfaceId });
-        break;
-      case "notification":
-        store.dispatch({
-          kind: "notification/add",
-          entry: {
-            id: `n:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`,
-            title: p.title || "",
-            body: p.body || "",
-            surfaceId: p.surfaceId,
-            at: p.at || Date.now(),
-          },
-        });
-        break;
-      case "notificationClear":
-        store.dispatch({ kind: "notification/clear" });
-        break;
-      case "surfaceMetadata":
-        store.dispatch({
-          kind: "surface/metadata",
-          surfaceId: p.surfaceId,
-          metadata: p.metadata,
-        });
-        break;
-      case "sidebarState":
-        store.dispatch({
-          kind: "sidebar/visible",
-          visible: Boolean(p.visible),
-        });
-        break;
-      case "sidebarAction":
-        store.dispatch({
-          kind: "sidebar/action",
-          action: p.action,
-          payload: p.payload || {},
-        });
-        break;
-      case "sidebandMeta":
-        store.dispatch({
-          kind: "panel/meta",
-          surfaceId: p.surfaceId,
-          meta: p.meta,
-        });
-        break;
-      case "sidebandDataFailed":
-        store.dispatch({ kind: "panel/data-failed", panelId: p.id });
-        break;
-      case "panelEvent":
-        store.dispatch({
-          kind: "panel/event",
-          panelId: p.id,
-          event: p.event,
-          x: p.x,
-          y: p.y,
-          width: p.width,
-          height: p.height,
-        });
-        break;
-    }
-  }
+  // Forward declaration: the dispatcher needs `sendMsg`, which comes
+  // from the transport, but the transport's onTextMessage hook needs
+  // the dispatcher. Resolved by letting the transport factory capture
+  // a closure over `handleServerMessage` that we install below.
+  let handleServerMessage: (type: string, payload: unknown) => void = () => {};
+  const transport = createTransport({
+    store,
+    onTextMessage: (type, payload) => handleServerMessage(type, payload),
+    onBinaryFrame: (id, data) => renderPanelData(id, data, true),
+  });
+  const sendMsg = transport.send;
+  handleServerMessage = createProtocolDispatcher({
+    store,
+    writeOutput: (surfaceId, data, reset) => {
+      const ref = terms[surfaceId];
+      if (!ref) return;
+      if (reset) ref.term.reset();
+      ref.term.write(data);
+    },
+    subscribeSurface: (surfaceId) => sendMsg("subscribeSurface", { surfaceId }),
+  });
 
   // ------------------------------------------------------------------
   // View renderers
@@ -1331,7 +1126,7 @@ function boot() {
       .replace(/'/g, "&#39;");
   }
 
-  connect();
+  transport.connect();
 }
 
 // Re-export for type checkers picking this up as a module.
