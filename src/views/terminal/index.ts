@@ -1491,6 +1491,7 @@ const dispatchSocketAction = createSocketActionDispatcher({
     // Layout refit is handled by SurfaceManager.scheduleLayoutAfterTransition()
     suppressSidebarSync = false;
   },
+  flushWorkspaceStateSync,
   onActionComplete: () => {
     syncWorkspaceState();
     syncToolbarState();
@@ -1504,7 +1505,7 @@ const dispatchSocketAction = createSocketActionDispatcher({
 // Compile-time gate: set `HYPERTERM_INCLUDE_TEST_HOOKS=0` at build time
 // (stable builds) to let the bundler dead-code-eliminate the entire router.
 // Dev/test builds default to including it.
- 
+
 const TEST_HOOKS_COMPILED_IN: boolean = (() => {
   try {
     // process may be undefined in strict browser contexts; guarded.
@@ -1552,6 +1553,17 @@ let syncTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleSyncWorkspaceState() {
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = setTimeout(syncWorkspaceState, 100);
+}
+
+/** Cancel any pending debounced sync and fire one immediately. Used by
+ *  the `forceLayoutSync` socket action at graceful-shutdown time so a
+ *  just-made split is persisted before `saveLayout` runs bun-side. */
+function flushWorkspaceStateSync(): void {
+  if (syncTimer) {
+    clearTimeout(syncTimer);
+    syncTimer = null;
+  }
+  syncWorkspaceState();
 }
 
 window.addEventListener("ht-workspace-changed", scheduleSyncWorkspaceState);

@@ -2508,6 +2508,34 @@ body.terminal-typing .panel {
   box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.16);
 }
 
+.prompt-input-invalid {
+  /* Fired by prompt-dialog.ts submit() when the user hits Enter on an
+   * empty value. Short horizontal shake + red border flash so the user
+   * sees the action was refused rather than the dialog silently
+   * ignoring their Enter. */
+  animation: prompt-input-shake 260ms ease-out;
+  border-color: rgba(239, 68, 68, 0.7) !important;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.22) !important;
+}
+@keyframes prompt-input-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
 .prompt-actions {
   display: flex;
   justify-content: flex-end;

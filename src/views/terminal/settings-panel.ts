@@ -686,7 +686,11 @@ export class SettingsPanel {
     input.min = String(opts.min);
     input.max = String(opts.max);
     input.step = String(opts.step);
-    input.addEventListener("change", () => {
+    // `input` instead of `change` so the value applies as the user types
+    // or clicks the spin buttons — `change` forced a blur before updates
+    // fired, which felt broken when fiddling with font-size / gap values.
+    // Matches the slider below (line ~720) which already uses `input`.
+    input.addEventListener("input", () => {
       const n = parseFloat(input.value);
       if (!isNaN(n)) this.emit({ [key]: n });
     });

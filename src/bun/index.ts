@@ -1882,7 +1882,7 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
 //      call process.exit.
 // A safety watchdog exits hard after 2s if any of the above wedge, so a
 // broken save path can never prevent shutdown.
-function gracefulShutdown(): void {
+async function gracefulShutdown(): Promise<void> {
   const hardExit = setTimeout(() => {
     console.warn("[main] graceful shutdown timed out after 2s; exiting hard");
     process.exit(1);
@@ -1893,6 +1893,19 @@ function gracefulShutdown(): void {
     metadataPoller.stop();
   } catch (err) {
     console.warn("[main] metadataPoller.stop failed:", err);
+  }
+  // Force-flush the webview's pending `workspaceStateSync` before saving.
+  // Without this, a just-made split is trapped in the 100ms debounce and
+  // never lands in `app.workspaceState`, which `saveLayout` reads from —
+  // next launch restores a stale layout. 500ms is generous; the real
+  // round-trip is ~10ms.
+  try {
+    await Promise.race([
+      requestWebview("forceLayoutSync", {}),
+      new Promise((resolve) => setTimeout(resolve, 500)),
+    ]);
+  } catch (err) {
+    console.warn("[main] forceLayoutSync failed:", err);
   }
   try {
     saveLayout();
@@ -1937,5 +1950,5 @@ function gracefulShutdown(): void {
   clearTimeout(hardExit);
   process.exit(0);
 }
-process.on("SIGINT", gracefulShutdown);
-process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", () => void gracefulShutdown());
+process.on("SIGTERM", () => void gracefulShutdown());

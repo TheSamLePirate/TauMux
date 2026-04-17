@@ -228,13 +228,28 @@ export class SurfaceManager {
     this.surfaces.set(surfaceId, view);
     const ws = createWorkspaceRecord({
       surfaceId,
-      name,
+      name: this.uniqueWorkspaceName(name),
       counter: ++this.wsCounter,
     });
     this.workspaces.push(ws);
     this.switchToWorkspace(this.workspaces.length - 1);
     this.updateSidebar();
     this.scheduleLayoutForNewSurface(onReady);
+  }
+
+  /** Pick a workspace name that doesn't collide with existing workspaces.
+   *  Default behaviour used to stack 5 workspaces all named "zsh" (or
+   *  "Browser", "Pi Agent") because `addSurface` used the surface title
+   *  directly. Append a " 2", " 3", … suffix on collision so the sidebar
+   *  stays readable. */
+  private uniqueWorkspaceName(base: string): string {
+    const existing = new Set(this.workspaces.map((w) => w.name));
+    if (!existing.has(base)) return base;
+    for (let n = 2; n < 1000; n++) {
+      const candidate = `${base} ${n}`;
+      if (!existing.has(candidate)) return candidate;
+    }
+    return base;
   }
 
   /** Shared tail of every `addXxxSurfaceAsSplit` method: register the

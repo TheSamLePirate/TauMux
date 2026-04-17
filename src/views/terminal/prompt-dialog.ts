@@ -72,7 +72,18 @@ export function showPromptDialog(
 
     function submit(): void {
       const value = input.value.trim();
-      if (!value) return;
+      if (!value) {
+        // Empty values silently did nothing before — user hit Enter on a
+        // blank input and got no feedback, looked broken. Shake the
+        // input briefly to show the action was seen but refused.
+        input.classList.remove("prompt-input-invalid");
+        // Force reflow so the class re-add triggers the animation again
+        // on repeat empty-submits.
+        void input.offsetWidth;
+        input.classList.add("prompt-input-invalid");
+        input.focus();
+        return;
+      }
       finish(value);
     }
 

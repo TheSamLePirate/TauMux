@@ -24,7 +24,6 @@
 import { showToast } from "./toast";
 import type { SurfaceManager } from "./surface-manager";
 
- 
 type RpcSend = (name: any, payload: any) => void;
 
 export interface SocketActionContext {
@@ -40,6 +39,10 @@ export interface SocketActionContext {
   promptRenameWorkspace: (id: string, name: string) => void;
   promptRenameSurface: (id: string, title: string) => void;
   setSidebarVisibleProgrammatic: (visible: boolean) => void;
+  /** Fires an immediate `workspaceStateSync` to bun, bypassing the 100ms
+   *  debounce. Used before `saveLayout` at shutdown so a just-made split
+   *  actually makes it into `layout.json`. */
+  flushWorkspaceStateSync: () => void;
   onActionComplete: () => void;
 }
 
@@ -161,6 +164,19 @@ const SOCKET_ACTION_HANDLERS: Record<string, Handler> = {
       (p["message"] as string) || "",
       p["source"] as string | undefined,
     );
+  },
+
+  // ── Layout sync flush (async — requires rpc response) ──
+  // Bun calls this before `saveLayout()` at graceful-shutdown time. The
+  // normal `workspaceStateSync` is debounced 100ms, so a just-made split
+  // can land AFTER `saveLayout()` has already persisted the old state.
+  // This handler bypasses the debounce and fires a sync immediately.
+  forceLayoutSync: (p, { flushWorkspaceStateSync, rpc }) => {
+    flushWorkspaceStateSync();
+    rpc.send("webviewResponse", {
+      reqId: p["reqId"] as string,
+      result: { ok: true },
+    });
   },
 
   // ── Screen read (async — requires rpc response) ──

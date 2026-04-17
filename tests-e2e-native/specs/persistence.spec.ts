@@ -7,34 +7,12 @@ import {
 } from "../fixtures";
 import { waitFor, sleep } from "../helpers/wait";
 
-/**
- * Wait until the bun-side AppState (what `saveLayout` reads) reflects the
- * live layout. `surface.split` returns the new surface id immediately, but
- * the workspaceStateSync that carries pane-tree structure back from the
- * webview is debounced 100ms. Without this wait, a fast shutdown persists
- * a stale layout — the next spawn rehydrates only the pre-split state.
- */
-async function waitForLayoutSync(
-  rpc: Session["current"]["rpc"],
-  expectedSurfaces: number,
-  timeoutMs = 10_000,
-): Promise<void> {
-  await waitFor(
-    async () => {
-      const tree =
-        await rpc.call<{ workspace: string; surfaces: { id: string }[] }[]>(
-          "system.tree",
-        );
-      const total = tree.reduce((n, ws) => n + ws.surfaces.length, 0);
-      return total === expectedSurfaces ? true : undefined;
-    },
-    {
-      timeoutMs,
-      intervalMs: 150,
-      message: `layout sync never reached ${expectedSurfaces} surfaces`,
-    },
-  );
-}
+// Earlier revisions of these specs had a `waitForLayoutSync` helper that
+// polled `system.tree` before each shutdown because a fast-quit path
+// otherwise persisted a stale layout. That race is now fixed on the
+// production side (gracefulShutdown awaits a `forceLayoutSync` RPC before
+// calling saveLayout), so the helper was removed — the specs here now
+// exercise the real behaviour a user sees when they quit mid-action.
 
 /**
  * Persistence specs — drive the app, shut it down cleanly, and spawn a
@@ -99,16 +77,17 @@ const test = base.extend<{ session: Session }>({
 });
 
 test.describe("persistence", () => {
-  test("layout: 2-pane split survives a restart", async ({ session }) => {
+  test("layout: 2-pane split survives a restart (fast shutdown)", async ({
+    session,
+  }) => {
+    // No `waitForLayoutSync` — gracefulShutdown now force-flushes the
+    // webview's debounced workspaceStateSync before saveLayout. This
+    // test specifically exercises the fast-quit path: split, then
+    // immediately restart without waiting for the 100ms debounce.
     await session.current.rpc.surface.split({ direction: "horizontal" });
-    // Wait for workspaceStateSync before shutdown; `saveLayout` reads from
-    // the bun-side AppState which is populated from that message, not from
-    // SessionManager. Without this, saveLayout persists the pre-split state.
-    await waitForLayoutSync(session.current.rpc, 2);
 
     await session.restart();
 
-    // Restored layout gets new surface ids; count is what matters here.
     await expect
       .poll(async () => (await session.current.rpc.surface.list()).length, {
         timeout: 15_000,
@@ -116,12 +95,13 @@ test.describe("persistence", () => {
       .toBe(2);
   });
 
-  test("layout: 4-pane split tree survives a restart", async ({ session }) => {
+  test("layout: 4-pane split tree survives a restart (fast shutdown)", async ({
+    session,
+  }) => {
     const r = session.current.rpc;
     await r.surface.split({ direction: "horizontal" });
     await r.surface.split({ direction: "vertical" });
     await r.surface.split({ direction: "vertical" });
-    await waitForLayoutSync(r, 4);
 
     await session.restart();
 

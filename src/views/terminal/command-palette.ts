@@ -188,7 +188,18 @@ export class CommandPalette {
   private execute(cmd: PaletteCommand): void {
     this.remember(cmd.id);
     this.hide();
-    cmd.action();
+    // Palette commands ran unguarded before — a throw silently dismissed
+    // the palette with no user feedback. Surface the error via toast so
+    // the user at least sees something went wrong.
+    try {
+      cmd.action();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[palette] command ${cmd.id} failed:`, err);
+      void import("./toast").then(({ showToast }) => {
+        showToast(`"${cmd.label}" failed: ${message}`, "error");
+      });
+    }
   }
 
   private filter(): void {
