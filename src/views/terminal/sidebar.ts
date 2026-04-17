@@ -451,6 +451,14 @@ export class Sidebar {
     list.className = "sidebar-section-list";
     this.logsEl.appendChild(list);
 
+    // Only auto-scroll if the user was already at (or very near) the
+    // bottom before this render. If they've scrolled up to read older
+    // entries, respect that — auto-scrolling mid-read would yank them
+    // back and make older logs unreadable during a flood.
+    const scroller = this.container;
+    const wasNearBottom =
+      scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
+
     let lastItem: HTMLDivElement | null = null;
     for (const log of logs.slice(-10)) {
       const el = document.createElement("div");
@@ -460,11 +468,7 @@ export class Sidebar {
       list.appendChild(el);
       lastItem = el;
     }
-    // Auto-scroll the newest entry into view on the next frame. Without
-    // this, a script streaming logs had them appear outside the visible
-    // window and the user had to scroll the sidebar manually to find the
-    // tail. `block: "nearest"` keeps the rest of the sidebar anchored.
-    if (lastItem) {
+    if (lastItem && wasNearBottom) {
       requestAnimationFrame(() =>
         lastItem?.scrollIntoView({ block: "nearest" }),
       );

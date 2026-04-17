@@ -90,6 +90,11 @@ interface SurfaceView {
   titleEl: HTMLSpanElement;
   chipsEl: HTMLDivElement;
   title: string;
+  /** True when the user explicitly renamed this surface (prompt-dialog
+   *  flow or an `ht surface.rename`). OSC 0/2 title escapes are ignored
+   *  after this until the surface is closed — protects a user's chosen
+   *  pane name from being overwritten by e.g. `vim` setting the title. */
+  titleLockedByUser?: boolean;
 }
 
 export interface Workspace {
@@ -1112,12 +1117,23 @@ export class SurfaceManager {
     }
   }
 
-  renameSurface(surfaceId: string, title: string): void {
+  renameSurface(
+    surfaceId: string,
+    title: string,
+    opts: { fromOsc?: boolean } = {},
+  ): void {
     const view = this.surfaces.get(surfaceId);
     if (!view) return;
 
+    // OSC 0/2 rename requests lose to an explicit user rename. Without
+    // this guard, a user who renames a pane to "my build watcher" and
+    // then runs vim watches the title flip to "vim foo.txt" every time
+    // they open a file. User rename always wins.
+    if (opts.fromOsc && view.titleLockedByUser) return;
+
     view.title = title;
     view.titleEl.textContent = title;
+    if (!opts.fromOsc) view.titleLockedByUser = true;
 
     const workspace = this.findWorkspaceBySurfaceId(surfaceId);
     if (workspace && this.activeWorkspace()?.id === workspace.id) {
@@ -1735,6 +1751,23 @@ export class SurfaceManager {
       effects.pulseInput(data.length);
       this.onStdin(surfaceId, data);
     });
+
+    // OSC 0/2 title propagation: programs like `vim`, `htop`, `ssh` emit
+    // these escapes to set the terminal window title. Before this, the
+    // sidebar + pane bar always showed the login shell's basename (usually
+    // "zsh") even while vim was editing a file. Cap at 60 chars so a
+    // runaway title can't blow out the sidebar layout.
+    // `onTitleChange` is only present on the real xterm instance; the
+    // happy-dom SurfaceManager test mock stubs `Terminal` without it.
+    // Guard the call so tests don't need to teach their mock a new
+    // method each time we subscribe to another xterm event.
+    if (typeof term.onTitleChange === "function") {
+      term.onTitleChange((title) => {
+        const clean = title.trim().slice(0, 60);
+        if (!clean) return;
+        this.renameSurface(surfaceId, clean, { fromOsc: true });
+      });
+    }
 
     container.addEventListener("mousedown", () => {
       this.focusSurface(surfaceId);
