@@ -23,6 +23,8 @@
     "test:native:design-review": "playwright test --config=playwright-native.config.ts --grep @design-review",
     "audit:test-hooks": "bun scripts/audit-test-hooks.ts",
     "build:design-review": "bun scripts/build-design-review.ts",
+    "screenshots:baseline": "bun scripts/baseline-screenshots.ts",
+    "screenshots:diff": "bun scripts/diff-screenshots.ts",
     "test:all": "bun run test && bun run test:e2e",
     "typecheck": "tsc --noEmit"
   },
@@ -39,9 +41,12 @@
     "@happy-dom/global-registrator": "^20.9.0",
     "@playwright/test": "^1.59.1",
     "@types/bun": "latest",
+    "@types/pngjs": "^6.0.5",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/parser": "^8.58.0",
     "happy-dom": "^20.9.0",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
     "typescript-eslint": "^8.58.0",
     "ws": "^8.20.0"
   },

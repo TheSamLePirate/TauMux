@@ -16,8 +16,12 @@ import { snapshotClipboard, restoreClipboard } from "./clipboard";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
+// Electrobun's stable build produces a single `launcher` executable inside
+// the .app bundle; the actual app name is configured by the .plist. No
+// `HyperTermCanvas` or `HyperTerm Canvas` binary exists here — run the
+// launcher and it spawns the bun child the same way `electrobun dev` does.
 const PACKAGED_APP_PATH =
-  "build/stable-macos-arm64/HyperTerm Canvas.app/Contents/MacOS/HyperTermCanvas";
+  "build/stable-macos-arm64/HyperTerm Canvas.app/Contents/MacOS/launcher";
 
 /**
  * Per-test spawn of the real Electrobun app. Two modes:

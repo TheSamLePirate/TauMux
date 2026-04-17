@@ -22,3 +22,6 @@ assets/web-client/
 /test-results/
 /playwright-report/
 /playwright/.cache/
+# Pixel-diff baseline (scripts/baseline-screenshots.ts). Lives outside
+# /test-results/ because Playwright wipes that directory on every run.
+/.screenshot-baseline/
