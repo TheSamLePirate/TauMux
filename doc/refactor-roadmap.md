@@ -1,237 +1,188 @@
-# Refactor Roadmap
+# Refactor Roadmap — Complete
 
-What's left to do on the `refactor-code-as-best-practice` branch to
-call the codebase "perfect". Ordered roughly by leverage-per-effort,
-highest first. Each item lists where it is, what it'd involve, what
-it'd unlock, and what's risky.
+Every item called out in the original roadmap has landed on
+`refactor-code-as-best-practice`. This file is kept as a record of
+what was done, why some items were intentionally skipped, and what
+still needs to happen before merge.
 
-Current state snapshot (end of sprint):
+Final state of the branch at the last commit:
 
-- 18 commits on the branch, 566 tests passing, typecheck + lint clean
-- Five god-objects broken into 24 focused modules
-- `@types/node` back on `^20.19.0`, happy-dom scoped per-file for DOM tests
-- `bun start` has NOT been verified end-to-end — interactive Electrobun
-  window required. Do this first.
+- 25 commits, 666 tests passing, typecheck + lint clean
+- `bun test` (bare) now scopes to `tests/` — no Playwright noise
+- `src/web-client/main.ts` dropped from 1133 → 701 LOC (−38%)
+- Seven new focused modules (sidebar, layout, panel-interaction,
+  keyboard-shortcuts) plus three new test files covering them
+- Discriminated unions for `SidebandMetaMessage` and `PanelEvent`
+- Compile-time coverage check on `HyperTermRPC["bun"]["messages"]`
+  via `satisfies BunMessageHandlers`
 
 ---
 
-## 1. Smoke-test what's landed
+## 1. Smoke-test what's landed — STILL PENDING
 
-**Before anything else.** All extractions were verified by `bun test`
-+ `tsc --noEmit`, but the webview code doesn't load under either.
-An interactive `bun start` is the real smoke test.
+Every commit is verified by `bun test` + `tsc --noEmit`, but neither
+runner boots the webview. An interactive `bun start` is the real
+smoke test and has **not** been run against this branch's final
+state. Before merge, walk the original roadmap's checklist:
 
-**What to check:**
-
-- App boots without errors in the devtools console
+- App boots without devtools errors
 - Create / split / close panes (terminal, browser, agent)
 - Drag a pane onto another — each drop position (left/right/top/
-  bottom/swap) should render the correct overlay and commit
-- `/help`, `/settings`, `/hotkeys`, `/resume`, `/tree` — all dialogs
+  bottom/swap) renders the correct overlay and commits
+- `/help`, `/settings`, `/hotkeys`, `/resume`, `/tree` dialogs
 - Slash-menu filter + Tab/Enter autocomplete
 - ⌘F search bar, next/prev, Escape to close
-- Switch workspaces, close workspace, rename workspace, set color
+- Switch / close / rename workspace, set color
 - Pi agent: prompt, model switch, compact, new session, fork
-- Web mirror (enable via menu): connect a browser tab, verify output
-  streams, resize, sidebar sync, notifications
-- **Regression-smell areas** — the drag/drop state machine and the
-  socket-actions dispatcher are the biggest pure mechanical moves;
-  test those paths first.
+- Web mirror: connect browser tab, verify output streams, resize,
+  sidebar sync, notifications
 
-If anything breaks, the blame lands cleanly because each commit is
-one extraction.
+**Riskiest changes** to focus on:
 
----
+- Keyboard shortcuts — the entire keydown handler is now data-driven;
+  exercise the browser-pane context gate, the palette/settings
+  preemption ladder, and every ⌘⌥/⌘⇧ combo.
+- SidebandMetaMessage / PanelEvent narrowing — affects every
+  sideband-rendered panel plus the drag/resize feedback loop.
 
-## 2. Finish `src/web-client/main.ts` (1133 lines remaining)
-
-Two medium-leverage extractions remain. Everything else in the boot
-closure (DOM element lookups, render orchestration, pane reconciler,
-chips, panels, glow, misc) is either core orchestration or too
-DOM-entangled to peel off cleanly.
-
-### 2a. Sidebar rendering + listeners → `src/web-client/sidebar.ts`
-
-- **Lines:** roughly 470–595 of `main.ts` (applySidebarVisibility,
-  updateWorkspaceSelect, renderSidebar, attachSidebarListeners)
-- **Estimated extraction:** ~130 lines
-- **Risk:** MEDIUM — HTML is built by string concat with `escapeHtml`
-  sprinkled in; every event handler closes over `store`, `sendMsg`,
-  and DOM refs
-- **Dependencies to inject:** `store`, `sendMsg`, the sidebar root +
-  toggle button elements, and the `escapeHtml` helper (already
-  defined inline — could move to a util file)
-- **Unlocks:** testable sidebar render against a fake store, easier
-  theme/keyboard-nav changes later
-- **Why not done:** no DOM tests for this module yet, so the value
-  of extracting isn't fully realized without also writing 15–20
-  sidebar tests
-
-### 2b. Layout + geometry → `src/web-client/layout.ts`
-
-- **Lines:** roughly 610–715 of `main.ts` (computeRects, applyLayout,
-  scaleTerminals, applyMirrorScale)
-- **Estimated extraction:** ~125 lines
-- **Risk:** MEDIUM — applyLayout reads `terms`, `panelsDom`, viewport
-  state, sidebar state; the recursive rect computation is pure
-- **Dependencies to inject:** `container` element, `terms` and
-  `panelsDom` maps, current state (for viewport + sidebar + focused)
-- **Unlocks:** the pure `computeRects(node, bounds)` tree walker
-  becomes trivially testable; separating "compute rects" from "apply
-  them to DOM" is the real structural win
-- **Why not done:** splitting pure compute from side-effectful apply
-  is the actual refactor — mechanical move alone isn't worth much
-
-### 2c. Panel interaction helpers (not fully extracted yet)
-
-- **Lines:** ~810–980 (setupPanelMouse, setupPanelDrag,
-  setupPanelResize)
-- **Estimated extraction:** ~175 lines
-- **Risk:** LOW/MEDIUM
-- **Dedup win:** each of the three functions redefines `sendXY`,
-  `txy`, and `document` listener cleanup
-- **Why not done:** mouse/touch gesture code needs end-to-end
-  verification; without Playwright coverage for the web-mirror
-  panels, subtle regressions would ship silently
+Also run `bun run test:e2e` (Playwright) once the app is verified
+booting.
 
 ---
 
-## 3. Keyboard shortcuts extraction (HIGH cost)
+## 2. Web-client extractions — DONE
 
-- **File:** `src/views/terminal/index.ts`
-- **Lines:** ~720–940 (~225-line keydown handler)
-- **Why it's hard:** closes over ~15 local functions — `toggleSidebar`,
-  `openCommandPalette`, `toggleProcessManager`, `openSettings`,
-  `copySelection`, `pasteClipboard`, `selectAll`, `requestSplit`,
-  `promptRenameWorkspace`, `promptRenameSurface`, and others. The
-  context bundle would be the largest we've assembled.
-- **Shape of the extraction:** `registerKeyboardShortcuts(ctx)` that
-  takes a `KeyboardShortcutsContext` callback bundle and wires the
-  single `keydown` listener. Internally represent bindings as a
-  `Binding[]` array: `{ match: (e) => bool, action: () => void,
-  description?: string, category?: string }`. That structure also
-  becomes the natural input for the help dialog.
-- **Unlocks:** one source of truth for every keybind; command palette
-  could be built from the same data; a keybind-dump command becomes
-  trivial
-- **Risk assessment:** LOW if you go straight to the data-driven
-  form. The mechanical "wrap the existing switch in a module" move
-  would be the same HIGH cost for nearly no benefit.
+`src/web-client/main.ts` had three medium-sized concerns peeled off
+in commit `5f5ed33`:
+
+- **`src/web-client/sidebar.ts`** — `applySidebarVisibility`,
+  `updateWorkspaceSelect`, `renderSidebar`, click delegation for
+  `clear-notifs` / `clear-logs`, plus `escapeHtml`. Tests in
+  `tests/web-client-sidebar.test.ts` (18).
+- **`src/web-client/layout.ts`** — pure `computeRects` tree walker
+  plus the side-effectful `applyLayout` / `applyMirrorScale` /
+  `scaleTerminals` DOM pass. Tests in
+  `tests/web-client-layout.test.ts` (9).
+- **`src/web-client/panel-interaction.ts`** — `setupPanelMouse` /
+  `setupPanelDrag` / `setupPanelResize` with a shared
+  `startPointerDrag` helper that dedup'd the three gestures'
+  `document` listener setup. Tests in
+  `tests/web-client-panel-interaction.test.ts` (11).
 
 ---
 
-## 4. Types polish
+## 3. Keyboard shortcuts — DONE
 
-### 4a. Sideband protocol: `SidebandMetaMessage` + `PanelEvent`
+Commit `15ff5c1`. `src/views/terminal/keyboard-shortcuts.ts` defines
+`Binding<Ctx>` and `keyMatch()` helpers; `src/views/terminal/index.ts`
+now holds two data tables (`HIGH_PRIORITY_BINDINGS`,
+`KEYBOARD_BINDINGS`) that a small dispatcher walks.
 
-- **File:** `src/shared/types.ts:178–224`
-- **Issue:** both interfaces use loose optional fields (`x?`, `y?`,
-  `width?`, `height?`, `byteLength?`, `timeout?`) with no
-  discrimination between message variants. `ContentType = string & {}`
-  silently allows any string at runtime even though the parser
-  enforces specific literals.
-- **What to do:** turn both into proper discriminated unions on `type`:
-  ```ts
-  type SidebandMetaMessage =
-    | { id: string; type: "image"; format: ImageFormat; byteLength: number; ... }
-    | { id: string; type: "svg"; byteLength: number; ... }
-    | { id: string; type: "clear" }
-    | { id: string; type: "flush"; dataChannel?: string }
-    | ...
-  ```
-- **Affected call sites:** `src/bun/sideband-parser.ts`, all the
-  fd4-writer scripts, `src/web-client/main.ts` panel reconciler
-- **Risk:** MEDIUM — every consumer currently over-accepts, so
-  narrowing may surface real bugs. That's the point.
-- **Unlocks:** typed script authoring for sideband producers; the
-  parser's validation can shrink because the compiler carries more
-  of the load
-
-### 4b. THEME_PRESETS palette factory
-
-- **File:** `src/shared/settings.ts` (~1000 lines of repetitive
-  ANSI color literals)
-- **What to do:** extract a `createAnsiPalette(base, overrides)`
-  factory and express each preset as `base + 16-color array`. Each
-  preset drops from ~80 lines of literals to ~20.
-- **Risk:** LOW — pure data restructuring, no runtime behavior change
-- **Unlocks:** adding a new theme becomes a 10-line exercise rather
-  than copy-pasting a full preset
-
-### 4c. Bun stdio types — no further action
-
-Already handled in the `Unpin @types/node` commit. The narrowing
-casts (`as ReadableStream<Uint8Array>`, `as Bun.FileSink`) are
-documented inline. If `@types/bun` ever stops unioning `number`
-with the stream types, strip them.
+Each binding carries `id`, `description`, `category`, optional `when`
+predicate, `match`, and `action`. A future command palette or help
+dialog can enumerate the same arrays.
 
 ---
 
-## 5. RPC schema completeness — nice-to-have
+## 4. Types polish — DONE
 
-- The extracted `rpc-handlers/*` modules all satisfy the dispatch
-  table manually. A compile-time check that every method declared in
-  `HyperTermRPC["bun"]["messages"]` has a corresponding entry in
-  one of the domain modules would catch drift.
-- Shape idea: a `Satisfies<HyperTermRPC["bun"]["messages"], typeof methods>`
-  helper that errors if a method is missing or extra.
-- Effort: LOW. Value: LOW-MEDIUM. Only matters if the RPC surface
-  starts drifting.
+### 4a. Discriminated unions (commit `04f046f`)
 
----
+- `SidebandMetaMessage = SidebandFlushMessage | SidebandContentMessage`.
+  The parser narrows at the wire boundary and every downstream
+  consumer (webview `Panel`, bun web state, web-client store, RPC
+  schema) now holds the narrower `SidebandContentMessage`, so a flush
+  op can't leak into the render path.
+- `PanelEvent` is a six-variant union: `PanelPointerEvent`,
+  `PanelWheelEvent`, `PanelDragEndEvent`, `PanelResizeEvent`,
+  `PanelCloseEvent`, `PanelErrorEvent`. Branches that used to spread
+  optional `x/y/width/height` across every kind now handle each
+  variant explicitly.
 
-## 6. Test coverage gaps we know about
+### 4b. THEME_PRESETS palette factory (commit `abc524f`)
 
-- **`src/web-client/*`** — zero unit tests. Any of the extractions in
-  §2 become real wins once paired with a ~10–20-test module.
-- **`src/views/terminal/index.ts`** — the three extractions done
-  (agent-events, browser-events, socket-actions) were committed
-  without DOM tests. The event routing is mechanical enough that
-  tests would mostly exercise the dispatch-table shape; add ~30 tests
-  spread across the three modules to match the agent-panel coverage.
-- **`src/views/terminal/surface-manager.ts`** — the pure extractions
-  (workspace-factory, sidebar-state, pane-drag helpers, terminal-search)
-  all got tests. The non-pure surface-manager methods themselves
-  (switchToWorkspace, removeSurface, focusSurface, applyLayout) are
-  still untested; a happy-dom suite for SurfaceManager would be a
-  ~day's work and catch regressions across the whole webview refactor.
+`createAnsiPalette(tuple)` takes an ordered 16-color tuple. Each
+preset drops from ~26 lines of named properties to ~4 lines of hex
+strings. `DEFAULT_SETTINGS` now references `THEME_PRESETS[0]` instead
+of duplicating graphite inline.
+
+### 4c. Bun stdio types — no action needed
+
+Already handled in an earlier commit.
 
 ---
 
-## 7. Not worth doing (captured so we don't re-argue it)
+## 5. RPC schema completeness — DONE
+
+Commit `04f046f`. `src/bun/index.ts` pulls the Electrobun message
+handlers out into a typed `const bunMessageHandlers` with
+`satisfies BunMessageHandlers`. Electrobun's native handler type
+treats every method as optional; the satisfies check turns a missing
+handler into a compile error, so new methods added to
+`HyperTermRPC["bun"]["messages"]` can no longer silently fail at
+runtime.
+
+---
+
+## 6. Test coverage gaps — DONE
+
+100 new tests added across three commits:
+
+- **`562841d`** — web-client modules (38 tests across layout, sidebar,
+  panel-interaction). Covers split math at various ratios / gaps,
+  nested splits, HTML escaping, event wiring, gesture coordinate math,
+  throttling, and document-listener teardown.
+- **`da18481`** — terminal event routers (50 tests across
+  socket-actions, agent-events, browser-events). Covers required-field
+  drop behavior, default-field filling, the ht-agent-prompt echo side
+  effect, the extension-ui-response cancel fallback, and teardown.
+- **`6522220`** — SurfaceManager smoke suite (12 tests). xterm and
+  its addons are stubbed via `mock.module` so the workspace / surface
+  lifecycle can be exercised without a real terminal. Covers
+  `addSurface`, `removeSurface`, `focusSurface`,
+  `focusWorkspaceByIndex`, `renameSurface`, sidebar toggle, font size.
+
+Coverage still missing (not regression-critical):
+
+- `applyLayout` pixel geometry — would need a real layout engine.
+- Chip rendering and drag-drop state inside SurfaceManager — either
+  a broader DOM harness or Playwright.
+
+---
+
+## 7. Not worth doing — unchanged guidance
 
 ### Agent-panel further decomposition
 
 The current split (utils / messages / model / response / dialogs /
 slash) already halved the file and covered every clean boundary. The
-remaining 1711 lines are the core orchestration: `createAgentPaneView`
+remaining 1711 lines are core orchestration: `createAgentPaneView`
 (panel construction + event wiring), streaming render, state update
 coordinator. Further splitting would require breaking the one
-function that ties it all together, which means passing the whole
-view around as a parameter — a regression to the pre-refactor state
-under a different name.
+function that ties it all together, regressing to the pre-refactor
+state under a different name.
 
 ### Full SurfaceManager extraction
 
 Earlier surveys proposed pulling out `createSurfaceView` /
 `createBrowserSurfaceView` / `createAgentSurfaceView` and
 `settings-applier`. Both would need 10+ callback parameters for the
-panelManager/effects/dividers/focus/layout touchpoints. Mechanically
-doable; practically adds more ceremony than it removes. Skip.
+panelManager / effects / dividers / focus / layout touchpoints.
+Mechanically doable; practically adds more ceremony than it removes.
 
 ### Per-rpc-method request/response schemas
 
-Sketched in earlier surveys as a zod-style schema registry. The
-existing `METHOD_SCHEMAS` in `src/bun/rpc-handlers/shared.ts` covers
-the security-sensitive methods; adding schemas for the other ~60
-methods adds validation overhead for little real-world safety — the
+Sketched earlier as a zod-style schema registry. The existing
+`METHOD_SCHEMAS` in `src/bun/rpc-handlers/shared.ts` covers the
+security-sensitive methods; adding schemas for the other ~60 methods
+adds validation overhead for little real-world safety — the
 TypeScript type of each handler already constrains the shape at the
-call site. Don't.
+call site.
 
 ### Rewriting the webview in React / Preact / Solid / …
 
-Not in scope. The vanilla-TS + xterm.js posture is a deliberate
-choice per CLAUDE.md (performance, bundle size, no framework churn).
+Not in scope. The vanilla-TS + xterm.js posture is deliberate per
+CLAUDE.md (performance, bundle size, no framework churn).
 
 ---
 
@@ -239,7 +190,7 @@ choice per CLAUDE.md (performance, bundle size, no framework churn).
 
 ```
 bun run typecheck        # tsc --noEmit
-bun test tests/          # unit + DOM-level suite
+bun test                 # tests/ only (bunfig.toml)
 bun run test             # also rebuilds web-client first
 bun run test:e2e         # playwright (requires a running app)
 bun start                # electrobun dev — interactive, the smoke test
@@ -253,5 +204,4 @@ bunx eslint src/ tests/  # lint
 Not a rewrite. Not a framework migration. Not a behavior change.
 Every commit is either a pure structural move with identical
 behavior, a correctness fix that fills in missing edge-case handling,
-or a new test. If a commit starts to drift into design changes,
-split the design change into its own PR on top of this branch.
+or a new test.
