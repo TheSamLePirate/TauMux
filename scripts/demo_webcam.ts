@@ -176,8 +176,12 @@ const ffmpeg = Bun.spawn(
 // Capture stderr fully. On an early ffmpeg exit (camera permission denied,
 // device busy, missing framework, etc.) we replay the tail so the failure
 // is visible instead of silently printing "Done" with zero frames.
+// The drain must finish before we print the summary, otherwise the real
+// error (logged after the configuration banner) may not have landed yet —
+// track `stderrDone` and await it below.
 const stderrBuf: string[] = [];
-(async () => {
+let stderrDone = false;
+const stderrDrained = (async () => {
   const r = ffmpeg.stderr.getReader();
   const d = new TextDecoder();
   try {
@@ -186,9 +190,10 @@ const stderrBuf: string[] = [];
       if (done) break;
       const t = d.decode(value, { stream: true });
       stderrBuf.push(t);
-      // Keep last ~8 KB so a chatty log doesn't balloon.
+      // Keep last ~32 KB so we don't drop the interesting tail on chatty
+      // ffmpeg builds (8.0.1 prints ~800 B of banner before the real log).
       let total = stderrBuf.reduce((n, s) => n + s.length, 0);
-      while (total > 8192 && stderrBuf.length > 1) {
+      while (total > 32768 && stderrBuf.length > 1) {
         total -= stderrBuf.shift()!.length;
       }
       // Surface obvious failures live.
@@ -198,8 +203,11 @@ const stderrBuf: string[] = [];
     }
   } catch {
     /* stream ended */
+  } finally {
+    stderrDone = true;
   }
 })();
+void stderrDone; // tracked via stderrDrained; kept for debug hooks
 
 // ---------------------------------------------------------------------------
 // Frame pipeline: extract → latest-frame buffer → timed sender
@@ -340,13 +348,30 @@ console.log(
 
 // If ffmpeg exited without producing frames, replay the stderr tail so the
 // real failure reason (camera permission, device busy, …) is visible.
+// Wait for ffmpeg to fully exit AND for the stderr reader to drain —
+// otherwise the tail may be the banner-only prefix because the error
+// hadn't arrived yet when the stdout pipe closed.
 if (capturedCount === 0) {
+  try {
+    await ffmpeg.exited;
+  } catch {
+    /* ignore */
+  }
+  // Add a hard cap in case stderr stays open past ffmpeg.exited on some
+  // platforms; 500ms is plenty for a post-exit drain.
+  await Promise.race([
+    stderrDrained,
+    new Promise((resolve) => setTimeout(resolve, 500)),
+  ]);
   console.error("\n[demo_webcam] ffmpeg produced no frames. stderr tail:");
-  console.error(stderrBuf.join("").slice(-2000));
+  const fullTail = stderrBuf.join("");
+  console.error(fullTail.slice(-4000));
   console.error(
     "\nHints: run `bun scripts/demo_webcam.ts --list` to verify the camera " +
       "index, and make sure the app running HyperTerm Canvas has been granted " +
-      "Camera access in System Settings → Privacy & Security → Camera.",
+      "Camera access in System Settings → Privacy & Security → Camera.\n" +
+      "Or run this raw ffmpeg command in a plain shell to see the full log:\n" +
+      `  ffmpeg -v verbose -f avfoundation -framerate ${fps} -video_size ${size} -i "${cameraIndex}:none" -f image2pipe -vcodec mjpeg -q:v 5 -an pipe:1 > /dev/null`,
   );
 }
 
