@@ -1,4 +1,4 @@
-import { defineConfig } from "@playwright/test";
+import { defineConfig, devices } from "@playwright/test";
 
 /**
  * Playwright config for **native** Electrobun e2e tests.
@@ -35,6 +35,11 @@ export default defineConfig({
   projects: [
     {
       name: "native-dev",
+      // Make Chromium available to specs that explicitly ask for the
+      // `page` fixture (web-mirror integration specs). Playwright only
+      // launches the browser when a test uses `page` — `app`-only specs
+      // pay no browser-launch cost.
+      use: { ...devices["Desktop Chrome"] },
     },
   ],
 });
