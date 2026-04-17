@@ -20,6 +20,7 @@ import {
 } from "./store";
 import { ICONS } from "./icons";
 import { WEB_PROTOCOL_VERSION } from "../shared/web-protocol";
+import { createPanelRendererRegistry } from "./panel-renderers";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -1268,77 +1269,22 @@ function boot() {
   // Content renderers — panel binary data (image, svg, html, canvas2d)
   // ------------------------------------------------------------------
 
-  type Renderer = (
-    contentEl: HTMLElement,
-    data: any,
-    meta: any,
-    isBinary?: boolean,
-  ) => void;
-  const contentRenderers: Record<string, Renderer> = {};
-  function registerWebRenderer(type: string, fn: Renderer) {
-    contentRenderers[type] = fn;
-  }
-  function decodeB64(data: any, isBinary?: boolean): Uint8Array {
-    if (isBinary) return data as Uint8Array;
-    const binary = atob(data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  }
-  function decodeB64Text(data: any, isBinary?: boolean): string {
-    if (isBinary) return new TextDecoder().decode(data as Uint8Array);
-    return atob(data);
-  }
-  registerWebRenderer("image", (contentEl, data, meta, isBinary) => {
-    const fmtMap: Record<string, string> = {
-      png: "image/png",
-      jpeg: "image/jpeg",
-      jpg: "image/jpeg",
-      webp: "image/webp",
-      gif: "image/gif",
-    };
-    const mime = fmtMap[meta.format || "png"] || "image/png";
-    const bytes = decodeB64(data, isBinary);
-    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const img = contentEl.querySelector("img") as HTMLImageElement | null;
-    if (img) img.src = url;
-    else
-      contentEl.innerHTML =
-        '<img src="' +
-        url +
-        '" style="width:100%;height:100%;object-fit:contain">';
-  });
-  registerWebRenderer("svg", (contentEl, data, _meta, isBinary) => {
-    contentEl.innerHTML = decodeB64Text(data, isBinary);
-  });
-  registerWebRenderer("html", (contentEl, data, _meta, isBinary) => {
-    contentEl.innerHTML = decodeB64Text(data, isBinary);
-  });
-  registerWebRenderer("canvas2d", (contentEl, data, _meta, isBinary) => {
-    const bytes = decodeB64(data, isBinary);
-    let canvas = contentEl.querySelector("canvas") as HTMLCanvasElement | null;
-    if (!canvas) {
-      canvas = document.createElement("canvas");
-      contentEl.innerHTML = "";
-      contentEl.appendChild(canvas);
-    }
-    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "image/png" });
-    createImageBitmap(blob).then((bitmap) => {
-      if (canvas!.width !== bitmap.width) canvas!.width = bitmap.width;
-      if (canvas!.height !== bitmap.height) canvas!.height = bitmap.height;
-      canvas!.getContext("2d")!.drawImage(bitmap, 0, 0);
-    });
-  });
+  const panelRenderers = createPanelRendererRegistry();
 
-  function renderPanelData(panelId: string, data: any, isBinary: boolean) {
+  function renderPanelData(panelId: string, data: unknown, isBinary: boolean) {
     const state = store.getState();
     const ps = state.panels[panelId];
     if (!ps) return;
     const dom = panelsDom[panelId];
     if (!dom) return;
-    const renderer = contentRenderers[ps.meta.type];
-    if (renderer) renderer(dom.contentEl, data, ps.meta, isBinary);
+    const renderer = panelRenderers.get(ps.meta.type);
+    if (renderer)
+      renderer(
+        dom.contentEl,
+        data,
+        ps.meta as unknown as Record<string, unknown>,
+        isBinary,
+      );
   }
 
   // ------------------------------------------------------------------
