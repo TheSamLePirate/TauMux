@@ -919,32 +919,48 @@ export class SurfaceManager {
 
   // ── Browser pane actions ──
 
-  browserNavigateTo(surfaceId: string | null, url: string): void {
+  /** Run fn against the browser view of `surfaceId` — or the focused
+   *  surface if null/undefined. A no-op when nothing resolves to a
+   *  browser pane. This collapses the guard that used to be inlined
+   *  at the top of every browser* method. */
+  private withBrowserView(
+    surfaceId: string | null | undefined,
+    fn: (view: BrowserPaneView, resolvedId: string) => void,
+  ): void {
     const id = surfaceId ?? this.focusedSurfaceId;
     if (!id) return;
     const view = this.surfaces.get(id);
-    if (view?.browserView) browserPaneNavigateTo(view.browserView, url);
+    if (view?.browserView) fn(view.browserView, id);
+  }
+
+  /** Set a browser pane's zoom + dispatch the persistence event. */
+  private applyBrowserZoom(
+    view: BrowserPaneView,
+    surfaceId: string,
+    zoom: number,
+  ): void {
+    view.zoom = zoom;
+    window.dispatchEvent(
+      new CustomEvent("ht-browser-zoom", {
+        detail: { surfaceId, zoom },
+      }),
+    );
+  }
+
+  browserNavigateTo(surfaceId: string | null, url: string): void {
+    this.withBrowserView(surfaceId, (v) => browserPaneNavigateTo(v, url));
   }
 
   browserGoBack(surfaceId?: string | null): void {
-    const id = surfaceId ?? this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) browserPaneGoBack(view.browserView);
+    this.withBrowserView(surfaceId, (v) => browserPaneGoBack(v));
   }
 
   browserGoForward(surfaceId?: string | null): void {
-    const id = surfaceId ?? this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) browserPaneGoForward(view.browserView);
+    this.withBrowserView(surfaceId, (v) => browserPaneGoForward(v));
   }
 
   browserReload(surfaceId?: string | null): void {
-    const id = surfaceId ?? this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) browserPaneReload(view.browserView);
+    this.withBrowserView(surfaceId, (v) => browserPaneReload(v));
   }
 
   browserEvalJs(
@@ -952,31 +968,21 @@ export class SurfaceManager {
     script: string,
     reqId?: string,
   ): void {
-    const id = surfaceId ?? this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) browserPaneEvalJs(view.browserView, script, reqId);
+    this.withBrowserView(surfaceId, (v) => browserPaneEvalJs(v, script, reqId));
   }
 
   browserFindInPage(surfaceId?: string | null, query?: string): void {
-    const id = surfaceId ?? this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) browserPaneFindInPage(view.browserView, query ?? "");
+    this.withBrowserView(surfaceId, (v) =>
+      browserPaneFindInPage(v, query ?? ""),
+    );
   }
 
   browserStopFind(surfaceId?: string | null): void {
-    const id = surfaceId ?? this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) browserPaneStopFind(view.browserView);
+    this.withBrowserView(surfaceId, (v) => browserPaneStopFind(v));
   }
 
   browserToggleDevTools(surfaceId?: string | null): void {
-    const id = surfaceId ?? this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) browserPaneToggleDevTools(view.browserView);
+    this.withBrowserView(surfaceId, (v) => browserPaneToggleDevTools(v));
   }
 
   browserInjectCookies(
@@ -990,65 +996,33 @@ export class SurfaceManager {
       sameSite: string;
     }>,
   ): void {
-    const view = this.surfaces.get(surfaceId);
-    if (view?.browserView) browserPaneInjectCookies(view.browserView, cookies);
+    this.withBrowserView(surfaceId, (v) =>
+      browserPaneInjectCookies(v, cookies),
+    );
   }
 
   browserGetCookies(surfaceId: string, reqId: string): void {
-    const view = this.surfaces.get(surfaceId);
-    if (view?.browserView) browserPaneGetCookies(view.browserView, reqId);
+    this.withBrowserView(surfaceId, (v) => browserPaneGetCookies(v, reqId));
   }
 
   focusBrowserAddressBar(): void {
-    const id = this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) browserPaneFocusAddressBar(view.browserView);
+    this.withBrowserView(null, (v) => browserPaneFocusAddressBar(v));
   }
 
   browserZoomIn(): void {
-    const id = this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) {
-      const newZoom = Math.min(5.0, (view.browserView.zoom || 1.0) + 0.1);
-      view.browserView.zoom = newZoom;
-      // Notify bun for persistence
-      window.dispatchEvent(
-        new CustomEvent("ht-browser-zoom", {
-          detail: { surfaceId: id, zoom: newZoom },
-        }),
-      );
-    }
+    this.withBrowserView(null, (v, id) => {
+      this.applyBrowserZoom(v, id, Math.min(5.0, (v.zoom || 1.0) + 0.1));
+    });
   }
 
   browserZoomOut(): void {
-    const id = this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) {
-      const newZoom = Math.max(0.25, (view.browserView.zoom || 1.0) - 0.1);
-      view.browserView.zoom = newZoom;
-      window.dispatchEvent(
-        new CustomEvent("ht-browser-zoom", {
-          detail: { surfaceId: id, zoom: newZoom },
-        }),
-      );
-    }
+    this.withBrowserView(null, (v, id) => {
+      this.applyBrowserZoom(v, id, Math.max(0.25, (v.zoom || 1.0) - 0.1));
+    });
   }
 
   browserZoomReset(): void {
-    const id = this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) {
-      view.browserView.zoom = 1.0;
-      window.dispatchEvent(
-        new CustomEvent("ht-browser-zoom", {
-          detail: { surfaceId: id, zoom: 1.0 },
-        }),
-      );
-    }
+    this.withBrowserView(null, (v, id) => this.applyBrowserZoom(v, id, 1.0));
   }
 
   /** Hide all browser webview overlays (called when overlays open). */
