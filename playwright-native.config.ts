@@ -22,7 +22,12 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   fullyParallel: false,
   forbidOnly: !!process.env["CI"],
-  retries: process.env["CI"] ? 1 : 0,
+  // Focus-dependent specs (palette Escape, search bar dismiss) occasionally
+  // flake when a prior test moves OS-level focus away from the webview —
+  // e.g. the agent subprocess briefly steals keyboard focus on spawn.
+  // One retry is enough to re-establish the clean state. CI keeps the
+  // existing retry too.
+  retries: 1,
   // Each worker spawns a full Electrobun app (bun + native launcher + webview).
   // Parallel workers race on the dev-build postBuild step and on Electrobun's
   // small internal port range (50000+), so we serialise by default. Local dev

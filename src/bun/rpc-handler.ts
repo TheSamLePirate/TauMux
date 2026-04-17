@@ -3,6 +3,7 @@ import type { BrowserSurfaceManager } from "./browser-surface-manager";
 import type { BrowserHistoryStore } from "./browser-history";
 import type { CookieStore } from "./cookie-store";
 import type { PanelRegistry } from "./panel-registry";
+import type { PiAgentManager } from "./pi-agent-manager";
 import type { SurfaceMetadataPoller } from "./surface-metadata";
 
 import type { AppState, Handler, HandlerDeps } from "./rpc-handlers/types";
@@ -40,6 +41,9 @@ export type { AppState, WorkspaceSnapshot } from "./rpc-handlers/types";
  */
 export interface RpcHandlerOptions {
   panelRegistry?: PanelRegistry;
+  /** Pi agent manager, passed through to `agent.*` handlers for list/close
+   *  observability. Omitted in processes that don't own agents. */
+  piAgentManager?: PiAgentManager;
   /** Callback to trigger a graceful shutdown (wired to `system.shutdown`). */
   shutdown?: () => void;
   /** Tier 2 gate. When true, `__test.*` handlers are registered; when false
@@ -77,6 +81,7 @@ export function createRpcHandler(
     cookieStore,
     notifications: createNotificationStore(),
     panelRegistry: options.panelRegistry,
+    piAgentManager: options.piAgentManager,
     shutdown: options.shutdown,
   };
 

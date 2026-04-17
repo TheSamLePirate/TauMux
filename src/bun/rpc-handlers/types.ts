@@ -2,6 +2,7 @@ import type { BrowserHistoryStore } from "../browser-history";
 import type { BrowserSurfaceManager } from "../browser-surface-manager";
 import type { CookieStore } from "../cookie-store";
 import type { PanelRegistry } from "../panel-registry";
+import type { PiAgentManager } from "../pi-agent-manager";
 import type { SessionManager } from "../session-manager";
 import type { SurfaceMetadataPoller } from "../surface-metadata";
 import type { PaneNode } from "../../shared/types";
@@ -71,6 +72,10 @@ export interface HandlerDeps {
   /** Bun-side mirror of the webview's per-surface panel state. Populated
    *  by the sideband meta tap; consumed by the `panel.list` RPC. */
   panelRegistry?: PanelRegistry;
+  /** Pi agent manager — exposed for read-only `agent.*` handlers so tests
+   *  and external clients can observe agent state without reaching into
+   *  the webview. */
+  piAgentManager?: PiAgentManager;
   /** Initiate a graceful shutdown. Wired to `system.shutdown`. */
   shutdown?: () => void;
 }

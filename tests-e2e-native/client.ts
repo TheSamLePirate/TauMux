@@ -210,6 +210,16 @@ export interface SocketRpc {
     }): Promise<{ ok: true; scriptKey: string }>;
   };
 
+  agent: {
+    create(): Promise<"OK">;
+    create_split(params: {
+      direction: "horizontal" | "vertical";
+    }): Promise<"OK">;
+    list(): Promise<{ id: string }[]>;
+    count(): Promise<number>;
+    close(params: { agent_id?: string; surface_id?: string }): Promise<"OK">;
+  };
+
   browser: {
     list(): Promise<BrowserSurfaceInfo[]>;
     open(params?: { url?: string }): Promise<"OK">;
@@ -440,6 +450,16 @@ class RpcClient implements SocketRpc {
       workspace_id?: string;
       script_key?: string;
     }) => this.call<{ ok: true; scriptKey: string }>("script.run", params),
+  };
+
+  agent = {
+    create: () => this.call<"OK">("agent.create"),
+    create_split: (params: { direction: "horizontal" | "vertical" }) =>
+      this.call<"OK">("agent.create_split", params),
+    list: () => this.call<{ id: string }[]>("agent.list"),
+    count: () => this.call<number>("agent.count"),
+    close: (params: { agent_id?: string; surface_id?: string }) =>
+      this.call<"OK">("agent.close", params),
   };
 
   browser = {

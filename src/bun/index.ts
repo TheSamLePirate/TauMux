@@ -1615,6 +1615,7 @@ const socketHandler = createRpcHandler(
   cookieStore,
   {
     panelRegistry,
+    piAgentManager,
     shutdown: () => gracefulShutdown(),
     testModeEnabled: HT_TEST_MODE,
   },
