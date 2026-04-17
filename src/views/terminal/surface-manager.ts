@@ -21,6 +21,7 @@ import type {
   SurfaceMetadata,
 } from "../../shared/types";
 import { createWorkspaceRecord } from "./workspace-factory";
+import { TerminalSearchBar } from "./terminal-search";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
 import {
   type AgentPaneView,
@@ -136,9 +137,7 @@ export class SurfaceManager {
   private dropOverlayLabelEl: HTMLSpanElement | null = null;
   private highlightedDropTargetId: string | null = null;
   private fontSize: number;
-  private searchBarEl: HTMLDivElement | null = null;
-  private searchInputEl: HTMLInputElement | null = null;
-  private searchVisible = false;
+  private searchBar: TerminalSearchBar;
   private metadata = new Map<string, SurfaceMetadata>();
   /** surfaceId → metadata about why we launched this surface, for script
    *  status tracking. Cleared on surfaceExited. */
@@ -163,6 +162,20 @@ export class SurfaceManager {
     initialFontSize = 13,
   ) {
     this.fontSize = initialFontSize;
+    this.searchBar = new TerminalSearchBar(this.terminalContainer, {
+      getActiveSearchAddon: () => {
+        const view = this.focusedSurfaceId
+          ? this.surfaces.get(this.focusedSurfaceId)
+          : null;
+        return view?.searchAddon ?? null;
+      },
+      onClose: () => {
+        const view = this.focusedSurfaceId
+          ? this.surfaces.get(this.focusedSurfaceId)
+          : null;
+        view?.term?.focus();
+      },
+    });
     this.sidebar = new Sidebar(sidebarContainer, {
       onSelectWorkspace: (id) => {
         const idx = this.workspaces.findIndex((w) => w.id === id);
@@ -870,111 +883,7 @@ export class SurfaceManager {
   // ── Terminal search ──
 
   toggleSearchBar(): void {
-    if (this.searchVisible) {
-      this.hideSearchBar();
-    } else {
-      this.showSearchBar();
-    }
-  }
-
-  private showSearchBar(): void {
-    if (this.searchVisible) {
-      this.searchInputEl?.focus();
-      return;
-    }
-    this.searchVisible = true;
-
-    if (!this.searchBarEl) {
-      this.searchBarEl = document.createElement("div");
-      this.searchBarEl.className = "search-bar";
-
-      this.searchInputEl = document.createElement("input");
-      this.searchInputEl.className = "search-bar-input";
-      this.searchInputEl.type = "text";
-      this.searchInputEl.placeholder = "Find in terminal\u2026";
-      this.searchInputEl.setAttribute("aria-label", "Search terminal");
-
-      const prevBtn = document.createElement("button");
-      prevBtn.className = "search-bar-btn";
-      prevBtn.title = "Previous (Shift+Enter)";
-      prevBtn.setAttribute("aria-label", "Previous match");
-      prevBtn.append(createIcon("chevronUp", "", 14));
-      prevBtn.addEventListener("click", () => this.searchPrevious());
-
-      const nextBtn = document.createElement("button");
-      nextBtn.className = "search-bar-btn";
-      nextBtn.title = "Next (Enter)";
-      nextBtn.setAttribute("aria-label", "Next match");
-      nextBtn.append(createIcon("chevronDown", "", 14));
-      nextBtn.addEventListener("click", () => this.searchNext());
-
-      const closeBtn = document.createElement("button");
-      closeBtn.className = "search-bar-btn search-bar-close";
-      closeBtn.title = "Close (Escape)";
-      closeBtn.setAttribute("aria-label", "Close search");
-      closeBtn.append(createIcon("close", "", 12));
-      closeBtn.addEventListener("click", () => this.hideSearchBar());
-
-      this.searchInputEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && e.shiftKey) {
-          e.preventDefault();
-          this.searchPrevious();
-        } else if (e.key === "Enter") {
-          e.preventDefault();
-          this.searchNext();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          this.hideSearchBar();
-        }
-      });
-
-      this.searchInputEl.addEventListener("input", () => {
-        this.searchNext();
-      });
-
-      this.searchBarEl.appendChild(this.searchInputEl);
-      this.searchBarEl.appendChild(prevBtn);
-      this.searchBarEl.appendChild(nextBtn);
-      this.searchBarEl.appendChild(closeBtn);
-      this.terminalContainer.appendChild(this.searchBarEl);
-    }
-
-    this.searchBarEl.classList.add("search-bar-visible");
-    this.searchInputEl!.value = "";
-    this.searchInputEl!.focus();
-  }
-
-  private hideSearchBar(): void {
-    if (!this.searchVisible) return;
-    this.searchVisible = false;
-    this.searchBarEl?.classList.remove("search-bar-visible");
-
-    // Clear search highlighting
-    const view = this.focusedSurfaceId
-      ? this.surfaces.get(this.focusedSurfaceId)
-      : null;
-    if (view?.searchAddon) {
-      view.searchAddon.clearDecorations();
-      view.term?.focus();
-    }
-  }
-
-  private searchNext(): void {
-    const query = this.searchInputEl?.value;
-    if (!query) return;
-    const view = this.focusedSurfaceId
-      ? this.surfaces.get(this.focusedSurfaceId)
-      : null;
-    view?.searchAddon?.findNext(query);
-  }
-
-  private searchPrevious(): void {
-    const query = this.searchInputEl?.value;
-    if (!query) return;
-    const view = this.focusedSurfaceId
-      ? this.surfaces.get(this.focusedSurfaceId)
-      : null;
-    view?.searchAddon?.findPrevious(query);
+    this.searchBar.toggle();
   }
 
   readScreen(surfaceId: string, lines?: number, scrollback?: boolean): string {
