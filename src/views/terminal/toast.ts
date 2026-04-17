@@ -12,8 +12,21 @@ function ensureContainer(): HTMLElement {
   return container;
 }
 
+const MAX_TOASTS = 5;
+
 export function showToast(message: string, level: ToastLevel = "info"): void {
   const parent = ensureContainer();
+
+  // Evict the oldest BEFORE appending so we never briefly have 6+
+  // toasts mounted (which caused layout thrash during error bursts).
+  const existing = parent.querySelectorAll<HTMLElement>(
+    ".toast:not(.toast-exit)",
+  );
+  if (existing.length >= MAX_TOASTS) {
+    // Drop the oldest enough so we land at MAX_TOASTS - 1 after append.
+    const toEvict = existing.length - (MAX_TOASTS - 1);
+    for (let i = 0; i < toEvict; i++) dismissToast(existing[i]);
+  }
 
   const el = document.createElement("div");
   el.className = `toast toast-${level}`;
@@ -30,12 +43,6 @@ export function showToast(message: string, level: ToastLevel = "info"): void {
   // Auto-dismiss
   const timeout = level === "error" ? 6000 : 4000;
   setTimeout(() => dismissToast(el), timeout);
-
-  // Cap visible toasts
-  const toasts = parent.querySelectorAll(".toast");
-  if (toasts.length > 5) {
-    dismissToast(toasts[0] as HTMLElement);
-  }
 }
 
 function dismissToast(el: HTMLElement): void {

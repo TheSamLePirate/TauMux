@@ -456,16 +456,26 @@ export class SurfaceMetadataPoller {
     this.pkgCache.clear();
   }
 
-  /** Adjust tick interval at runtime. Restarts the timer if already running. */
+  /** Adjust tick interval at runtime. Restarts the timer if already running.
+   *  When speeding up (ms got smaller — e.g. window became visible again),
+   *  fires an immediate tick so the user sees fresh chips/metadata on focus
+   *  return rather than waiting up to 3s for the next scheduled tick. */
   setPollRate(ms: number): void {
     const next = Math.max(250, Math.floor(ms));
     if (next === this.intervalMs) return;
+    const speedingUp = next < this.intervalMs;
     this.intervalMs = next;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = setInterval(() => {
         void this.tick();
       }, this.intervalMs);
+      if (speedingUp) {
+        // Immediate refresh — any in-flight tick is short-circuited by
+        // `inFlight` in tick() itself, so this is safe even if one's
+        // already running.
+        void this.tick();
+      }
     }
   }
 

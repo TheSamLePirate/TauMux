@@ -132,10 +132,27 @@ export class BrowserHistoryStore {
           this.entries.set(this.normalizeUrl(entry.url), entry);
         }
       }
-    } catch {
-      /* ignore corrupt files */
+    } catch (err) {
+      // Corrupt history file used to silently reset — user lost every
+      // visited URL with no warning. Log + back up the bad file so they
+      // can recover manually; `.bak` sits next to the live file.
+      console.warn(
+        `[browser-history] ${this.filePath} is corrupt:`,
+        err instanceof Error ? err.message : err,
+      );
+      try {
+        const { renameSync } = await import("node:fs");
+        renameSync(this.filePath, `${this.filePath}.bak`);
+        console.warn(
+          `[browser-history] saved corrupt copy to ${this.filePath}.bak`,
+        );
+      } catch {
+        /* best-effort backup */
+      }
     }
   }
+
+  private saveWarned = false;
 
   private async save(): Promise<void> {
     try {
@@ -143,8 +160,15 @@ export class BrowserHistoryStore {
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       const arr = [...this.entries.values()];
       await Bun.write(this.filePath, JSON.stringify(arr));
-    } catch {
-      /* ignore write failures */
+      this.saveWarned = false;
+    } catch (err) {
+      if (!this.saveWarned) {
+        this.saveWarned = true;
+        console.error(
+          `[browser-history] failed to write ${this.filePath}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
     }
   }
 

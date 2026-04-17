@@ -39,8 +39,13 @@ test.describe("script runner", () => {
         const list = await app.rpc.surface.list();
         return list.find((s) => !before.has(s.id));
       },
-      { timeoutMs: 10_000, message: "new surface never appeared" },
+      { timeoutMs: 15_000, message: "new surface never appeared" },
     );
+    // script.run delays the command 600ms to let the login shell's
+    // async init settle (see src/bun/index.ts splitSurface dispatch).
+    // Plus a buffered stdout round-trip through Electrobun RPC + xterm
+    // write. 15s is comfortable under CI load; 10s flaked when the
+    // suite ran hot.
     await expect
       .poll(
         async () => {
@@ -49,7 +54,7 @@ test.describe("script runner", () => {
           });
           return text.includes("script-runner-marker");
         },
-        { timeout: 10_000 },
+        { timeout: 15_000 },
       )
       .toBe(true);
   });

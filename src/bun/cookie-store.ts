@@ -298,10 +298,24 @@ export class CookieStore {
           this.addToIndex(k, entry.domain);
         }
       }
-    } catch {
-      /* ignore corrupt files */
+    } catch (err) {
+      // Corrupt cookies.json used to silently log the user out of every
+      // site. Log + back up so they can recover manually.
+      console.warn(
+        `[cookies] ${this.filePath} is corrupt:`,
+        err instanceof Error ? err.message : err,
+      );
+      try {
+        const { renameSync } = await import("node:fs");
+        renameSync(this.filePath, `${this.filePath}.bak`);
+        console.warn(`[cookies] saved corrupt copy to ${this.filePath}.bak`);
+      } catch {
+        /* best-effort */
+      }
     }
   }
+
+  private saveWarned = false;
 
   private async save(): Promise<void> {
     try {
@@ -309,8 +323,15 @@ export class CookieStore {
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       const arr = [...this.entries.values()];
       await Bun.write(this.filePath, JSON.stringify(arr));
-    } catch {
-      /* ignore write failures */
+      this.saveWarned = false;
+    } catch (err) {
+      if (!this.saveWarned) {
+        this.saveWarned = true;
+        console.error(
+          `[cookies] failed to write ${this.filePath}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
     }
   }
 
