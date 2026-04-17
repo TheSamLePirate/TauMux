@@ -175,9 +175,29 @@ export type ContentType = ProtocolOp | BuiltinContentType | (string & {});
 
 export type PositionType = "inline" | "float" | "overlay" | "fixed";
 
-export interface SidebandMetaMessage {
+// --- Sideband meta messages ---
+// Discriminated on `type`. Two shapes:
+//   - SidebandFlushMessage: protocol op that resets a data channel.
+//   - SidebandContentMessage: everything else (protocol ops "update"/"clear"
+//     and content-renderer dispatches like "image"/"svg"/"html"/custom).
+
+/** Non-flush content / op type — everything except the data-channel reset. */
+export type SidebandContentKind =
+  | "update"
+  | "clear"
+  | BuiltinContentType
+  | (string & {});
+
+export interface SidebandFlushMessage {
   id: string;
-  type: ContentType;
+  type: "flush";
+  /** Named data channel to flush (default: "data" = fd4). */
+  dataChannel?: string;
+}
+
+export interface SidebandContentMessage {
+  id: string;
+  type: SidebandContentKind;
   format?: string;
   position?: PositionType;
   anchor?: "cursor" | { row: number };
@@ -199,29 +219,83 @@ export interface SidebandMetaMessage {
   timeout?: number;
 }
 
-export interface PanelEvent {
+export type SidebandMetaMessage = SidebandFlushMessage | SidebandContentMessage;
+
+// --- Panel events ---
+// Events flow from rendered panels back to their content scripts. The
+// JSON wire form carries an `event` discriminator plus fields specific
+// to each event kind.
+
+export type PanelPointerEventName =
+  | "mousedown"
+  | "mouseup"
+  | "click"
+  | "mousemove"
+  | "mouseenter"
+  | "mouseleave";
+
+export interface PanelPointerEvent {
   id: string;
-  event: string;
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
+  event: PanelPointerEventName;
+  x: number;
+  y: number;
   button?: number;
   buttons?: number;
-  deltaX?: number;
-  deltaY?: number;
-  type?: string;
+}
+
+export interface PanelWheelEvent {
+  id: string;
+  event: "wheel";
+  x: number;
+  y: number;
+  deltaX: number;
+  deltaY: number;
+  buttons?: number;
+}
+
+export interface PanelDragEndEvent {
+  id: string;
+  event: "dragend";
+  x: number;
+  y: number;
+}
+
+export interface PanelResizeEvent {
+  id: string;
+  event: "resize";
+  width?: number;
+  height?: number;
+  /** Terminal cell columns — set when the resize is reporting the pane
+   *  terminal size (used by __terminal__ pseudo-panel). */
   cols?: number;
   rows?: number;
   pxWidth?: number;
+  pxHeight?: number;
+}
+
+export interface PanelCloseEvent {
+  id: string;
+  event: "close";
+}
+
+export interface PanelErrorEvent {
+  id: string;
+  event: "error";
   /** Error code for system error events (id="__system__", event="error") */
   code?: string;
   /** Human-readable message for system error events */
   message?: string;
   /** Reference panel id that triggered the error or ack */
   ref?: string;
-  pxHeight?: number;
 }
+
+export type PanelEvent =
+  | PanelPointerEvent
+  | PanelWheelEvent
+  | PanelDragEndEvent
+  | PanelResizeEvent
+  | PanelCloseEvent
+  | PanelErrorEvent;
 
 export interface WorkspaceContextMenuRequest {
   kind: "workspace";
@@ -505,7 +579,7 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       surfaceExited: { surfaceId: string; exitCode: number };
 
       // Sideband (routed by surfaceId)
-      sidebandMeta: SidebandMetaMessage & { surfaceId: string };
+      sidebandMeta: SidebandContentMessage & { surfaceId: string };
       sidebandData: { surfaceId: string; id: string; data: string };
       /** Binary read failed (timeout, EOF, abort) after meta was already dispatched */
       sidebandDataFailed: {

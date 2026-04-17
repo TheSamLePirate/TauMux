@@ -1,4 +1,7 @@
-import type { SurfaceMetadata, SidebandMetaMessage } from "../../shared/types";
+import type {
+  SurfaceMetadata,
+  SidebandContentMessage,
+} from "../../shared/types";
 import type {
   LogEntry,
   NotificationEntry,
@@ -37,7 +40,7 @@ export class WebStateStore {
     }
   }
 
-  applySidebandMeta(surfaceId: string, meta: SidebandMetaMessage): void {
+  applySidebandMeta(surfaceId: string, meta: SidebandContentMessage): void {
     const id = meta.id;
     if (!id) return;
     if (meta.type === "clear") {

@@ -269,528 +269,553 @@ function readPiSessionTree(
   }
 }
 
-// Define RPC handlers
-const rpc = BrowserView.defineRPC<HyperTermRPC>({
-  handlers: {
-    messages: {
-      clipboardWrite: (payload) => {
-        try {
-          Utils.clipboardWriteText(payload.text);
-        } catch {
-          const proc = Bun.spawn(["pbcopy"], { stdin: "pipe" });
-          proc.stdin.write(payload.text);
-          proc.stdin.end();
-        }
-      },
-      clipboardPaste: (payload) => {
-        app.focusedSurfaceId = payload.surfaceId;
-        void handlePaste();
-      },
-      writeStdin: (payload) => {
-        sessions.writeStdin(payload.surfaceId, payload.data);
-      },
-      viewportSize: (payload) => {
-        app.webServer?.setNativeViewport(payload.width, payload.height);
-      },
-      resize: (payload) => {
-        if (!app.initialResizeReceived) {
-          app.initialResizeReceived = true;
-          // Send settings now that the webview is ready
-          rpc.send("restoreSettings", { settings: settingsManager.get() });
-          // Re-send the web-mirror status — the boot-time send at module
-          // load happens before the webview has registered RPC handlers,
-          // so the sidebar dot was stuck on "Offline" (its CSS default)
-          // even when auto-start had brought the server up.
-          sendWebServerStatus();
-          if (!tryRestoreLayout(payload.cols, payload.rows)) {
-            createWorkspaceSurface(payload.cols, payload.rows);
-          }
-        } else {
-          sessions.resize(payload.surfaceId, payload.cols, payload.rows);
-          app.webServer?.broadcast({
-            type: "resize",
-            surfaceId: payload.surfaceId,
-            cols: payload.cols,
-            rows: payload.rows,
-          });
-        }
-      },
-      createSurface: (payload) => {
-        createWorkspaceSurface(80, 24, payload.cwd);
-      },
-      splitSurface: (payload) => {
-        splitSurface(payload.direction, undefined, payload.cwd);
-      },
-      closeSurface: (payload) => {
-        // Clean up any pending cookie injection debounce
-        const pendingCookie = domReadyDebounce.get(payload.surfaceId);
-        if (pendingCookie) {
-          clearTimeout(pendingCookie);
-          domReadyDebounce.delete(payload.surfaceId);
-        }
-        if (piAgentManager.isAgentSurface(payload.surfaceId)) {
-          piAgentManager.removeAgent(payload.surfaceId);
-          sendWebviewAction("agentSurfaceClosed", {
-            surfaceId: payload.surfaceId,
-          });
-        } else if (browserSurfaces.isBrowserSurface(payload.surfaceId)) {
-          browserSurfaces.closeSurface(payload.surfaceId);
-        } else {
-          sessions.closeSurface(payload.surfaceId);
-        }
-      },
-      focusSurface: (payload) => {
-        app.focusedSurfaceId = payload.surfaceId;
-        app.webServer?.broadcast({
-          type: "focusChanged",
-          surfaceId: payload.surfaceId,
-        });
-      },
-      renameSurface: (payload) => {
-        dispatch("renameSurface", {
-          surfaceId: payload.surfaceId,
-          title: payload.title,
-        });
-      },
-      panelEvent: (payload) => {
-        sessions.sendEvent(payload.surfaceId, payload);
-        // Broadcast panel position/size changes to web clients
-        if (
-          payload.event === "dragend" ||
-          payload.event === "resize" ||
-          payload.event === "close"
-        ) {
-          app.webServer?.broadcast({
-            type: "panelEvent",
-            surfaceId: payload.surfaceId,
-            id: payload.id,
-            event: payload.event,
-            x: payload.x,
-            y: payload.y,
-            width: payload.width,
-            height: payload.height,
-          });
-        }
-      },
-      readScreenResponse: (payload) => {
-        const resolve = pendingReads.get(payload.reqId);
-        if (resolve) {
-          pendingReads.delete(payload.reqId);
-          resolve(payload.content);
-        }
-      },
-      workspaceStateSync: (payload) => {
-        app.workspaceState = payload.workspaces;
-        app.activeWorkspaceId = payload.activeWorkspaceId;
-        const activeWorkspace =
-          payload.workspaces.find(
-            (ws) => ws.id === payload.activeWorkspaceId,
-          ) ?? null;
-        mainWindow.setTitle(formatWindowTitle(activeWorkspace?.name ?? null));
-        app.webServer?.broadcast({
-          type: "layoutChanged",
-          workspaces: payload.workspaces.map((ws) => ({
-            id: ws.id,
-            name: ws.name,
-            color: ws.color,
-            surfaceIds: ws.surfaceIds,
-            focusedSurfaceId: ws.focusedSurfaceId,
-            layout: ws.layout,
-            surfaceTitles: ws.surfaceTitles,
-          })),
-          activeWorkspaceId: payload.activeWorkspaceId,
-          focusedSurfaceId: app.focusedSurfaceId,
-        });
-        scheduleLayoutSave();
-      },
-      sidebarToggle: (payload) => {
-        app.sidebarVisible = payload.visible;
-        app.webServer?.broadcast({
-          type: "sidebarState",
-          visible: payload.visible,
-        });
-      },
-      clearNotifications: () => {
-        socketHandler("notification.clear", {});
-      },
-      showContextMenu: (payload) => {
-        ContextMenu.showContextMenu(buildContextMenu(payload));
-      },
-      toggleWebServer: () => {
-        toggleWebServer();
-      },
-      updateSettings: (payload) => {
-        const previous = settingsManager.get();
-        const updated = settingsManager.update(payload.settings);
-        if (updated.shellPath !== previous.shellPath) {
-          sessions.setShell(updated.shellPath);
-        }
-        if (updated.webMirrorPort !== previous.webMirrorPort) {
-          applyWebMirrorPort(updated.webMirrorPort);
-        }
-        rpc.send("settingsChanged", { settings: updated });
-      },
-      openExternal: (payload) => {
-        // Only pass through http(s) and localhost-ish URLs from the webview;
-        // protects against accidentally opening file:// or javascript: URLs
-        // from hostile script output reaching the chip render path.
-        const url = payload.url;
-        if (!/^https?:\/\//i.test(url)) return;
-        try {
-          Utils.openExternal(url);
-        } catch (err) {
-          console.error("[openExternal] failed:", err);
-        }
-      },
-      windowVisibility: (payload) => {
-        // Slow down metadata polling while the window is hidden — still
-        // useful (ht CLI + web mirror clients may be live) but not critical.
-        metadataPoller.setPollRate(payload.visible ? 1000 : 3000);
-      },
-      killPid: (payload) => {
-        const pid = Number(payload.pid);
-        if (!Number.isFinite(pid) || pid <= 0) return;
-        const raw = payload.signal || "SIGTERM";
-        const signal = (
-          raw.startsWith("SIG") ? raw : `SIG${raw}`
-        ) as NodeJS.Signals;
-        try {
-          process.kill(pid, signal);
-        } catch (err) {
-          console.error(`[killPid ${pid} ${signal}]`, err);
-        }
-      },
-      runScript: (payload) => {
-        const { workspaceId, cwd, command, scriptKey } = payload;
-        if (!workspaceId || !cwd || !command || !scriptKey) return;
-        const surfaceId = sessions.createSurface(80, 24, cwd);
-        const title = sessions.getSurface(surfaceId)?.title ?? "shell";
-        rpc.send("surfaceCreated", {
-          surfaceId,
-          title,
-          launchFor: { workspaceId, scriptKey },
-        });
-        broadcastSurfaceCreated(surfaceId, title);
-        // Small delay so the login shell's prompt is ready before we feed
-        // the script command. zsh emits ~150ms of async init (completion
-        // cache, etc.) on a fresh pty; 600 ms is a safe upper bound.
-        setTimeout(() => {
-          sessions.writeStdin(surfaceId, command + "\n");
-        }, 600);
-      },
-      toggleMaximize: () => {
-        if (mainWindow.isMaximized()) {
-          mainWindow.unmaximize();
-        } else {
-          mainWindow.maximize();
-        }
-      },
+// Define RPC handlers.
+//
+// `bunMessageHandlers` is extracted into a typed const with a `satisfies`
+// clause so that adding a new method to `HyperTermRPC["bun"]["messages"]`
+// without a matching handler here becomes a compile-time error.
+// (Electrobun's native `handlers.messages` type treats each key as
+// optional, which is why we need this belt-and-braces assertion.)
+//
+// The handlers close over `rpc`, which is declared below; that is
+// safe because handler bodies only execute after rpc is fully
+// initialized.
+type BunMessageHandlers = {
+  [K in keyof HyperTermRPC["bun"]["messages"]]: HyperTermRPC["bun"]["messages"][K] extends void
+    ? () => void | Promise<void>
+    : (payload: HyperTermRPC["bun"]["messages"][K]) => void | Promise<void>;
+};
 
-      // ── Browser surface lifecycle ──
-      createBrowserSurface: (payload) => {
-        createBrowserWorkspaceSurface(payload.url);
-      },
-      splitBrowserSurface: (payload) => {
-        splitBrowserSurface(payload.direction, payload.url);
-      },
-      browserNavigated: async (payload) => {
-        browserSurfaces.updateNavigation(
-          payload.surfaceId,
-          payload.url,
-          payload.title,
-        );
-        await browserHistory.ready;
-        browserHistory.record(payload.url, payload.title);
-        app.webServer?.broadcast({
-          type: "browserNavigated",
-          surfaceId: payload.surfaceId,
-          url: payload.url,
-          title: payload.title,
-        });
-      },
-      browserTitleChanged: (payload) => {
-        browserSurfaces.setTitle(payload.surfaceId, payload.title);
-      },
-      browserSetZoom: (payload) => {
-        browserSurfaces.setZoom(payload.surfaceId, payload.zoom);
-      },
-      browserConsoleLog: (payload) => {
-        browserSurfaces.addConsoleLog(payload.surfaceId, {
-          level: payload.level,
-          args: payload.args,
-          timestamp: payload.timestamp,
-        });
-      },
-      browserError: (payload) => {
-        browserSurfaces.addError(payload.surfaceId, {
-          message: payload.message,
-          filename: payload.filename,
-          lineno: payload.lineno,
-          timestamp: payload.timestamp,
-        });
-      },
-      browserEvalResult: (payload) => {
-        const resolve = pendingBrowserEvals.get(payload.reqId);
-        if (resolve) {
-          pendingBrowserEvals.delete(payload.reqId);
-          resolve(
-            payload.error ? `Error: ${payload.error}` : (payload.result ?? ""),
-          );
-        }
-      },
-      browserDomReady: (payload) => {
-        const { surfaceId, url } = payload;
-        // Debounce: coalesce rapid navigations (redirects, SPA routing)
-        const existing = domReadyDebounce.get(surfaceId);
-        if (existing) clearTimeout(existing);
-        domReadyDebounce.set(
-          surfaceId,
-          setTimeout(async () => {
-            domReadyDebounce.delete(surfaceId);
-            await cookieStore.ready;
-            const cookies = cookieStore.getForUrl(url);
-            if (cookies.length > 0) {
-              rpc.send("browserInjectCookies", {
-                surfaceId,
-                cookies: cookies.map((c) => ({
-                  name: c.name,
-                  value: c.value,
-                  path: c.path,
-                  expires: c.expires,
-                  secure: c.secure,
-                  sameSite: c.sameSite,
-                })),
-              });
-            }
-          }, 50),
-        );
-      },
-      browserCookieAction: (payload) => {
-        const { action, data, format } = payload;
-        if (action === "import" && data) {
-          const cookies =
-            format === "netscape"
-              ? parseNetscapeCookies(data)
-              : parseJsonCookies(data);
-          const count = cookieStore.importBulk(cookies);
-          rpc.send("cookieActionResult", {
-            action: "import",
-            message: `Imported ${count} cookies`,
-          });
-        } else if (action === "export") {
-          const all = cookieStore.exportAll();
-          const out =
-            format === "netscape" ? exportAsNetscape(all) : exportAsJson(all);
-          rpc.send("cookieExportResult", {
-            data: out,
-            format: format || "json",
-          });
-        } else if (action === "clear") {
-          cookieStore.clear();
-          rpc.send("cookieActionResult", {
-            action: "clear",
-            message: "All cookies cleared",
-          });
-        }
-      },
-
-      // ── Agent surface lifecycle ──
-      createAgentSurface: (payload) => {
-        createAgentWorkspaceSurface(payload);
-      },
-      splitAgentSurface: (payload) => {
-        splitAgentSurface(payload.direction, payload);
-      },
-      agentPrompt: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({
-            type: "prompt",
-            message: payload.message,
-            ...(payload.images?.length ? { images: payload.images } : {}),
-          });
-      },
-      agentAbort: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "abort" });
-      },
-      agentSetModel: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({
-            type: "set_model",
-            provider: payload.provider,
-            modelId: payload.modelId,
-          });
-      },
-      agentSetThinking: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({
-            type: "set_thinking_level",
-            level: payload.level,
-          });
-      },
-      agentNewSession: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "new_session" });
-      },
-      agentCompact: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "compact" });
-      },
-      agentGetModels: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "get_available_models" });
-      },
-      agentGetState: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "get_state" });
-      },
-      agentExtensionUIResponse: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.respondToExtensionUI(payload.id, payload.response);
-      },
-      agentSteer: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({
-            type: "steer",
-            message: payload.message,
-            ...(payload.images?.length ? { images: payload.images } : {}),
-          });
-      },
-      agentFollowUp: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({
-            type: "follow_up",
-            message: payload.message,
-            ...(payload.images?.length ? { images: payload.images } : {}),
-          });
-      },
-      agentBash: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({
-            type: "bash",
-            command: payload.command,
-            ...(payload.timeout != null ? { timeout: payload.timeout } : {}),
-          });
-      },
-      agentAbortBash: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.abortBash();
-      },
-      agentCycleModel: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "cycle_model" });
-      },
-      agentCycleThinking: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "cycle_thinking_level" });
-      },
-      agentGetCommands: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "get_commands" });
-      },
-      agentGetSessionStats: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "get_session_stats" });
-      },
-      agentGetMessages: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "get_messages" });
-      },
-      agentListSessions: (payload) => {
-        sendWebviewAction("agentEvent", {
-          agentId: payload.agentId,
-          event: {
-            type: "response",
-            command: "list_sessions",
-            success: true,
-            data: { sessions: listPiSessions() },
-          },
-        });
-      },
-      agentGetSessionTree: (payload) => {
-        sendWebviewAction("agentEvent", {
-          agentId: payload.agentId,
-          event: {
-            type: "response",
-            command: "get_session_tree",
-            success: true,
-            data: {
-              tree: readPiSessionTree(payload.sessionPath),
-            },
-          },
-        });
-      },
-      agentGetForkMessages: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "get_fork_messages" });
-      },
-      agentGetLastAssistantText: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "get_last_assistant_text" });
-      },
-      agentSetSteeringMode: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({ type: "set_steering_mode", mode: payload.mode });
-      },
-      agentSetFollowUpMode: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({ type: "set_follow_up_mode", mode: payload.mode });
-      },
-      agentSetAutoCompaction: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({
-            type: "set_auto_compaction",
-            enabled: payload.enabled,
-          });
-      },
-      agentSetAutoRetry: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({
-            type: "set_auto_retry",
-            enabled: payload.enabled,
-          });
-      },
-      agentAbortRetry: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.abortRetry();
-      },
-      agentSetSessionName: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({ type: "set_session_name", name: payload.name });
-      },
-      agentSwitchSession: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({
-            type: "switch_session",
-            sessionPath: payload.sessionPath,
-          });
-      },
-      agentFork: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent) agent.sendNoWait({ type: "fork", entryId: payload.entryId });
-      },
-      agentExportHtml: (payload) => {
-        const agent = piAgentManager.getAgent(payload.agentId);
-        if (agent)
-          agent.sendNoWait({
-            type: "export_html",
-            ...(payload.outputPath ? { outputPath: payload.outputPath } : {}),
-          });
-      },
-    },
+const bunMessageHandlers = {
+  clipboardWrite: (payload) => {
+    try {
+      Utils.clipboardWriteText(payload.text);
+    } catch {
+      const proc = Bun.spawn(["pbcopy"], { stdin: "pipe" });
+      proc.stdin.write(payload.text);
+      proc.stdin.end();
+    }
   },
+  clipboardPaste: (payload) => {
+    app.focusedSurfaceId = payload.surfaceId;
+    void handlePaste();
+  },
+  writeStdin: (payload) => {
+    sessions.writeStdin(payload.surfaceId, payload.data);
+  },
+  viewportSize: (payload) => {
+    app.webServer?.setNativeViewport(payload.width, payload.height);
+  },
+  resize: (payload) => {
+    if (!app.initialResizeReceived) {
+      app.initialResizeReceived = true;
+      // Send settings now that the webview is ready
+      rpc.send("restoreSettings", { settings: settingsManager.get() });
+      // Re-send the web-mirror status — the boot-time send at module
+      // load happens before the webview has registered RPC handlers,
+      // so the sidebar dot was stuck on "Offline" (its CSS default)
+      // even when auto-start had brought the server up.
+      sendWebServerStatus();
+      if (!tryRestoreLayout(payload.cols, payload.rows)) {
+        createWorkspaceSurface(payload.cols, payload.rows);
+      }
+    } else {
+      sessions.resize(payload.surfaceId, payload.cols, payload.rows);
+      app.webServer?.broadcast({
+        type: "resize",
+        surfaceId: payload.surfaceId,
+        cols: payload.cols,
+        rows: payload.rows,
+      });
+    }
+  },
+  createSurface: (payload) => {
+    createWorkspaceSurface(80, 24, payload.cwd);
+  },
+  splitSurface: (payload) => {
+    splitSurface(payload.direction, undefined, payload.cwd);
+  },
+  closeSurface: (payload) => {
+    // Clean up any pending cookie injection debounce
+    const pendingCookie = domReadyDebounce.get(payload.surfaceId);
+    if (pendingCookie) {
+      clearTimeout(pendingCookie);
+      domReadyDebounce.delete(payload.surfaceId);
+    }
+    if (piAgentManager.isAgentSurface(payload.surfaceId)) {
+      piAgentManager.removeAgent(payload.surfaceId);
+      sendWebviewAction("agentSurfaceClosed", {
+        surfaceId: payload.surfaceId,
+      });
+    } else if (browserSurfaces.isBrowserSurface(payload.surfaceId)) {
+      browserSurfaces.closeSurface(payload.surfaceId);
+    } else {
+      sessions.closeSurface(payload.surfaceId);
+    }
+  },
+  focusSurface: (payload) => {
+    app.focusedSurfaceId = payload.surfaceId;
+    app.webServer?.broadcast({
+      type: "focusChanged",
+      surfaceId: payload.surfaceId,
+    });
+  },
+  renameSurface: (payload) => {
+    dispatch("renameSurface", {
+      surfaceId: payload.surfaceId,
+      title: payload.title,
+    });
+  },
+  panelEvent: (payload) => {
+    sessions.sendEvent(payload.surfaceId, payload);
+    // Broadcast panel position/size changes to web clients
+    if (payload.event === "dragend") {
+      app.webServer?.broadcast({
+        type: "panelEvent",
+        surfaceId: payload.surfaceId,
+        id: payload.id,
+        event: payload.event,
+        x: payload.x,
+        y: payload.y,
+      });
+    } else if (payload.event === "resize") {
+      app.webServer?.broadcast({
+        type: "panelEvent",
+        surfaceId: payload.surfaceId,
+        id: payload.id,
+        event: payload.event,
+        width: payload.width,
+        height: payload.height,
+      });
+    } else if (payload.event === "close") {
+      app.webServer?.broadcast({
+        type: "panelEvent",
+        surfaceId: payload.surfaceId,
+        id: payload.id,
+        event: payload.event,
+      });
+    }
+  },
+  readScreenResponse: (payload) => {
+    const resolve = pendingReads.get(payload.reqId);
+    if (resolve) {
+      pendingReads.delete(payload.reqId);
+      resolve(payload.content);
+    }
+  },
+  workspaceStateSync: (payload) => {
+    app.workspaceState = payload.workspaces;
+    app.activeWorkspaceId = payload.activeWorkspaceId;
+    const activeWorkspace =
+      payload.workspaces.find((ws) => ws.id === payload.activeWorkspaceId) ??
+      null;
+    mainWindow.setTitle(formatWindowTitle(activeWorkspace?.name ?? null));
+    app.webServer?.broadcast({
+      type: "layoutChanged",
+      workspaces: payload.workspaces.map((ws) => ({
+        id: ws.id,
+        name: ws.name,
+        color: ws.color,
+        surfaceIds: ws.surfaceIds,
+        focusedSurfaceId: ws.focusedSurfaceId,
+        layout: ws.layout,
+        surfaceTitles: ws.surfaceTitles,
+      })),
+      activeWorkspaceId: payload.activeWorkspaceId,
+      focusedSurfaceId: app.focusedSurfaceId,
+    });
+    scheduleLayoutSave();
+  },
+  sidebarToggle: (payload) => {
+    app.sidebarVisible = payload.visible;
+    app.webServer?.broadcast({
+      type: "sidebarState",
+      visible: payload.visible,
+    });
+  },
+  clearNotifications: () => {
+    socketHandler("notification.clear", {});
+  },
+  showContextMenu: (payload) => {
+    ContextMenu.showContextMenu(buildContextMenu(payload));
+  },
+  toggleWebServer: () => {
+    toggleWebServer();
+  },
+  updateSettings: (payload) => {
+    const previous = settingsManager.get();
+    const updated = settingsManager.update(payload.settings);
+    if (updated.shellPath !== previous.shellPath) {
+      sessions.setShell(updated.shellPath);
+    }
+    if (updated.webMirrorPort !== previous.webMirrorPort) {
+      applyWebMirrorPort(updated.webMirrorPort);
+    }
+    rpc.send("settingsChanged", { settings: updated });
+  },
+  openExternal: (payload) => {
+    // Only pass through http(s) and localhost-ish URLs from the webview;
+    // protects against accidentally opening file:// or javascript: URLs
+    // from hostile script output reaching the chip render path.
+    const url = payload.url;
+    if (!/^https?:\/\//i.test(url)) return;
+    try {
+      Utils.openExternal(url);
+    } catch (err) {
+      console.error("[openExternal] failed:", err);
+    }
+  },
+  windowVisibility: (payload) => {
+    // Slow down metadata polling while the window is hidden — still
+    // useful (ht CLI + web mirror clients may be live) but not critical.
+    metadataPoller.setPollRate(payload.visible ? 1000 : 3000);
+  },
+  killPid: (payload) => {
+    const pid = Number(payload.pid);
+    if (!Number.isFinite(pid) || pid <= 0) return;
+    const raw = payload.signal || "SIGTERM";
+    const signal = (
+      raw.startsWith("SIG") ? raw : `SIG${raw}`
+    ) as NodeJS.Signals;
+    try {
+      process.kill(pid, signal);
+    } catch (err) {
+      console.error(`[killPid ${pid} ${signal}]`, err);
+    }
+  },
+  runScript: (payload) => {
+    const { workspaceId, cwd, command, scriptKey } = payload;
+    if (!workspaceId || !cwd || !command || !scriptKey) return;
+    const surfaceId = sessions.createSurface(80, 24, cwd);
+    const title = sessions.getSurface(surfaceId)?.title ?? "shell";
+    rpc.send("surfaceCreated", {
+      surfaceId,
+      title,
+      launchFor: { workspaceId, scriptKey },
+    });
+    broadcastSurfaceCreated(surfaceId, title);
+    // Small delay so the login shell's prompt is ready before we feed
+    // the script command. zsh emits ~150ms of async init (completion
+    // cache, etc.) on a fresh pty; 600 ms is a safe upper bound.
+    setTimeout(() => {
+      sessions.writeStdin(surfaceId, command + "\n");
+    }, 600);
+  },
+  toggleMaximize: () => {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  },
+
+  // ── Browser surface lifecycle ──
+  createBrowserSurface: (payload) => {
+    createBrowserWorkspaceSurface(payload.url);
+  },
+  splitBrowserSurface: (payload) => {
+    splitBrowserSurface(payload.direction, payload.url);
+  },
+  browserNavigated: async (payload) => {
+    browserSurfaces.updateNavigation(
+      payload.surfaceId,
+      payload.url,
+      payload.title,
+    );
+    await browserHistory.ready;
+    browserHistory.record(payload.url, payload.title);
+    app.webServer?.broadcast({
+      type: "browserNavigated",
+      surfaceId: payload.surfaceId,
+      url: payload.url,
+      title: payload.title,
+    });
+  },
+  browserTitleChanged: (payload) => {
+    browserSurfaces.setTitle(payload.surfaceId, payload.title);
+  },
+  browserSetZoom: (payload) => {
+    browserSurfaces.setZoom(payload.surfaceId, payload.zoom);
+  },
+  browserConsoleLog: (payload) => {
+    browserSurfaces.addConsoleLog(payload.surfaceId, {
+      level: payload.level,
+      args: payload.args,
+      timestamp: payload.timestamp,
+    });
+  },
+  browserError: (payload) => {
+    browserSurfaces.addError(payload.surfaceId, {
+      message: payload.message,
+      filename: payload.filename,
+      lineno: payload.lineno,
+      timestamp: payload.timestamp,
+    });
+  },
+  browserEvalResult: (payload) => {
+    const resolve = pendingBrowserEvals.get(payload.reqId);
+    if (resolve) {
+      pendingBrowserEvals.delete(payload.reqId);
+      resolve(
+        payload.error ? `Error: ${payload.error}` : (payload.result ?? ""),
+      );
+    }
+  },
+  browserDomReady: (payload) => {
+    const { surfaceId, url } = payload;
+    // Debounce: coalesce rapid navigations (redirects, SPA routing)
+    const existing = domReadyDebounce.get(surfaceId);
+    if (existing) clearTimeout(existing);
+    domReadyDebounce.set(
+      surfaceId,
+      setTimeout(async () => {
+        domReadyDebounce.delete(surfaceId);
+        await cookieStore.ready;
+        const cookies = cookieStore.getForUrl(url);
+        if (cookies.length > 0) {
+          rpc.send("browserInjectCookies", {
+            surfaceId,
+            cookies: cookies.map((c) => ({
+              name: c.name,
+              value: c.value,
+              path: c.path,
+              expires: c.expires,
+              secure: c.secure,
+              sameSite: c.sameSite,
+            })),
+          });
+        }
+      }, 50),
+    );
+  },
+  browserCookieAction: (payload) => {
+    const { action, data, format } = payload;
+    if (action === "import" && data) {
+      const cookies =
+        format === "netscape"
+          ? parseNetscapeCookies(data)
+          : parseJsonCookies(data);
+      const count = cookieStore.importBulk(cookies);
+      rpc.send("cookieActionResult", {
+        action: "import",
+        message: `Imported ${count} cookies`,
+      });
+    } else if (action === "export") {
+      const all = cookieStore.exportAll();
+      const out =
+        format === "netscape" ? exportAsNetscape(all) : exportAsJson(all);
+      rpc.send("cookieExportResult", {
+        data: out,
+        format: format || "json",
+      });
+    } else if (action === "clear") {
+      cookieStore.clear();
+      rpc.send("cookieActionResult", {
+        action: "clear",
+        message: "All cookies cleared",
+      });
+    }
+  },
+
+  // ── Agent surface lifecycle ──
+  createAgentSurface: (payload) => {
+    createAgentWorkspaceSurface(payload);
+  },
+  splitAgentSurface: (payload) => {
+    splitAgentSurface(payload.direction, payload);
+  },
+  agentPrompt: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({
+        type: "prompt",
+        message: payload.message,
+        ...(payload.images?.length ? { images: payload.images } : {}),
+      });
+  },
+  agentAbort: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "abort" });
+  },
+  agentSetModel: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({
+        type: "set_model",
+        provider: payload.provider,
+        modelId: payload.modelId,
+      });
+  },
+  agentSetThinking: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({
+        type: "set_thinking_level",
+        level: payload.level,
+      });
+  },
+  agentNewSession: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "new_session" });
+  },
+  agentCompact: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "compact" });
+  },
+  agentGetModels: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "get_available_models" });
+  },
+  agentGetState: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "get_state" });
+  },
+  agentExtensionUIResponse: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.respondToExtensionUI(payload.id, payload.response);
+  },
+  agentSteer: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({
+        type: "steer",
+        message: payload.message,
+        ...(payload.images?.length ? { images: payload.images } : {}),
+      });
+  },
+  agentFollowUp: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({
+        type: "follow_up",
+        message: payload.message,
+        ...(payload.images?.length ? { images: payload.images } : {}),
+      });
+  },
+  agentBash: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({
+        type: "bash",
+        command: payload.command,
+        ...(payload.timeout != null ? { timeout: payload.timeout } : {}),
+      });
+  },
+  agentAbortBash: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.abortBash();
+  },
+  agentCycleModel: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "cycle_model" });
+  },
+  agentCycleThinking: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "cycle_thinking_level" });
+  },
+  agentGetCommands: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "get_commands" });
+  },
+  agentGetSessionStats: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "get_session_stats" });
+  },
+  agentGetMessages: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "get_messages" });
+  },
+  agentListSessions: (payload) => {
+    sendWebviewAction("agentEvent", {
+      agentId: payload.agentId,
+      event: {
+        type: "response",
+        command: "list_sessions",
+        success: true,
+        data: { sessions: listPiSessions() },
+      },
+    });
+  },
+  agentGetSessionTree: (payload) => {
+    sendWebviewAction("agentEvent", {
+      agentId: payload.agentId,
+      event: {
+        type: "response",
+        command: "get_session_tree",
+        success: true,
+        data: {
+          tree: readPiSessionTree(payload.sessionPath),
+        },
+      },
+    });
+  },
+  agentGetForkMessages: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "get_fork_messages" });
+  },
+  agentGetLastAssistantText: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "get_last_assistant_text" });
+  },
+  agentSetSteeringMode: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({ type: "set_steering_mode", mode: payload.mode });
+  },
+  agentSetFollowUpMode: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({ type: "set_follow_up_mode", mode: payload.mode });
+  },
+  agentSetAutoCompaction: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({
+        type: "set_auto_compaction",
+        enabled: payload.enabled,
+      });
+  },
+  agentSetAutoRetry: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({
+        type: "set_auto_retry",
+        enabled: payload.enabled,
+      });
+  },
+  agentAbortRetry: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.abortRetry();
+  },
+  agentSetSessionName: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({ type: "set_session_name", name: payload.name });
+  },
+  agentSwitchSession: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({
+        type: "switch_session",
+        sessionPath: payload.sessionPath,
+      });
+  },
+  agentFork: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent) agent.sendNoWait({ type: "fork", entryId: payload.entryId });
+  },
+  agentExportHtml: (payload) => {
+    const agent = piAgentManager.getAgent(payload.agentId);
+    if (agent)
+      agent.sendNoWait({
+        type: "export_html",
+        ...(payload.outputPath ? { outputPath: payload.outputPath } : {}),
+      });
+  },
+} satisfies BunMessageHandlers;
+
+const rpc = BrowserView.defineRPC<HyperTermRPC>({
+  handlers: { messages: bunMessageHandlers },
 });
 
 // Pending browser eval results (socket API → webview → bun)

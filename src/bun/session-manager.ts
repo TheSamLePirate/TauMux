@@ -1,4 +1,4 @@
-import type { SidebandMetaMessage, PanelEvent } from "../shared/types";
+import type { SidebandContentMessage, PanelEvent } from "../shared/types";
 import { PtyManager } from "./pty-manager";
 import { SidebandParser } from "./sideband-parser";
 import { EventWriter } from "./event-writer";
@@ -36,7 +36,7 @@ export class SessionManager {
   // Callbacks — wired by index.ts to send to webview via RPC
   onStdout: ((surfaceId: string, data: string) => void) | null = null;
   onSidebandMeta:
-    | ((surfaceId: string, msg: SidebandMetaMessage) => void)
+    | ((surfaceId: string, msg: SidebandContentMessage) => void)
     | null = null;
   onSidebandData:
     | ((surfaceId: string, id: string, data: Uint8Array) => void)

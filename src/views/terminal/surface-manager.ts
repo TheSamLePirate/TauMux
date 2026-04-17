@@ -10,7 +10,7 @@ import { TerminalEffects } from "./terminal-effects";
 import type {
   PanelEvent,
   PersistedLayout,
-  SidebandMetaMessage,
+  SidebandContentMessage,
   SurfaceContextMenuRequest,
   SurfaceMetadata,
 } from "../../shared/types";
@@ -494,7 +494,7 @@ export class SurfaceManager {
     view.term.write(data);
   }
 
-  handleSidebandMeta(surfaceId: string, msg: SidebandMetaMessage): void {
+  handleSidebandMeta(surfaceId: string, msg: SidebandContentMessage): void {
     this.surfaces.get(surfaceId)?.panelManager?.handleMeta(msg);
   }
 

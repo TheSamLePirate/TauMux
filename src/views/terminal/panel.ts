@@ -1,4 +1,4 @@
-import type { SidebandMetaMessage, PanelEvent } from "../../shared/types";
+import type { SidebandContentMessage, PanelEvent } from "../../shared/types";
 import { createIcon } from "./icons";
 import {
   getRenderer,
@@ -16,13 +16,13 @@ export class Panel {
   private dragHandle: HTMLDivElement;
   private closeBtn: HTMLDivElement;
   private resizeHandle: HTMLDivElement;
-  private meta: SidebandMetaMessage;
+  private meta: SidebandContentMessage;
   private onEvent: (e: PanelEvent) => void;
   private hasContent = false;
   private currentTypeCssClass: string | null = null;
 
   constructor(
-    meta: SidebandMetaMessage,
+    meta: SidebandContentMessage,
     container: HTMLElement,
     onEvent: (e: PanelEvent) => void,
   ) {
@@ -90,7 +90,7 @@ export class Panel {
     });
   }
 
-  updateMeta(msg: SidebandMetaMessage): void {
+  updateMeta(msg: SidebandContentMessage): void {
     if (msg.x !== undefined) this.meta.x = msg.x;
     if (msg.y !== undefined) this.meta.y = msg.y;
     if (msg.width !== undefined) this.meta.width = msg.width;
@@ -182,7 +182,7 @@ export class Panel {
     }
   }
 
-  private applyMeta(m: SidebandMetaMessage): void {
+  private applyMeta(m: SidebandContentMessage): void {
     const s = this.el.style;
     if (m.x !== undefined) s.left = `${m.x}px`;
     if (m.y !== undefined) s.top = `${m.y}px`;
@@ -314,9 +314,17 @@ export class Panel {
 
   private handleContentEvent = (e: MouseEvent): void => {
     const rect = this.contentEl.getBoundingClientRect();
+    // Listeners are only attached for the six pointer event types below,
+    // so e.type is always a PanelPointerEventName at runtime.
     this.onEvent({
       id: this.id,
-      event: e.type,
+      event: e.type as
+        | "mousedown"
+        | "mouseup"
+        | "click"
+        | "mousemove"
+        | "mouseenter"
+        | "mouseleave",
       x: Math.round(e.clientX - rect.left),
       y: Math.round(e.clientY - rect.top),
       button: e.button,

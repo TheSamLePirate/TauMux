@@ -9,7 +9,11 @@
 // header-length prefix used since v1, but the JSON header now carries
 // `v`, `seq`, and a `type`.
 
-import type { PaneNode, SurfaceMetadata, SidebandMetaMessage } from "./types";
+import type {
+  PaneNode,
+  SurfaceMetadata,
+  SidebandContentMessage,
+} from "./types";
 
 export const WEB_PROTOCOL_VERSION = 2;
 
@@ -82,7 +86,7 @@ export interface SidebarProgressEntry {
 
 export interface PanelState {
   surfaceId: string;
-  meta: SidebandMetaMessage;
+  meta: SidebandContentMessage;
 }
 
 export interface Snapshot {
@@ -168,7 +172,7 @@ export interface SurfaceMetadataPayload {
 
 export interface SidebandMetaPayload {
   surfaceId: string;
-  meta: SidebandMetaMessage;
+  meta: SidebandContentMessage;
 }
 
 export interface SidebandDataFailedPayload {

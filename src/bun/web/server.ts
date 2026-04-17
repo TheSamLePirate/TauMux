@@ -2,7 +2,7 @@ import type { SessionManager } from "../session-manager";
 import type { AppState } from "../rpc-handler";
 import type {
   SurfaceMetadata,
-  SidebandMetaMessage,
+  SidebandContentMessage,
   PanelEvent as SidebandPanelEvent,
 } from "../../shared/types";
 import {
@@ -606,7 +606,7 @@ export class WebServer {
     this.broadcastEnvelope("surfaceMetadata", { surfaceId, metadata });
   }
 
-  sendSidebandMeta(surfaceId: string, meta: SidebandMetaMessage): void {
+  sendSidebandMeta(surfaceId: string, meta: SidebandContentMessage): void {
     this.store.applySidebandMeta(surfaceId, meta);
     this.broadcastEnvelope("sidebandMeta", { surfaceId, meta });
   }
@@ -695,7 +695,7 @@ export class WebServer {
       case "sidebandMeta":
         this.sendSidebandMeta(
           payload["surfaceId"] as string,
-          payload["meta"] as SidebandMetaMessage,
+          payload["meta"] as SidebandContentMessage,
         );
         return;
       case "sidebandDataFailed":
@@ -893,7 +893,11 @@ export class WebServer {
       case "panelMouseEvent": {
         const surfaceId = fields["surfaceId"] as string;
         if (!surfaceId) break;
-        const panelEvt: SidebandPanelEvent = {
+        // Untyped JSON coming off the WebSocket — we reshape into the
+        // discriminated PanelEvent union via an unchecked cast. The
+        // fields that are relevant per `event` kind are picked up
+        // downstream; extras are harmless.
+        const panelEvt = {
           id: fields["id"] as string,
           event: fields["event"] as string,
           x: fields["x"] as number | undefined,
@@ -908,26 +912,41 @@ export class WebServer {
           rows: fields["rows"] as number | undefined,
           pxWidth: fields["pxWidth"] as number | undefined,
           pxHeight: fields["pxHeight"] as number | undefined,
-        };
+        } as unknown as SidebandPanelEvent;
         this.sessionsManager.sendEvent(surfaceId, panelEvt);
-        const evt = panelEvt.event;
-        if (evt === "dragend" || evt === "resize" || evt === "close") {
+        if (panelEvt.event === "dragend") {
           this.broadcastEnvelope("panelEvent", {
             surfaceId,
             id: panelEvt.id,
-            event: evt,
+            event: panelEvt.event,
             x: panelEvt.x,
             y: panelEvt.y,
+          });
+          const updated: Record<string, unknown> = {
+            x: panelEvt.x,
+            y: panelEvt.y,
+          };
+          this.onPanelUpdate?.(surfaceId, panelEvt.id, updated);
+        } else if (panelEvt.event === "resize") {
+          this.broadcastEnvelope("panelEvent", {
+            surfaceId,
+            id: panelEvt.id,
+            event: panelEvt.event,
             width: panelEvt.width,
             height: panelEvt.height,
           });
           const updated: Record<string, unknown> = {};
-          if (panelEvt.x !== undefined) updated["x"] = panelEvt.x;
-          if (panelEvt.y !== undefined) updated["y"] = panelEvt.y;
           if (panelEvt.width !== undefined) updated["width"] = panelEvt.width;
           if (panelEvt.height !== undefined)
             updated["height"] = panelEvt.height;
           this.onPanelUpdate?.(surfaceId, panelEvt.id, updated);
+        } else if (panelEvt.event === "close") {
+          this.broadcastEnvelope("panelEvent", {
+            surfaceId,
+            id: panelEvt.id,
+            event: panelEvt.event,
+          });
+          this.onPanelUpdate?.(surfaceId, panelEvt.id, {});
         }
         break;
       }

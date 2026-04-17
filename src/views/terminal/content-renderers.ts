@@ -1,4 +1,4 @@
-import type { SidebandMetaMessage } from "../../shared/types";
+import type { SidebandContentMessage } from "../../shared/types";
 import type { IconName } from "./icons";
 
 const decoder = new TextDecoder();
@@ -10,14 +10,14 @@ export interface ContentRenderer {
   mount(
     contentEl: HTMLDivElement,
     data: Uint8Array,
-    meta: SidebandMetaMessage,
+    meta: SidebandContentMessage,
   ): void;
 
   /** Replace content on subsequent data updates */
   update(
     contentEl: HTMLDivElement,
     data: Uint8Array,
-    meta: SidebandMetaMessage,
+    meta: SidebandContentMessage,
   ): void;
 
   /** Cleanup when panel is removed (revoke blob URLs, stop animations, etc.) */
@@ -75,7 +75,7 @@ function setBlobUrl(el: HTMLDivElement, url: string): void {
 function renderImage(
   contentEl: HTMLDivElement,
   data: Uint8Array,
-  meta: SidebandMetaMessage,
+  meta: SidebandContentMessage,
 ): void {
   const mimeMap: Record<string, string> = {
     png: "image/png",

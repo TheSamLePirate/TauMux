@@ -1,5 +1,5 @@
 import type { Terminal } from "xterm";
-import type { SidebandMetaMessage, PanelEvent } from "../../shared/types";
+import type { SidebandContentMessage, PanelEvent } from "../../shared/types";
 import { Panel } from "./panel";
 
 interface PendingEntry {
@@ -51,7 +51,7 @@ export class PanelManager {
     }, PENDING_PRUNE_INTERVAL_MS);
   }
 
-  handleMeta(msg: SidebandMetaMessage): void {
+  handleMeta(msg: SidebandContentMessage): void {
     if (msg.type === "clear") {
       const panel = this.panels.get(msg.id);
       if (panel) {
@@ -190,7 +190,7 @@ export class PanelManager {
     });
   }
 
-  private resolveAnchorRow(msg: SidebandMetaMessage): number {
+  private resolveAnchorRow(msg: SidebandContentMessage): number {
     const buf = this.term.buffer.active;
     if (msg.anchor && typeof msg.anchor === "object" && "row" in msg.anchor) {
       return msg.anchor.row;

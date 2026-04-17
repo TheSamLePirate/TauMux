@@ -9,7 +9,7 @@
 // the xterm instance directly for stdout — the view subscribes to
 // structural changes only.
 
-import type { SurfaceMetadata, SidebandMetaMessage } from "../shared/types";
+import type { SurfaceMetadata, SidebandContentMessage } from "../shared/types";
 import type {
   LogEntry,
   NotificationEntry,
@@ -35,7 +35,7 @@ export interface SurfaceState {
 export interface PanelState {
   id: string;
   surfaceId: string;
-  meta: SidebandMetaMessage;
+  meta: SidebandContentMessage;
 }
 
 export interface SidebarState {
@@ -130,7 +130,7 @@ export type Action =
   | { kind: "notification/add"; entry: NotificationEntry }
   | { kind: "notification/clear" }
   | { kind: "glow/clear"; surfaceId?: string }
-  | { kind: "panel/meta"; surfaceId: string; meta: SidebandMetaMessage }
+  | { kind: "panel/meta"; surfaceId: string; meta: SidebandContentMessage }
   | {
       kind: "panel/event";
       panelId: string;
@@ -510,7 +510,7 @@ export function reducer(state: AppState, action: Action): AppState {
         return { ...state, panels: omitKey(state.panels, action.panelId) };
       }
       if (action.event === "dragend" || action.event === "resize") {
-        const meta: SidebandMetaMessage = { ...existing.meta };
+        const meta: SidebandContentMessage = { ...existing.meta };
         if (action.x !== undefined) meta.x = action.x;
         if (action.y !== undefined) meta.y = action.y;
         if (action.width !== undefined) meta.width = action.width;

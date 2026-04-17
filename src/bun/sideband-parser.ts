@@ -1,4 +1,4 @@
-import type { SidebandMetaMessage } from "../shared/types";
+import type { SidebandContentMessage } from "../shared/types";
 
 /** Default timeout for binary reads (ms) */
 const DEFAULT_READ_TIMEOUT_MS = 5000;
@@ -31,7 +31,7 @@ export class SidebandParser {
   /** Default data channel name used when msg.dataChannel is absent */
   static readonly DEFAULT_DATA_CHANNEL = "data";
 
-  onMeta: ((msg: SidebandMetaMessage) => void) | null = null;
+  onMeta: ((msg: SidebandContentMessage) => void) | null = null;
   onData: ((id: string, data: Uint8Array) => void) | null = null;
   onError: ((source: string, error: Error) => void) | null = null;
   /** Fires when a binary read fails (timeout, EOF, abort) after meta was already dispatched */
@@ -153,9 +153,13 @@ export class SidebandParser {
 
       if (!line) continue;
 
-      let msg: SidebandMetaMessage;
+      // Parse as the broader content shape. The flush variant is a
+      // subset (id + type:"flush" + dataChannel?) so reading its fields
+      // through SidebandContentMessage is safe. We narrow to the strict
+      // union only when emitting to onMeta.
+      let msg: SidebandContentMessage;
       try {
-        msg = JSON.parse(line) as SidebandMetaMessage;
+        msg = JSON.parse(line) as SidebandContentMessage;
       } catch {
         this.onError?.(
           "meta-parse",
@@ -239,8 +243,8 @@ export class SidebandParser {
         );
       }
 
-      // Dispatch metadata IMMEDIATELY — non-blocking
-      // The webview's pendingData map handles out-of-order data arrival
+      // Dispatch metadata IMMEDIATELY — non-blocking.
+      // The webview's pendingData map handles out-of-order data arrival.
       this.onMeta?.(msg);
     }
     // Single slice at end for unparsed tail
