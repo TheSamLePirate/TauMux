@@ -33,6 +33,14 @@ import {
   createMsgEl,
   type ToolCallState,
 } from "./agent-panel-messages";
+import {
+  type AgentModelSummary,
+  buildModelBadges,
+  scopedModelKey,
+  THINKING_COLORS,
+  THINKING_LEVELS,
+} from "./agent-panel-model";
+import { handleAgentResponse } from "./agent-panel-response";
 
 // ── Public interfaces ──
 
@@ -54,7 +62,7 @@ export interface AgentPanelCallbacks {
   onGetState: (agentId: string) => void;
 }
 
-interface SlashCommand {
+export interface SlashCommand {
   name: string;
   description: string;
   /** Source of the command */
@@ -72,23 +80,7 @@ export interface AgentPaneView {
   _elements: AgentPanelElements;
 }
 
-interface AgentModelSummary {
-  provider: string;
-  id: string;
-  name: string;
-  reasoning?: boolean;
-  input?: string[];
-  contextWindow?: number;
-  maxTokens?: number;
-  cost?: {
-    input?: number;
-    output?: number;
-    cacheRead?: number;
-    cacheWrite?: number;
-  };
-}
-
-interface AgentPanelState {
+export interface AgentPanelState {
   messages: ChatMessage[];
   currentText: string;
   currentThinking: string;
@@ -209,23 +201,6 @@ interface AgentPanelElements {
   attachmentTrayEl: HTMLDivElement;
   modelMetaEl: HTMLDivElement;
 }
-
-const THINKING_LEVELS = [
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-] as const;
-const THINKING_COLORS: Record<string, string> = {
-  off: "rgba(255,255,255,0.25)",
-  minimal: "rgba(255,255,255,0.4)",
-  low: "#67e8f9",
-  medium: "#a78bfa",
-  high: "#f97316",
-  xhigh: "#ef4444",
-};
 
 const BUILTIN_COMMANDS: SlashCommand[] = [
   { name: "/model", description: "Switch model", source: "builtin" },
@@ -2327,50 +2302,6 @@ function renderDropdowns(view: AgentPaneView): void {
   }
 }
 
-function toModelSummary(rec: Record<string, unknown>): AgentModelSummary {
-  return {
-    provider: (rec["provider"] as string) ?? "",
-    id: (rec["id"] as string) ?? "",
-    name: (rec["name"] as string) ?? (rec["id"] as string) ?? "",
-    reasoning: rec["reasoning"] as boolean | undefined,
-    input: Array.isArray(rec["input"]) ? (rec["input"] as string[]) : undefined,
-    contextWindow: rec["contextWindow"] as number | undefined,
-    maxTokens: rec["maxTokens"] as number | undefined,
-    cost: (rec["cost"] as AgentModelSummary["cost"]) ?? undefined,
-  };
-}
-
-function scopedModelKey(
-  model: Pick<AgentModelSummary, "provider" | "id">,
-): string {
-  return `${model.provider}/${model.id}`;
-}
-
-function buildModelBadges(model: AgentModelSummary): HTMLElement[] {
-  const mk = (text: string, cls = "") => {
-    const badge = document.createElement("span");
-    badge.className = `agent-model-badge${cls ? ` ${cls}` : ""}`;
-    badge.textContent = text;
-    return badge;
-  };
-  const badges: HTMLElement[] = [
-    mk(model.provider, "agent-model-badge-provider"),
-  ];
-  if (model.reasoning) badges.push(mk("reasoning"));
-  if (model.input?.includes("image")) badges.push(mk("vision"));
-  if (model.contextWindow) badges.push(mk(`${fmtK(model.contextWindow)} ctx`));
-  if (model.maxTokens) badges.push(mk(`${fmtK(model.maxTokens)} out`));
-  if (model.cost?.input != null && model.cost?.output != null) {
-    badges.push(
-      mk(
-        `$${model.cost.input}/$${model.cost.output}`,
-        "agent-model-badge-cost",
-      ),
-    );
-  }
-  return badges;
-}
-
 function renderModelMeta(view: AgentPaneView): void {
   const { modelMetaEl } = view._elements;
   modelMetaEl.innerHTML = "";
@@ -2417,322 +2348,21 @@ function handleResponse(
   view: AgentPaneView,
   ev: Record<string, unknown>,
 ): void {
-  const s = view._state;
-  const el = view._elements;
-  const cmd = ev["command"] as string;
-  const ok = ev["success"] as boolean;
-  const data = ev["data"] as Record<string, unknown> | undefined;
-
-  if (!ok) {
-    const error = (ev["error"] as string) ?? `Command failed: ${cmd}`;
-    addSystemMessage(view, error);
-    return;
-  }
-
-  if (cmd === "get_state" && data) {
-    if (data["model"]) {
-      s.model = toModelSummary(data["model"] as Record<string, unknown>);
-      el.modelBtnLabel.textContent = s.model?.name ?? s.model?.id ?? "No model";
-    }
-    if (data["thinkingLevel"]) {
-      s.thinkingLevel = data["thinkingLevel"] as string;
-      el.thinkingBtnLabel.textContent = s.thinkingLevel;
-      const dot = el.toolbarEl.querySelector(
-        ".agent-tb-thinking .agent-tb-dot",
-      ) as HTMLElement | null;
-      if (dot)
-        dot.style.background =
-          THINKING_COLORS[s.thinkingLevel] ?? "var(--text-dim)";
-    }
-    s.sessionName = (data["sessionName"] as string) ?? null;
-    el.sessionNameEl.textContent = s.sessionName ?? "";
-    s.sessionFile = (data["sessionFile"] as string) ?? null;
-    s.sessionId = (data["sessionId"] as string) ?? null;
-    s.messageCount = (data["messageCount"] as number) ?? s.messageCount;
-    s.pendingMessageCount =
-      (data["pendingMessageCount"] as number) ?? s.pendingMessageCount;
-    s.autoCompactionEnabled =
-      (data["autoCompactionEnabled"] as boolean) ?? s.autoCompactionEnabled;
-    s.steeringMode = (data["steeringMode"] as string) ?? s.steeringMode;
-    s.followUpMode = (data["followUpMode"] as string) ?? s.followUpMode;
-    s.isStreaming = (data["isStreaming"] as boolean) ?? false;
-    syncStreamingUI(view);
-    syncFooter(view);
-    renderModelMeta(view);
-  }
-
-  if (cmd === "get_available_models" && data) {
-    const arr = (data as { models?: unknown[] }).models;
-    if (Array.isArray(arr)) {
-      s.availableModels = arr.map((m) =>
-        toModelSummary(m as Record<string, unknown>),
-      );
-      if (s.scopedModelIds.size === 0) {
-        for (const model of s.availableModels) {
-          s.scopedModelIds.add(scopedModelKey(model));
-        }
-      }
-      renderDropdowns(view);
-      renderModelMeta(view);
-    }
-  }
-
-  if (cmd === "set_model" && data) {
-    s.model = toModelSummary(data);
-    el.modelBtnLabel.textContent = s.model.name;
-    addSystemMessage(view, `Model: ${s.model.name}`);
-    syncFooter(view);
-    renderModelMeta(view);
-  }
-
-  if (cmd === "cycle_model" && data) {
-    const m = data["model"] as Record<string, unknown> | undefined;
-    if (m) {
-      s.model = toModelSummary(m);
-      el.modelBtnLabel.textContent = s.model.name;
-      addSystemMessage(view, `Model: ${s.model.name}`);
-    }
-    if (data["thinkingLevel"]) {
-      s.thinkingLevel = data["thinkingLevel"] as string;
-      el.thinkingBtnLabel.textContent = s.thinkingLevel;
-      const dot = el.toolbarEl.querySelector(
-        ".agent-tb-thinking .agent-tb-dot",
-      ) as HTMLElement | null;
-      if (dot)
-        dot.style.background =
-          THINKING_COLORS[s.thinkingLevel] ?? "var(--text-dim)";
-    }
-    syncFooter(view);
-    renderModelMeta(view);
-  }
-
-  if (cmd === "cycle_thinking_level" && data) {
-    if (data["level"]) {
-      s.thinkingLevel = data["level"] as string;
-      el.thinkingBtnLabel.textContent = s.thinkingLevel;
-      const dot = el.toolbarEl.querySelector(
-        ".agent-tb-thinking .agent-tb-dot",
-      ) as HTMLElement | null;
-      if (dot)
-        dot.style.background =
-          THINKING_COLORS[s.thinkingLevel] ?? "var(--text-dim)";
-      addSystemMessage(view, `Thinking: ${s.thinkingLevel}`);
-    }
-    syncFooter(view);
-  }
-
-  if (cmd === "set_thinking_level") {
-    dispatch("ht-agent-get-state", { agentId: view.agentId });
-  }
-
-  if (cmd === "set_steering_mode") {
-    if (data?.["mode"]) s.steeringMode = data["mode"] as string;
-    dispatch("ht-agent-get-state", { agentId: view.agentId });
-    addSystemMessage(view, `Steering delivery: ${s.steeringMode}`);
-    syncFooter(view);
-  }
-
-  if (cmd === "set_follow_up_mode") {
-    if (data?.["mode"]) s.followUpMode = data["mode"] as string;
-    dispatch("ht-agent-get-state", { agentId: view.agentId });
-    addSystemMessage(view, `Follow-up delivery: ${s.followUpMode}`);
-    syncFooter(view);
-  }
-
-  if (cmd === "set_auto_compaction") {
-    s.autoCompactionEnabled =
-      typeof data?.["enabled"] === "boolean"
-        ? Boolean(data["enabled"])
-        : !s.autoCompactionEnabled;
-    addSystemMessage(
-      view,
-      `Auto compaction ${s.autoCompactionEnabled ? "enabled" : "disabled"}`,
-    );
-    dispatch("ht-agent-get-state", { agentId: view.agentId });
-    syncFooter(view);
-  }
-
-  if (cmd === "set_auto_retry") {
-    s.autoRetryEnabled =
-      typeof data?.["enabled"] === "boolean"
-        ? Boolean(data["enabled"])
-        : !s.autoRetryEnabled;
-    addSystemMessage(
-      view,
-      `Auto retry ${s.autoRetryEnabled ? "enabled" : "disabled"}`,
-    );
-    dispatch("ht-agent-get-state", { agentId: view.agentId });
-    syncFooter(view);
-  }
-
-  if (cmd === "abort_retry") {
-    s.retryState = null;
-    addSystemMessage(view, "Retry aborted");
-  }
-
-  if (cmd === "get_session_stats" && data) {
-    s.sessionStats = data as AgentPanelState["sessionStats"];
-    if (data["sessionFile"]) s.sessionFile = data["sessionFile"] as string;
-    if (data["sessionId"]) s.sessionId = data["sessionId"] as string;
-    if (typeof data["totalMessages"] === "number") {
-      s.messageCount = data["totalMessages"] as number;
-    }
-    syncFooter(view);
-    renderStats(view);
-  }
-
-  if (cmd === "get_messages" && data) {
-    const messages = Array.isArray(data["messages"])
-      ? (data["messages"] as Record<string, unknown>[])
-      : [];
-    s.messages = messages.flatMap(convertAgentMessageToChatMessages);
-    s.turnCount = s.messages.filter((m) => m.role === "assistant").length;
-    s.totalToolCalls = s.messages.filter((m) => m.role === "tool").length;
-    renderAllMessages(view);
-    syncFooter(view);
-  }
-
-  if (cmd === "new_session") {
-    s.messages = [];
-    s.currentText = "";
-    s.currentThinking = "";
-    s.toolCalls.clear();
-    s.turnCount = 0;
-    s.totalToolCalls = 0;
-    s.sessionStats = null;
-    s.sessionName = null;
-    s.widgetsAbove.clear();
-    s.widgetsBelow.clear();
-    s.sessionTree = [];
-    s.sessionList = [];
-    renderWidgets(view);
-    s.sessionFile = null;
-    s.sessionId = null;
-    s.messageCount = 0;
-    el.sessionNameEl.textContent = "";
-    renderAllMessages(view);
-    syncFooter(view);
-    addSystemMessage(view, "New session started");
-    dispatch("ht-agent-get-state", { agentId: view.agentId });
-    dispatch("ht-agent-get-session-stats", { agentId: view.agentId });
-    dispatch("ht-agent-get-messages", { agentId: view.agentId });
-  }
-
-  if (cmd === "get_commands" && data) {
-    const arr = Array.isArray(data["commands"])
-      ? (data["commands"] as Record<string, unknown>[])
-      : Array.isArray(data)
-        ? (data as unknown as Record<string, unknown>[])
-        : [];
-    const piCmds: SlashCommand[] = arr
-      .filter((c) => typeof c["name"] === "string")
-      .map((c) => ({
-        name: `/${c["name"] as string}`,
-        description: (c["description"] as string) ?? "",
-        source: (c["source"] as SlashCommand["source"]) ?? "extension",
-      }));
-    const builtinNames = new Set(BUILTIN_COMMANDS.map((c) => c.name));
-    s.commands = [
-      ...BUILTIN_COMMANDS,
-      ...piCmds.filter((c) => !builtinNames.has(c.name)),
-    ];
-  }
-
-  if (cmd === "get_last_assistant_text" && data) {
-    const text = (data as { text?: string | null }).text;
-    if (text) {
-      navigator.clipboard.writeText(text).then(() => {
-        addSystemMessage(view, "Copied last response to clipboard");
-      });
-    } else {
-      addSystemMessage(view, "No assistant message to copy");
-    }
-  }
-
-  if (cmd === "export_html" && data) {
-    const path = (data as { path?: string }).path;
-    addSystemMessage(view, path ? `Exported to ${path}` : "Session exported");
-  }
-
-  if (cmd === "switch_session") {
-    const cancelled = Boolean(data?.["cancelled"]);
-    addSystemMessage(
-      view,
-      cancelled ? "Session switch cancelled" : "Session switched",
-    );
-    if (!cancelled) {
-      dispatch("ht-agent-get-state", { agentId: view.agentId });
-      dispatch("ht-agent-get-session-stats", { agentId: view.agentId });
-      dispatch("ht-agent-get-messages", { agentId: view.agentId });
-      dispatch("ht-agent-get-session-tree", { agentId: view.agentId });
-    }
-  }
-
-  if (cmd === "list_sessions" && data) {
-    s.sessionList = Array.isArray(data["sessions"])
-      ? (data["sessions"] as AgentPanelState["sessionList"])
-      : [];
-    showSessionBrowserDialog(view);
-  }
-
-  if (cmd === "get_session_tree" && data) {
-    s.sessionTree = Array.isArray(data["tree"])
-      ? (data["tree"] as AgentPanelState["sessionTree"])
-      : [];
-    showTreeDialog(view);
-  }
-
-  if (cmd === "get_fork_messages" && data) {
-    const arr = Array.isArray(data["messages"])
-      ? (data["messages"] as { entryId: string; text: string }[])
-      : Array.isArray(data)
-        ? (data as unknown as { entryId: string; text: string }[])
-        : [];
-    if (arr.length > 0) {
-      showForkDialog(view, arr);
-    } else {
-      addSystemMessage(view, "No fork points available");
-    }
-  }
-
-  if (cmd === "fork") {
-    const cancelled = Boolean(data?.["cancelled"]);
-    const text = (data?.["text"] as string) ?? "";
-    addSystemMessage(
-      view,
-      cancelled
-        ? "Fork cancelled"
-        : `Forked session${text ? ` from: ${text.slice(0, 80)}` : ""}`,
-    );
-    if (!cancelled) {
-      dispatch("ht-agent-get-state", { agentId: view.agentId });
-      dispatch("ht-agent-get-session-stats", { agentId: view.agentId });
-      dispatch("ht-agent-get-messages", { agentId: view.agentId });
-    }
-  }
-
-  if (cmd === "set_session_name") {
-    const name = (data?.["name"] as string) ?? (ev["name"] as string) ?? "";
-    s.sessionName = name || null;
-    el.sessionNameEl.textContent = name;
-    syncFooter(view);
-  }
-
-  if (cmd === "bash" && data) {
-    const output = (data as { output?: string }).output ?? "";
-    const exitCode = (data as { exitCode?: number }).exitCode ?? 0;
-    s.messages.push({
-      role: "bash",
-      content: output,
-      exitCode,
-      command: (data as { command?: string }).command ?? undefined,
-      truncated: Boolean((data as { truncated?: boolean }).truncated),
-      fullOutputPath:
-        (data as { fullOutputPath?: string | null }).fullOutputPath ?? null,
-      timestamp: Date.now(),
-    });
-    renderAllMessages(view);
-  }
+  handleAgentResponse(view, ev, {
+    addSystemMessage: (text) => addSystemMessage(view, text),
+    syncStreamingUI: () => syncStreamingUI(view),
+    syncFooter: () => syncFooter(view),
+    renderModelMeta: () => renderModelMeta(view),
+    renderDropdowns: () => renderDropdowns(view),
+    renderStats: () => renderStats(view),
+    renderAllMessages: () => renderAllMessages(view),
+    renderWidgets: () => renderWidgets(view),
+    showSessionBrowserDialog: () => showSessionBrowserDialog(view),
+    showTreeDialog: () => showTreeDialog(view),
+    showForkDialog: (entries) => showForkDialog(view, entries),
+    convertAgentMessageToChatMessages,
+    builtinCommands: BUILTIN_COMMANDS,
+  });
 }
 
 // ── Special views ──
