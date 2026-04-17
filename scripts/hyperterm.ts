@@ -269,6 +269,22 @@ class EventDispatcher {
 
 const encoder = new TextEncoder();
 
+// Synchronous write to an open fd. Loops over partial writes so a large
+// binary push (JPEG / PNG frame at 60KB+) completes atomically from the
+// caller's perspective — no interleaving with the next frame's meta line.
+// Imported lazily so the library still loads in contexts that don't have
+// node:fs available (Bun always does, but browser-side imports of this
+// file for type-checking should still work).
+import { writeSync as fsWriteSync } from "node:fs";
+function syncWrite(fd: number, bytes: Uint8Array): void {
+  let offset = 0;
+  while (offset < bytes.length) {
+    const n = fsWriteSync(fd, bytes, offset, bytes.length - offset);
+    if (n <= 0) return;
+    offset += n;
+  }
+}
+
 export class HyperTerm {
   readonly available: boolean;
   readonly debug: boolean;
@@ -326,14 +342,22 @@ export class HyperTerm {
 
   // ── Low-level protocol ──
 
+  // Synchronous writes via node:fs so concurrent sendMeta / sendData calls
+  // from rapid update loops (webcam at 30fps, canvas frames over PIPE_BUF)
+  // can't interleave bytes across frames. `Bun.write(Bun.file(fd), …)`
+  // returns a Promise — without awaiting it, the OS could write frame-2
+  // bytes into the middle of frame-1's payload once a single `write()`
+  // exceeds PIPE_BUF (16 KB on macOS, 4 KB on Linux).
+  //
+  // Blocks are performed in chunks so we respect SIGPIPE cleanly if the
+  // reader disappears. `writeSync` itself handles partial writes
+  // transparently when the arg is a single ArrayBufferView.
+
   /** Send raw metadata JSON to fd3. */
   sendMeta(meta: Record<string, unknown>): void {
     if (!this.available || this.metaFd === null) return;
     try {
-      Bun.write(
-        Bun.file(this.metaFd),
-        encoder.encode(JSON.stringify(meta) + "\n"),
-      );
+      syncWrite(this.metaFd, encoder.encode(JSON.stringify(meta) + "\n"));
     } catch (err) {
       if (this.debug) console.error("[hyperterm] sendMeta:", err);
     }
@@ -345,7 +369,7 @@ export class HyperTerm {
     if (!this.available || fd === null) return;
     try {
       const bytes = typeof data === "string" ? encoder.encode(data) : data;
-      Bun.write(Bun.file(fd), bytes);
+      syncWrite(fd, bytes);
     } catch (err) {
       if (this.debug) console.error("[hyperterm] sendData:", err);
     }

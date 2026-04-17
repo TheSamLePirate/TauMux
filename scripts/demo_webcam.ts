@@ -14,15 +14,9 @@
  *   bun scripts/demo_webcam.ts --fps-out 15        — output framerate to panel (default: same as --fps)
  */
 
-const META_FD = process.env["HYPERTERM_META_FD"]
-  ? parseInt(process.env["HYPERTERM_META_FD"])
-  : null;
-const DATA_FD = process.env["HYPERTERM_DATA_FD"]
-  ? parseInt(process.env["HYPERTERM_DATA_FD"])
-  : null;
+import { HyperTerm } from "./hyperterm";
 
-const hasHyperTerm = META_FD !== null && DATA_FD !== null;
-const encoder = new TextEncoder();
+const ht = new HyperTerm();
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing
@@ -75,7 +69,8 @@ Examples:
 }
 
 // ---------------------------------------------------------------------------
-// List devices mode
+// List devices mode (works without HyperTerm so users can discover cameras
+// from any shell).
 // ---------------------------------------------------------------------------
 
 if (listDevices) {
@@ -108,11 +103,11 @@ if (listDevices) {
 }
 
 // ---------------------------------------------------------------------------
-// Availability check — must come before ffmpeg spawn so `--list` above still
-// works when HyperTerm isn't attached.
+// Availability check — must come before ffmpeg spawn so we don't burn a
+// camera activation + AVFoundation permission prompt outside HyperTerm.
 // ---------------------------------------------------------------------------
 
-if (!hasHyperTerm) {
+if (!ht.available) {
   console.log(
     "This script requires HyperTerm Canvas.\n" +
       "Run it inside the HyperTerm terminal emulator.\n" +
@@ -121,25 +116,9 @@ if (!hasHyperTerm) {
   process.exit(0);
 }
 
-// ---------------------------------------------------------------------------
-// Sideband helpers
-// ---------------------------------------------------------------------------
-
-function writeMeta(meta: Record<string, unknown>): void {
-  try {
-    Bun.write(Bun.file(META_FD!), encoder.encode(JSON.stringify(meta) + "\n"));
-  } catch {
-    /* fd write failed */
-  }
-}
-
-function writeData(data: Uint8Array): void {
-  try {
-    Bun.write(Bun.file(DATA_FD!), data);
-  } catch {
-    /* fd write failed */
-  }
-}
+ht.onError((code, message) => {
+  console.error(`[demo_webcam] sideband error — ${code}: ${message}`);
+});
 
 // ---------------------------------------------------------------------------
 // JPEG frame extraction from MJPEG stream
@@ -163,7 +142,6 @@ function findJpegEnd(buf: Uint8Array, start: number): number {
 // Main
 // ---------------------------------------------------------------------------
 
-const PANEL_ID = "webcam";
 const [width, height] = size.split("x").map(Number);
 
 console.log(
@@ -195,7 +173,10 @@ const ffmpeg = Bun.spawn(
   { stdout: "pipe", stderr: "pipe" },
 );
 
-// Drain stderr (non-blocking, only show errors)
+// Capture stderr fully. On an early ffmpeg exit (camera permission denied,
+// device busy, missing framework, etc.) we replay the tail so the failure
+// is visible instead of silently printing "Done" with zero frames.
+const stderrBuf: string[] = [];
 (async () => {
   const r = ffmpeg.stderr.getReader();
   const d = new TextDecoder();
@@ -204,7 +185,16 @@ const ffmpeg = Bun.spawn(
       const { value, done } = await r.read();
       if (done) break;
       const t = d.decode(value, { stream: true });
-      if (t.includes("Error") || t.includes("error")) process.stderr.write(t);
+      stderrBuf.push(t);
+      // Keep last ~8 KB so a chatty log doesn't balloon.
+      let total = stderrBuf.reduce((n, s) => n + s.length, 0);
+      while (total > 8192 && stderrBuf.length > 1) {
+        total -= stderrBuf.shift()!.length;
+      }
+      // Surface obvious failures live.
+      if (/error|permission|denied|not authorized|unable/i.test(t)) {
+        process.stderr.write(t);
+      }
     }
   } catch {
     /* stream ended */
@@ -216,13 +206,17 @@ const ffmpeg = Bun.spawn(
 // ---------------------------------------------------------------------------
 
 let latestFrame: Uint8Array | null = null; // always holds the most recent complete JPEG
+let panelId: string | null = null;
 let sentCount = 0;
 let capturedCount = 0;
 let droppedCount = 0;
-let firstFrame = true;
 const startTime = Date.now();
 
-// Timed sender: sends the latest frame at the output framerate
+// Timed sender: pushes the latest frame at the output framerate. Using the
+// HyperTerm class means meta + binary writes are sequenced by the lib's
+// single `sendMeta` → `sendData` path; the old raw-fd version (pre-upgrade)
+// could interleave writes across frames at high FPS and produce visually
+// garbled frames.
 let sending = false;
 const sendTimer = setInterval(() => {
   if (!latestFrame || sending) return;
@@ -230,11 +224,16 @@ const sendTimer = setInterval(() => {
   const frame = latestFrame;
   latestFrame = null; // consume it
 
-  if (firstFrame) {
-    writeMeta(
-      inlineMode
+  try {
+    if (panelId === null) {
+      // showImage() is file-path-based; here we have bytes in hand, so
+      // emit the meta + binary ourselves via the library's primitives.
+      // Using the library ensures the write ordering matches everything
+      // else (meta line, then binary on fd4).
+      const id = `webcam-${Date.now().toString(36)}`;
+      const meta: Record<string, unknown> = inlineMode
         ? {
-            id: PANEL_ID,
+            id,
             type: "image",
             format: "jpeg",
             position: "inline",
@@ -248,7 +247,7 @@ const sendTimer = setInterval(() => {
             byteLength: frame.byteLength,
           }
         : {
-            id: PANEL_ID,
+            id,
             type: "image",
             format: "jpeg",
             position: "float",
@@ -260,23 +259,20 @@ const sendTimer = setInterval(() => {
             resizable: true,
             timeout: 30000,
             byteLength: frame.byteLength,
-          },
-    );
-    firstFrame = false;
-  } else {
-    writeMeta({
-      id: PANEL_ID,
-      type: "update",
-      timeout: 30000,
-      byteLength: frame.byteLength,
-    });
+          };
+      ht.sendMeta(meta);
+      ht.sendData(frame);
+      panelId = id;
+    } else {
+      ht.update(panelId, { data: frame, timeout: 30000 });
+    }
+    sentCount++;
+  } finally {
+    sending = false;
   }
-  writeData(frame);
-  sentCount++;
-  sending = false;
 
   // Log stats periodically
-  if (sentCount % 30 === 0) {
+  if (sentCount > 0 && sentCount % 30 === 0) {
     const elapsed = (Date.now() - startTime) / 1000;
     process.stdout.write(
       `\rCapture: ${capturedCount} (${(capturedCount / elapsed).toFixed(1)}fps)  ` +
@@ -326,10 +322,8 @@ try {
       capturedCount++;
     }
 
-    // Only keep the latest frame (drop intermediate ones from this chunk)
     if (lastCompleteFrame) {
-      if (latestFrame) droppedCount += framesInChunk - 1;
-      else droppedCount += framesInChunk - 1;
+      if (framesInChunk > 1) droppedCount += framesInChunk - 1;
       latestFrame = lastCompleteFrame;
     }
   }
@@ -344,7 +338,19 @@ console.log(
     `(${elapsed.toFixed(1)}s, ${(sentCount / elapsed).toFixed(1)} fps output)`,
 );
 
-// Cleanup
+// If ffmpeg exited without producing frames, replay the stderr tail so the
+// real failure reason (camera permission, device busy, …) is visible.
+if (capturedCount === 0) {
+  console.error("\n[demo_webcam] ffmpeg produced no frames. stderr tail:");
+  console.error(stderrBuf.join("").slice(-2000));
+  console.error(
+    "\nHints: run `bun scripts/demo_webcam.ts --list` to verify the camera " +
+      "index, and make sure the app running HyperTerm Canvas has been granted " +
+      "Camera access in System Settings → Privacy & Security → Camera.",
+  );
+}
+
+// Cleanup — kill ffmpeg on any exit path so the camera LED goes off.
 let ffmpegKilled = false;
 function killFfmpeg(): void {
   if (ffmpegKilled) return;
@@ -359,16 +365,14 @@ function killFfmpeg(): void {
 process.on("SIGINT", () => {
   clearInterval(sendTimer);
   killFfmpeg();
-  writeMeta({ id: PANEL_ID, type: "clear" });
+  if (panelId) ht.clear(panelId);
   console.log("\nWebcam stopped.");
   process.exit(0);
 });
 
-// Make sure ffmpeg dies on any exit path — otherwise it can keep the camera
-// LED on and the capture pipeline running after the script is gone.
 process.on("exit", killFfmpeg);
 
 ffmpeg.exited.then(() => {
   clearInterval(sendTimer);
-  writeMeta({ id: PANEL_ID, type: "clear" });
+  if (panelId) ht.clear(panelId);
 });
