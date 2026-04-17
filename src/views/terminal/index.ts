@@ -18,6 +18,7 @@ import { SettingsPanel } from "./settings-panel";
 import { SurfaceDetailsPanel } from "./surface-details";
 import { showToast } from "./toast";
 import { registerAgentEvents } from "./agent-events";
+import { registerBrowserEvents } from "./browser-events";
 
 // Declared before rpc so handlers can reference it; assigned after rpc is created.
 // eslint-disable-next-line prefer-const
@@ -1293,107 +1294,7 @@ window.addEventListener("ht-clear-notifications", () => {
 });
 
 // ── Browser pane events ──
-
-window.addEventListener("ht-browser-navigated", (e: Event) => {
-  const detail = (e as CustomEvent).detail;
-  if (detail?.surfaceId) {
-    rpc.send("browserNavigated", {
-      surfaceId: detail.surfaceId,
-      url: detail.url ?? "",
-      title: detail.title ?? "",
-    });
-  }
-});
-
-window.addEventListener("ht-browser-title-changed", (e: Event) => {
-  const detail = (e as CustomEvent).detail;
-  if (detail?.surfaceId) {
-    rpc.send("browserTitleChanged", {
-      surfaceId: detail.surfaceId,
-      title: detail.title ?? "",
-    });
-  }
-});
-
-window.addEventListener("ht-browser-eval-result", (e: Event) => {
-  const detail = (e as CustomEvent).detail;
-  if (detail?.surfaceId && detail?.reqId) {
-    rpc.send("browserEvalResult", {
-      surfaceId: detail.surfaceId,
-      reqId: detail.reqId,
-      result: detail.result,
-      error: detail.error,
-    });
-  }
-});
-
-window.addEventListener("ht-browser-zoom", (e: Event) => {
-  const detail = (e as CustomEvent).detail;
-  if (detail?.surfaceId) {
-    rpc.send("browserSetZoom", {
-      surfaceId: detail.surfaceId,
-      zoom: detail.zoom ?? 1.0,
-    });
-  }
-});
-
-window.addEventListener("ht-browser-console-log", (e: Event) => {
-  const detail = (e as CustomEvent).detail;
-  if (detail?.surfaceId) {
-    rpc.send("browserConsoleLog", {
-      surfaceId: detail.surfaceId,
-      level: detail.level ?? "log",
-      args: detail.args ?? [],
-      timestamp: detail.timestamp ?? Date.now(),
-    });
-  }
-});
-
-window.addEventListener("ht-browser-error", (e: Event) => {
-  const detail = (e as CustomEvent).detail;
-  if (detail?.surfaceId) {
-    rpc.send("browserError", {
-      surfaceId: detail.surfaceId,
-      message: detail.message ?? "",
-      filename: detail.filename,
-      lineno: detail.lineno,
-      timestamp: detail.timestamp ?? Date.now(),
-    });
-  }
-});
-
-window.addEventListener("ht-browser-dom-ready", (e: Event) => {
-  const detail = (e as CustomEvent).detail;
-  if (detail?.surfaceId && detail?.url) {
-    rpc.send("browserDomReady", {
-      surfaceId: detail.surfaceId,
-      url: detail.url,
-    });
-  }
-});
-
-window.addEventListener("ht-cookie-import", (e: Event) => {
-  const detail = (e as CustomEvent).detail;
-  if (detail?.data) {
-    rpc.send("browserCookieAction", {
-      action: "import",
-      data: detail.data,
-      format: detail.format,
-    });
-  }
-});
-
-window.addEventListener("ht-cookie-export", (e: Event) => {
-  const detail = (e as CustomEvent).detail;
-  rpc.send("browserCookieAction", {
-    action: "export",
-    format: detail?.format || "json",
-  });
-});
-
-window.addEventListener("ht-cookie-clear", () => {
-  rpc.send("browserCookieAction", { action: "clear" });
-});
+registerBrowserEvents(rpc);
 
 window.addEventListener("ht-clear-logs", () => {
   surfaceManager.clearLogs();
