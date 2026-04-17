@@ -429,6 +429,7 @@ function syncPanelSizeFromEvent(event: Record<string, unknown>): boolean {
   return applyViewportSize(nextViewportW, nextViewportH);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function badgeColor(kind: FileKind): string {
   switch (kind) {
     case "modified":
@@ -785,10 +786,16 @@ function isProbablyBinary(buf: Uint8Array): boolean {
   return suspicious / sampleLen > 0.2;
 }
 
+const UNTRACKED_PREVIEW_MAX_BYTES = 1024 * 1024; // 1 MiB
+
 function buildSyntheticUntrackedDiff(path: string): ParsedDiff {
   try {
-    const buf = readFileSync(path);
-    const signature = hashBytes(buf);
+    const rawBuf = readFileSync(path);
+    const oversized = rawBuf.byteLength > UNTRACKED_PREVIEW_MAX_BYTES;
+    const buf = oversized
+      ? rawBuf.subarray(0, UNTRACKED_PREVIEW_MAX_BYTES)
+      : rawBuf;
+    const signature = hashBytes(rawBuf);
 
     if (isProbablyBinary(buf)) {
       return {
@@ -880,6 +887,15 @@ function buildSyntheticUntrackedDiff(path: string): ParsedDiff {
       added++;
     }
 
+    if (oversized) {
+      displayLines.push({
+        kind: "note",
+        leftNo: null,
+        rightNo: null,
+        text: "…(file too large to preview)",
+      });
+    }
+
     return {
       lines: displayLines,
       added,
@@ -887,7 +903,7 @@ function buildSyntheticUntrackedDiff(path: string): ParsedDiff {
       hunks: 1,
       hunkStarts,
       binary: false,
-      truncated: false,
+      truncated: oversized,
       signature,
     };
   } catch (err) {
@@ -1942,6 +1958,18 @@ function startStdinReader(): void {
 function handleEvent(event: Record<string, unknown>): void {
   const evtId = event["id"] as string;
   const evtType = event["event"] as string;
+
+  if (evtId === "__system__" && evtType === "error") {
+    const code = (event["code"] as string) ?? "unknown";
+    const message = (event["message"] as string) ?? "";
+    const panelId = (event["panelId"] as string) ?? "";
+    process.stderr.write(
+      `[gitdiff] sideband error: ${code}${panelId ? ` (${panelId})` : ""}${
+        message ? ` — ${message}` : ""
+      }\n`,
+    );
+    return;
+  }
 
   if (evtId === "__terminal__" && evtType === "resize") {
     if (syncPanelSizeFromEvent(event)) {

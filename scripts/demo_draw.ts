@@ -567,7 +567,7 @@ function render(force = false): void {
     writeMeta({
       id: PANEL_ID,
       type: "html",
-      position: fullPane ? "float" : "float",
+      position: fullPane ? "overlay" : "float",
       x: panelX,
       y: panelY,
       width: panelW,
@@ -697,6 +697,17 @@ function finalizeStroke(): void {
 function handleEvent(event: Record<string, unknown>): void {
   const evtId = event["id"] as string;
   const evtType = event["event"] as string;
+
+  // Protocol errors from the terminal (data-timeout, meta-validate, etc.)
+  if (evtId === "__system__" && evtType === "error") {
+    const code = (event["code"] as string) ?? "unknown";
+    const message = (event["message"] as string) ?? "";
+    const ref = (event["ref"] as string) ?? "";
+    console.error(
+      `[demo_draw] protocol error ${code}: ${message}${ref ? ` (ref=${ref})` : ""}`,
+    );
+    return;
+  }
 
   // Terminal resize → scale panel to match available space
   if (evtId === "__terminal__" && evtType === "resize") {

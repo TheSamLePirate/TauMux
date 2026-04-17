@@ -1149,7 +1149,19 @@ async function readEvents(): Promise<void> {
         if (!line) continue;
         try {
           const event = JSON.parse(line);
+          // Protocol errors from the terminal (data-timeout, meta-validate, etc.)
+          if (event.id === "__system__" && event.event === "error") {
+            const code = event.code ?? "unknown";
+            const message = event.message ?? "";
+            const ref = event.ref ?? "";
+            console.error(
+              `[demo_qrcode] protocol error ${code}: ${message}${ref ? ` (ref=${ref})` : ""}`,
+            );
+            continue;
+          }
           if (event.id === PANEL_ID && event.event === "close") {
+            // Tear the panel down immediately rather than waiting for SIGINT.
+            writeMeta({ id: PANEL_ID, type: "clear" });
             console.log("Panel closed.");
             process.exit(0);
           }
@@ -1200,6 +1212,18 @@ async function runInteractiveMode(): Promise<void> {
 
   let inputBuffer = "";
 
+  // 50ms coalescing throttle: burst typing re-renders at most once every
+  // ~50ms instead of once per keystroke.
+  let renderScheduled = false;
+  const scheduleRender = (): void => {
+    if (renderScheduled) return;
+    renderScheduled = true;
+    setTimeout(() => {
+      renderScheduled = false;
+      renderPanel();
+    }, 50);
+  };
+
   // Show initial empty QR
   currentText = "";
   renderPanel();
@@ -1234,7 +1258,7 @@ async function runInteractiveMode(): Promise<void> {
             // Clear line and rewrite
             process.stdout.write("\r\x1b[K> " + inputBuffer);
             currentText = inputBuffer;
-            renderPanel();
+            scheduleRender();
           }
           continue;
         }
@@ -1263,7 +1287,7 @@ async function runInteractiveMode(): Promise<void> {
           inputBuffer += str[i];
           process.stdout.write(str[i]);
           currentText = inputBuffer;
-          renderPanel();
+          scheduleRender();
         }
       }
     }

@@ -242,6 +242,23 @@ function syncPanelSizeFromEvent(event: Record<string, unknown>): boolean {
   return applyViewportSize(nextW, nextH);
 }
 
+const RESIZE_DEBOUNCE_MS = 100;
+let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingResizeEvent: Record<string, unknown> | null = null;
+
+function scheduleDebouncedResize(event: Record<string, unknown>): void {
+  pendingResizeEvent = event;
+  if (resizeDebounceTimer !== null) clearTimeout(resizeDebounceTimer);
+  resizeDebounceTimer = setTimeout(() => {
+    resizeDebounceTimer = null;
+    const evt = pendingResizeEvent;
+    pendingResizeEvent = null;
+    if (evt && syncPanelSizeFromEvent(evt)) {
+      render(true);
+    }
+  }, RESIZE_DEBOUNCE_MS);
+}
+
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
@@ -973,6 +990,10 @@ function cleanup(): void {
     clearInterval(refreshTimer);
     refreshTimer = null;
   }
+  if (resizeDebounceTimer !== null) {
+    clearTimeout(resizeDebounceTimer);
+    resizeDebounceTimer = null;
+  }
   if (stdinHandler) {
     process.stdin.off("data", stdinHandler);
     stdinHandler = null;
@@ -1081,8 +1102,20 @@ function handleEvent(event: Record<string, unknown>): void {
   const evtId = event["id"] as string;
   const evtType = event["event"] as string;
 
+  if (evtId === "__system__" && evtType === "error") {
+    const code = (event["code"] as string) ?? "unknown";
+    const message = (event["message"] as string) ?? "";
+    const panelId = (event["panelId"] as string) ?? "";
+    process.stderr.write(
+      `[gitgraph] sideband error: ${code}${panelId ? ` (${panelId})` : ""}${
+        message ? ` — ${message}` : ""
+      }\n`,
+    );
+    return;
+  }
+
   if (evtId === "__terminal__" && evtType === "resize") {
-    if (syncPanelSizeFromEvent(event)) render(true);
+    scheduleDebouncedResize(event);
     return;
   }
 

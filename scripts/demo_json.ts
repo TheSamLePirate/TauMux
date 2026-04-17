@@ -12,6 +12,11 @@
  *   bun scripts/demo_json.ts '{"key":"value"}'  — parse from argument
  */
 
+import { statSync } from "fs";
+
+const MAX_JSON_FILE_BYTES = 100 * 1024 * 1024; // 100 MiB
+const MAX_TREE_DEPTH = 512;
+
 // ---------------------------------------------------------------------------
 // Environment / fd setup
 // ---------------------------------------------------------------------------
@@ -157,6 +162,23 @@ async function loadJson(): Promise<unknown> {
     // Treat as file path
     try {
       const resolved = Bun.resolveSync(arg, process.cwd());
+      try {
+        const stat = statSync(resolved);
+        if (stat.size > MAX_JSON_FILE_BYTES) {
+          console.error(
+            `Error: "${arg}" is ${(stat.size / (1024 * 1024)).toFixed(1)} MB ` +
+              `which exceeds the ${MAX_JSON_FILE_BYTES / (1024 * 1024)} MB limit.`,
+          );
+          process.exit(1);
+        }
+      } catch (statErr) {
+        console.error(
+          `Error stating "${arg}": ${
+            statErr instanceof Error ? statErr.message : statErr
+          }`,
+        );
+        process.exit(1);
+      }
       const text = await Bun.file(resolved).text();
       return JSON.parse(text);
     } catch (err) {
@@ -255,6 +277,20 @@ function flattenTree(rootValue: unknown): TreeNode[] {
     depth: number,
     path: string,
   ): void {
+    if (depth > MAX_TREE_DEPTH) {
+      nodes.push({
+        key: "…",
+        value: { "…": "max depth exceeded" },
+        depth,
+        expanded: false,
+        path,
+        isContainer: false,
+        childCount: 0,
+        isArray: false,
+      });
+      return;
+    }
+
     const container = isContainer(value);
     const arrFlag = Array.isArray(value);
     const count = container ? childCountOf(value) : 0;
@@ -557,6 +593,18 @@ function isTriangleClick(x: number, rowIndex: number): boolean {
 function handleEvent(event: Record<string, unknown>): void {
   const evtId = event["id"] as string;
   const evtType = event["event"] as string;
+
+  if (evtId === "__system__" && evtType === "error") {
+    const code = (event["code"] as string) ?? "unknown";
+    const message = (event["message"] as string) ?? "";
+    const panelId = (event["panelId"] as string) ?? "";
+    process.stderr.write(
+      `[json] sideband error: ${code}${panelId ? ` (${panelId})` : ""}${
+        message ? ` — ${message}` : ""
+      }\n`,
+    );
+    return;
+  }
 
   if (evtId !== PANEL_ID) return;
 

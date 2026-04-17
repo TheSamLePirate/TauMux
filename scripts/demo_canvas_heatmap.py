@@ -21,6 +21,16 @@ if not ht.available:
     print("Not running inside HyperTerm Canvas. Exiting.")
     sys.exit(0)
 
+ht.on_error(
+    lambda code, msg, ref=None: print(
+        f"[error] {code}: {msg}", file=sys.stderr
+    )
+)
+
+# State serialisation — see mandelbrot demo for the same pattern.
+state_lock = threading.Lock()
+shutdown_requested = False
+
 PANEL_ID = "heatmap"
 CELL_W = 3
 CELL_H = 12
@@ -169,24 +179,37 @@ fps = FPS_DEFAULT
 
 
 def event_loop():
-    global running, paused, fps
-    for event in ht.events():
-        if event.get("id") != PANEL_ID:
-            continue
-        evt = event.get("event")
-        if evt == "click":
-            paused = not paused
-            state = "PAUSED" if paused else "RUNNING"
-            print(f"\r  [{state}]" + " " * 40, end="", flush=True)
-        elif evt == "wheel":
-            dy = event.get("deltaY", 0)
-            if dy < 0:
-                fps = min(30, fps + 1)
-            elif dy > 0:
-                fps = max(1, fps - 1)
-        elif evt == "close":
-            running = False
-            return
+    """Poll events on a 50ms tick so shutdown_requested can interrupt us."""
+    while not shutdown_requested:
+        try:
+            ht.poll_events()
+        except Exception as e:
+            print(f"\n[poll error] {e}", file=sys.stderr)
+        time.sleep(0.05)
+
+
+def handle_click(_data):
+    global paused
+    with state_lock:
+        paused = not paused
+        state = "PAUSED" if paused else "RUNNING"
+    print(f"\r  [{state}]" + " " * 40, end="", flush=True)
+
+
+def handle_wheel(data):
+    global fps
+    dy = data.get("deltaY", 0)
+    with state_lock:
+        if dy < 0:
+            fps = min(30, fps + 1)
+        elif dy > 0:
+            fps = max(1, fps - 1)
+
+
+def handle_close():
+    global running
+    with state_lock:
+        running = False
 
 
 print(f"CPU Heatmap — {NUM_CORES} cores, click to pause, scroll to change speed")
@@ -199,7 +222,11 @@ time.sleep(0.1)
 # Create panel
 first_col = get_per_core_usage()
 history.append(first_col)
-png = render()
+try:
+    png = render()
+except Exception as e:
+    print(f"[encode error] {e}", file=sys.stderr)
+    sys.exit(1)
 ht.send_meta({
     "id": PANEL_ID,
     "type": "canvas2d",
@@ -212,17 +239,27 @@ ht.send_meta({
     "resizable": True,
     "interactive": True,
     "byteLength": len(png),
+    "timeout": 20000,
 })
 ht.send_data(png)
 
-# Event loop in background
+ht.on_click(PANEL_ID, handle_click)
+ht.on_wheel(PANEL_ID, handle_wheel)
+ht.on_close(PANEL_ID, handle_close)
+
+# Event poller in background
 t = threading.Thread(target=event_loop, daemon=True)
 t.start()
 
 try:
-    while running:
-        time.sleep(1.0 / fps)
-        if paused:
+    while True:
+        with state_lock:
+            if not running:
+                break
+            cur_fps = fps
+            cur_paused = paused
+        time.sleep(1.0 / cur_fps)
+        if cur_paused:
             continue
 
         column = get_per_core_usage()
@@ -230,20 +267,27 @@ try:
         if len(history) > HISTORY:
             history.pop(0)
 
-        png = render()
+        try:
+            png = render()
+        except Exception as e:
+            print(f"\n[encode error] {e}", file=sys.stderr)
+            continue
         ht.send_meta({
             "id": PANEL_ID,
             "type": "update",
             "byteLength": len(png),
+            "timeout": 20000,
         })
         ht.send_data(png)
 
         avg = sum(column) / len(column) if column else 0
         peak = max(column) if column else 0
-        print(f"\r  avg: {avg:5.1f}% | peak: {peak:5.1f}% | fps: {fps} | cols: {len(history)}/{HISTORY}   ",
+        print(f"\r  avg: {avg:5.1f}% | peak: {peak:5.1f}% | fps: {cur_fps} | cols: {len(history)}/{HISTORY}   ",
               end="", flush=True)
 except KeyboardInterrupt:
     pass
 
+shutdown_requested = True
+t.join(timeout=1.0)
 ht.clear(PANEL_ID)
 print("\nHeatmap stopped.")

@@ -989,8 +989,13 @@ function render(force = false): void {
 // Navigation actions
 // ---------------------------------------------------------------------------
 
+// Tracks inodes of every directory we descend into so navigation into a
+// symlink loop (e.g. `ln -s . self`) aborts instead of recursing forever.
+const visitedInodes: Set<number> = new Set();
+
 function navigateTo(dir: string): void {
   const resolved = resolve(dir);
+  let inode: number | null = null;
   try {
     // Verify it's a directory we can access
     const st = statSync(resolved, { throwIfNoEntry: false });
@@ -998,12 +1003,19 @@ function navigateTo(dir: string): void {
       console.log(`Not a directory: ${resolved}`);
       return;
     }
+    inode = typeof st.ino === "number" ? st.ino : null;
   } catch {
     console.log(`Cannot access: ${resolved}`);
     return;
   }
 
+  if (inode !== null && visitedInodes.has(inode)) {
+    console.log(`Symlink loop detected — refusing to enter ${resolved}`);
+    return;
+  }
+
   currentDir = resolved;
+  if (inode !== null) visitedInodes.add(inode);
   selectedIndex = 0;
   scrollOffset = 0;
   filterText = "";
@@ -1055,6 +1067,18 @@ function toggleHidden(): void {
 function handleEvent(event: Record<string, unknown>): void {
   const evtId = event["id"] as string;
   const evtType = event["event"] as string;
+
+  if (evtId === "__system__" && evtType === "error") {
+    const code = (event["code"] as string) ?? "unknown";
+    const message = (event["message"] as string) ?? "";
+    const panelId = (event["panelId"] as string) ?? "";
+    process.stderr.write(
+      `[files] sideband error: ${code}${panelId ? ` (${panelId})` : ""}${
+        message ? ` — ${message}` : ""
+      }\n`,
+    );
+    return;
+  }
 
   if (evtId !== PANEL_ID) return;
 

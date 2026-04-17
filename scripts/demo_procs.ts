@@ -144,19 +144,40 @@ let renderQueued = false;
 // Data collection — ps command
 // ---------------------------------------------------------------------------
 
+const PS_TIMEOUT_MS = 5000;
+const MAX_PROCESS_ROWS = 2000;
+let fetchInFlight = false;
+
 async function fetchProcesses(): Promise<void> {
+  if (fetchInFlight) return;
+  fetchInFlight = true;
   try {
     const proc = Bun.spawn(["ps", "-eo", "pid,pcpu,pmem,user,comm"], {
       stdout: "pipe",
       stderr: "pipe",
+      timeout: PS_TIMEOUT_MS,
+      env: { ...process.env, LC_ALL: "C", LANG: "C" },
     });
+
+    // Fallback manual timeout guard in case the Bun-level timeout ever
+    // misbehaves on a stuck subprocess — kill it unconditionally after 5s.
+    const killTimer = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        /* ignore */
+      }
+    }, PS_TIMEOUT_MS + 250);
+
     const text = await new Response(proc.stdout).text();
     await proc.exited;
+    clearTimeout(killTimer);
 
     const lines = text.trim().split("\n").slice(1); // skip header
     const result: ProcInfo[] = [];
 
     for (const line of lines) {
+      if (result.length >= MAX_PROCESS_ROWS) break;
       const trimmed = line.trim();
       if (!trimmed) continue;
       // Format: PID %CPU %MEM USER COMMAND
@@ -179,6 +200,8 @@ async function fetchProcesses(): Promise<void> {
     processes = result;
   } catch {
     /* command failed */
+  } finally {
+    fetchInFlight = false;
   }
 }
 
@@ -472,6 +495,18 @@ function hitTest(x: number, y: number): HitArea {
 function handleEvent(event: Record<string, unknown>): void {
   const evtId = event["id"] as string;
   const evtType = event["event"] as string;
+
+  if (evtId === "__system__" && evtType === "error") {
+    const code = (event["code"] as string) ?? "unknown";
+    const message = (event["message"] as string) ?? "";
+    const panelId = (event["panelId"] as string) ?? "";
+    process.stderr.write(
+      `[procs] sideband error: ${code}${panelId ? ` (${panelId})` : ""}${
+        message ? ` — ${message}` : ""
+      }\n`,
+    );
+    return;
+  }
 
   if (evtId !== PANEL_ID) return;
 

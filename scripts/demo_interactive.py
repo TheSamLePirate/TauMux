@@ -14,6 +14,12 @@ if not ht.available:
     print("Not running inside HyperTerm Canvas.")
     sys.exit(0)
 
+ht.on_error(
+    lambda code, msg, ref=None: print(
+        f"[error] {code}: {msg}", file=sys.stderr
+    )
+)
+
 HTML = """
 <div style="padding:16px;font-family:sans-serif;color:#cdd6f4;background:#1e1e2e;height:100%;">
   <h3 style="margin:0 0 12px;color:#89b4fa;font-size:15px;">Interactive Panel</h3>
@@ -43,23 +49,32 @@ print(f"Interactive panel created: {panel_id}")
 print("Click buttons in the panel — events appear here.\n")
 
 click_count = 0
+cleaned_up = False
 
 
 def cleanup(*_):
+    # Re-entry guard: SIGINT can fire while on_close is already cleaning up.
+    global cleaned_up
+    if cleaned_up:
+        return
+    cleaned_up = True
     ht.clear(panel_id)
     print(f"\nPanel closed. Total clicks: {click_count}")
     sys.exit(0)
 
 
-signal.signal(signal.SIGINT, cleanup)
+def on_click(data):
+    global click_count
+    click_count += 1
+    print(
+        f"  [{click_count}] Click at ({data.get('x', '?')}, {data.get('y', '?')})"
+    )
 
-for event in ht.events():
-    if event.get("id") != panel_id:
-        continue
-    if event["event"] == "close":
-        cleanup()
-    if event["event"] == "click":
-        click_count += 1
-        print(
-            f"  [{click_count}] Click at ({event.get('x', '?')}, {event.get('y', '?')})"
-        )
+
+signal.signal(signal.SIGINT, cleanup)
+ht.on_click(panel_id, on_click)
+ht.on_close(panel_id, cleanup)
+
+ht.run_event_loop()
+# Event stream closed (fd5 EOF) — make sure we tear the panel down.
+cleanup()

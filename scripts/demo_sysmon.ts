@@ -11,6 +11,13 @@
  */
 
 import { cpus, totalmem, freemem, loadavg, uptime as osUptime } from "os";
+import { readFileSync } from "fs";
+
+const SUBPROCESS_TIMEOUT_MS = 3000;
+
+// macOS: en0-en7, wlan (rare), lo*
+// Linux: eth*, wlan*, enp*/eno*/ens*, wl*, docker*, lo*
+const NET_IFACE_RE = /^(en|wlan|eth|wl|docker|lo|enp|eno|ens|br-|veth)/;
 
 // ---------------------------------------------------------------------------
 // Environment / fd setup
@@ -176,9 +183,19 @@ async function getDiskUsage(): Promise<{ used: number; total: number }> {
     const proc = Bun.spawn(["df", "-k", "/"], {
       stdout: "pipe",
       stderr: "pipe",
+      timeout: SUBPROCESS_TIMEOUT_MS,
+      env: { ...process.env, LC_ALL: "C", LANG: "C" },
     });
+    const killTimer = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        /* ignore */
+      }
+    }, SUBPROCESS_TIMEOUT_MS + 250);
     const text = await new Response(proc.stdout).text();
     await proc.exited;
+    clearTimeout(killTimer);
     const lines = text.trim().split("\n");
     if (lines.length >= 2) {
       const parts = lines[1].split(/\s+/);
@@ -198,9 +215,19 @@ async function getTopProcesses(): Promise<{ cpu: number; name: string }[]> {
     const proc = Bun.spawn(["ps", "-eo", "pcpu,comm", "-r"], {
       stdout: "pipe",
       stderr: "pipe",
+      timeout: SUBPROCESS_TIMEOUT_MS,
+      env: { ...process.env, LC_ALL: "C", LANG: "C" },
     });
+    const killTimer = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        /* ignore */
+      }
+    }, SUBPROCESS_TIMEOUT_MS + 250);
     const text = await new Response(proc.stdout).text();
     await proc.exited;
+    clearTimeout(killTimer);
     const lines = text.trim().split("\n").slice(1); // skip header
     const results: { cpu: number; name: string }[] = [];
     for (const line of lines) {
@@ -224,41 +251,106 @@ async function getTopProcesses(): Promise<{ cpu: number; name: string }[]> {
   return [];
 }
 
-async function getNetworkStats(): Promise<void> {
+function parseProcNetDev(text: string): { rx: number; tx: number } | null {
+  // Format (Linux):
+  //   Inter-|   Receive                                                |  Transmit
+  //    face |bytes    packets errs drop fifo frame compressed multicast|bytes    ...
+  //   eth0:  12345    67      0    0    0    0     0          0        67890    ...
+  const lines = text.split("\n");
+  if (lines.length < 3) return null;
+  let rx = 0;
+  let tx = 0;
+  let matched = false;
+  for (let i = 2; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const colonIdx = line.indexOf(":");
+    if (colonIdx < 0) continue;
+    const iface = line.slice(0, colonIdx).trim();
+    if (!NET_IFACE_RE.test(iface)) continue;
+    const parts = line
+      .slice(colonIdx + 1)
+      .trim()
+      .split(/\s+/);
+    if (parts.length < 16) continue;
+    const ibytes = parseInt(parts[0]);
+    const obytes = parseInt(parts[8]);
+    if (!isNaN(ibytes) && !isNaN(obytes)) {
+      rx += ibytes;
+      tx += obytes;
+      matched = true;
+    }
+  }
+  return matched ? { rx, tx } : null;
+}
+
+async function getNetworkStatsViaNetstat(): Promise<{
+  rx: number;
+  tx: number;
+} | null> {
   try {
     const proc = Bun.spawn(["/usr/sbin/netstat", "-ib"], {
       stdout: "pipe",
       stderr: "pipe",
+      timeout: SUBPROCESS_TIMEOUT_MS,
+      env: { ...process.env, LC_ALL: "C", LANG: "C" },
     });
+    const killTimer = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        /* ignore */
+      }
+    }, SUBPROCESS_TIMEOUT_MS + 250);
     const text = await new Response(proc.stdout).text();
-    await proc.exited;
+    const exitCode = await proc.exited;
+    clearTimeout(killTimer);
+    if (exitCode !== 0) return null;
+
     const lines = text.trim().split("\n");
     let totalRx = 0;
     let totalTx = 0;
+    let matched = false;
     // Parse netstat -ib: Name Mtu Network Address Ipkts Ierrs Ibytes Opkts Oerrs Obytes ...
     for (let i = 1; i < lines.length; i++) {
       const parts = lines[i].split(/\s+/);
-      // Only count en* interfaces with link addresses
-      if (parts[0]?.startsWith("en") && parts.length >= 10) {
+      if (parts[0] && NET_IFACE_RE.test(parts[0]) && parts.length >= 10) {
         const ibytes = parseInt(parts[6]);
         const obytes = parseInt(parts[9]);
         if (!isNaN(ibytes) && !isNaN(obytes)) {
           totalRx += ibytes;
           totalTx += obytes;
+          matched = true;
         }
       }
     }
-
-    if (netInitialized) {
-      netRxRate = Math.max(0, totalRx - prevNetRx);
-      netTxRate = Math.max(0, totalTx - prevNetTx);
-    }
-    prevNetRx = totalRx;
-    prevNetTx = totalTx;
-    netInitialized = true;
+    return matched ? { rx: totalRx, tx: totalTx } : null;
   } catch {
-    /* command failed */
+    return null;
   }
+}
+
+function getNetworkStatsViaProc(): { rx: number; tx: number } | null {
+  try {
+    const text = readFileSync("/proc/net/dev", "utf8");
+    return parseProcNetDev(text);
+  } catch {
+    return null;
+  }
+}
+
+async function getNetworkStats(): Promise<void> {
+  let stats = await getNetworkStatsViaNetstat();
+  if (!stats) stats = getNetworkStatsViaProc();
+  if (!stats) return;
+
+  if (netInitialized) {
+    netRxRate = Math.max(0, stats.rx - prevNetRx);
+    netTxRate = Math.max(0, stats.tx - prevNetTx);
+  }
+  prevNetRx = stats.rx;
+  prevNetTx = stats.tx;
+  netInitialized = true;
 }
 
 function formatBytes(bytes: number): string {
@@ -672,6 +764,18 @@ async function readEvents(): Promise<void> {
 function handleEvent(event: Record<string, unknown>): void {
   const evtId = event["id"] as string;
   const evtType = event["event"] as string;
+
+  if (evtId === "__system__" && evtType === "error") {
+    const code = (event["code"] as string) ?? "unknown";
+    const message = (event["message"] as string) ?? "";
+    const panelId = (event["panelId"] as string) ?? "";
+    process.stderr.write(
+      `[sysmon] sideband error: ${code}${panelId ? ` (${panelId})` : ""}${
+        message ? ` — ${message}` : ""
+      }\n`,
+    );
+    return;
+  }
 
   // Terminal resize -> reposition to top-right
   if (evtId === "__terminal__" && evtType === "resize") {

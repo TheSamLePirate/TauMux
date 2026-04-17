@@ -234,6 +234,11 @@ const MAX_SAVED = 12;
 
 let dragging: "square" | "hue" | null = null;
 
+// Panel position (x is right-aligned to the terminal viewport on resize).
+let panelX = 50;
+const PANEL_Y = 30;
+const PANEL_RIGHT_MARGIN = 50;
+
 // Throttle
 let lastRenderTime = 0;
 const MIN_RENDER_INTERVAL = 16;
@@ -515,8 +520,8 @@ function render(force = false): void {
       id: PANEL_ID,
       type: "html",
       position: "float",
-      x: 50,
-      y: 30,
+      x: panelX,
+      y: PANEL_Y,
       width: PANEL_W,
       height: PANEL_H,
       interactive: true,
@@ -554,6 +559,33 @@ function loadColor(hex: string): void {
 function handleEvent(event: Record<string, unknown>): void {
   const evtId = event["id"] as string;
   const evtType = event["event"] as string;
+
+  // Protocol errors from the terminal (data-timeout, meta-validate, etc.)
+  if (evtId === "__system__" && evtType === "error") {
+    const code = (event["code"] as string) ?? "unknown";
+    const message = (event["message"] as string) ?? "";
+    const ref = (event["ref"] as string) ?? "";
+    console.error(
+      `[demo_colorpick] protocol error ${code}: ${message}${ref ? ` (ref=${ref})` : ""}`,
+    );
+    return;
+  }
+
+  // Terminal resize → keep the picker right-aligned in the viewport.
+  if (evtId === "__terminal__" && evtType === "resize") {
+    const cols = (event["cols"] as number) ?? 0;
+    const pxWidth = (event["pxWidth"] as number) ?? 0;
+    // Prefer pxWidth when provided; fall back to a char-cell estimate.
+    const viewportW = pxWidth > 0 ? pxWidth : Math.round(cols * 8);
+    if (viewportW > 0) {
+      const newX = Math.max(10, viewportW - PANEL_W - PANEL_RIGHT_MARGIN);
+      if (newX !== panelX) {
+        panelX = newX;
+        writeMeta({ id: PANEL_ID, type: "update", x: panelX });
+      }
+    }
+    return;
+  }
 
   if (evtId !== PANEL_ID) return;
 

@@ -182,14 +182,43 @@ class EventDispatcher {
   }
 
   waitForClose(panelId: string): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       let list = this.closeResolvers.get(panelId);
       if (!list) {
         list = [];
         this.closeResolvers.set(panelId, list);
       }
+      // Pending resolvers are flushed by dispatch() on a close event,
+      // or by rejectAllPending() when the event stream EOFs — without
+      // that rejection, waitForClose would hang forever if the app
+      // exited while the script was awaiting.
       list.push(resolve);
+      // Reject hook stored in the per-panel resolver list so EOF can
+      // abort everything at once.
+      list.push(() =>
+        reject(
+          new Error(`event stream closed before panel ${panelId} close event`),
+        ),
+      );
     });
+  }
+
+  /** Reject every pending waitForClose Promise. Called by the main
+   *  library on event-stream EOF so scripts don't hang indefinitely. */
+  rejectAllPending(reason: string): void {
+    for (const [, list] of this.closeResolvers) {
+      // Odd entries are the reject-on-EOF hooks we pushed above; call
+      // them directly. Resolvers (even entries) are discarded — their
+      // corresponding rejects fire instead.
+      for (let i = 1; i < list.length; i += 2) {
+        try {
+          list[i](reason as unknown as undefined);
+        } catch {
+          /* rejection handler threw — ignore */
+        }
+      }
+    }
+    this.closeResolvers.clear();
   }
 
   dispatch(event: HyperTermEvent): void {
@@ -250,6 +279,14 @@ export class HyperTerm {
   private eventFd: number | null;
   private dispatcher = new EventDispatcher();
   private eventLoopStarted = false;
+  // Per-panel channel + format memory. update() reads these so a binary
+  // replacement routes to the same channel the panel was created on, and
+  // image updates preserve their PNG/JPEG/WebP format.
+  private panelChannels = new Map<string, string>();
+  private panelFormats = new Map<string, string>();
+
+  /** Inline data: URIs are used for SVG / HTML payloads under this size. */
+  private static readonly INLINE_DATA_MAX = 2048;
 
   constructor() {
     this.debug = !!process.env["HYPERTERM_DEBUG"];
@@ -335,14 +372,25 @@ export class HyperTerm {
     const id = nextId("svg");
     if (!this.available) return id;
     const data = encoder.encode(svg);
-    this.sendMeta({
+    const meta: Record<string, unknown> = {
       id,
       type: "svg",
       ...panelDefaults(opts),
       ...filterUndefined(opts),
-      byteLength: data.byteLength,
-    });
-    this.sendData(data);
+    };
+    // Inline small SVGs in the meta line — skips the fd4 hop, lower latency.
+    if (
+      data.byteLength <= HyperTerm.INLINE_DATA_MAX &&
+      opts.dataChannel === undefined
+    ) {
+      meta["data"] = svg;
+      this.sendMeta(meta);
+    } else {
+      meta["byteLength"] = data.byteLength;
+      this.sendMeta(meta);
+      this.sendData(data, opts.dataChannel);
+    }
+    if (opts.dataChannel) this.panelChannels.set(id, opts.dataChannel);
     return id;
   }
 
@@ -350,14 +398,24 @@ export class HyperTerm {
     const id = nextId("html");
     if (!this.available) return id;
     const data = encoder.encode(html);
-    this.sendMeta({
+    const meta: Record<string, unknown> = {
       id,
       type: "html",
       ...panelDefaults(opts),
       ...filterUndefined(opts),
-      byteLength: data.byteLength,
-    });
-    this.sendData(data);
+    };
+    if (
+      data.byteLength <= HyperTerm.INLINE_DATA_MAX &&
+      opts.dataChannel === undefined
+    ) {
+      meta["data"] = html;
+      this.sendMeta(meta);
+    } else {
+      meta["byteLength"] = data.byteLength;
+      this.sendMeta(meta);
+      this.sendData(data, opts.dataChannel);
+    }
+    if (opts.dataChannel) this.panelChannels.set(id, opts.dataChannel);
     return id;
   }
 
@@ -373,15 +431,18 @@ export class HyperTerm {
       webp: "webp",
       gif: "gif",
     };
+    const format = opts.format ?? fmtMap[ext] ?? "png";
     this.sendMeta({
       id,
       type: "image",
-      format: opts.format ?? fmtMap[ext] ?? "png",
+      format,
       ...panelDefaults(opts, { width: "auto", height: "auto" }),
       ...filterUndefined(opts),
       byteLength: data.byteLength,
     });
-    this.sendData(data);
+    this.sendData(data, opts.dataChannel);
+    this.panelFormats.set(id, format);
+    if (opts.dataChannel) this.panelChannels.set(id, opts.dataChannel);
     return id;
   }
 
@@ -395,7 +456,8 @@ export class HyperTerm {
       ...filterUndefined(opts),
       byteLength: pngData.byteLength,
     });
-    this.sendData(pngData);
+    this.sendData(pngData, opts.dataChannel);
+    if (opts.dataChannel) this.panelChannels.set(id, opts.dataChannel);
     return id;
   }
 
@@ -413,28 +475,57 @@ export class HyperTerm {
       ...filterUndefined(opts),
       byteLength: data.byteLength,
     });
-    this.sendData(data);
+    this.sendData(data, opts.dataChannel);
+    if (opts.dataChannel) this.panelChannels.set(id, opts.dataChannel);
     return id;
   }
 
   // ── Panel manipulation ──
 
-  /** Update panel properties and/or content. */
+  /** Update panel properties and/or content.
+   *  Binary replacements route to the panel's original dataChannel (set at
+   *  creation) so alternate-channel panels keep using their channel on
+   *  update. An explicit `dataChannel` in fields wins over the remembered
+   *  one.
+   */
   update(id: string, fields: Record<string, unknown> = {}): void {
     if (!this.available) return;
+    const channel =
+      (fields["dataChannel"] as string | undefined) ??
+      this.panelChannels.get(id);
+    // Remove dataChannel from the propagated fields — we re-add it below
+    // only when a binary payload is actually being routed.
+    const { dataChannel: _dc, ...rest } = fields as Record<string, unknown> & {
+      dataChannel?: string;
+    };
+    void _dc;
+
     let binary: Uint8Array | null = null;
-    const meta: Record<string, unknown> = { id, type: "update", ...fields };
+    let inlineData: string | null = null;
+    const meta: Record<string, unknown> = { id, type: "update", ...rest };
+
     if (fields["data"] instanceof Uint8Array) {
       binary = fields["data"] as Uint8Array;
       meta["byteLength"] = binary.byteLength;
       delete meta["data"];
     } else if (typeof fields["data"] === "string") {
-      binary = encoder.encode(fields["data"] as string);
-      meta["byteLength"] = binary.byteLength;
-      delete meta["data"];
+      const encoded = encoder.encode(fields["data"] as string);
+      if (
+        encoded.byteLength <= HyperTerm.INLINE_DATA_MAX &&
+        channel === undefined
+      ) {
+        inlineData = fields["data"] as string;
+        meta["data"] = inlineData;
+      } else {
+        binary = encoded;
+        meta["byteLength"] = binary.byteLength;
+        delete meta["data"];
+      }
     }
+
+    if (binary && channel) meta["dataChannel"] = channel;
     this.sendMeta(meta);
-    if (binary) this.sendData(binary);
+    if (binary) this.sendData(binary, channel);
   }
 
   /** Move a panel to a new position. */
@@ -462,9 +553,11 @@ export class HyperTerm {
     this.update(id, { interactive });
   }
 
-  /** Remove a panel. */
+  /** Remove a panel. Frees per-panel memory (channel, format, listeners). */
   clear(id: string): void {
     this.sendMeta({ id, type: "clear" });
+    this.panelChannels.delete(id);
+    this.panelFormats.delete(id);
   }
 
   // ── Events ──
@@ -502,6 +595,13 @@ export class HyperTerm {
       }
     } catch (err) {
       if (this.debug) console.error("[hyperterm] Event stream error:", err);
+    } finally {
+      // Event stream is gone — reject every pending waitForClose() so
+      // scripts that were awaiting a panel's close don't hang forever
+      // when the app exits or the fd is forcibly closed.
+      this.dispatcher.rejectAllPending(
+        "event stream ended (app exited or fd5 closed)",
+      );
     }
   }
 

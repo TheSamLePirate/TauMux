@@ -20,13 +20,23 @@ if not ht.available:
     print("Not running inside HyperTerm Canvas. Exiting.")
     sys.exit(0)
 
+ht.on_error(
+    lambda code, msg, ref=None: print(
+        f"[error] {code}: {msg}", file=sys.stderr
+    )
+)
+
 W, H = 320, 240
 PANEL_ID = "mandelbrot"
 MAX_ITER = 80
 
-# View state
+# View state — mutated from the event poller, read by the render loop.
+# `state_lock` serialises access so a mid-update `cx`/`cy`/`zoom`
+# read can't observe a half-applied zoom step.
+state_lock = threading.Lock()
 cx, cy = -0.5, 0.0  # center of view in complex plane
 zoom = 1.0  # 1.0 = full set visible
+shutdown_requested = False
 
 
 # Catppuccin-inspired palette
@@ -60,10 +70,16 @@ PALETTE = make_palette(MAX_ITER)
 
 def compute_mandelbrot():
     """Compute the Mandelbrot set for the current view and return RGBA pixels."""
+    # Snapshot shared state under the lock so the whole frame renders
+    # against a consistent view even if clicks arrive mid-compute.
+    with state_lock:
+        local_cx = cx
+        local_cy = cy
+        local_zoom = zoom
     pixels = bytearray(W * H * 4)
-    scale = 3.0 / zoom
-    x0 = cx - scale / 2
-    y0 = cy - scale * H / W / 2
+    scale = 3.0 / local_zoom
+    x0 = local_cx - scale / 2
+    y0 = local_cy - scale * H / W / 2
     dx = scale / W
     dy = scale * H / W / H
 
@@ -123,7 +139,13 @@ def render_and_send(first=False):
     t0 = time.time()
     pixels = compute_mandelbrot()
     t1 = time.time()
-    png = encode_png(W, H, pixels)
+    try:
+        png = encode_png(W, H, pixels)
+    except Exception as e:
+        # Never let an encode error take down the render loop — it would
+        # leave the panel stuck on its last frame.
+        print(f"\n[encode error] {e}", file=sys.stderr)
+        return
     t2 = time.time()
 
     if first:
@@ -139,18 +161,22 @@ def render_and_send(first=False):
             "resizable": True,
             "interactive": True,
             "byteLength": len(png),
+            "timeout": 20000,
         })
     else:
         ht.send_meta({
             "id": PANEL_ID,
             "type": "update",
             "byteLength": len(png),
+            "timeout": 20000,
         })
     ht.send_data(png)
 
     compute_ms = (t1 - t0) * 1000
     encode_ms = (t2 - t1) * 1000
-    print(f"\r  zoom: {zoom:.1f}x | center: ({cx:.6f}, {cy:.6f}) | "
+    with state_lock:
+        z, ccx, ccy = zoom, cx, cy
+    print(f"\r  zoom: {z:.1f}x | center: ({ccx:.6f}, {ccy:.6f}) | "
           f"compute: {compute_ms:.0f}ms | encode: {encode_ms:.0f}ms   ", end="", flush=True)
 
 
@@ -160,29 +186,51 @@ running = True
 
 
 def event_loop():
+    """Poll events on a 50ms tick so we can also check shutdown_requested.
+
+    Using the blocking `ht.events()` generator here would leave the
+    thread stuck inside `readline` if fd5 never gets another message,
+    preventing a clean shutdown.
+    """
     global cx, cy, zoom, running
-    for event in ht.events():
-        if event.get("id") != PANEL_ID:
-            continue
-        evt = event.get("event")
-        if evt == "click":
-            # Click to zoom in at that point
-            ex, ey = event.get("x", W // 2), event.get("y", H // 2)
-            scale = 3.0 / zoom
-            cx = cx - scale / 2 + (ex / W) * scale
-            cy = cy - scale * H / W / 2 + (ey / H) * scale * H / W
-            zoom *= 2.0
-            render_and_send()
-        elif evt == "wheel":
-            dy = event.get("deltaY", 0)
-            if dy < 0:
-                zoom *= 1.3
-            elif dy > 0:
-                zoom = max(0.5, zoom / 1.3)
-            render_and_send()
-        elif evt == "close":
-            running = False
-            return
+    while not shutdown_requested:
+        try:
+            ht.poll_events()
+        except Exception as e:
+            print(f"\n[poll error] {e}", file=sys.stderr)
+        time.sleep(0.05)
+
+
+def handle_click(data):
+    global cx, cy, zoom
+    ex, ey = data.get("x", W // 2), data.get("y", H // 2)
+    with state_lock:
+        scale = 3.0 / zoom
+        cx = cx - scale / 2 + (ex / W) * scale
+        cy = cy - scale * H / W / 2 + (ey / H) * scale * H / W
+        zoom *= 2.0
+    render_and_send()
+
+
+def handle_wheel(data):
+    global zoom
+    dy = data.get("deltaY", 0)
+    with state_lock:
+        if dy < 0:
+            zoom *= 1.3
+        elif dy > 0:
+            zoom = max(0.5, zoom / 1.3)
+    render_and_send()
+
+
+def handle_close():
+    global running
+    running = False
+
+
+ht.on_click(PANEL_ID, handle_click)
+ht.on_wheel(PANEL_ID, handle_wheel)
+ht.on_close(PANEL_ID, handle_close)
 
 
 # --- Main ---
@@ -192,7 +240,7 @@ print("  Ctrl+C or close the panel to stop\n")
 
 render_and_send(first=True)
 
-# Run event loop in background thread
+# Run event poller in background thread
 t = threading.Thread(target=event_loop, daemon=True)
 t.start()
 
@@ -202,5 +250,7 @@ try:
 except KeyboardInterrupt:
     pass
 
+shutdown_requested = True
+t.join(timeout=1.0)
 ht.clear(PANEL_ID)
 print("\nMandelbrot explorer stopped.")

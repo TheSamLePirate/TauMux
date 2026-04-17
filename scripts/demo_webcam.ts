@@ -108,7 +108,8 @@ if (listDevices) {
 }
 
 // ---------------------------------------------------------------------------
-// Sideband helpers
+// Availability check — must come before ffmpeg spawn so `--list` above still
+// works when HyperTerm isn't attached.
 // ---------------------------------------------------------------------------
 
 if (!hasHyperTerm) {
@@ -119,6 +120,10 @@ if (!hasHyperTerm) {
   );
   process.exit(0);
 }
+
+// ---------------------------------------------------------------------------
+// Sideband helpers
+// ---------------------------------------------------------------------------
 
 function writeMeta(meta: Record<string, unknown>): void {
   try {
@@ -239,6 +244,7 @@ const sendTimer = setInterval(() => {
             height: height + 40,
             draggable: false,
             resizable: false,
+            timeout: 30000,
             byteLength: frame.byteLength,
           }
         : {
@@ -252,6 +258,7 @@ const sendTimer = setInterval(() => {
             height: height + 40,
             draggable: true,
             resizable: true,
+            timeout: 30000,
             byteLength: frame.byteLength,
           },
     );
@@ -260,6 +267,7 @@ const sendTimer = setInterval(() => {
     writeMeta({
       id: PANEL_ID,
       type: "update",
+      timeout: 30000,
       byteLength: frame.byteLength,
     });
   }
@@ -337,13 +345,28 @@ console.log(
 );
 
 // Cleanup
+let ffmpegKilled = false;
+function killFfmpeg(): void {
+  if (ffmpegKilled) return;
+  ffmpegKilled = true;
+  try {
+    ffmpeg.kill();
+  } catch {
+    /* already gone */
+  }
+}
+
 process.on("SIGINT", () => {
   clearInterval(sendTimer);
-  ffmpeg.kill();
+  killFfmpeg();
   writeMeta({ id: PANEL_ID, type: "clear" });
   console.log("\nWebcam stopped.");
   process.exit(0);
 });
+
+// Make sure ffmpeg dies on any exit path — otherwise it can keep the camera
+// LED on and the capture pipeline running after the script is gone.
+process.on("exit", killFfmpeg);
 
 ffmpeg.exited.then(() => {
   clearInterval(sendTimer);

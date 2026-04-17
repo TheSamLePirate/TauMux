@@ -15,6 +15,12 @@ if (!ht.available) {
   process.exit(0);
 }
 
+ht.onError((code, message, ref) => {
+  console.error(
+    `[hyperterm error] ${code}: ${message}${ref ? ` (ref=${ref})` : ""}`,
+  );
+});
+
 const CELL = 4;
 const COLS = 100;
 const ROWS = 75;
@@ -43,6 +49,7 @@ function step() {
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
+          // Toroidal wrap: edges connect to opposite edges (no boundary deaths).
           const nx = (x + dx + COLS) % COLS;
           const ny = (y + dy + ROWS) % ROWS;
           neighbors += grid[ny * COLS + nx];
@@ -125,6 +132,9 @@ ht.sendMeta({
 ht.sendData(firstPng);
 
 let generation = 0;
+// Skip frames while the previous step+render is still in flight — on a slow
+// machine the timer can fire faster than the PNG encode + IPC round-trip.
+let rendering = false;
 
 ht.onEvent((event) => {
   if (event.id !== PANEL_ID) return;
@@ -146,16 +156,22 @@ ht.onEvent((event) => {
 });
 
 const timer = setInterval(() => {
-  step();
-  generation++;
+  if (rendering) return;
+  rendering = true;
+  try {
+    step();
+    generation++;
 
-  const png = render();
-  ht.update(PANEL_ID, { data: png });
+    const png = render();
+    ht.update(PANEL_ID, { data: png, timeout: 20000 });
 
-  const alive = grid.reduce((s, v) => s + v, 0);
-  process.stdout.write(
-    `\r  gen: ${generation} | alive: ${alive}/${COLS * ROWS} | png: ${(png.byteLength / 1024).toFixed(1)}KB   `,
-  );
+    const alive = grid.reduce((s, v) => s + v, 0);
+    process.stdout.write(
+      `\r  gen: ${generation} | alive: ${alive}/${COLS * ROWS} | png: ${(png.byteLength / 1024).toFixed(1)}KB   `,
+    );
+  } finally {
+    rendering = false;
+  }
 }, 1000 / FPS);
 
 process.on("SIGINT", () => {

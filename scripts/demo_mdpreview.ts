@@ -11,25 +11,26 @@
  */
 
 // ---------------------------------------------------------------------------
-// Environment / fd setup
+// HyperTerm client setup
 // ---------------------------------------------------------------------------
 
-const META_FD = process.env["HYPERTERM_META_FD"]
-  ? parseInt(process.env["HYPERTERM_META_FD"])
-  : null;
-const DATA_FD = process.env["HYPERTERM_DATA_FD"]
-  ? parseInt(process.env["HYPERTERM_DATA_FD"])
-  : null;
+import { HyperTerm } from "./hyperterm";
 
-const hasHyperTerm = META_FD !== null && DATA_FD !== null;
+const ht = new HyperTerm();
 
-if (!hasHyperTerm) {
+if (!ht.available) {
   console.log(
     "This script requires HyperTerm Canvas.\n" +
       "Run it inside the HyperTerm terminal emulator.",
   );
   process.exit(0);
 }
+
+ht.onError((code, message, ref) => {
+  console.error(
+    `[hyperterm error] ${code}: ${message}${ref ? ` (ref=${ref})` : ""}`,
+  );
+});
 
 // ---------------------------------------------------------------------------
 // CLI argument — file path
@@ -44,32 +45,10 @@ if (!filePath) {
 const resolvedPath = Bun.resolveSync(filePath, process.cwd());
 const fileName = resolvedPath.split("/").pop() ?? filePath;
 
-const PANEL_ID = "md";
-const PANEL_W = 600;
-const PANEL_H = 700;
 const POLL_INTERVAL = 500;
-
-// ---------------------------------------------------------------------------
-// Low-level fd helpers
-// ---------------------------------------------------------------------------
-
-const encoder = new TextEncoder();
-
-function writeMeta(meta: Record<string, unknown>): void {
-  try {
-    Bun.write(Bun.file(META_FD!), encoder.encode(JSON.stringify(meta) + "\n"));
-  } catch {
-    /* fd write failed */
-  }
-}
-
-function writeData(str: string): void {
-  try {
-    Bun.write(Bun.file(DATA_FD!), encoder.encode(str));
-  } catch {
-    /* fd write failed */
-  }
-}
+let PANEL_ID: string | null = null;
+let PANEL_W = 600;
+let PANEL_H = 700;
 
 // ---------------------------------------------------------------------------
 // Catppuccin Mocha palette
@@ -495,33 +474,39 @@ function buildPage(markdownHtml: string, modifiedAt: Date): string {
 // Rendering / update
 // ---------------------------------------------------------------------------
 
-let firstRender = true;
+let lastHtml = "";
 
 function sendPanel(html: string): void {
-  const bytes = encoder.encode(html);
-
-  if (firstRender) {
-    writeMeta({
-      id: PANEL_ID,
-      type: "html",
+  lastHtml = html;
+  if (PANEL_ID === null) {
+    PANEL_ID = ht.showHtml(html, {
       position: "float",
       width: PANEL_W,
       height: PANEL_H,
       draggable: true,
       resizable: true,
-      byteLength: bytes.byteLength,
+      timeout: 25000,
     });
-    firstRender = false;
   } else {
-    writeMeta({
-      id: PANEL_ID,
-      type: "update",
-      byteLength: bytes.byteLength,
-    });
+    ht.update(PANEL_ID, { data: html, timeout: 25000 });
   }
-
-  writeData(html);
 }
+
+// Re-render on terminal resize so the panel can be re-measured against the
+// new viewport (mtime doesn't change, so the watcher won't do it for us).
+ht.onTerminalResize(() => {
+  if (lastHtml && PANEL_ID !== null) {
+    ht.update(PANEL_ID, { data: lastHtml, timeout: 25000 });
+  }
+});
+
+// Track user-initiated resize events so subsequent updates keep the new size.
+ht.onEvent((event) => {
+  if (PANEL_ID !== null && event.id === PANEL_ID && event.event === "resize") {
+    if (event.width) PANEL_W = event.width;
+    if (event.height) PANEL_H = event.height;
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Read file and render
@@ -556,8 +541,13 @@ async function renderFile(): Promise<void> {
 
 let lastMtime = 0;
 let watchTimer: ReturnType<typeof setInterval> | null = null;
+let watchBusy = false;
 
 async function checkFile(): Promise<void> {
+  // Skip if the previous tick is still running — on slow disks renderFile()
+  // can take longer than POLL_INTERVAL and we'd stack up overlapping reads.
+  if (watchBusy) return;
+  watchBusy = true;
   try {
     const file = Bun.file(resolvedPath);
     const stat = await file.stat();
@@ -574,11 +564,21 @@ async function checkFile(): Promise<void> {
     }
   } catch {
     // File may have been deleted — ignore until it reappears
+  } finally {
+    watchBusy = false;
   }
 }
 
 function startWatching(): void {
-  watchTimer = setInterval(checkFile, POLL_INTERVAL);
+  watchTimer = setInterval(() => {
+    // Fire-and-forget — checkFile has its own try/finally; we only need to
+    // make sure a throw here can't kill the interval.
+    try {
+      void checkFile();
+    } catch {
+      /* swallow — watchBusy will be reset by the inner finally */
+    }
+  }, POLL_INTERVAL);
 }
 
 function stopWatching(): void {
@@ -607,7 +607,7 @@ startWatching();
 // Cleanup on exit
 process.on("SIGINT", () => {
   stopWatching();
-  writeMeta({ id: PANEL_ID, type: "clear" });
+  if (PANEL_ID !== null) ht.clear(PANEL_ID);
   console.log("\nMarkdown previewer closed.");
   process.exit(0);
 });

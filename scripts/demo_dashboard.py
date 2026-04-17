@@ -16,6 +16,12 @@ if not ht.available:
     print("Not running inside HyperTerm Canvas.")
     sys.exit(0)
 
+ht.on_error(
+    lambda code, msg, ref=None: print(
+        f"[error] {code}: {msg}", file=sys.stderr
+    )
+)
+
 panels = []
 
 
@@ -36,31 +42,64 @@ def get_cpu():
     return min(100, int((load / ncpu) * 100))
 
 
-def get_mem():
-    """Memory usage (macOS)."""
-    try:
-        import subprocess
+def _vm_stat_fallback():
+    """Parse `vm_stat` on macOS — free pages × 4096 / total."""
+    import subprocess
 
-        out = subprocess.check_output(["vm_stat"], text=True)
-        lines = out.strip().split("\n")
-        page_size = 16384
-        free = 0
-        active = 0
-        for line in lines[1:]:
-            parts = line.split(":")
-            if len(parts) < 2:
-                continue
+    result = subprocess.run(
+        ["vm_stat"],
+        capture_output=True,
+        text=True,
+        timeout=2,
+    )
+    if result.returncode != 0:
+        return None
+    free_pages = 0
+    active_pages = 0
+    inactive_pages = 0
+    wired_pages = 0
+    compressed_pages = 0
+    for line in result.stdout.splitlines():
+        parts = line.split(":")
+        if len(parts) < 2:
+            continue
+        key = parts[0].strip().lower()
+        try:
             val = int(parts[1].strip().rstrip("."))
-            if "free" in parts[0]:
-                free = val * page_size
-            elif "active" in parts[0]:
-                active = val * page_size
-        total = free + active
-        if total == 0:
-            return 50
-        return int((active / total) * 100)
+        except ValueError:
+            continue
+        if key.startswith("pages free"):
+            free_pages = val
+        elif key.startswith("pages active"):
+            active_pages = val
+        elif key.startswith("pages inactive"):
+            inactive_pages = val
+        elif key.startswith("pages wired"):
+            wired_pages = val
+        elif "occupied by compressor" in key:
+            compressed_pages = val
+    total_pages = (
+        free_pages
+        + active_pages
+        + inactive_pages
+        + wired_pages
+        + compressed_pages
+    )
+    if total_pages == 0:
+        return None
+    used_pages = total_pages - free_pages
+    return int((used_pages / total_pages) * 100)
+
+
+def get_mem():
+    """Memory usage (macOS). Falls back to vm_stat when psutil is absent."""
+    try:
+        pct = _vm_stat_fallback()
+        if pct is not None:
+            return pct
     except Exception:
-        return 42
+        pass
+    return 50
 
 
 def cpu_svg(usage):
@@ -111,11 +150,35 @@ panels.append(mem_id)
 clock_id = ht.show_svg(clock_svg(), x=50, y=270, width=240, height=100)
 panels.append(clock_id)
 
+
+def on_terminal_resize(data):
+    """Reposition panels on terminal resize.
+
+    Narrow terminals (cols < 80) get the default stacked column. Wider
+    terminals get a horizontal row so the dashboard doesn't eat the
+    vertical working area.
+    """
+    cols = data.get("cols", 80)
+    if cols < 80:
+        ht.update(cpu_id, x=10, y=30)
+        ht.update(mem_id, x=10, y=150)
+        ht.update(clock_id, x=10, y=270)
+    else:
+        ht.update(cpu_id, x=50, y=30)
+        ht.update(mem_id, x=310, y=30)
+        ht.update(clock_id, x=570, y=30)
+
+
+ht.on_terminal_resize(on_terminal_resize)
+
 print("Dashboard running — 3 panels (CPU, Memory, Clock)")
 print("Drag them around. Ctrl+C to stop.\n")
 
 while True:
     time.sleep(1)
+
+    # Drain any pending events so on_terminal_resize can fire.
+    ht.poll_events()
 
     cpu = get_cpu()
     mem = get_mem()

@@ -18,6 +18,12 @@ if not ht.available:
     print("Not running inside HyperTerm Canvas.")
     sys.exit(0)
 
+ht.on_error(
+    lambda code, msg, ref=None: print(
+        f"[error] {code}: {msg}", file=sys.stderr
+    )
+)
+
 # Check matplotlib
 try:
     import matplotlib
@@ -27,7 +33,6 @@ except ImportError:
     print("matplotlib required: pip install matplotlib")
     sys.exit(1)
 
-PANEL_ID = None
 data_x = list(range(20))
 data_y = [random.uniform(0, 100) for _ in range(20)]
 
@@ -50,33 +55,60 @@ def render_chart():
     buf = io.BytesIO()
     fig.savefig(buf, format="svg", bbox_inches="tight", transparent=True)
     plt.close(fig)
-    return buf.getvalue().decode("utf-8")
+    return buf.getvalue()
 
 
-def cleanup(*_):
-    if PANEL_ID:
-        ht.clear(PANEL_ID)
-    print("\nChart stopped.")
-    sys.exit(0)
+if __name__ == "__main__":
+    # Mutable run-state scoped to main — keeps the module free of
+    # globals so imports stay side-effect-free.
+    panel_id = None
+    updating = False
 
+    def cleanup(*_):
+        if panel_id:
+            ht.clear(panel_id)
+        print("\nChart stopped.")
+        sys.exit(0)
 
-signal.signal(signal.SIGINT, cleanup)
+    signal.signal(signal.SIGINT, cleanup)
 
-print("Chart demo — updating every 2s (Ctrl+C to stop)")
+    print("Chart demo — updating every 2s (Ctrl+C to stop)")
 
-iteration = 0
-while True:
-    # Update data
-    data_y.pop(0)
-    data_y.append(50 + 40 * math.sin(iteration * 0.3) + random.uniform(-10, 10))
-    iteration += 1
+    iteration = 0
+    while True:
+        # Update data
+        data_y.pop(0)
+        data_y.append(
+            50 + 40 * math.sin(iteration * 0.3) + random.uniform(-10, 10)
+        )
+        iteration += 1
 
-    svg = render_chart()
+        # Skip this tick if the previous frame is still being sent.
+        if updating:
+            time.sleep(2)
+            continue
 
-    if PANEL_ID is None:
-        PANEL_ID = ht.show_svg(svg, x=50, y=50, width=520, height=340)
-        print(f"  Panel created: {PANEL_ID}")
-    else:
-        ht.update(PANEL_ID, data=svg.encode("utf-8"))
+        svg_bytes = render_chart()
+        if not svg_bytes:
+            # savefig produced nothing — skip rather than push empty meta.
+            print("  [warn] empty SVG from savefig; skipping frame")
+            time.sleep(2)
+            continue
 
-    time.sleep(2)
+        updating = True
+        try:
+            if panel_id is None:
+                panel_id = ht.show_svg(
+                    svg_bytes.decode("utf-8"),
+                    x=50,
+                    y=50,
+                    width=520,
+                    height=340,
+                )
+                print(f"  Panel created: {panel_id}")
+            else:
+                ht.update(panel_id, data=svg_bytes)
+        finally:
+            updating = False
+
+        time.sleep(2)

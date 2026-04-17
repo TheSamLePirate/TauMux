@@ -981,6 +981,17 @@ function handleEvent(event: Record<string, unknown>): void {
   const evtId = event["id"] as string;
   const evtType = event["event"] as string;
 
+  // Protocol errors from the terminal (data-timeout, meta-validate, etc.)
+  if (evtId === "__system__" && evtType === "error") {
+    const code = (event["code"] as string) ?? "unknown";
+    const message = (event["message"] as string) ?? "";
+    const ref = (event["ref"] as string) ?? "";
+    console.error(
+      `[demo_3d] protocol error ${code}: ${message}${ref ? ` (ref=${ref})` : ""}`,
+    );
+    return;
+  }
+
   if (evtId !== PANEL_ID) return;
 
   const ex = (event["x"] as number) ?? 0;
@@ -1246,9 +1257,11 @@ console.log("");
 // Initial render
 render();
 
-// Start event loop and stdin reader
-readEvents();
-readStdin();
+// Start event loop and stdin reader. Both are intentionally fire-and-forget:
+// they each own their own read loop and run concurrently with the render loop
+// until SIGINT/close. `void` documents the intent and silences lint.
+void readEvents();
+void readStdin();
 
 // Cleanup on SIGINT
 process.on("SIGINT", () => {

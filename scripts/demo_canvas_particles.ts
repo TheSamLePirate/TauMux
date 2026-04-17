@@ -15,8 +15,20 @@ if (!ht.available) {
   process.exit(0);
 }
 
-const W = 400;
-const H = 300;
+ht.onError((code, message, ref) => {
+  console.error(
+    `[hyperterm error] ${code}: ${message}${ref ? ` (ref=${ref})` : ""}`,
+  );
+});
+
+// Logical (CSS) size — what the panel declares in its meta.
+const PANEL_W = 400;
+const PANEL_H = 300;
+// Internal render size — 2× for crisp pixels on HiDPI displays. All particle
+// simulation runs at this scale; the panel stretches the PNG down to logical.
+const SCALE = 2;
+const W = PANEL_W * SCALE;
+const H = PANEL_H * SCALE;
 const MAX_PARTICLES = 500;
 const FPS = 24;
 const PANEL_ID = "particles";
@@ -51,16 +63,16 @@ function spawn(count: number, cx: number, cy: number) {
   for (let i = 0; i < count; i++) {
     if (particles.length >= MAX_PARTICLES) break;
     const angle = Math.random() * Math.PI * 2;
-    const speed = 0.5 + Math.random() * 3;
+    const speed = (0.5 + Math.random() * 3) * SCALE;
     const life = 30 + Math.random() * 60;
     particles.push({
       x: cx,
       y: cy,
       vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - 1,
+      vy: Math.sin(angle) * speed - 1 * SCALE,
       life,
       maxLife: life,
-      size: 2 + Math.random() * 4,
+      size: (2 + Math.random() * 4) * SCALE,
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
     });
   }
@@ -73,7 +85,7 @@ function tick() {
     const p = particles[i];
     p.x += p.vx;
     p.y += p.vy;
-    p.vy += 0.03;
+    p.vy += 0.03 * SCALE;
     p.life--;
     if (p.life <= 0 || p.x < -10 || p.x > W + 10 || p.y > H + 10) {
       particles.splice(i, 1);
@@ -122,7 +134,8 @@ function render(): Uint8Array {
 
 console.log("Particle system running (click panel to burst, Ctrl+C to stop)");
 
-// Create the panel with first frame
+// Create the panel with first frame. Panel declares logical size; the PNG
+// is 2× that, so the webview scales it down for crisp rendering.
 tick();
 const firstPng = render();
 ht.sendMeta({
@@ -131,8 +144,8 @@ ht.sendMeta({
   position: "float",
   x: 50,
   y: 50,
-  width: W,
-  height: H + 20,
+  width: PANEL_W,
+  height: PANEL_H + 20,
   draggable: true,
   resizable: true,
   interactive: true,
@@ -140,7 +153,11 @@ ht.sendMeta({
 });
 ht.sendData(firstPng);
 
-// Listen for events
+// Debounce click bursts so a trackpad "double-click" or a stuck button can't
+// flood the particle array.
+const CLICK_DEBOUNCE_MS = 50;
+let lastClickAt = 0;
+
 ht.onEvent((event) => {
   if (event.id !== PANEL_ID) return;
   if (
@@ -148,7 +165,11 @@ ht.onEvent((event) => {
     event.x !== undefined &&
     event.y !== undefined
   ) {
-    spawn(40, event.x, event.y);
+    const now = Date.now();
+    if (now - lastClickAt < CLICK_DEBOUNCE_MS) return;
+    lastClickAt = now;
+    // Panel reports logical coords; scale to render space.
+    spawn(40, event.x * SCALE, event.y * SCALE);
   } else if (event.event === "close") {
     clearInterval(timer);
     console.log("\nPanel closed.");
@@ -159,7 +180,7 @@ ht.onEvent((event) => {
 const timer = setInterval(() => {
   tick();
   const png = render();
-  ht.update(PANEL_ID, { data: png });
+  ht.update(PANEL_ID, { data: png, timeout: 20000 });
   process.stdout.write(
     `\r  particles: ${particles.length}/${MAX_PARTICLES} | png: ${(png.byteLength / 1024).toFixed(1)}KB   `,
   );

@@ -78,6 +78,11 @@ class HyperTerm:
         # Event dispatch tables
         self._global_listeners = []
         self._panel_listeners = {}  # {panel_id: {event_type: [callbacks]}}
+        # Per-panel data-channel and format memory. update() reads these so
+        # binary replacements route to the same channel the panel was created
+        # on, and image updates preserve their original PNG/JPEG/WebP format.
+        self._panel_channels = {}  # {panel_id: channel_name}
+        self._panel_formats = {}  # {panel_id: format_string}
         self._terminal_resize_listeners = []
         self._error_listeners = []
         self._close_callbacks = {}  # {panel_id: [callbacks]}
@@ -129,13 +134,29 @@ class HyperTerm:
             if self.debug:
                 print(f"[hyperterm] send_meta: {e}", file=sys.stderr)
 
-    def send_data(self, data: bytes):
-        """Send raw binary data to fd4."""
+    def send_data(self, data: bytes, channel_name: str | None = None):
+        """Send raw binary data to a data channel (default: fd4 / "data")."""
         if not self.available:
             return
+        target = self._data
+        if channel_name is not None and channel_name != "data":
+            fd = self.get_channel_fd(channel_name)
+            if fd is None:
+                if self.debug:
+                    print(
+                        f"[hyperterm] send_data: unknown channel {channel_name}",
+                        file=sys.stderr,
+                    )
+                return
+            # Open lazily; cache on the instance for reuse.
+            cache_key = f"_channel_{channel_name}_writer"
+            target = getattr(self, cache_key, None)
+            if target is None:
+                target = os.fdopen(fd, "wb", buffering=0)
+                setattr(self, cache_key, target)
         try:
-            self._data.write(data)
-            self._data.flush()
+            target.write(data)
+            target.flush()
         except OSError as e:
             if self.debug:
                 print(f"[hyperterm] send_data: {e}", file=sys.stderr)
@@ -147,6 +168,12 @@ class HyperTerm:
         )
 
     # ── Panel creation ──
+
+    # Inline data: URIs are used for SVG / HTML payloads under this size.
+    # Below ~2KB, the meta round-trip cost dominates the binary read; inline
+    # keeps latency low. Above it, we push to fd4 so the meta line stays
+    # short and the sideband-parser's per-line budget isn't stressed.
+    _INLINE_DATA_MAX = 2048
 
     def show_image(
         self,
@@ -160,9 +187,16 @@ class HyperTerm:
         draggable: bool = True,
         resizable: bool = True,
         interactive: bool = False,
+        timeout: int | None = None,
+        data_channel: str | None = None,
         **kwargs,
     ) -> str:
-        """Display an image file (PNG, JPEG, WebP, GIF). Returns panel id."""
+        """Display an image file (PNG, JPEG, WebP, GIF). Returns panel id.
+
+        `timeout` (ms) overrides the parent-side 5s binary-read timeout —
+        raise it for very large frames or slow disks. `data_channel` routes
+        the binary payload to an extra channel declared on the bun side.
+        """
         panel_id = _next_id("img")
         if not self.available:
             return panel_id
@@ -178,11 +212,12 @@ class HyperTerm:
             "webp": "webp",
             "gif": "gif",
         }
+        fmt = format or fmt_map.get(ext, "png")
 
         meta = {
             "id": panel_id,
             "type": "image",
-            "format": format or fmt_map.get(ext, "png"),
+            "format": fmt,
             "position": position,
             "x": x,
             "y": y,
@@ -194,8 +229,16 @@ class HyperTerm:
             "byteLength": len(data),
             **kwargs,
         }
+        if timeout is not None:
+            meta["timeout"] = timeout
+        if data_channel is not None:
+            meta["dataChannel"] = data_channel
         self.send_meta(meta)
-        self.send_data(data)
+        self.send_data(data, channel_name=data_channel)
+        # Remember channel + format so update() can route / re-emit correctly.
+        if data_channel is not None:
+            self._panel_channels[panel_id] = data_channel
+        self._panel_formats[panel_id] = fmt
         return panel_id
 
     def show_svg(
@@ -207,9 +250,15 @@ class HyperTerm:
         height: int = 300,
         position: str = "float",
         interactive: bool = False,
+        timeout: int | None = None,
+        data_channel: str | None = None,
         **kwargs,
     ) -> str:
-        """Display an SVG string as a floating panel. Returns panel id."""
+        """Display an SVG string as a floating panel. Returns panel id.
+
+        Small SVGs (<2KB) are sent inline via `data:` in the meta line —
+        skips the fd4 round-trip for latency-sensitive updates.
+        """
         panel_id = _next_id("svg")
         if not self.available:
             return panel_id
@@ -226,11 +275,21 @@ class HyperTerm:
             "interactive": interactive,
             "draggable": kwargs.pop("draggable", True),
             "resizable": kwargs.pop("resizable", True),
-            "byteLength": len(data),
             **kwargs,
         }
-        self.send_meta(meta)
-        self.send_data(data)
+        if timeout is not None:
+            meta["timeout"] = timeout
+        if data_channel is not None:
+            meta["dataChannel"] = data_channel
+        if len(data) <= self._INLINE_DATA_MAX and data_channel is None:
+            meta["data"] = svg
+            self.send_meta(meta)
+        else:
+            meta["byteLength"] = len(data)
+            self.send_meta(meta)
+            self.send_data(data, channel_name=data_channel)
+        if data_channel is not None:
+            self._panel_channels[panel_id] = data_channel
         return panel_id
 
     def show_html(
@@ -242,9 +301,14 @@ class HyperTerm:
         height: int = 300,
         position: str = "float",
         interactive: bool = False,
+        timeout: int | None = None,
+        data_channel: str | None = None,
         **kwargs,
     ) -> str:
-        """Display an HTML string as a floating panel. Returns panel id."""
+        """Display an HTML string as a floating panel. Returns panel id.
+
+        Small fragments (<2KB) are sent inline via `data:` in the meta line.
+        """
         panel_id = _next_id("html")
         if not self.available:
             return panel_id
@@ -261,11 +325,21 @@ class HyperTerm:
             "interactive": interactive,
             "draggable": kwargs.pop("draggable", True),
             "resizable": kwargs.pop("resizable", True),
-            "byteLength": len(data),
             **kwargs,
         }
-        self.send_meta(meta)
-        self.send_data(data)
+        if timeout is not None:
+            meta["timeout"] = timeout
+        if data_channel is not None:
+            meta["dataChannel"] = data_channel
+        if len(data) <= self._INLINE_DATA_MAX and data_channel is None:
+            meta["data"] = html
+            self.send_meta(meta)
+        else:
+            meta["byteLength"] = len(data)
+            self.send_meta(meta)
+            self.send_data(data, channel_name=data_channel)
+        if data_channel is not None:
+            self._panel_channels[panel_id] = data_channel
         return panel_id
 
     def show_canvas(
@@ -279,9 +353,15 @@ class HyperTerm:
         draggable: bool = True,
         resizable: bool = True,
         interactive: bool = False,
+        timeout: int | None = None,
+        data_channel: str | None = None,
         **kwargs,
     ) -> str:
-        """Display PNG bytes on an HTML5 canvas panel. Returns panel id."""
+        """Display PNG bytes on an HTML5 canvas panel. Returns panel id.
+
+        Canvas frames tend to be larger than the 5s default read timeout
+        tolerates under load; pass `timeout=20000` on high-FPS streams.
+        """
         panel_id = _next_id("canvas")
         if not self.available:
             return panel_id
@@ -300,8 +380,14 @@ class HyperTerm:
             "byteLength": len(png_data),
             **kwargs,
         }
+        if timeout is not None:
+            meta["timeout"] = timeout
+        if data_channel is not None:
+            meta["dataChannel"] = data_channel
         self.send_meta(meta)
-        self.send_data(png_data)
+        self.send_data(png_data, channel_name=data_channel)
+        if data_channel is not None:
+            self._panel_channels[panel_id] = data_channel
         return panel_id
 
     def show_canvas_file(self, path: str, **kwargs) -> str:
@@ -313,25 +399,48 @@ class HyperTerm:
     # ── Panel manipulation ──
 
     def update(self, panel_id: str, **fields):
-        """Update panel properties. Pass data=bytes or data=str to replace content."""
+        """Update panel properties.
+
+        Pass `data=bytes` or `data=str` to replace the panel's content.
+        Binary replacements are routed to the panel's original
+        `data_channel` (stored at creation time) so a panel created on
+        an alternate channel keeps using it for updates.
+        """
         if not self.available:
             return
 
+        # An explicit data_channel in the kwargs wins over the remembered
+        # one — lets callers re-route mid-stream if they need to.
+        channel = fields.pop("data_channel", None)
+        if channel is None:
+            channel = self._panel_channels.get(panel_id)
+
         binary = None
+        inline_data = None
         if "data" in fields:
             raw = fields.pop("data")
             if isinstance(raw, str):
-                binary = raw.encode("utf-8")
+                encoded = raw.encode("utf-8")
+                # Small string updates skip the fd4 hop.
+                if len(encoded) <= self._INLINE_DATA_MAX and channel is None:
+                    inline_data = raw
+                else:
+                    binary = encoded
             elif isinstance(raw, (bytes, bytearray)):
                 binary = bytes(raw)
-            if binary is not None:
-                fields["byteLength"] = len(binary)
+
+        if binary is not None:
+            fields["byteLength"] = len(binary)
+        if inline_data is not None:
+            fields["data"] = inline_data
 
         meta = {"id": panel_id, "type": "update", **fields}
+        if channel is not None and binary is not None:
+            meta["dataChannel"] = channel
         self.send_meta(meta)
 
         if binary is not None:
-            self.send_data(binary)
+            self.send_data(binary, channel_name=channel)
 
     def move(self, panel_id: str, x: int, y: int):
         """Move a panel to a new position."""
@@ -356,6 +465,11 @@ class HyperTerm:
     def clear(self, panel_id: str):
         """Remove a panel."""
         self.send_meta({"id": panel_id, "type": "clear"})
+        # Drop per-panel memory so long-running scripts that create/clear
+        # many panels don't accumulate dangling entries.
+        self._panel_channels.pop(panel_id, None)
+        self._panel_formats.pop(panel_id, None)
+        self._panel_listeners.pop(panel_id, None)
 
     # ── Raw events ──
 

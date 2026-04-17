@@ -10,23 +10,10 @@
  *   bun scripts/demo_clock.ts
  */
 
-// ---------------------------------------------------------------------------
-// Environment / fd setup
-// ---------------------------------------------------------------------------
+import { HyperTerm } from "./hyperterm";
 
-const META_FD = process.env["HYPERTERM_META_FD"]
-  ? parseInt(process.env["HYPERTERM_META_FD"])
-  : null;
-const DATA_FD = process.env["HYPERTERM_DATA_FD"]
-  ? parseInt(process.env["HYPERTERM_DATA_FD"])
-  : null;
-const EVENT_FD = process.env["HYPERTERM_EVENT_FD"]
-  ? parseInt(process.env["HYPERTERM_EVENT_FD"])
-  : null;
-
-const hasHyperTerm = META_FD !== null && DATA_FD !== null;
-
-if (!hasHyperTerm) {
+const ht = new HyperTerm();
+if (!ht.available) {
   console.log(
     "This script requires HyperTerm Canvas.\n" +
       "Run it inside the HyperTerm terminal emulator.",
@@ -35,32 +22,9 @@ if (!hasHyperTerm) {
 }
 
 // ---------------------------------------------------------------------------
-// Low-level fd helpers
-// ---------------------------------------------------------------------------
-
-const encoder = new TextEncoder();
-
-function writeMeta(meta: Record<string, unknown>): void {
-  try {
-    Bun.write(Bun.file(META_FD!), encoder.encode(JSON.stringify(meta) + "\n"));
-  } catch {
-    /* fd write failed */
-  }
-}
-
-function writeData(str: string): void {
-  try {
-    Bun.write(Bun.file(DATA_FD!), encoder.encode(str));
-  } catch {
-    /* fd write failed */
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Layout constants
 // ---------------------------------------------------------------------------
 
-const PANEL_ID = "clock";
 const PANEL_W = 160;
 const PANEL_H = 58;
 const MARGIN = 12;
@@ -118,92 +82,52 @@ function renderClock(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Initial panel creation
+// Initial panel + update loop
 // ---------------------------------------------------------------------------
 
-const html = renderClock();
-const bytes = encoder.encode(html);
-
-writeMeta({
-  id: PANEL_ID,
-  type: "html",
+const panelId = ht.showHtml(renderClock(), {
   position: "fixed",
   x: topRightX(),
   y: 8,
   width: PANEL_W,
   height: PANEL_H,
-  byteLength: bytes.length,
   opacity: 1,
   zIndex: 100,
 });
-writeData(html);
-
-console.log("Clock widget active. Press Ctrl+C to dismiss.");
-
-// ---------------------------------------------------------------------------
-// Update loop — refresh every second via "update" type
-// ---------------------------------------------------------------------------
 
 const timer = setInterval(() => {
-  writeMeta({
-    id: PANEL_ID,
-    type: "update",
-    data: renderClock(),
-  });
+  // `update` with a string payload now goes inline under 2 KB (lib takes
+  // care of byteLength + fd4 routing), so the panel actually refreshes.
+  // The pre-upgrade version omitted byteLength and the clock face stayed
+  // frozen forever.
+  ht.update(panelId, { data: renderClock() });
 }, 1000);
 
 // ---------------------------------------------------------------------------
-// Event handling — reposition on terminal resize
+// Events — reposition on terminal resize, surface any protocol errors,
+// tear down cleanly when the user clicks the X.
 // ---------------------------------------------------------------------------
 
-async function readEvents(): Promise<void> {
-  if (EVENT_FD === null) return;
-
-  try {
-    const stream = Bun.file(EVENT_FD).stream();
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      let idx: number;
-      while ((idx = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, idx).trim();
-        buffer = buffer.slice(idx + 1);
-        if (!line) continue;
-        try {
-          const event = JSON.parse(line);
-          if (event.id === "__terminal__" && event.event === "resize") {
-            termCols = event.cols ?? termCols;
-            writeMeta({
-              id: PANEL_ID,
-              type: "update",
-              x: topRightX(),
-            });
-          }
-        } catch {
-          // invalid JSON
-        }
-      }
-    }
-  } catch {
-    // fd closed
+ht.onTerminalResize(({ cols }) => {
+  if (cols !== termCols) {
+    termCols = cols;
+    ht.update(panelId, { x: topRightX() });
   }
-}
+});
 
-readEvents();
+ht.onError((code, message) => {
+  console.error(`[demo_clock] ${code}: ${message}`);
+});
 
-// ---------------------------------------------------------------------------
-// Graceful cleanup
-// ---------------------------------------------------------------------------
+ht.onClose(panelId, () => {
+  cleanup();
+});
+
+console.log("Clock widget active. Press Ctrl+C or close the panel to dismiss.");
 
 function cleanup(): void {
   clearInterval(timer);
-  writeMeta({ id: PANEL_ID, type: "clear" });
+  ht.clear(panelId);
   process.exit(0);
 }
 

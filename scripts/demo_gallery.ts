@@ -11,24 +11,15 @@
 
 import { readdirSync, statSync } from "fs";
 import { resolve, basename, extname } from "path";
+import { HyperTerm } from "./hyperterm";
 
 // ---------------------------------------------------------------------------
-// Environment / fd setup
+// HyperTerm client setup
 // ---------------------------------------------------------------------------
 
-const META_FD = process.env["HYPERTERM_META_FD"]
-  ? parseInt(process.env["HYPERTERM_META_FD"])
-  : null;
-const DATA_FD = process.env["HYPERTERM_DATA_FD"]
-  ? parseInt(process.env["HYPERTERM_DATA_FD"])
-  : null;
-const EVENT_FD = process.env["HYPERTERM_EVENT_FD"]
-  ? parseInt(process.env["HYPERTERM_EVENT_FD"])
-  : null;
+const ht = new HyperTerm();
 
-const hasHyperTerm = META_FD !== null && DATA_FD !== null;
-
-if (!hasHyperTerm) {
+if (!ht.available) {
   console.log(
     "This script requires HyperTerm Canvas.\n" +
       "Run it inside the HyperTerm terminal emulator.",
@@ -36,35 +27,11 @@ if (!hasHyperTerm) {
   process.exit(0);
 }
 
-// ---------------------------------------------------------------------------
-// Low-level fd helpers
-// ---------------------------------------------------------------------------
-
-const encoder = new TextEncoder();
-
-function writeMeta(meta: Record<string, unknown>): void {
-  try {
-    Bun.write(Bun.file(META_FD!), encoder.encode(JSON.stringify(meta) + "\n"));
-  } catch {
-    /* fd write failed */
-  }
-}
-
-function writeDataStr(str: string): void {
-  try {
-    Bun.write(Bun.file(DATA_FD!), encoder.encode(str));
-  } catch {
-    /* fd write failed */
-  }
-}
-
-function writeDataBin(data: Uint8Array): void {
-  try {
-    Bun.write(Bun.file(DATA_FD!), data);
-  } catch {
-    /* fd write failed */
-  }
-}
+ht.onError((code, message, ref) => {
+  console.error(
+    `[hyperterm error] ${code}: ${message}${ref ? ` (ref=${ref})` : ""}`,
+  );
+});
 
 // ---------------------------------------------------------------------------
 // Catppuccin Mocha palette
@@ -90,19 +57,6 @@ const C = {
 // ---------------------------------------------------------------------------
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
-
-const FORMAT_MAP: Record<string, string> = {
-  ".png": "png",
-  ".jpg": "jpeg",
-  ".jpeg": "jpeg",
-  ".webp": "webp",
-  ".gif": "gif",
-};
-
-function detectFormat(filePath: string): string {
-  const ext = extname(filePath).toLowerCase();
-  return FORMAT_MAP[ext] ?? "png";
-}
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + " MB";
@@ -139,8 +93,8 @@ if (files.length === 0) {
 // Panel IDs and layout
 // ---------------------------------------------------------------------------
 
-const NAV_ID = "gallery-nav";
-const IMG_ID = "gallery-img";
+let NAV_ID = "";
+let IMG_ID = "";
 
 let panelW = 700;
 let panelH = 500;
@@ -154,7 +108,6 @@ const IMG_Y = NAV_Y + NAV_H + 4;
 // Hit-testing regions for the nav bar
 // ---------------------------------------------------------------------------
 
-// Button regions (x ranges within the nav panel)
 const PREV_BTN = { x1: 10, x2: 80, y1: 8, y2: 42 };
 const NEXT_BTN = { x1: 350, x2: 420, y1: 8, y2: 42 };
 const GRID_BTN = { x1: 600, x2: 660, y1: 8, y2: 42 };
@@ -196,7 +149,6 @@ const GRID_PAD = 12;
 const GRID_TOP = 10;
 
 function gridHitTest(x: number, y: number): number {
-  // Returns file index or -1
   if (x < GRID_PAD || x > panelW - GRID_PAD) return -1;
   if (y < GRID_TOP) return -1;
 
@@ -217,6 +169,7 @@ function gridHitTest(x: number, y: number): number {
 
 let currentIndex = 0;
 let gridMode = false;
+let shuttingDown = false;
 
 // ---------------------------------------------------------------------------
 // Escape HTML
@@ -234,9 +187,7 @@ function escapeHtml(s: string): string {
 // Render navigation bar (HTML panel)
 // ---------------------------------------------------------------------------
 
-let navFirstRender = true;
-
-function renderNav(): void {
+function buildNavHtml(): string {
   const file = files[currentIndex];
   const name = basename(file);
   const idx = currentIndex + 1;
@@ -244,7 +195,6 @@ function renderNav(): void {
 
   let fileInfo = `${escapeHtml(name)} (${idx}/${total})`;
 
-  // Try to get file size
   try {
     const stat = statSync(file);
     fileInfo += ` - ${formatBytes(stat.size)}`;
@@ -255,7 +205,7 @@ function renderNav(): void {
   const modeLabel = gridMode ? "View" : "Grid";
   const modeIcon = gridMode ? "\u{1F5BC}" : "\u{25A3}";
 
-  const html = `<div style="
+  return `<div style="
     width:${panelW}px;height:${NAV_H}px;background:${C.base};
     font-family:-apple-system,BlinkMacSystemFont,'SF Mono',Monaco,Consolas,monospace;
     display:flex;align-items:center;padding:0 10px;gap:8px;
@@ -286,13 +236,12 @@ function renderNav(): void {
       white-space:nowrap;margin-left:4px;
     ">${modeIcon} ${modeLabel}</div>
   </div>`;
+}
 
-  const bytes = encoder.encode(html);
-
-  if (navFirstRender) {
-    writeMeta({
-      id: NAV_ID,
-      type: "html",
+function renderNav(): void {
+  const html = buildNavHtml();
+  if (NAV_ID === "") {
+    NAV_ID = ht.showHtml(html, {
       position: "float",
       x: NAV_X,
       y: NAV_Y,
@@ -301,38 +250,29 @@ function renderNav(): void {
       interactive: true,
       draggable: true,
       resizable: false,
-      byteLength: bytes.byteLength,
     });
-    navFirstRender = false;
   } else {
-    writeMeta({
-      id: NAV_ID,
-      type: "update",
-      byteLength: bytes.byteLength,
-    });
+    ht.update(NAV_ID, { data: html });
   }
-
-  writeDataStr(html);
 }
 
 // ---------------------------------------------------------------------------
 // Render image viewer (image panel)
 // ---------------------------------------------------------------------------
 
-let imgFirstRender = true;
+type ImgKind = "image" | "html" | null;
+let imgKind: ImgKind = null;
 
 async function renderImage(): Promise<void> {
   const file = files[currentIndex];
-  const format = detectFormat(file);
 
   try {
-    const data = new Uint8Array(await Bun.file(file).arrayBuffer());
-
-    if (imgFirstRender) {
-      writeMeta({
-        id: IMG_ID,
-        type: "image",
-        format,
+    if (IMG_ID === "" || imgKind !== "image") {
+      if (IMG_ID !== "" && imgKind === "html") {
+        ht.clear(IMG_ID);
+        IMG_ID = "";
+      }
+      IMG_ID = await ht.showImage(file, {
         position: "float",
         x: IMG_X,
         y: IMG_Y,
@@ -341,18 +281,13 @@ async function renderImage(): Promise<void> {
         interactive: true,
         draggable: true,
         resizable: true,
-        byteLength: data.byteLength,
+        timeout: 15000,
       });
-      imgFirstRender = false;
+      imgKind = "image";
     } else {
-      writeMeta({
-        id: IMG_ID,
-        type: "update",
-        byteLength: data.byteLength,
-      });
+      const data = new Uint8Array(await Bun.file(file).arrayBuffer());
+      ht.update(IMG_ID, { data });
     }
-
-    writeDataBin(data);
   } catch {
     console.error(`Failed to load image: ${file}`);
   }
@@ -361,8 +296,6 @@ async function renderImage(): Promise<void> {
 // ---------------------------------------------------------------------------
 // Render grid view (HTML panel replacing the image panel)
 // ---------------------------------------------------------------------------
-
-let gridFirstRender = true;
 
 function renderGrid(): void {
   const rows = Math.ceil(files.length / GRID_COLS);
@@ -403,12 +336,12 @@ function renderGrid(): void {
     box-sizing:border-box;
   ">${items.join("")}</div>`;
 
-  const bytes = encoder.encode(html);
-
-  if (gridFirstRender) {
-    writeMeta({
-      id: IMG_ID,
-      type: "html",
+  if (IMG_ID === "" || imgKind !== "html") {
+    if (IMG_ID !== "" && imgKind === "image") {
+      ht.clear(IMG_ID);
+      IMG_ID = "";
+    }
+    IMG_ID = ht.showHtml(html, {
       position: "float",
       x: IMG_X,
       y: IMG_Y,
@@ -417,18 +350,11 @@ function renderGrid(): void {
       interactive: true,
       draggable: true,
       resizable: true,
-      byteLength: bytes.byteLength,
     });
-    gridFirstRender = false;
+    imgKind = "html";
   } else {
-    writeMeta({
-      id: IMG_ID,
-      type: "update",
-      byteLength: bytes.byteLength,
-    });
+    ht.update(IMG_ID, { data: html, height: gridH });
   }
-
-  writeDataStr(html);
 }
 
 // ---------------------------------------------------------------------------
@@ -459,16 +385,8 @@ function toggleGrid(): void {
   gridMode = !gridMode;
 
   if (gridMode) {
-    // Clear the image panel and create a fresh HTML grid panel
-    writeMeta({ id: IMG_ID, type: "clear" });
-    imgFirstRender = true;
-    gridFirstRender = true;
     renderGrid();
   } else {
-    // Clear the grid panel and create a fresh image panel
-    writeMeta({ id: IMG_ID, type: "clear" });
-    imgFirstRender = true;
-    gridFirstRender = true;
     renderImage();
   }
 
@@ -489,23 +407,22 @@ function printCurrentInfo(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Event handling (fd5)
+// Event handling (fd5 via HyperTerm dispatcher)
 // ---------------------------------------------------------------------------
 
-function handleEvent(event: Record<string, unknown>): void {
-  const evtId = event["id"] as string;
-  const evtType = event["event"] as string;
+ht.onEvent((event) => {
+  if (shuttingDown) return;
+  const evtId = event.id;
+  const evtType = event.event;
 
-  // Handle close on either panel
   if (evtType === "close" && (evtId === NAV_ID || evtId === IMG_ID)) {
     cleanup();
     process.exit(0);
   }
 
-  // Nav bar clicks
   if (evtId === NAV_ID && evtType === "click") {
-    const ex = (event["x"] as number) ?? 0;
-    const ey = (event["y"] as number) ?? 0;
+    const ex = event.x ?? 0;
+    const ey = event.y ?? 0;
     const hit = navHitTest(ex, ey);
 
     switch (hit) {
@@ -521,9 +438,8 @@ function handleEvent(event: Record<string, unknown>): void {
     }
   }
 
-  // Wheel scroll on image panel to navigate
   if (evtId === IMG_ID && evtType === "wheel") {
-    const deltaY = (event["deltaY"] as number) ?? 0;
+    const deltaY = event.deltaY ?? 0;
     if (deltaY > 0) {
       navigateNext();
     } else if (deltaY < 0) {
@@ -532,18 +448,13 @@ function handleEvent(event: Record<string, unknown>): void {
     return;
   }
 
-  // Click on grid items
   if (evtId === IMG_ID && evtType === "click" && gridMode) {
-    const ex = (event["x"] as number) ?? 0;
-    const ey = (event["y"] as number) ?? 0;
+    const ex = event.x ?? 0;
+    const ey = event.y ?? 0;
     const idx = gridHitTest(ex, ey);
     if (idx >= 0 && idx < files.length) {
       currentIndex = idx;
       gridMode = false;
-      // Switch back to image view
-      writeMeta({ id: IMG_ID, type: "clear" });
-      imgFirstRender = true;
-      gridFirstRender = true;
       renderNav();
       renderImage();
       printCurrentInfo();
@@ -551,105 +462,67 @@ function handleEvent(event: Record<string, unknown>): void {
     return;
   }
 
-  // Handle resize events on the image panel
   if (evtId === IMG_ID && evtType === "resize") {
-    const newW = event["width"] as number | undefined;
-    const newH = event["height"] as number | undefined;
+    const newW = event.width;
+    const newH = event.height;
     if (newW) panelW = newW;
     if (newH) panelH = newH;
     return;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Event loop (fd5)
-// ---------------------------------------------------------------------------
-
-async function readEvents(): Promise<void> {
-  if (EVENT_FD === null) return;
-
-  try {
-    const stream = Bun.file(EVENT_FD).stream();
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      let idx: number;
-      while ((idx = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, idx).trim();
-        buffer = buffer.slice(idx + 1);
-        if (!line) continue;
-        try {
-          handleEvent(JSON.parse(line));
-        } catch {
-          // invalid JSON — skip
-        }
-      }
-    }
-  } catch {
-    // fd closed or unavailable
-  }
-}
+});
 
 // ---------------------------------------------------------------------------
 // Keyboard input (stdin raw mode for arrow keys)
 // ---------------------------------------------------------------------------
 
+let stdinReader: ReturnType<ReadableStream<Uint8Array>["getReader"]> | null =
+  null;
+
 async function readStdin(): Promise<void> {
   try {
-    // Enable raw mode so we get individual keystrokes
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(true);
     }
 
-    const reader = Bun.stdin.stream().getReader();
+    stdinReader = Bun.stdin.stream().getReader();
 
-    while (true) {
-      const { value, done } = await reader.read();
+    while (!shuttingDown) {
+      const { value, done } = await stdinReader.read();
       if (done) break;
 
       for (let i = 0; i < value.length; i++) {
         const byte = value[i];
 
-        // Ctrl+C
         if (byte === 0x03) {
           cleanup();
           process.exit(0);
         }
 
-        // ESC sequence: arrow keys are ESC [ A/B/C/D
         if (byte === 0x1b && i + 2 < value.length && value[i + 1] === 0x5b) {
           const arrow = value[i + 2];
-          i += 2; // skip the [ and direction byte
+          i += 2;
 
           switch (arrow) {
-            case 0x44: // Left arrow
+            case 0x44:
               navigatePrev();
               break;
-            case 0x43: // Right arrow
+            case 0x43:
               navigateNext();
               break;
-            case 0x41: // Up arrow — toggle grid
+            case 0x41:
               toggleGrid();
               break;
-            case 0x42: // Down arrow — toggle grid
+            case 0x42:
               toggleGrid();
               break;
           }
         }
 
-        // 'q' to quit
         if (byte === 0x71) {
           cleanup();
           process.exit(0);
         }
 
-        // 'g' to toggle grid
         if (byte === 0x67) {
           toggleGrid();
         }
@@ -665,8 +538,15 @@ async function readStdin(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function cleanup(): void {
-  writeMeta({ id: NAV_ID, type: "clear" });
-  writeMeta({ id: IMG_ID, type: "clear" });
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try {
+    stdinReader?.cancel();
+  } catch {
+    /* reader already closed */
+  }
+  if (NAV_ID !== "") ht.clear(NAV_ID);
+  if (IMG_ID !== "") ht.clear(IMG_ID);
   if (process.stdin.isTTY) {
     try {
       process.stdin.setRawMode(false);
@@ -703,16 +583,12 @@ console.log(`  Up/Down arrows    — toggle grid`);
 console.log(`  g                 — toggle grid`);
 console.log(`  q or Ctrl+C       — quit\n`);
 
-// Initial render: nav bar + first image
 renderNav();
 await renderImage();
 printCurrentInfo();
 
-// Start event loop and keyboard input
-readEvents();
 readStdin();
 
-// Cleanup on SIGINT
 process.on("SIGINT", () => {
   cleanup();
   process.exit(0);
