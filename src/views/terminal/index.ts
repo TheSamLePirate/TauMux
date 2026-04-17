@@ -19,6 +19,7 @@ import { SurfaceDetailsPanel } from "./surface-details";
 import { showToast } from "./toast";
 import { registerAgentEvents } from "./agent-events";
 import { registerBrowserEvents } from "./browser-events";
+import { createSocketActionDispatcher } from "./socket-actions";
 
 // Declared before rpc so handlers can reference it; assigned after rpc is created.
 // eslint-disable-next-line prefer-const
@@ -1311,259 +1312,40 @@ window.addEventListener("ht-split", (e: Event) => {
   }
 });
 
+const dispatchSocketAction = createSocketActionDispatcher({
+  surfaceManager,
+  rpc,
+  toggleSidebar,
+  openCommandPalette,
+  toggleProcessManager,
+  openSettings,
+  copySelection,
+  pasteClipboard: () => {
+    pasteClipboard();
+  },
+  selectAll,
+  promptRenameWorkspace: (id, name) => {
+    void promptRenameWorkspace(id, name);
+  },
+  promptRenameSurface: (id, title) => {
+    void promptRenameSurface(id, title);
+  },
+  setSidebarVisibleProgrammatic: (visible) => {
+    suppressSidebarSync = true;
+    surfaceManager.setSidebarVisible(visible);
+    syncSidebarState();
+    syncToolbarState();
+    // Layout refit is handled by SurfaceManager.scheduleLayoutAfterTransition()
+    suppressSidebarSync = false;
+  },
+  onActionComplete: () => {
+    syncWorkspaceState();
+    syncToolbarState();
+  },
+});
+
 function handleSocketAction(action: string, payload: Record<string, unknown>) {
-  switch (action) {
-    case "selectWorkspace": {
-      const id = payload["workspaceId"] as string;
-      if (id) surfaceManager.focusWorkspaceById(id);
-      break;
-    }
-    case "closeWorkspace": {
-      const id = payload["workspaceId"] as string;
-      if (id) surfaceManager.closeWorkspaceById(id);
-      break;
-    }
-    case "renameWorkspace": {
-      const id = payload["workspaceId"] as string;
-      const name = payload["name"] as string;
-      if (id && name) surfaceManager.renameWorkspace(id, name);
-      break;
-    }
-    case "promptRenameWorkspace": {
-      const id = payload["workspaceId"] as string;
-      const name = (payload["name"] as string) || "Workspace";
-      if (id) {
-        void promptRenameWorkspace(id, name);
-      }
-      break;
-    }
-    case "promptRenameSurface": {
-      const id = payload["surfaceId"] as string;
-      const title =
-        (payload["title"] as string) ||
-        surfaceManager.getSurfaceTitle(id) ||
-        id;
-      if (id) {
-        void promptRenameSurface(id, title);
-      }
-      break;
-    }
-    case "renameSurface": {
-      const id = payload["surfaceId"] as string;
-      const title = payload["title"] as string;
-      if (id && title) surfaceManager.renameSurface(id, title);
-      break;
-    }
-    case "setWorkspaceColor": {
-      const id = payload["workspaceId"] as string;
-      const color = payload["color"] as string;
-      if (id && color) surfaceManager.setWorkspaceColor(id, color);
-      break;
-    }
-    case "nextWorkspace":
-      surfaceManager.nextWorkspace();
-      break;
-    case "prevWorkspace":
-      surfaceManager.prevWorkspace();
-      break;
-    case "toggleSidebar":
-      toggleSidebar();
-      break;
-    case "setSidebar": {
-      const vis = payload["visible"] as boolean;
-      suppressSidebarSync = true;
-      surfaceManager.setSidebarVisible(vis);
-      syncSidebarState();
-      syncToolbarState();
-      // Layout refit is handled by SurfaceManager.scheduleLayoutAfterTransition()
-      suppressSidebarSync = false;
-      break;
-    }
-    case "toggleCommandPalette":
-      openCommandPalette();
-      break;
-    case "toggleProcessManager":
-      toggleProcessManager();
-      break;
-    case "openSettings":
-      openSettings();
-      break;
-    case "focusSurface": {
-      const id = payload["surfaceId"] as string;
-      if (id) surfaceManager.focusSurface(id);
-      break;
-    }
-    case "copySelection":
-      copySelection();
-      break;
-    case "pasteClipboard":
-      pasteClipboard();
-      break;
-    case "selectAll":
-      selectAll();
-      break;
-    case "setStatus":
-      surfaceManager.setStatus(
-        payload["workspaceId"] as string | undefined,
-        payload["key"] as string,
-        payload["value"] as string,
-        payload["icon"] as string | undefined,
-        payload["color"] as string | undefined,
-      );
-      break;
-    case "clearStatus":
-      surfaceManager.clearStatus(
-        payload["workspaceId"] as string | undefined,
-        payload["key"] as string,
-      );
-      break;
-    case "setProgress":
-      surfaceManager.setProgress(
-        payload["workspaceId"] as string | undefined,
-        payload["value"] as number,
-        payload["label"] as string | undefined,
-      );
-      break;
-    case "clearProgress":
-      surfaceManager.clearProgress(
-        payload["workspaceId"] as string | undefined,
-      );
-      break;
-    case "readScreen": {
-      const sid =
-        (payload["surfaceId"] as string) ||
-        surfaceManager.getActiveSurfaceId() ||
-        "";
-      const content = surfaceManager.readScreen(
-        sid,
-        payload["lines"] as number | undefined,
-        payload["scrollback"] as boolean | undefined,
-      );
-      rpc.send("readScreenResponse", {
-        reqId: payload["reqId"] as string,
-        content,
-      });
-      break;
-    }
-    case "notification": {
-      const notifs =
-        (payload["notifications"] as {
-          id: string;
-          title: string;
-          body: string;
-          time: number;
-        }[]) || [];
-      surfaceManager.getSidebar().setNotifications(notifs);
-      if (notifs.length === 0) {
-        // Notifications cleared — stop all glows
-        surfaceManager.clearGlow();
-      } else {
-        // Glow the source surface pane
-        const notifSurfaceId = (payload["surfaceId"] as string) ?? null;
-        surfaceManager.notifyGlow(notifSurfaceId);
-      }
-      break;
-    }
-    case "log": {
-      surfaceManager.addLog(
-        payload["workspaceId"] as string | undefined,
-        (payload["level"] as string) || "info",
-        (payload["message"] as string) || "",
-        payload["source"] as string | undefined,
-      );
-      break;
-    }
-    // ── Browser actions from socket API ──
-    case "browser.navigateTo": {
-      const id = payload["surfaceId"] as string;
-      const url = payload["url"] as string;
-      if (id && url) surfaceManager.browserNavigateTo(id, url);
-      break;
-    }
-    case "browser.goBack": {
-      surfaceManager.browserGoBack(payload["surfaceId"] as string);
-      break;
-    }
-    case "browser.goForward": {
-      surfaceManager.browserGoForward(payload["surfaceId"] as string);
-      break;
-    }
-    case "browser.reload": {
-      surfaceManager.browserReload(payload["surfaceId"] as string);
-      break;
-    }
-    case "browser.evalJs": {
-      surfaceManager.browserEvalJs(
-        payload["surfaceId"] as string,
-        payload["script"] as string,
-        payload["reqId"] as string | undefined,
-      );
-      break;
-    }
-    case "browser.findInPage": {
-      surfaceManager.browserFindInPage(
-        payload["surfaceId"] as string,
-        payload["query"] as string,
-      );
-      break;
-    }
-    case "browser.stopFind": {
-      surfaceManager.browserStopFind(payload["surfaceId"] as string);
-      break;
-    }
-    case "browser.toggleDevTools": {
-      surfaceManager.browserToggleDevTools(payload["surfaceId"] as string);
-      break;
-    }
-    case "browser.getCookies": {
-      surfaceManager.browserGetCookies(
-        payload["surfaceId"] as string,
-        payload["reqId"] as string,
-      );
-      break;
-    }
-    case "showToast": {
-      const message = (payload["message"] as string) || "";
-      const level =
-        (payload["level"] as
-          | "info"
-          | "success"
-          | "warning"
-          | "error"
-          | undefined) ?? "info";
-      if (message) showToast(message, level);
-      break;
-    }
-    // ── Agent surface actions ──
-    case "agentSurfaceCreated": {
-      const sid = payload["surfaceId"] as string;
-      const aid = payload["agentId"] as string;
-      const splitFrom = payload["splitFrom"] as string | undefined;
-      const dir = payload["direction"] as "horizontal" | "vertical" | undefined;
-      if (!sid || !aid) break;
-      if (splitFrom && dir) {
-        surfaceManager.addAgentSurfaceAsSplit(sid, aid, splitFrom, dir);
-      } else {
-        surfaceManager.addAgentSurface(sid, aid);
-      }
-      break;
-    }
-    case "agentEvent": {
-      const agentId = payload["agentId"] as string;
-      const event = payload["event"] as Record<string, unknown>;
-      if (agentId && event) {
-        surfaceManager.handleAgentEvent(agentId, event);
-      }
-      break;
-    }
-    case "agentSurfaceClosed": {
-      const sid = payload["surfaceId"] as string;
-      if (sid) surfaceManager.removeAgentSurface(sid);
-      break;
-    }
-  }
-  syncWorkspaceState();
-  syncToolbarState();
+  dispatchSocketAction(action, payload);
 }
 
 function syncWorkspaceState() {
