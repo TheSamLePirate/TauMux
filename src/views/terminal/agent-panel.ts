@@ -41,19 +41,24 @@ import {
 } from "./agent-panel-model";
 import { handleAgentResponse } from "./agent-panel-response";
 import {
-  type DialogDeps,
   dismissDialog,
   type ExtensionDialog,
   handleExtUI,
   showForkDialog,
-  showHelpMessage,
-  showHotkeysMessage,
   showSessionBrowserDialog,
-  showSessionStats,
   showSettingsDialog,
-  showSwitchSessionDialog,
   showTreeDialog,
 } from "./agent-panel-dialogs";
+import {
+  BUILTIN_COMMANDS,
+  executeBuiltinCommand,
+  executeSlashCommand,
+  getFilteredCommands,
+  handleSlashInput,
+  hideSlashMenu,
+  renderSlashMenu,
+  type SlashDeps,
+} from "./agent-panel-slash";
 
 // ── Public interfaces ──
 
@@ -203,60 +208,18 @@ interface AgentPanelElements {
   modelMetaEl: HTMLDivElement;
 }
 
-const BUILTIN_COMMANDS: SlashCommand[] = [
-  { name: "/model", description: "Switch model", source: "builtin" },
-  { name: "/new", description: "Start a new session", source: "builtin" },
-  {
-    name: "/resume",
-    description: "Open another session by path",
-    source: "builtin",
-  },
-  { name: "/name", description: "Set session display name", source: "builtin" },
-  {
-    name: "/session",
-    description: "Show session info & stats",
-    source: "builtin",
-  },
-  {
-    name: "/compact",
-    description: "Compact context window",
-    source: "builtin",
-  },
-  {
-    name: "/copy",
-    description: "Copy last assistant message",
-    source: "builtin",
-  },
-  { name: "/export", description: "Export session to HTML", source: "builtin" },
-  {
-    name: "/fork",
-    description: "Fork from a previous message",
-    source: "builtin",
-  },
-  { name: "/tree", description: "Navigate session tree", source: "builtin" },
-  {
-    name: "/settings",
-    description: "Thinking, steering, retry settings",
-    source: "builtin",
-  },
-  {
-    name: "/hotkeys",
-    description: "Show keyboard shortcuts",
-    source: "builtin",
-  },
-  { name: "/clear", description: "Clear chat display", source: "builtin" },
-  { name: "/help", description: "Show available commands", source: "builtin" },
-];
-
-/** Build the callback bundle the dialog module needs. Wired fresh per
- *  call so the underlying render helpers always see current view
- *  state even though the dialogs module stays stateless. */
-function makeDialogDeps(view: AgentPaneView): DialogDeps {
+/** Build the callback bundle the dialogs + slash modules need. Wired
+ *  fresh per call so the underlying render helpers always see current
+ *  view state even though those modules stay stateless.
+ *  `SlashDeps extends DialogDeps`, so the same bundle satisfies both
+ *  surfaces — callers that only need DialogDeps accept it structurally. */
+function makePanelDeps(view: AgentPaneView): SlashDeps {
   return {
     addSystemMessage: (text) => addSystemMessage(view, text),
     renderWidgets: () => renderWidgets(view),
     renderDropdowns: () => renderDropdowns(view),
     renderStats: () => renderStats(view),
+    renderAllMessages: () => renderAllMessages(view),
   };
 }
 
@@ -397,7 +360,8 @@ export function createAgentPaneView(
     [
       "\u25f3 Session",
       "Show session info",
-      () => executeBuiltinCommand(view, callbacks, "/session"),
+      () =>
+        executeBuiltinCommand(view, callbacks, makePanelDeps(view), "/session"),
     ],
     [
       "\u2442 Fork",
@@ -407,7 +371,7 @@ export function createAgentPaneView(
     [
       "\u2699 Settings",
       "Agent settings",
-      () => showSettingsDialog(view, makeDialogDeps(view)),
+      () => showSettingsDialog(view, makePanelDeps(view)),
     ],
     ["\u2298 Compact", "Compact context", () => callbacks.onCompact(agentId)],
     [
@@ -862,7 +826,7 @@ export function agentPanelHandleEvent(
     }
 
     case "extension_ui_request":
-      handleExtUI(view, event, makeDialogDeps(view));
+      handleExtUI(view, event, makePanelDeps(view));
       break;
 
     case "extension_error": {
@@ -940,7 +904,7 @@ function handleInputKeydown(
         hideSlashMenu(view);
         // If it's Enter on a no-arg command, execute immediately
         if (e.key === "Enter") {
-          executeSlashCommand(view, cb);
+          executeSlashCommand(view, cb, makePanelDeps(view));
         }
         return;
       }
@@ -957,7 +921,7 @@ function handleInputKeydown(
     e.preventDefault();
     const text = view._elements.inputEl.value.trim();
     if (text.startsWith("/")) {
-      executeSlashCommand(view, cb);
+      executeSlashCommand(view, cb, makePanelDeps(view));
     } else if (text.startsWith("!")) {
       // Bash shorthand: !command
       const cmd = text.slice(1).trim();
@@ -1151,209 +1115,6 @@ async function fileToImageAttachment(file: File): Promise<ImageAttachment> {
     fileName: file.name,
   };
 }
-
-// ── Slash commands ──
-
-function handleSlashInput(view: AgentPaneView): void {
-  const text = view._elements.inputEl.value;
-  if (text.startsWith("/") && !text.includes("\n")) {
-    const filter = text.slice(1).toLowerCase();
-    view._state.slashFilter = filter;
-    view._state.slashSelectedIndex = 0;
-    view._state.showSlashMenu = true;
-    renderSlashMenu(view);
-  } else {
-    hideSlashMenu(view);
-  }
-}
-
-function getFilteredCommands(s: AgentPanelState): SlashCommand[] {
-  if (!s.slashFilter) return s.commands;
-  return s.commands.filter(
-    (c) =>
-      c.name.toLowerCase().includes(s.slashFilter) ||
-      c.description.toLowerCase().includes(s.slashFilter),
-  );
-}
-
-function renderSlashMenu(view: AgentPaneView): void {
-  const { slashMenuEl } = view._elements;
-  const s = view._state;
-  const cmds = getFilteredCommands(s);
-
-  slashMenuEl.innerHTML = "";
-
-  if (cmds.length === 0) {
-    slashMenuEl.classList.add("agent-slash-menu-hidden");
-    return;
-  }
-
-  slashMenuEl.classList.remove("agent-slash-menu-hidden");
-
-  const header = document.createElement("div");
-  header.className = "agent-slash-hdr";
-  header.textContent = "Commands";
-  slashMenuEl.appendChild(header);
-
-  for (let i = 0; i < cmds.length; i++) {
-    const cmd = cmds[i];
-    const item = document.createElement("button");
-    item.className = `agent-slash-item${i === s.slashSelectedIndex ? " agent-slash-item-sel" : ""}`;
-
-    const name = document.createElement("span");
-    name.className = "agent-slash-name";
-    name.textContent = cmd.name;
-    item.appendChild(name);
-
-    const desc = document.createElement("span");
-    desc.className = "agent-slash-desc";
-    desc.textContent = cmd.description;
-    item.appendChild(desc);
-
-    if (cmd.source !== "builtin") {
-      const badge = document.createElement("span");
-      badge.className = `agent-slash-badge agent-slash-badge-${cmd.source}`;
-      badge.textContent = cmd.source;
-      item.appendChild(badge);
-    }
-
-    item.addEventListener("click", () => {
-      view._elements.inputEl.value = cmd.name + " ";
-      autoResize(view._elements.inputEl);
-      hideSlashMenu(view);
-      view._elements.inputEl.focus();
-    });
-    slashMenuEl.appendChild(item);
-  }
-}
-
-function hideSlashMenu(view: AgentPaneView): void {
-  view._state.showSlashMenu = false;
-  view._elements.slashMenuEl.classList.add("agent-slash-menu-hidden");
-}
-
-function executeSlashCommand(
-  view: AgentPaneView,
-  cb: AgentPanelCallbacks,
-): void {
-  const raw = view._elements.inputEl.value.trim();
-  view._elements.inputEl.value = "";
-  autoResize(view._elements.inputEl);
-  hideSlashMenu(view);
-
-  const parts = raw.split(/\s+/);
-  const cmd = parts[0].toLowerCase();
-  const args = parts.slice(1).join(" ");
-  const agentId = view.agentId;
-
-  switch (cmd) {
-    case "/new":
-      cb.onNewSession(agentId);
-      break;
-    case "/resume":
-      if (args) showSwitchSessionDialog(view, makeDialogDeps(view), args);
-      else dispatch("ht-agent-list-sessions", { agentId });
-      break;
-    case "/model":
-      if (args) {
-        // Try to match model by name
-        const m = view._state.availableModels?.find(
-          (x) =>
-            x.name.toLowerCase().includes(args.toLowerCase()) ||
-            x.id.toLowerCase().includes(args.toLowerCase()),
-        );
-        if (m) {
-          dispatch("ht-agent-set-model", {
-            agentId,
-            provider: m.provider,
-            modelId: m.id,
-          });
-          addSystemMessage(view, `Switching to ${m.name}`);
-        } else {
-          addSystemMessage(
-            view,
-            `Model not found: ${args}. Opening model selector\u2026`,
-          );
-          view._state.showModelSelector = true;
-          renderDropdowns(view);
-          cb.onGetModels(agentId);
-        }
-      } else {
-        view._state.showModelSelector = true;
-        renderDropdowns(view);
-        cb.onGetModels(agentId);
-      }
-      break;
-    case "/compact":
-      if (args) {
-        dispatch("ht-agent-compact", { agentId }); // pi doesn't support custom instructions via RPC compact yet
-      }
-      cb.onCompact(agentId);
-      addSystemMessage(view, "Compacting context\u2026");
-      break;
-    case "/name":
-      if (args) {
-        dispatch("ht-agent-set-session-name", { agentId, name: args });
-        addSystemMessage(view, `Session renamed to "${args}"`);
-      } else {
-        addSystemMessage(view, "Usage: /name <session name>");
-      }
-      break;
-    case "/session":
-      dispatch("ht-agent-get-state", { agentId });
-      dispatch("ht-agent-get-session-stats", { agentId });
-      showSessionStats(view, makeDialogDeps(view));
-      break;
-    case "/copy":
-      dispatch("ht-agent-get-last-assistant-text", { agentId });
-      break;
-    case "/export":
-      dispatch("ht-agent-export-html", {
-        agentId,
-        outputPath: args || undefined,
-      });
-      addSystemMessage(view, "Exporting session\u2026");
-      break;
-    case "/fork":
-      dispatch("ht-agent-get-fork-messages", { agentId });
-      addSystemMessage(view, "Fetching fork points\u2026");
-      break;
-    case "/tree":
-      dispatch("ht-agent-get-session-tree", {
-        agentId,
-        sessionPath: view._state.sessionFile ?? undefined,
-      });
-      break;
-    case "/settings":
-      showSettingsDialog(view, makeDialogDeps(view));
-      break;
-    case "/hotkeys":
-      showHotkeysMessage(view, makeDialogDeps(view));
-      break;
-    case "/clear":
-      view._state.messages = [];
-      renderAllMessages(view);
-      break;
-    case "/help":
-      showHelpMessage(view, makeDialogDeps(view));
-      break;
-    default:
-      // Unknown slash command — send it as a prompt (pi might handle it as a skill/template)
-      cb.onSendPrompt(agentId, raw);
-      break;
-  }
-}
-
-function executeBuiltinCommand(
-  view: AgentPaneView,
-  cb: AgentPanelCallbacks,
-  command: string,
-): void {
-  view._elements.inputEl.value = command;
-  executeSlashCommand(view, cb);
-}
-
-// ── Extension UI ──
 
 // ── Streaming ──
 
@@ -1797,10 +1558,10 @@ function handleResponse(
     renderAllMessages: () => renderAllMessages(view),
     renderWidgets: () => renderWidgets(view),
     showSessionBrowserDialog: () =>
-      showSessionBrowserDialog(view, makeDialogDeps(view)),
-    showTreeDialog: () => showTreeDialog(view, makeDialogDeps(view)),
+      showSessionBrowserDialog(view, makePanelDeps(view)),
+    showTreeDialog: () => showTreeDialog(view, makePanelDeps(view)),
     showForkDialog: (entries) =>
-      showForkDialog(view, makeDialogDeps(view), entries),
+      showForkDialog(view, makePanelDeps(view), entries),
     convertAgentMessageToChatMessages,
     builtinCommands: BUILTIN_COMMANDS,
   });
