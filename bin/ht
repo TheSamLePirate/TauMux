@@ -584,6 +584,71 @@ function mapCommand(): RpcCall {
         },
       };
 
+    // ── System: graceful shutdown ──
+    case "shutdown":
+      return { method: "system.shutdown", params: {} };
+
+    // ── Sideband panel introspection ──
+    case "panels":
+    case "list-panels":
+      return {
+        method: "panel.list",
+        params: {
+          surface_id:
+            flags["surface"] || process.env["HT_SURFACE"] || undefined,
+        },
+      };
+
+    // ── Script runner ──
+    // Spawn a new surface running a command in a target cwd. The returned
+    // surface is tagged with the optional scriptKey so the sidebar tracks
+    // running/errored state just like a package.json script launch.
+    case "run-script":
+      return {
+        method: "script.run",
+        params: {
+          cwd: flags["cwd"] || positional[0],
+          command: flags["command"] || positional[1] || positional[0],
+          workspace_id: flags["workspace"],
+          script_key: flags["script-key"] || flags["script_key"],
+        },
+      };
+
+    // ── Agent panes ──
+    case "agent": {
+      const sub = positional[0] || "identify";
+      switch (sub) {
+        case "new":
+        case "create":
+          return { method: "agent.create", params: {} };
+        case "split":
+        case "new-split":
+          return {
+            method: "agent.create_split",
+            params: { direction: positional[1] || "horizontal" },
+          };
+        case "list":
+          return { method: "agent.list", params: {} };
+        case "count":
+          return { method: "agent.count", params: {} };
+        case "close":
+          return {
+            method: "agent.close",
+            params: {
+              agent_id: flags["agent"] || positional[1],
+              surface_id: flags["surface"] || positional[1],
+            },
+          };
+        default:
+          console.error(`Unknown agent subcommand: ${sub}`);
+          console.error(
+            "Supported: new | split | list | count | close",
+          );
+          process.exit(1);
+      }
+      break;
+    }
+
     default:
       console.error(`Unknown command: ${command}`);
       console.error('Run "ht --help" for usage.');
@@ -951,6 +1016,27 @@ Browser (use: ht browser [surface] <subcommand> [args...]):
   [S] = optional --surface browser:N or positional browser:N
 
   Legacy aliases: browser-open, browser-split, browser-navigate, etc.
+
+Sideband panels:
+  panels [--surface S]                  List active sideband panels on a surface
+  list-panels                           Alias of panels
+
+Script runner:
+  run-script --cwd DIR --command CMD [--workspace W] [--script-key K]
+                                        Spawn a surface running CMD in DIR
+                                        (same pipeline the sidebar uses for
+                                        package.json script launches)
+
+Agent panes:
+  agent new                             Create a new agent surface
+  agent split [horizontal|vertical]     Split the focused pane with an agent
+  agent list                            List live agents
+  agent count                           Number of live agents
+  agent close [id]                      Close an agent by agent/surface id
+
+System:
+  shutdown                              Graceful exit (flushes settings,
+                                        layout, cookies, history)
 
 Aliases:
   capture-pane                          Alias for read-screen (tmux compat)
