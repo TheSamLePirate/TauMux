@@ -1,0 +1,9 @@
+# Scope `bun test` to the tests/ directory.
+#
+# Without this, bun also walks tests-e2e/ and tries to execute
+# Playwright specs — which blow up with "test.describe() called here"
+# because @playwright/test's runner hasn't initialized. `bun run test`
+# already passes `tests/` explicitly; this makes the bare `bun test`
+# command behave the same.
+[test]
+root = "./tests"
