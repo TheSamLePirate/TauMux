@@ -2,6 +2,7 @@ import type { SessionManager } from "./session-manager";
 import type { BrowserSurfaceManager } from "./browser-surface-manager";
 import type { BrowserHistoryStore } from "./browser-history";
 import type { CookieStore } from "./cookie-store";
+import type { PanelRegistry } from "./panel-registry";
 import type { SurfaceMetadataPoller } from "./surface-metadata";
 
 import type { AppState, Handler, HandlerDeps } from "./rpc-handlers/types";
@@ -11,6 +12,7 @@ import { registerWorkspace } from "./rpc-handlers/workspace";
 import { registerSurface } from "./rpc-handlers/surface";
 import { registerSidebar } from "./rpc-handlers/sidebar";
 import { registerPane } from "./rpc-handlers/pane";
+import { registerPanel } from "./rpc-handlers/panel";
 import {
   createNotificationStore,
   registerNotification,
@@ -34,6 +36,12 @@ export type { AppState, WorkspaceSnapshot } from "./rpc-handlers/types";
  * Adding a method: add it to the relevant domain file. No changes here
  * unless a new domain gets its own file.
  */
+export interface RpcHandlerOptions {
+  panelRegistry?: PanelRegistry;
+  /** Callback to trigger a graceful shutdown (wired to `system.shutdown`). */
+  shutdown?: () => void;
+}
+
 export function createRpcHandler(
   sessions: SessionManager,
   getState: () => AppState,
@@ -47,6 +55,7 @@ export function createRpcHandler(
   browserHistory?: BrowserHistoryStore,
   pendingBrowserEvals?: Map<string, (v: string) => void>,
   cookieStore?: CookieStore,
+  options: RpcHandlerOptions = {},
 ): (
   method: string,
   params: Record<string, unknown>,
@@ -62,6 +71,8 @@ export function createRpcHandler(
     pendingBrowserEvals,
     cookieStore,
     notifications: createNotificationStore(),
+    panelRegistry: options.panelRegistry,
+    shutdown: options.shutdown,
   };
 
   // `system.capabilities` needs to know the full registered surface —
@@ -77,6 +88,7 @@ export function createRpcHandler(
     registerSurface(deps),
     registerSidebar(deps),
     registerPane(deps),
+    registerPanel(deps),
     registerNotification(deps),
     registerAgent(deps),
     registerBrowserPage(deps),

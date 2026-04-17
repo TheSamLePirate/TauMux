@@ -1,6 +1,7 @@
 import type { BrowserHistoryStore } from "../browser-history";
 import type { BrowserSurfaceManager } from "../browser-surface-manager";
 import type { CookieStore } from "../cookie-store";
+import type { PanelRegistry } from "../panel-registry";
 import type { SessionManager } from "../session-manager";
 import type { SurfaceMetadataPoller } from "../surface-metadata";
 import type { PaneNode } from "../../shared/types";
@@ -67,4 +68,9 @@ export interface HandlerDeps {
   pendingBrowserEvals?: Map<string, (v: string) => void>;
   cookieStore?: CookieStore;
   notifications: NotificationStore;
+  /** Bun-side mirror of the webview's per-surface panel state. Populated
+   *  by the sideband meta tap; consumed by the `panel.list` RPC. */
+  panelRegistry?: PanelRegistry;
+  /** Initiate a graceful shutdown. Wired to `system.shutdown`. */
+  shutdown?: () => void;
 }

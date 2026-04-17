@@ -34,6 +34,7 @@ import {
   exportAsNetscape,
 } from "./cookie-parsers";
 import { SocketServer } from "./socket-server";
+import { PanelRegistry } from "./panel-registry";
 import { SurfaceMetadataPoller } from "./surface-metadata";
 import { WebServer } from "./web-server";
 import { createRpcHandler } from "./rpc-handler";
@@ -49,7 +50,17 @@ import { SettingsManager } from "./settings-manager";
 import { PiAgentManager } from "./pi-agent-manager";
 import { AppContext } from "./app-context";
 
-const configDir = join(Utils.paths.config, "hyperterm-canvas");
+// `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
+// browser history, and cookies under a per-worker throwaway dir. Default path
+// (user's Library/Application Support) is unchanged.
+const configDir =
+  process.env["HT_CONFIG_DIR"] ?? join(Utils.paths.config, "hyperterm-canvas");
+// `HT_E2E=1` marks this process as an e2e test run. Used to suppress the
+// install-ht-CLI nag, skip real-user-disrupting side effects, and tag logs.
+const HT_E2E = process.env["HT_E2E"] === "1";
+if (HT_E2E) {
+  console.log(`[e2e] HT_E2E=1 configDir=${configDir}`);
+}
 const settingsFile = join(configDir, "settings.json");
 const settingsManager = new SettingsManager(configDir, settingsFile);
 
@@ -59,6 +70,7 @@ const browserSurfaces = new BrowserSurfaceManager();
 const browserHistory = new BrowserHistoryStore(configDir);
 const cookieStore = new CookieStore(configDir);
 const metadataPoller = new SurfaceMetadataPoller(sessions);
+const panelRegistry = new PanelRegistry();
 
 // Env var HYPERTERM_WEB_PORT overrides the user setting so the dev/test
 // workflow (custom port via env) keeps working.
@@ -890,6 +902,7 @@ sessions.onStdout = (surfaceId, data) => {
 };
 
 sessions.onSidebandMeta = (surfaceId, msg) => {
+  panelRegistry.handleMeta(surfaceId, msg);
   rpc.send("sidebandMeta", { ...msg, surfaceId });
   app.webServer?.broadcast({ type: "sidebandMeta", surfaceId, meta: msg });
 };
@@ -913,6 +926,7 @@ sessions.onSidebandDataFailed = (surfaceId, id, reason) => {
 };
 
 sessions.onSurfaceClosed = (surfaceId) => {
+  panelRegistry.clearSurface(surfaceId);
   rpc.send("surfaceClosed", { surfaceId });
   app.webServer?.broadcast({ type: "surfaceClosed", surfaceId });
   if (
@@ -1487,21 +1501,23 @@ function dispatch(action: string, payload: Record<string, unknown>) {
   }
 }
 
-// Read-screen uses a message roundtrip (more reliable than RPC request-response)
+// Webview round-trip: send a socketAction with a reqId and wait for the
+// matching response message. Used for readScreen today; kept generic so new
+// read-style APIs (panel.list, settings introspection, …) can reuse the same
+// plumbing without inventing a second pending map.
 const pendingReads = new Map<string, (value: string) => void>();
 
 async function requestWebview(
-  _method: string,
+  method: string,
   params: Record<string, unknown>,
 ): Promise<unknown> {
-  const reqId = `read_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const reqId = `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   return new Promise<string>((resolve) => {
     pendingReads.set(reqId, resolve);
     rpc.send("socketAction", {
-      action: "readScreen",
+      action: method,
       payload: { ...params, reqId },
     });
-    // Timeout after 3s
     setTimeout(() => {
       if (pendingReads.has(reqId)) {
         pendingReads.delete(reqId);
@@ -1521,6 +1537,10 @@ const socketHandler = createRpcHandler(
   browserHistory,
   pendingBrowserEvals,
   cookieStore,
+  {
+    panelRegistry,
+    shutdown: () => gracefulShutdown(),
+  },
 );
 const socketPath = join(configDir, "hyperterm.sock");
 // Ensure the config directory exists before binding the socket
@@ -1602,7 +1622,9 @@ function applyWebMirrorPort(newPort: number): void {
 
 // ── Layout Persistence ──
 
-const layoutDir = join(Utils.paths.config, "hyperterm-canvas");
+// Layout persists alongside settings / socket under the same configDir so a
+// throwaway `HT_CONFIG_DIR` (e2e) sees a clean slate and no cross-test drift.
+const layoutDir = configDir;
 const layoutFile = join(layoutDir, "layout.json");
 
 function saveLayout(): void {

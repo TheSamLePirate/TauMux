@@ -87,3 +87,43 @@ jobs:
             test-results/
           retention-days: 14
           if-no-files-found: ignore
+
+  e2e-native:
+    name: Playwright native Electrobun e2e
+    # Drives the real Electrobun app (bun start / dev build) with isolated
+    # HT_CONFIG_DIR per worker (doc/native-e2e-plan.md §5 + §8). macOS is
+    # required — Electrobun targets macOS and sessions spawn zsh.
+    runs-on: macos-latest
+    timeout-minutes: 20
+    needs: [typecheck-and-unit]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright (no browsers needed — native only)
+        # The native e2e fixture does not launch a browser; we still need
+        # the @playwright/test runner binaries that ship with the package.
+        run: bunx playwright install-deps || true
+
+      - name: Run native Playwright tests
+        env:
+          CI: "1"
+        run: bun run test:native
+
+      - name: Upload screenshots + logs on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-e2e-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore

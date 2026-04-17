@@ -2,6 +2,7 @@ import type { Handler, HandlerDeps } from "./types";
 import { computeNormalizedRects } from "./shared";
 
 const VERSION = "0.0.1";
+const START_TIME_MS = Date.now();
 
 /** system.* handlers: diagnostic + discovery RPCs.
  *  `allMethodNames` is injected by the aggregator so `system.capabilities`
@@ -11,12 +12,39 @@ export function registerSystem(
   deps: HandlerDeps,
   allMethodNames: () => string[],
 ): Record<string, Handler> {
-  const { sessions, getState } = deps;
+  const { sessions, getState, shutdown } = deps;
 
   return {
-    "system.ping": () => "PONG",
+    // Preserves the legacy "PONG" response so existing CLI + tests keep
+    // working. Accepts an optional `verbose: true` param for e2e readiness
+    // probes that want pid + uptime in one roundtrip.
+    "system.ping": (params) => {
+      if (params?.["verbose"] === true) {
+        return {
+          pong: "PONG",
+          pid: process.pid,
+          uptimeMs: Date.now() - START_TIME_MS,
+        };
+      }
+      return "PONG";
+    },
 
     "system.version": () => `hyperterm-canvas ${VERSION}`,
+
+    // Graceful exit: returns immediately with an acknowledgement, then
+    // defers the actual shutdown so the client receives the RPC response
+    // before the socket closes. Tests fall back to SIGTERM if this stalls.
+    "system.shutdown": () => {
+      if (!shutdown) throw new Error("shutdown not supported in this process");
+      setTimeout(() => {
+        try {
+          shutdown();
+        } catch {
+          /* gracefulShutdown has its own watchdog */
+        }
+      }, 25);
+      return { ok: true };
+    },
 
     "system.identify": () => {
       const state = getState();

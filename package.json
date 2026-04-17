@@ -18,6 +18,9 @@
     "package:mac": "bun scripts/build-web-client.ts --minify && electrobun build --env=stable",
     "test": "bun scripts/build-web-client.ts && bun test tests/",
     "test:e2e": "playwright test",
+    "test:native": "playwright test --config=playwright-native.config.ts",
+    "test:native:packaged": "HT_E2E_APP=packaged playwright test --config=playwright-native.config.ts",
+    "test:native:design-review": "playwright test --config=playwright-native.config.ts --grep @design-review",
     "test:all": "bun run test && bun run test:e2e",
     "typecheck": "tsc --noEmit"
   },
