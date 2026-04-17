@@ -150,7 +150,11 @@ export interface ClientData {
 
 export interface WS {
   data: ClientData;
-  send(data: string | BufferSource): void;
+  /** Matches Bun's ServerWebSocket.send shape: tolerates an optional
+   *  compress flag, returns the number of bytes sent. Our own code
+   *  throws the return value away — the signature is here so a real
+   *  `ServerWebSocket<ClientData>` is assignable. */
+  send(data: string | Bun.BufferSource, compress?: boolean): number;
   close(): void;
   /** Bytes currently buffered by the underlying WS transport. Used for
    *  backpressure. Bun's server WS provides this method. */

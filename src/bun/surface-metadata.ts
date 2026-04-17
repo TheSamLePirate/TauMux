@@ -708,10 +708,14 @@ async function runSubprocess(
 
     // Drain stderr in parallel so the child can't block on a full pipe
     // (macOS pipe buffer is 64 KiB). The stderr content itself is
-    // discarded — parsers only want stdout.
+    // discarded — parsers only want stdout. Cast to ReadableStream
+    // — stdio is "pipe" here, so the number-fd branch of Bun's
+    // stdout/stderr union doesn't apply.
+    const stdoutStream = proc.stdout as ReadableStream<Uint8Array>;
+    const stderrStream = proc.stderr as ReadableStream<Uint8Array>;
     const [stdout, , exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      new Response(stdoutStream).text(),
+      new Response(stderrStream).text(),
       proc.exited,
     ]);
     if (timedOut) return null;

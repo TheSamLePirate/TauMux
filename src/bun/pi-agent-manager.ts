@@ -216,7 +216,11 @@ export class PiAgentInstance {
 
   private async readStdout(): Promise<void> {
     if (!this.proc?.stdout) return;
-    const reader = this.proc.stdout.getReader();
+    // We always spawn with stdout: "pipe", so the runtime value is a
+    // ReadableStream. The @types/node union also admits `number` (a raw
+    // fd) when stdio is configured that way, hence the narrowing.
+    const stream = this.proc.stdout as ReadableStream<Uint8Array>;
+    const reader = stream.getReader();
     const decoder = new TextDecoder();
     try {
       while (true) {
@@ -232,7 +236,9 @@ export class PiAgentInstance {
 
   private async readStderr(): Promise<void> {
     if (!this.proc?.stderr) return;
-    const reader = this.proc.stderr.getReader();
+    // stderr is spawned with "pipe" — same narrowing as readStdout.
+    const stream = this.proc.stderr as ReadableStream<Uint8Array>;
+    const reader = stream.getReader();
     const decoder = new TextDecoder();
     try {
       while (true) {
@@ -301,7 +307,10 @@ export class PiAgentInstance {
 
     return new Promise<unknown>((resolve, reject) => {
       this.responseWaiters.set(id, { resolve, reject });
-      const writer = this.proc!.stdin!;
+      // stdin is spawned with "pipe", so the runtime value is a Bun
+      // FileSink. The union with `number` only fires when stdio is
+      // an fd — not our case.
+      const writer = this.proc!.stdin! as Bun.FileSink;
       writer.write(line);
       writer.flush();
 
@@ -321,8 +330,9 @@ export class PiAgentInstance {
   sendNoWait(command: Record<string, unknown>): void {
     if (this.dead || !this.proc?.stdin) return;
     const line = JSON.stringify(command) + "\n";
-    this.proc.stdin.write(line);
-    this.proc.stdin.flush();
+    const writer = this.proc.stdin as Bun.FileSink;
+    writer.write(line);
+    writer.flush();
   }
 
   /** Send a prompt to the agent. */

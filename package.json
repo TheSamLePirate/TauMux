@@ -41,6 +41,6 @@
     "ws": "^8.20.0"
   },
   "overrides": {
-    "@types/node": "17.0.45"
+    "@types/node": "^20.19.0"
   }
 }
