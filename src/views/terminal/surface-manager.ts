@@ -13,7 +13,6 @@ import { Sidebar } from "./sidebar";
 import { createIcon } from "./icons";
 import { TerminalEffects } from "./terminal-effects";
 import type {
-  PackageInfo,
   PanelEvent,
   PersistedLayout,
   SidebandMetaMessage,
@@ -22,6 +21,7 @@ import type {
 } from "../../shared/types";
 import { createWorkspaceRecord } from "./workspace-factory";
 import { TerminalSearchBar } from "./terminal-search";
+import { buildSidebarWorkspaces, samePortSet } from "./sidebar-state";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
 import {
   type AgentPaneView,
@@ -1338,109 +1338,14 @@ export class SurfaceManager {
 
   private updateSidebar(): void {
     this.sidebar.setWorkspaces(
-      this.workspaces.map((ws, i) => {
-        const surfaceTitles = ws.layout
-          .getAllSurfaceIds()
-          .map((surfaceId) => this.surfaces.get(surfaceId)?.title ?? surfaceId);
-        const focusedSurfaceTitle =
-          this.focusedSurfaceId && ws.surfaceIds.has(this.focusedSurfaceId)
-            ? (this.surfaces.get(this.focusedSurfaceId)?.title ??
-              this.focusedSurfaceId)
-            : (surfaceTitles[0] ?? null);
-
-        const portSet = new Set<number>();
-        for (const surfaceId of ws.surfaceIds) {
-          const meta = this.metadata.get(surfaceId);
-          if (!meta) continue;
-          for (const p of meta.listeningPorts) portSet.add(p.port);
-        }
-        const listeningPorts = [...portSet].sort((a, b) => a - b);
-
-        const focusedMeta =
-          this.focusedSurfaceId && ws.surfaceIds.has(this.focusedSurfaceId)
-            ? (this.metadata.get(this.focusedSurfaceId) ?? null)
-            : null;
-        const focusedSurfaceCommand =
-          focusedMeta && focusedMeta.foregroundPid !== focusedMeta.pid
-            ? (focusedMeta.tree.find((n) => n.pid === focusedMeta.foregroundPid)
-                ?.command ?? null)
-            : null;
-
-        // Collect the distinct cwds across this workspace's surfaces.
-        const cwdSet: string[] = [];
-        const seen = new Set<string>();
-        for (const sid of ws.surfaceIds) {
-          const m = this.metadata.get(sid);
-          if (!m?.cwd) continue;
-          if (seen.has(m.cwd)) continue;
-          seen.add(m.cwd);
-          cwdSet.push(m.cwd);
-        }
-
-        // The user may have pinned a cwd; if it's gone stale (no surface
-        // still at that path), drop the pin and fall back to focused.
-        const pinned = this.selectedCwds.get(ws.id);
-        if (pinned && !seen.has(pinned)) this.selectedCwds.delete(ws.id);
-        const effectivePin = this.selectedCwds.get(ws.id) ?? null;
-        const selectedCwd = effectivePin ?? focusedMeta?.cwd ?? null;
-
-        // Resolve packageJson by locating the surface whose cwd matches the
-        // selected cwd — that surface's snapshot already has the right
-        // PackageInfo computed upstream by the poller.
-        let packageJson: PackageInfo | null = null;
-        if (selectedCwd) {
-          for (const sid of ws.surfaceIds) {
-            const m = this.metadata.get(sid);
-            if (m?.cwd === selectedCwd && m.packageJson) {
-              packageJson = m.packageJson;
-              break;
-            }
-          }
-        }
-
-        const runningScripts: string[] = [];
-        const erroredScripts: string[] = [];
-        if (packageJson?.scripts) {
-          const knownScripts = Object.keys(packageJson.scripts);
-          const running = new Set<string>();
-          for (const sid of ws.surfaceIds) {
-            const m = this.metadata.get(sid);
-            if (!m) continue;
-            for (const node of m.tree) {
-              const name = extractScriptName(node.command);
-              if (name && knownScripts.includes(name)) running.add(name);
-            }
-          }
-          for (const s of knownScripts) {
-            if (running.has(s)) runningScripts.push(s);
-            else if (this.scriptErrors.has(`${ws.id}:${s}`))
-              erroredScripts.push(s);
-          }
-        }
-
-        return {
-          id: ws.id,
-          name: ws.name,
-          color: ws.color,
-          active: i === this.activeWorkspaceIndex,
-          paneCount: ws.surfaceIds.size,
-          surfaceTitles,
-          focusedSurfaceTitle,
-          focusedSurfaceCommand,
-          statusPills: [...ws.status.entries()].map(([key, s]) => ({
-            key,
-            value: s.value,
-            color: s.color,
-            icon: s.icon,
-          })),
-          progress: ws.progress,
-          listeningPorts,
-          packageJson,
-          runningScripts,
-          erroredScripts,
-          cwds: cwdSet,
-          selectedCwd,
-        };
+      buildSidebarWorkspaces({
+        workspaces: this.workspaces,
+        surfaces: this.surfaces,
+        focusedSurfaceId: this.focusedSurfaceId,
+        activeWorkspaceIndex: this.activeWorkspaceIndex,
+        metadata: this.metadata,
+        selectedCwds: this.selectedCwds,
+        scriptErrors: this.scriptErrors,
       }),
     );
     this.notifyWorkspaceChanged();
@@ -2521,20 +2426,4 @@ function fitSurfaceTerminal(view: {
   if (term.cols === cols && term.rows === rows) return;
   core._renderService?.clear();
   term.resize(cols, rows);
-}
-
-/** Extracts the script name from commands like "bun run build", "npm run
- *  dev", "pnpm test", "yarn run start". Returns null when no match. */
-function extractScriptName(command: string): string | null {
-  const m = command.match(
-    /^(?:bun|npm|pnpm|yarn)(?:\s+run(?:-script)?)?\s+(\S+)/,
-  );
-  return m?.[1] ?? null;
-}
-
-function samePortSet(a: { port: number }[], b: { port: number }[]): boolean {
-  if (a.length !== b.length) return false;
-  const aSet = new Set(a.map((x) => x.port));
-  for (const x of b) if (!aSet.has(x.port)) return false;
-  return true;
 }
