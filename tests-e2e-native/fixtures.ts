@@ -139,7 +139,7 @@ function buildEnv(
   return env;
 }
 
-interface SpawnResult {
+export interface SpawnResult {
   child: ChildProcess;
   info: AppInfo;
   rpc: SocketRpc;
@@ -147,6 +147,49 @@ interface SpawnResult {
    *  by teardown to SIGTERM the app after the launcher has already exited. */
   getAppPid: () => number | null;
 }
+
+/**
+ * High-level handle returned by `spawnAppAt` — pairs a `SpawnResult` with
+ * a `shutdown()` method that runs the full graceful teardown (in-band
+ * `system.shutdown`, SIGTERM, SIGKILL) without wiping `HT_CONFIG_DIR`.
+ * Persistence specs use this to restart the app against the same on-disk
+ * state.
+ */
+export interface AppHandle extends SpawnResult {
+  /** Graceful shutdown. Idempotent. Preserves configDir. */
+  shutdown(): Promise<void>;
+}
+
+/**
+ * Spawn the Electrobun app against a caller-owned `configDir`. The caller
+ * is responsible for wiping the dir (via `wipeConfigDir`) when all its
+ * apps are done. Used by `persistence.spec.ts` to spawn two apps in
+ * sequence against the same state.
+ */
+export async function spawnAppAt(args: {
+  configDir: string;
+  workerIndex: number;
+  webMirrorPort?: number;
+}): Promise<AppHandle> {
+  const result = await spawnApp(args.workerIndex, {
+    configDir: args.configDir,
+    webMirrorPort: args.webMirrorPort,
+  });
+  let shutdownCalled = false;
+  const shutdown = async (): Promise<void> => {
+    if (shutdownCalled) return;
+    shutdownCalled = true;
+    await gracefulShutdownApp(
+      result.rpc,
+      result.child,
+      result.getAppPid(),
+      result.info.socketPath,
+    );
+  };
+  return { ...result, shutdown };
+}
+
+export { allocateConfigDir, wipeConfigDir };
 
 /**
  * Daily-driver safety checks (doc/native-e2e-plan.md §8.4). Run before
@@ -166,7 +209,6 @@ function preflight(): void {
     "Library/Application Support/hyperterm-canvas/hyperterm.sock",
   );
   if (existsSync(defaultDailyDriverSocket)) {
-     
     console.log(
       `[e2e] daily-driver HyperTerm socket detected at ` +
         `${defaultDailyDriverSocket}; test instance fully isolated via HT_CONFIG_DIR`,
@@ -174,14 +216,38 @@ function preflight(): void {
   }
 }
 
-async function spawnApp(workerIndex: number): Promise<SpawnResult> {
+export interface SpawnOpts {
+  /** Pre-allocated `HT_CONFIG_DIR` to spawn against. When omitted the
+   *  fixture allocates a fresh one under `os.tmpdir()` (the default).
+   *  Persistence specs pass a pre-existing dir so they can start a
+   *  second app that observes the first's on-disk state (layout.json,
+   *  settings.json, browser-history.json, cookies.json). */
+  configDir?: string;
+  /** Pre-chosen web-mirror port. When omitted, a free port is picked. */
+  webMirrorPort?: number;
+}
+
+async function spawnApp(
+  workerIndex: number,
+  opts: SpawnOpts = {},
+): Promise<SpawnResult> {
   // Pre-flight checks (doc/native-e2e-plan.md §8.4) run before we touch
   // anything — they catch misuse early and log context that makes failure
   // postmortems much faster.
   preflight();
 
-  const configDir = allocateConfigDir(workerIndex);
-  const webMirrorPort = await pickFreePort();
+  const configDir = opts.configDir ?? allocateConfigDir(workerIndex);
+  // When the caller reuses a configDir, make sure $HOME exists — the first
+  // spawn created it, but a fresh-dir path would not.
+  if (opts.configDir) {
+    try {
+      const { mkdirSync: ensureDir } = await import("node:fs");
+      ensureDir(join(configDir, "home"), { recursive: true });
+    } catch {
+      /* already exists — fine */
+    }
+  }
+  const webMirrorPort = opts.webMirrorPort ?? (await pickFreePort());
   const startMs = Date.now();
 
   const env = buildEnv({
@@ -278,13 +344,21 @@ async function spawnApp(workerIndex: number): Promise<SpawnResult> {
     (poll as unknown as { unref?: () => void }).unref?.();
   });
 
+  // Only wipe the configDir on spawn failure if WE allocated it. A
+  // caller-supplied dir (persistence spec mid-restart) is state the test
+  // still owns — nuking it would drop the previous app's saved layout.
+  const ownsConfigDir = !opts.configDir;
+  const cleanupOnFailure = (): void => {
+    if (ownsConfigDir) wipeConfigDir(configDir);
+  };
+
   try {
     await Promise.race([waitForSocket(socketPath, 30_000), earlyExit]);
     // Tiny breathing room so the server has bound the socket before we knock.
     await sleep(100);
   } catch (err) {
     await stopChild(child);
-    wipeConfigDir(configDir);
+    cleanupOnFailure();
     throw err;
   }
 
@@ -294,7 +368,7 @@ async function spawnApp(workerIndex: number): Promise<SpawnResult> {
     await Promise.race([waitForPing(rpc, 10_000), earlyExit]);
   } catch (err) {
     await stopChild(child);
-    wipeConfigDir(configDir);
+    cleanupOnFailure();
     throw err;
   }
 
@@ -314,7 +388,7 @@ async function spawnApp(workerIndex: number): Promise<SpawnResult> {
       /* ignore */
     }
     await stopChild(child);
-    wipeConfigDir(configDir);
+    cleanupOnFailure();
     throw enriched;
   }
 
