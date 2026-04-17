@@ -34,10 +34,12 @@ const cstr = (s: string): Uint8Array => new TextEncoder().encode(s + "\0");
 
 let cached: {
   setAppActivationPolicy: (policy: number) => void;
+  getMainWindowNumber: () => number | null;
 } | null = null;
 
 function load(): {
   setAppActivationPolicy: (policy: number) => void;
+  getMainWindowNumber: () => number | null;
 } {
   if (cached) return cached;
 
@@ -45,7 +47,14 @@ function load(): {
     objc_getClass: { args: [FFIType.cstring], returns: FFIType.ptr },
     sel_registerName: { args: [FFIType.cstring], returns: FFIType.ptr },
     objc_msgSend: {
-      // `[NSApplication sharedApplication]` — (class, SEL) → id
+      // Used for every zero-extra-arg call site:
+      //   [NSApplication sharedApplication]
+      //   [NSApp windows]
+      //   [NSApp mainWindow]
+      //   [NSApp keyWindow]
+      //   [windowsArray firstObject]
+      //   [window windowNumber]      (returns NSInteger — fits in ptr on arm64)
+      //   [windowsArray count]
       args: [FFIType.ptr, FFIType.ptr],
       returns: FFIType.ptr,
     },
@@ -58,26 +67,66 @@ function load(): {
     },
   });
 
-  const setAppActivationPolicy = (policy: number): void => {
-    const nsAppClassName = cstr("NSApplication");
-    const sharedAppSelName = cstr("sharedApplication");
-    const setPolicySelName = cstr("setActivationPolicy:");
-
-    const klass = common.symbols.objc_getClass(ptr(nsAppClassName));
+  const getNSApp = (): Pointer => {
+    const klass = common.symbols.objc_getClass(ptr(cstr("NSApplication")));
     if (!klass) throw new Error("objc_getClass(NSApplication) returned null");
-    const sharedSel = common.symbols.sel_registerName(ptr(sharedAppSelName));
-    const setPolicySel = common.symbols.sel_registerName(ptr(setPolicySelName));
-
+    const sharedSel = common.symbols.sel_registerName(
+      ptr(cstr("sharedApplication")),
+    );
     const nsApp = common.symbols.objc_msgSend(klass, sharedSel);
     if (!nsApp) throw new Error("NSApp sharedApplication returned null");
-    sendInt.symbols.objc_msgSend(
-      nsApp as Pointer,
-      setPolicySel as Pointer,
-      policy,
-    );
+    return nsApp as Pointer;
   };
 
-  cached = { setAppActivationPolicy };
+  const setAppActivationPolicy = (policy: number): void => {
+    const nsApp = getNSApp();
+    const setPolicySel = common.symbols.sel_registerName(
+      ptr(cstr("setActivationPolicy:")),
+    );
+    sendInt.symbols.objc_msgSend(nsApp, setPolicySel as Pointer, policy);
+  };
+
+  const getMainWindowNumber = (): number | null => {
+    const nsApp = getNSApp();
+    // Prefer main → key → first window — the test app usually has exactly
+    // one window, but be forgiving if someone opens auxiliary panels.
+    const mainSel = common.symbols.sel_registerName(ptr(cstr("mainWindow")));
+    const keySel = common.symbols.sel_registerName(ptr(cstr("keyWindow")));
+    const windowsSel = common.symbols.sel_registerName(ptr(cstr("windows")));
+    const firstSel = common.symbols.sel_registerName(ptr(cstr("firstObject")));
+    const countSel = common.symbols.sel_registerName(ptr(cstr("count")));
+    const windowNumSel = common.symbols.sel_registerName(
+      ptr(cstr("windowNumber")),
+    );
+
+    const tryWindow = (win: Pointer | null | undefined): number | null => {
+      if (!win) return null;
+      const num = common.symbols.objc_msgSend(win as Pointer, windowNumSel);
+      // `objc_msgSend` here returns the NSInteger as a pointer-sized value —
+      // Bun's FFI hands us either `number` or `bigint` depending on size.
+      // Normalise to `number`. Window numbers are 32-bit in practice.
+      const asNum =
+        typeof num === "bigint" ? Number(num) : Number((num as unknown) ?? 0);
+      return Number.isFinite(asNum) && asNum > 0 ? asNum : null;
+    };
+
+    const main = common.symbols.objc_msgSend(nsApp, mainSel);
+    const fromMain = tryWindow(main as Pointer | null);
+    if (fromMain) return fromMain;
+
+    const key = common.symbols.objc_msgSend(nsApp, keySel);
+    const fromKey = tryWindow(key as Pointer | null);
+    if (fromKey) return fromKey;
+
+    const windows = common.symbols.objc_msgSend(nsApp, windowsSel);
+    if (!windows) return null;
+    const count = common.symbols.objc_msgSend(windows as Pointer, countSel);
+    if (!count) return null;
+    const first = common.symbols.objc_msgSend(windows as Pointer, firstSel);
+    return tryWindow(first as Pointer | null);
+  };
+
+  cached = { setAppActivationPolicy, getMainWindowNumber };
   return cached;
 }
 
@@ -103,5 +152,29 @@ export function switchToAccessoryMode(): boolean {
       err instanceof Error ? err.message : err,
     );
     return false;
+  }
+}
+
+/**
+ * Resolve the macOS `CGWindowID` of this process's main NSWindow. Returns
+ * null if no window is live yet or the FFI call fails. Used by the e2e
+ * screenshot helper to pass `screencapture -l <id>` — which produces a
+ * tight window crop rather than a full-display capture.
+ *
+ * `[NSWindow windowNumber]` returns an NSInteger that's *equivalent* to
+ * the CGWindowID on modern macOS (documented since 10.5). No CoreGraphics
+ * enumeration needed.
+ */
+export function getMainWindowId(): number | null {
+  if (process.platform !== "darwin") return null;
+  try {
+    const { getMainWindowNumber } = load();
+    return getMainWindowNumber();
+  } catch (err) {
+    console.warn(
+      "[accessory] could not resolve main window id:",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
   }
 }

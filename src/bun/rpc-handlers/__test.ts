@@ -1,4 +1,5 @@
 import type { Handler, HandlerDeps } from "./types";
+import { getMainWindowId } from "../accessory-mode";
 
 /**
  * Tier 2 `__test.*` handlers (doc/native-e2e-plan.md §6).
@@ -51,7 +52,15 @@ export function registerTestHandlers(
     "__test.openSettings": pipe("__test.openSettings"),
     "__test.toggleProcessManager": pipe("__test.toggleProcessManager"),
     "__test.toggleSidebar": pipe("__test.toggleSidebar"),
-    "__test.getWindowId": pipe("__test.getWindowId"),
+    // Resolve the CGWindowID bun-side via NSApp's mainWindow.windowNumber —
+    // more reliable than the webview's `window.__electrobunWindowId` (which
+    // is Electrobun's internal id, not the macOS window number screencapture
+    // wants). Falls back to the webview path if FFI is unavailable.
+    "__test.getWindowId": () => {
+      const id = getMainWindowId();
+      if (id !== null) return id;
+      return deps.requestWebview?.("__test.getWindowId", {}) ?? null;
+    },
     "__test.getWindowBounds": pipe("__test.getWindowBounds"),
   };
 }
