@@ -36,11 +36,7 @@ import {
 import { SocketServer } from "./socket-server";
 import { SurfaceMetadataPoller } from "./surface-metadata";
 import { WebServer } from "./web-server";
-import {
-  createRpcHandler,
-  type AppState,
-  type WorkspaceSnapshot,
-} from "./rpc-handler";
+import { createRpcHandler } from "./rpc-handler";
 import {
   buildApplicationMenu,
   buildContextMenu,
@@ -51,6 +47,7 @@ import {
 import { normalizeMenuActionEvent } from "./menu-events";
 import { SettingsManager } from "./settings-manager";
 import { PiAgentManager } from "./pi-agent-manager";
+import { AppContext } from "./app-context";
 
 const configDir = join(Utils.paths.config, "hyperterm-canvas");
 const settingsFile = join(configDir, "settings.json");
@@ -62,25 +59,26 @@ const browserSurfaces = new BrowserSurfaceManager();
 const browserHistory = new BrowserHistoryStore(configDir);
 const cookieStore = new CookieStore(configDir);
 const metadataPoller = new SurfaceMetadataPoller(sessions);
-let initialResizeReceived = false;
 
-let focusedSurfaceId: string | null = null;
+// Env var HYPERTERM_WEB_PORT overrides the user setting so the dev/test
+// workflow (custom port via env) keeps working.
+const webServerPortEnv = process.env["HYPERTERM_WEB_PORT"];
 
-// Workspace state synced from webview
+const app = new AppContext({
+  configDir,
+  sessions,
+  piAgents: piAgentManager,
+  browserSurfaces,
+  browserHistory,
+  cookieStore,
+  metadataPoller,
+  settings: settingsManager,
+  webServerPort: webServerPortEnv
+    ? parseInt(webServerPortEnv, 10)
+    : settingsManager.get().webMirrorPort,
+});
 
-let workspaceState: WorkspaceSnapshot[] = [];
-
-let activeWorkspaceId: string | null = null;
-let sidebarVisible = true;
 const WINDOW_FRAME_INSET = 2;
-
-function getAppState(): AppState {
-  return {
-    focusedSurfaceId,
-    workspaces: workspaceState,
-    activeWorkspaceId,
-  };
-}
 
 function getPiSessionsDir(): string {
   return join(process.env["HOME"] ?? "", ".pi", "agent", "sessions");
@@ -285,18 +283,18 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         }
       },
       clipboardPaste: (payload) => {
-        focusedSurfaceId = payload.surfaceId;
+        app.focusedSurfaceId = payload.surfaceId;
         void handlePaste();
       },
       writeStdin: (payload) => {
         sessions.writeStdin(payload.surfaceId, payload.data);
       },
       viewportSize: (payload) => {
-        webServer?.setNativeViewport(payload.width, payload.height);
+        app.webServer?.setNativeViewport(payload.width, payload.height);
       },
       resize: (payload) => {
-        if (!initialResizeReceived) {
-          initialResizeReceived = true;
+        if (!app.initialResizeReceived) {
+          app.initialResizeReceived = true;
           // Send settings now that the webview is ready
           rpc.send("restoreSettings", { settings: settingsManager.get() });
           // Re-send the web-mirror status — the boot-time send at module
@@ -309,7 +307,7 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
           }
         } else {
           sessions.resize(payload.surfaceId, payload.cols, payload.rows);
-          webServer?.broadcast({
+          app.webServer?.broadcast({
             type: "resize",
             surfaceId: payload.surfaceId,
             cols: payload.cols,
@@ -342,8 +340,8 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         }
       },
       focusSurface: (payload) => {
-        focusedSurfaceId = payload.surfaceId;
-        webServer?.broadcast({
+        app.focusedSurfaceId = payload.surfaceId;
+        app.webServer?.broadcast({
           type: "focusChanged",
           surfaceId: payload.surfaceId,
         });
@@ -362,7 +360,7 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
           payload.event === "resize" ||
           payload.event === "close"
         ) {
-          webServer?.broadcast({
+          app.webServer?.broadcast({
             type: "panelEvent",
             surfaceId: payload.surfaceId,
             id: payload.id,
@@ -382,14 +380,14 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         }
       },
       workspaceStateSync: (payload) => {
-        workspaceState = payload.workspaces;
-        activeWorkspaceId = payload.activeWorkspaceId;
+        app.workspaceState = payload.workspaces;
+        app.activeWorkspaceId = payload.activeWorkspaceId;
         const activeWorkspace =
           payload.workspaces.find(
             (ws) => ws.id === payload.activeWorkspaceId,
           ) ?? null;
         mainWindow.setTitle(formatWindowTitle(activeWorkspace?.name ?? null));
-        webServer?.broadcast({
+        app.webServer?.broadcast({
           type: "layoutChanged",
           workspaces: payload.workspaces.map((ws) => ({
             id: ws.id,
@@ -401,13 +399,13 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
             surfaceTitles: ws.surfaceTitles,
           })),
           activeWorkspaceId: payload.activeWorkspaceId,
-          focusedSurfaceId,
+          focusedSurfaceId: app.focusedSurfaceId,
         });
         scheduleLayoutSave();
       },
       sidebarToggle: (payload) => {
-        sidebarVisible = payload.visible;
-        webServer?.broadcast({
+        app.sidebarVisible = payload.visible;
+        app.webServer?.broadcast({
           type: "sidebarState",
           visible: payload.visible,
         });
@@ -503,7 +501,7 @@ const rpc = BrowserView.defineRPC<HyperTermRPC>({
         );
         await browserHistory.ready;
         browserHistory.record(payload.url, payload.title);
-        webServer?.broadcast({
+        app.webServer?.broadcast({
           type: "browserNavigated",
           surfaceId: payload.surfaceId,
           url: payload.url,
@@ -863,12 +861,12 @@ ContextMenu.on("context-menu-clicked", (event) => {
 // Wire session callbacks → RPC → webview + web mirror
 sessions.onStdout = (surfaceId, data) => {
   rpc.send("writeStdout", { surfaceId, data });
-  webServer?.broadcastStdout(surfaceId, data);
+  app.webServer?.broadcastStdout(surfaceId, data);
 };
 
 sessions.onSidebandMeta = (surfaceId, msg) => {
   rpc.send("sidebandMeta", { ...msg, surfaceId });
-  webServer?.broadcast({ type: "sidebandMeta", surfaceId, meta: msg });
+  app.webServer?.broadcast({ type: "sidebandMeta", surfaceId, meta: msg });
 };
 
 sessions.onSidebandData = (surfaceId, id, data) => {
@@ -876,17 +874,22 @@ sessions.onSidebandData = (surfaceId, id, data) => {
   const base64 = Buffer.from(data).toString("base64");
   rpc.send("sidebandData", { surfaceId, id, data: base64 });
   // Web mirror: native binary WebSocket frames (zero base64 overhead)
-  webServer?.broadcastSidebandBinary(surfaceId, id, data);
+  app.webServer?.broadcastSidebandBinary(surfaceId, id, data);
 };
 
 sessions.onSidebandDataFailed = (surfaceId, id, reason) => {
   rpc.send("sidebandDataFailed", { surfaceId, id, reason });
-  webServer?.broadcast({ type: "sidebandDataFailed", surfaceId, id, reason });
+  app.webServer?.broadcast({
+    type: "sidebandDataFailed",
+    surfaceId,
+    id,
+    reason,
+  });
 };
 
 sessions.onSurfaceClosed = (surfaceId) => {
   rpc.send("surfaceClosed", { surfaceId });
-  webServer?.broadcast({ type: "surfaceClosed", surfaceId });
+  app.webServer?.broadcast({ type: "surfaceClosed", surfaceId });
   if (
     sessions.surfaceCount === 0 &&
     browserSurfaces.surfaceCount === 0 &&
@@ -898,7 +901,7 @@ sessions.onSurfaceClosed = (surfaceId) => {
 
 browserSurfaces.onSurfaceClosed = (surfaceId) => {
   rpc.send("browserSurfaceClosed", { surfaceId });
-  webServer?.broadcast({ type: "browserSurfaceClosed", surfaceId });
+  app.webServer?.broadcast({ type: "browserSurfaceClosed", surfaceId });
   if (
     sessions.surfaceCount === 0 &&
     browserSurfaces.surfaceCount === 0 &&
@@ -910,31 +913,23 @@ browserSurfaces.onSurfaceClosed = (surfaceId) => {
 
 sessions.onSurfaceExit = (surfaceId, exitCode) => {
   rpc.send("surfaceExited", { surfaceId, exitCode });
-  webServer?.broadcast({ type: "surfaceExited", surfaceId, exitCode });
+  app.webServer?.broadcast({ type: "surfaceExited", surfaceId, exitCode });
 };
 
 metadataPoller.onMetadata = (surfaceId, metadata) => {
   rpc.send("surfaceMetadata", { surfaceId, metadata });
-  webServer?.broadcast({ type: "surfaceMetadata", surfaceId, metadata });
+  app.webServer?.broadcast({ type: "surfaceMetadata", surfaceId, metadata });
 };
 metadataPoller.start();
 
 // ── Web Mirror ──
 
-// Env var HYPERTERM_WEB_PORT overrides the user setting so the dev/test
-// workflow (custom port via env) keeps working.
-const webServerPortEnv = process.env["HYPERTERM_WEB_PORT"];
-let webServerPort = webServerPortEnv
-  ? parseInt(webServerPortEnv, 10)
-  : settingsManager.get().webMirrorPort;
-let webServer: WebServer | null = null;
-
 function broadcastSurfaceCreated(surfaceId: string, title: string): void {
-  webServer?.broadcast({ type: "surfaceCreated", surfaceId, title });
+  app.webServer?.broadcast({ type: "surfaceCreated", surfaceId, title });
 }
 
 function broadcastSurfaceRenamed(surfaceId: string, title: string): void {
-  webServer?.broadcast({ type: "surfaceRenamed", surfaceId, title });
+  app.webServer?.broadcast({ type: "surfaceRenamed", surfaceId, title });
 }
 
 function sendWebviewAction(
@@ -951,14 +946,14 @@ function createWorkspaceSurface(
 ): void {
   const surfaceId = sessions.createSurface(cols, rows, cwd);
   const title = sessions.getSurface(surfaceId)?.title ?? "shell";
-  focusedSurfaceId = surfaceId;
+  app.focusedSurfaceId = surfaceId;
   rpc.send("surfaceCreated", { surfaceId, title });
   broadcastSurfaceCreated(surfaceId, title);
 }
 
 function splitSurface(
   direction: "horizontal" | "vertical",
-  splitFrom = focusedSurfaceId,
+  splitFrom: string | null = app.focusedSurfaceId,
   cwdOverride?: string,
 ): void {
   if (!splitFrom) {
@@ -975,7 +970,7 @@ function splitSurface(
     cwdOverride ?? metadataPoller.getSnapshot(splitFrom)?.cwd ?? undefined;
   const surfaceId = sessions.createSurface(80, 24, cwd);
   const title = sessions.getSurface(surfaceId)?.title ?? "shell";
-  focusedSurfaceId = surfaceId;
+  app.focusedSurfaceId = surfaceId;
   rpc.send("surfaceCreated", {
     surfaceId,
     title,
@@ -991,9 +986,9 @@ function createBrowserWorkspaceSurface(url?: string): void {
   const resolvedUrl =
     url || settingsManager.get().browserHomePage || "about:blank";
   const surfaceId = browserSurfaces.createSurface(resolvedUrl);
-  focusedSurfaceId = surfaceId;
+  app.focusedSurfaceId = surfaceId;
   rpc.send("browserSurfaceCreated", { surfaceId, url: resolvedUrl });
-  webServer?.broadcast({
+  app.webServer?.broadcast({
     type: "browserSurfaceCreated",
     surfaceId,
     url: resolvedUrl,
@@ -1006,16 +1001,16 @@ function splitBrowserSurface(
 ): void {
   const resolvedUrl =
     url || settingsManager.get().browserHomePage || "about:blank";
-  const splitFrom = focusedSurfaceId;
+  const splitFrom = app.focusedSurfaceId;
   const surfaceId = browserSurfaces.createSurface(resolvedUrl);
-  focusedSurfaceId = surfaceId;
+  app.focusedSurfaceId = surfaceId;
   rpc.send("browserSurfaceCreated", {
     surfaceId,
     url: resolvedUrl,
     splitFrom: splitFrom ?? undefined,
     direction,
   });
-  webServer?.broadcast({
+  app.webServer?.broadcast({
     type: "browserSurfaceCreated",
     surfaceId,
     url: resolvedUrl,
@@ -1040,7 +1035,7 @@ function createAgentWorkspaceSurface(
 ): void {
   const cwd =
     opts.cwd ??
-    metadataPoller.getSnapshot(focusedSurfaceId ?? "")?.cwd ??
+    metadataPoller.getSnapshot(app.focusedSurfaceId ?? "")?.cwd ??
     process.cwd();
   const skills: string[] = [];
   const skillPath = resolveHtCliSkillPath();
@@ -1064,7 +1059,7 @@ function createAgentWorkspaceSurface(
     });
   };
 
-  focusedSurfaceId = agent.id;
+  app.focusedSurfaceId = agent.id;
   sendWebviewAction("agentSurfaceCreated", {
     surfaceId: agent.id,
     agentId: agent.id,
@@ -1083,7 +1078,7 @@ function splitAgentSurface(
     cwd?: string;
   } = {},
 ): void {
-  const splitFrom = focusedSurfaceId;
+  const splitFrom = app.focusedSurfaceId;
   const cwd =
     opts.cwd ??
     metadataPoller.getSnapshot(splitFrom ?? "")?.cwd ??
@@ -1110,7 +1105,7 @@ function splitAgentSurface(
     });
   };
 
-  focusedSurfaceId = agent.id;
+  app.focusedSurfaceId = agent.id;
   sendWebviewAction("agentSurfaceCreated", {
     surfaceId: agent.id,
     agentId: agent.id,
@@ -1121,8 +1116,7 @@ function splitAgentSurface(
 }
 
 function renameActiveWorkspace(): void {
-  const activeWorkspace =
-    workspaceState.find((ws) => ws.id === activeWorkspaceId) ?? null;
+  const activeWorkspace = app.getActiveWorkspace();
   if (!activeWorkspace) return;
   sendWebviewAction("promptRenameWorkspace", {
     workspaceId: activeWorkspace.id,
@@ -1152,7 +1146,7 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
       break;
     case MENU_ACTIONS.closePane: {
       const surfaceId =
-        (data as { surfaceId?: string })?.surfaceId ?? focusedSurfaceId;
+        (data as { surfaceId?: string })?.surfaceId ?? app.focusedSurfaceId;
       if (surfaceId) {
         if (piAgentManager.isAgentSurface(surfaceId)) {
           piAgentManager.removeAgent(surfaceId);
@@ -1185,7 +1179,7 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
           title: surfaceData.title ?? surfaceData.surfaceId,
         });
       } else {
-        renameSurface(focusedSurfaceId);
+        renameSurface(app.focusedSurfaceId);
       }
       break;
     }
@@ -1328,7 +1322,7 @@ async function installHtCli(): Promise<void> {
 }
 
 async function handlePaste(): Promise<void> {
-  const surfaceId = focusedSurfaceId;
+  const surfaceId = app.focusedSurfaceId;
   if (!surfaceId) return;
 
   let text: string | null = null;
@@ -1351,31 +1345,31 @@ async function handlePaste(): Promise<void> {
 }
 
 function sendWebServerStatus(): void {
-  const running = webServer?.running ?? false;
+  const running = app.webServer?.running ?? false;
   rpc.send("webServerStatus", {
     running,
-    port: webServerPort,
-    url: running ? `http://localhost:${webServerPort}` : undefined,
+    port: app.webServerPort,
+    url: running ? `http://localhost:${app.webServerPort}` : undefined,
   });
 }
 
 function toggleWebServer(): void {
-  if (webServer?.running) {
-    webServer.stop();
+  if (app.webServer?.running) {
+    app.webServer.stop();
   } else {
-    if (!webServer) {
-      webServer = new WebServer(
-        webServerPort,
+    if (!app.webServer) {
+      app.webServer = new WebServer(
+        app.webServerPort,
         sessions,
-        getAppState,
-        () => focusedSurfaceId,
-        () => sidebarVisible,
+        () => app.getAppState(),
+        () => app.focusedSurfaceId,
+        () => app.sidebarVisible,
         settingsManager.get().webMirrorBind,
         settingsManager.get().webMirrorAuthToken,
       );
-      setupWebServerCallbacks(webServer);
+      setupWebServerCallbacks(app.webServer);
     }
-    webServer.start();
+    app.webServer.start();
   }
   sendWebServerStatus();
 }
@@ -1396,7 +1390,7 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     const title = payload["title"];
     if (typeof surfaceId === "string" && typeof title === "string" && title) {
       sessions.renameSurface(surfaceId, title);
-      const workspace = workspaceState.find((ws) =>
+      const workspace = app.workspaceState.find((ws) =>
         ws.surfaceIds.includes(surfaceId),
       );
       if (workspace) {
@@ -1413,14 +1407,14 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     const notifications = payload["notifications"] as unknown[];
     const latest = payload["latest"] as Record<string, unknown> | undefined;
     if (latest) {
-      webServer?.broadcast({
+      app.webServer?.broadcast({
         type: "notification",
         surfaceId: latest["surfaceId"] ?? null,
         title: latest["title"] ?? "",
         body: latest["body"] ?? "",
       });
     } else if (notifications && notifications.length === 0) {
-      webServer?.broadcast({ type: "notificationClear" });
+      app.webServer?.broadcast({ type: "notificationClear" });
     }
   } else if (
     action === "setStatus" ||
@@ -1429,7 +1423,7 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     action === "clearProgress" ||
     action === "log"
   ) {
-    webServer?.broadcast({ type: "sidebarAction", action, payload });
+    app.webServer?.broadcast({ type: "sidebarAction", action, payload });
   } else if (action === "createBrowserSurface") {
     createBrowserWorkspaceSurface(payload["url"] as string | undefined);
   } else if (action === "createAgentSurface") {
@@ -1494,7 +1488,7 @@ async function requestWebview(
 
 const socketHandler = createRpcHandler(
   sessions,
-  getAppState,
+  () => app.getAppState(),
   dispatch,
   requestWebview,
   metadataPoller,
@@ -1522,7 +1516,7 @@ function setupWebServerCallbacks(ws: WebServer) {
     });
   };
   ws.onSidebarToggle = (visible) => {
-    sidebarVisible = visible;
+    app.sidebarVisible = visible;
     // Forward to native webview (set-state, not toggle)
     rpc.send("socketAction", {
       action: "setSidebar",
@@ -1530,7 +1524,7 @@ function setupWebServerCallbacks(ws: WebServer) {
     });
   };
   ws.onFocusSurface = (surfaceId) => {
-    focusedSurfaceId = surfaceId;
+    app.focusedSurfaceId = surfaceId;
     // Tell native webview to focus this surface
     sendWebviewAction("focusSurface", { surfaceId });
     // Broadcast to all web clients
@@ -1544,39 +1538,39 @@ function setupWebServerCallbacks(ws: WebServer) {
 
 // Env var (if set) implies explicit opt-in; otherwise honor the user setting.
 const autoStartWebMirror = webServerPortEnv
-  ? webServerPort > 0
-  : settingsManager.get().autoStartWebMirror && webServerPort > 0;
+  ? app.webServerPort > 0
+  : settingsManager.get().autoStartWebMirror && app.webServerPort > 0;
 
 if (autoStartWebMirror) {
-  webServer = new WebServer(
-    webServerPort,
+  app.webServer = new WebServer(
+    app.webServerPort,
     sessions,
-    getAppState,
-    () => focusedSurfaceId,
-    () => sidebarVisible,
+    () => app.getAppState(),
+    () => app.focusedSurfaceId,
+    () => app.sidebarVisible,
   );
-  setupWebServerCallbacks(webServer);
-  webServer.start();
+  setupWebServerCallbacks(app.webServer);
+  app.webServer.start();
 }
 sendWebServerStatus();
 
 /** Rebuild the web mirror on a new port. Restarts if it was running. */
 function applyWebMirrorPort(newPort: number): void {
   if (webServerPortEnv) return; // env var wins, ignore setting change
-  const wasRunning = webServer?.running ?? false;
-  webServer?.stop();
-  webServer = null;
-  webServerPort = newPort;
+  const wasRunning = app.webServer?.running ?? false;
+  app.webServer?.stop();
+  app.webServer = null;
+  app.webServerPort = newPort;
   if (wasRunning && newPort > 0) {
-    webServer = new WebServer(
-      webServerPort,
+    app.webServer = new WebServer(
+      app.webServerPort,
       sessions,
-      getAppState,
-      () => focusedSurfaceId,
-      () => sidebarVisible,
+      () => app.getAppState(),
+      () => app.focusedSurfaceId,
+      () => app.sidebarVisible,
     );
-    setupWebServerCallbacks(webServer);
-    webServer.start();
+    setupWebServerCallbacks(app.webServer);
+    app.webServer.start();
   }
   sendWebServerStatus();
 }
@@ -1587,13 +1581,13 @@ const layoutDir = join(Utils.paths.config, "hyperterm-canvas");
 const layoutFile = join(layoutDir, "layout.json");
 
 function saveLayout(): void {
-  if (workspaceState.length === 0) return;
+  if (app.workspaceState.length === 0) return;
   try {
     const persisted: PersistedLayout = {
-      activeWorkspaceIndex: workspaceState.findIndex(
-        (ws) => ws.id === activeWorkspaceId,
+      activeWorkspaceIndex: app.workspaceState.findIndex(
+        (ws) => ws.id === app.activeWorkspaceId,
       ),
-      workspaces: workspaceState.map((ws) => ({
+      workspaces: app.workspaceState.map((ws) => ({
         name: ws.name,
         color: ws.color,
         layout: ws.layout,
@@ -1604,7 +1598,7 @@ function saveLayout(): void {
         surfaceUrls: ws.surfaceUrls,
         surfaceTypes: ws.surfaceTypes,
       })),
-      sidebarVisible,
+      sidebarVisible: app.sidebarVisible,
     };
     if (!existsSync(layoutDir)) mkdirSync(layoutDir, { recursive: true });
     writeFileSync(layoutFile, JSON.stringify(persisted));
@@ -1657,10 +1651,8 @@ function remapPaneNode(
   };
 }
 
-let layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleLayoutSave(): void {
-  if (layoutSaveTimer) clearTimeout(layoutSaveTimer);
-  layoutSaveTimer = setTimeout(saveLayout, 500);
+  app.scheduleLayoutSave(saveLayout);
 }
 
 function tryRestoreLayout(cols: number, rows: number): boolean {
@@ -1687,7 +1679,7 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
         const newId = browserSurfaces.createSurface(url);
         surfaceMapping[oldId] = newId;
         rpc.send("browserSurfaceCreated", { surfaceId: newId, url });
-        webServer?.broadcast({
+        app.webServer?.broadcast({
           type: "browserSurfaceCreated",
           surfaceId: newId,
           url,
@@ -1752,7 +1744,7 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
     });
   }, 200);
 
-  focusedSurfaceId = Object.values(surfaceMapping)[0] ?? null;
+  app.focusedSurfaceId = Object.values(surfaceMapping)[0] ?? null;
   return true;
 }
 
@@ -1803,7 +1795,7 @@ function gracefulShutdown(): void {
     console.warn("[main] piAgentManager.dispose failed:", err);
   }
   try {
-    webServer?.stop();
+    app.webServer?.stop();
   } catch (err) {
     console.warn("[main] webServer.stop failed:", err);
   }
