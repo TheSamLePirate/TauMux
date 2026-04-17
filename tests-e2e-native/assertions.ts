@@ -80,6 +80,44 @@ export function expectSurface(rpc: SocketRpc, surfaceId: string) {
   };
 }
 
+export function expectWorkspace(rpc: SocketRpc, workspaceId: string) {
+  return {
+    async toBeActive(timeoutMs = DEFAULT_TIMEOUT): Promise<void> {
+      await expect
+        .poll(
+          async () =>
+            (await rpc.workspace.list()).find((w) => w.id === workspaceId)
+              ?.active ?? false,
+          { timeout: timeoutMs, intervals: [DEFAULT_INTERVAL] },
+        )
+        .toBe(true);
+    },
+    async toHaveSurfaceCount(
+      n: number,
+      timeoutMs = DEFAULT_TIMEOUT,
+    ): Promise<void> {
+      await expect
+        .poll(
+          async () =>
+            (await rpc.workspace.list()).find((w) => w.id === workspaceId)
+              ?.surface_count ?? 0,
+          { timeout: timeoutMs, intervals: [DEFAULT_INTERVAL] },
+        )
+        .toBe(n);
+    },
+    async toHaveName(name: string, timeoutMs = DEFAULT_TIMEOUT): Promise<void> {
+      await expect
+        .poll(
+          async () =>
+            (await rpc.workspace.list()).find((w) => w.id === workspaceId)
+              ?.name ?? null,
+          { timeout: timeoutMs, intervals: [DEFAULT_INTERVAL] },
+        )
+        .toBe(name);
+    },
+  };
+}
+
 export function expectApp(rpc: SocketRpc) {
   return {
     async toHaveWorkspaceCount(

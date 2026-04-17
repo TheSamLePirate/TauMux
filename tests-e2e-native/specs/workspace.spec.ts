@@ -89,6 +89,44 @@ test.describe("workspace", () => {
     );
   });
 
+  test("workspace.rename updates the listed name", async ({ app }) => {
+    const list = await waitFor(
+      async () => {
+        const l = await app.rpc.workspace.list();
+        return l.length > 0 ? l : undefined;
+      },
+      { timeoutMs: 10_000, message: "initial workspace" },
+    );
+    const wsId = list[0].id;
+    await app.rpc.workspace.rename({ workspace_id: wsId, name: "renamed-ws" });
+    await expect
+      .poll(
+        async () =>
+          (await app.rpc.workspace.list()).find((w) => w.id === wsId)?.name,
+        { timeout: 5_000 },
+      )
+      .toBe("renamed-ws");
+  });
+
+  test("closing non-active workspace leaves active unchanged", async ({
+    app,
+  }) => {
+    await waitFor(
+      async () => (await app.rpc.workspace.list()).length > 0 || undefined,
+      { timeoutMs: 10_000, message: "initial" },
+    );
+    await app.rpc.workspace.create();
+    await expectApp(app.rpc).toHaveWorkspaceCount(2, 5_000);
+    const list = await app.rpc.workspace.list();
+    const activeBefore = list.find((w) => w.active)!;
+    const inactive = list.find((w) => !w.active)!;
+    await app.rpc.workspace.close({ workspace_id: inactive.id });
+    await expectApp(app.rpc).toHaveWorkspaceCount(1, 5_000);
+    const remaining = (await app.rpc.workspace.list())[0];
+    expect(remaining.id).toBe(activeBefore.id);
+    expect(remaining.active).toBe(true);
+  });
+
   test("rapid create then close keeps count coherent", async ({ app }) => {
     await waitFor(
       async () => (await app.rpc.workspace.list()).length > 0 || undefined,

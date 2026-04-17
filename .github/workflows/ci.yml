@@ -18,7 +18,7 @@ jobs:
     # macOS because the PTY tests spawn real shells and exercise macOS
     # ps/lsof output parsers. Linux would need additional shim
     # behavior we don't ship yet.
-    runs-on: macos-latest
+    runs-on: macos-14
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +44,7 @@ jobs:
     # The e2e boot script spawns a Bun subprocess that runs the real
     # WebServer + SessionManager. macOS is required for the same
     # reason as above (PTY/ps/lsof behavior).
-    runs-on: macos-latest
+    runs-on: macos-14
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -93,7 +93,7 @@ jobs:
     # Drives the real Electrobun app (bun start / dev build) with isolated
     # HT_CONFIG_DIR per worker (doc/native-e2e-plan.md §5 + §8). macOS is
     # required — Electrobun targets macOS and sessions spawn zsh.
-    runs-on: macos-latest
+    runs-on: macos-14
     timeout-minutes: 20
     needs: [typecheck-and-unit]
     steps:

@@ -201,6 +201,15 @@ export interface SocketRpc {
     list(params?: { surface_id?: string }): Promise<PanelDescriptor[]>;
   };
 
+  script: {
+    run(params: {
+      cwd: string;
+      command: string;
+      workspace_id?: string;
+      script_key?: string;
+    }): Promise<{ ok: true; scriptKey: string }>;
+  };
+
   browser: {
     list(): Promise<BrowserSurfaceInfo[]>;
     open(params?: { url?: string }): Promise<"OK">;
@@ -422,6 +431,15 @@ class RpcClient implements SocketRpc {
   panel = {
     list: (params: { surface_id?: string } = {}) =>
       this.call<PanelDescriptor[]>("panel.list", params),
+  };
+
+  script = {
+    run: (params: {
+      cwd: string;
+      command: string;
+      workspace_id?: string;
+      script_key?: string;
+    }) => this.call<{ ok: true; scriptKey: string }>("script.run", params),
   };
 
   browser = {

@@ -70,4 +70,70 @@ test.describe("sideband", () => {
     const panels = await app.rpc.panel.list();
     expect(Array.isArray(panels)).toBe(true);
   });
+
+  test("update op mutates an existing panel without creating a new one", async ({
+    app,
+  }) => {
+    const sid = app.info.firstSurfaceId;
+    await sleep(500);
+    await app.rpc.surface.send_text({
+      surface_id: sid,
+      text: `bash ${SIDEBAND_SCRIPT}\r`,
+    });
+    // Wait for the script to reach its "Test 3: Move SVG panel" update op.
+    // The registry's updatedAt advances without a new entry appearing.
+    await waitFor(
+      async () => {
+        const panels = await app.rpc.panel.list({ surface_id: sid });
+        const svg = panels.find((p) => p.id === "svg-test");
+        if (!svg) return undefined;
+        return svg.updatedAt > svg.createdAt ? true : undefined;
+      },
+      { timeoutMs: 15_000, message: "update never advanced updatedAt" },
+    );
+  });
+
+  test("panel descriptors carry the position + dimension fields", async ({
+    app,
+  }) => {
+    const sid = app.info.firstSurfaceId;
+    await sleep(500);
+    await app.rpc.surface.send_text({
+      surface_id: sid,
+      text: `bash ${SIDEBAND_SCRIPT}\r`,
+    });
+    await waitFor(
+      async () => {
+        const panels = await app.rpc.panel.list({ surface_id: sid });
+        const html = panels.find((p) => p.id === "html-test");
+        return html?.width !== undefined ? html : undefined;
+      },
+      { timeoutMs: 15_000, message: "html panel never surfaced with width" },
+    );
+  });
+
+  test("closing the surface clears its panels", async ({ app }) => {
+    const sid = app.info.firstSurfaceId;
+    await sleep(500);
+    await app.rpc.surface.send_text({
+      surface_id: sid,
+      text: `bash ${SIDEBAND_SCRIPT}\r`,
+    });
+    await waitFor(
+      async () => {
+        const panels = await app.rpc.panel.list({ surface_id: sid });
+        return panels.length > 0 ? true : undefined;
+      },
+      { timeoutMs: 15_000, message: "no panels" },
+    );
+    // Split so we have a second surface to focus after closing.
+    await app.rpc.surface.split({ direction: "horizontal" });
+    await app.rpc.surface.close({ surface_id: sid });
+    await expect
+      .poll(
+        async () => (await app.rpc.panel.list({ surface_id: sid })).length,
+        { timeout: 5_000 },
+      )
+      .toBe(0);
+  });
 });

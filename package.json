@@ -12,7 +12,7 @@
     "build": "bun scripts/build-web-client.ts --minify && electrobun build",
     "build:dev": "bun scripts/build-web-client.ts --minify && electrobun build --env=dev",
     "build:canary": "bun scripts/build-web-client.ts --minify && electrobun build --env=canary",
-    "build:stable": "bun scripts/build-web-client.ts --minify && electrobun build --env=stable",
+    "build:stable": "HYPERTERM_INCLUDE_TEST_HOOKS=0 bun scripts/build-web-client.ts --minify && HYPERTERM_INCLUDE_TEST_HOOKS=0 electrobun build --env=stable",
     "build:cli": "bun scripts/build-cli.ts",
     "build:web-client": "bun scripts/build-web-client.ts",
     "package:mac": "bun scripts/build-web-client.ts --minify && electrobun build --env=stable",
@@ -22,6 +22,7 @@
     "test:native:packaged": "HT_E2E_APP=packaged playwright test --config=playwright-native.config.ts",
     "test:native:design-review": "playwright test --config=playwright-native.config.ts --grep @design-review",
     "audit:test-hooks": "bun scripts/audit-test-hooks.ts",
+    "build:design-review": "bun scripts/build-design-review.ts",
     "test:all": "bun run test && bun run test:e2e",
     "typecheck": "tsc --noEmit"
   },

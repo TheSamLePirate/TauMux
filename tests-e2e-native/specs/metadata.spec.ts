@@ -50,6 +50,69 @@ test.describe("metadata", () => {
     await app.rpc.surface.send_text({ surface_id: sid, text: "kill %1\r" });
   });
 
+  test("package.json surfaces metadata.packageJson", async ({ app }) => {
+    const sid = app.info.firstSurfaceId;
+    // Repo root has package.json — cd there, give the poller a tick, then read.
+    await sleep(300);
+    await app.rpc.surface.send_text({
+      surface_id: sid,
+      text: `cd ${process.cwd()}\r`,
+    });
+    await expect
+      .poll(
+        async () =>
+          (await app.rpc.surface.metadata({ surface_id: sid }))?.packageJson
+            ?.name ?? null,
+        { timeout: 5_000 },
+      )
+      .toBe("hyperterm-canvas");
+  });
+
+  test("cd to /tmp (no repo) leaves metadata.git null", async ({ app }) => {
+    const sid = app.info.firstSurfaceId;
+    await sleep(300);
+    await app.rpc.surface.send_text({
+      surface_id: sid,
+      text: "cd /tmp && echo cd-done\r",
+    });
+    await expect
+      .poll(
+        async () =>
+          (await app.rpc.surface.metadata({ surface_id: sid }))?.git == null,
+        { timeout: 5_000 },
+      )
+      .toBe(true);
+  });
+
+  test("listening port drops when server is killed", async ({ app }) => {
+    const sid = app.info.firstSurfaceId;
+    await sleep(300);
+    const port = 38000 + Math.floor(Math.random() * 1000);
+    await app.rpc.surface.send_text({
+      surface_id: sid,
+      text: `python3 -m http.server ${port} --bind 127.0.0.1\r`,
+    });
+    await expect
+      .poll(
+        async () =>
+          (
+            await app.rpc.surface.metadata({ surface_id: sid })
+          )?.listeningPorts.some((p) => p.port === port) ?? false,
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    await app.rpc.surface.send_text({ surface_id: sid, text: "\x03" });
+    await expect
+      .poll(
+        async () =>
+          (
+            await app.rpc.surface.metadata({ surface_id: sid })
+          )?.listeningPorts.some((p) => p.port === port) ?? false,
+        { timeout: 10_000 },
+      )
+      .toBe(false);
+  });
+
   test("metadata tree parses CPU% without locale drift", async ({ app }) => {
     const sid = app.info.firstSurfaceId;
     const meta = await waitFor(

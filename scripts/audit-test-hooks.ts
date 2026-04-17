@@ -91,6 +91,20 @@ function ok(msg: string): void {
     ok("webview __test router gates on window.__htTestMode__");
   }
 
+  // Compile-time gate in the webview entry — used by stable builds (via
+  // HYPERTERM_INCLUDE_TEST_HOOKS=0) to dead-code-eliminate the router.
+  const webviewIndex = readFileSync(
+    join(REPO_ROOT, "src/views/terminal/index.ts"),
+    "utf8",
+  );
+  if (!/TEST_HOOKS_COMPILED_IN/.test(webviewIndex)) {
+    fail(
+      "src/views/terminal/index.ts: TEST_HOOKS_COMPILED_IN compile-time gate missing",
+    );
+  } else {
+    ok("webview entry has TEST_HOOKS_COMPILED_IN compile-time gate");
+  }
+
   const bunIndex = readFileSync(join(REPO_ROOT, "src/bun/index.ts"), "utf8");
   const gateMatch =
     /HT_TEST_MODE =\s*process\.env\["HYPERTERM_TEST_MODE"\] === "1" &&/.test(

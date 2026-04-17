@@ -1500,25 +1500,43 @@ const dispatchSocketAction = createSocketActionDispatcher({
 // Tier 2 test router. No-op in production (window.__htTestMode__ is never
 // set). Consults the flag at dispatch time, so flipping it on/off at runtime
 // (via the `enableTestMode` message) takes effect immediately.
-const dispatchTestAction = createTestActionRouter({
-  surfaceManager,
-  palette,
-  settingsPanel,
-  processManagerPanel,
-  getCurrentSettings: () => currentSettings,
-  applySettings,
-  openCommandPalette,
-  openSettings,
-  toggleProcessManager,
-  toggleSidebar,
-  openRenameWorkspaceDialog: (id, name) => {
-    void promptRenameWorkspace(id, name);
-  },
-  openRenameSurfaceDialog: (id, title) => {
-    void promptRenameSurface(id, title);
-  },
-  rpc,
-});
+//
+// Compile-time gate: set `HYPERTERM_INCLUDE_TEST_HOOKS=0` at build time
+// (stable builds) to let the bundler dead-code-eliminate the entire router.
+// Dev/test builds default to including it.
+ 
+const TEST_HOOKS_COMPILED_IN: boolean = (() => {
+  try {
+    // process may be undefined in strict browser contexts; guarded.
+    return (
+      typeof process === "undefined" ||
+      process.env?.["HYPERTERM_INCLUDE_TEST_HOOKS"] !== "0"
+    );
+  } catch {
+    return true;
+  }
+})();
+const dispatchTestAction = TEST_HOOKS_COMPILED_IN
+  ? createTestActionRouter({
+      surfaceManager,
+      palette,
+      settingsPanel,
+      processManagerPanel,
+      getCurrentSettings: () => currentSettings,
+      applySettings,
+      openCommandPalette,
+      openSettings,
+      toggleProcessManager,
+      toggleSidebar,
+      openRenameWorkspaceDialog: (id, name) => {
+        void promptRenameWorkspace(id, name);
+      },
+      openRenameSurfaceDialog: (id, title) => {
+        void promptRenameSurface(id, title);
+      },
+      rpc,
+    })
+  : ((() => false) as ReturnType<typeof createTestActionRouter>);
 
 function handleSocketAction(action: string, payload: Record<string, unknown>) {
   if (dispatchTestAction(action, payload)) return;

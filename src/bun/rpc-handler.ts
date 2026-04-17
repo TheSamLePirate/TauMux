@@ -13,6 +13,7 @@ import { registerSurface } from "./rpc-handlers/surface";
 import { registerSidebar } from "./rpc-handlers/sidebar";
 import { registerPane } from "./rpc-handlers/pane";
 import { registerPanel } from "./rpc-handlers/panel";
+import { registerScript } from "./rpc-handlers/script";
 import { registerTestHandlers } from "./rpc-handlers/__test";
 import {
   createNotificationStore,
@@ -93,6 +94,7 @@ export function createRpcHandler(
     registerSidebar(deps),
     registerPane(deps),
     registerPanel(deps),
+    registerScript(deps),
     registerTestHandlers(deps, { enabled: options.testModeEnabled === true }),
     registerNotification(deps),
     registerAgent(deps),

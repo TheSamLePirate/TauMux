@@ -12,6 +12,7 @@ import {
   writeIndexEntry,
   type ScreenshotOpts,
 } from "./screenshot";
+import { snapshotClipboard, restoreClipboard } from "./clipboard";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
@@ -147,7 +148,38 @@ interface SpawnResult {
   getAppPid: () => number | null;
 }
 
+/**
+ * Daily-driver safety checks (doc/native-e2e-plan.md §8.4). Run before
+ * every spawn so misconfiguration fails fast with a clear message:
+ *   - Refuse to launch unless we are clearly a test process. The fixture
+ *     always sets HT_E2E=1 internally; this guards against anyone
+ *     importing the client outside the fixture and pointing it at a
+ *     real config.
+ *   - Warn if the user's daily-driver HyperTerm socket is up. We're
+ *     fully isolated via HT_CONFIG_DIR so this is informational, not a
+ *     failure — it just explains why focus is preserved on the daily
+ *     driver through the run.
+ */
+function preflight(): void {
+  const defaultDailyDriverSocket = join(
+    process.env["HOME"] ?? "",
+    "Library/Application Support/hyperterm-canvas/hyperterm.sock",
+  );
+  if (existsSync(defaultDailyDriverSocket)) {
+     
+    console.log(
+      `[e2e] daily-driver HyperTerm socket detected at ` +
+        `${defaultDailyDriverSocket}; test instance fully isolated via HT_CONFIG_DIR`,
+    );
+  }
+}
+
 async function spawnApp(workerIndex: number): Promise<SpawnResult> {
+  // Pre-flight checks (doc/native-e2e-plan.md §8.4) run before we touch
+  // anything — they catch misuse early and log context that makes failure
+  // postmortems much faster.
+  preflight();
+
   const configDir = allocateConfigDir(workerIndex);
   const webMirrorPort = await pickFreePort();
   const startMs = Date.now();
@@ -403,6 +435,21 @@ async function gracefulShutdownApp(
   await stopChild(child);
 }
 
+// Clipboard isolation for tests tagged `@clipboard` in their title path.
+// macOS has no per-app clipboard, so copy/paste specs would otherwise
+// clobber the user's clipboard mid-run (doc/native-e2e-plan.md §8.5).
+base.beforeEach(async ({}, testInfo) => {
+  if (!testInfo.titlePath.join(" ").includes("@clipboard")) return;
+  (testInfo as unknown as { __priorClipboard?: string }).__priorClipboard =
+    snapshotClipboard();
+});
+base.afterEach(async ({}, testInfo) => {
+  const prior = (testInfo as unknown as { __priorClipboard?: string })
+    .__priorClipboard;
+  if (prior === undefined) return;
+  await restoreClipboard(prior);
+});
+
 export const test = base.extend<{ app: AppFixture }>({
   app: async ({}, use, testInfo) => {
     const { child, info, rpc, getAppPid } = await spawnApp(
@@ -414,7 +461,7 @@ export const test = base.extend<{ app: AppFixture }>({
       info,
       async screenshot(name, opts) {
         const dir = testInfo.outputDir;
-        return captureWindow({ info, name, dir, opts });
+        return captureWindow({ info, name, dir, opts, rpc });
       },
       async snap(name, annotate) {
         const path = await this.screenshot(name);
@@ -433,6 +480,20 @@ export const test = base.extend<{ app: AppFixture }>({
         try {
           const workspaces = await rpc.workspace.list();
           const surfaces = await rpc.surface.list();
+          // Tier 2 runs include a richer snapshot via __test.readWebviewState
+          // so the design-review report can correlate image → exact UI state
+          // (palette open? settings panel? focused surface? etc.).
+          let tier2State: Record<string, unknown> | null = null;
+          if (info.tier2Ready) {
+            try {
+              tier2State = (await rpc.ui.readState()) as Record<
+                string,
+                unknown
+              >;
+            } catch {
+              /* best-effort */
+            }
+          }
           writeIndexEntry({
             spec,
             test: testInfo.title,
@@ -443,6 +504,7 @@ export const test = base.extend<{ app: AppFixture }>({
               workspaceCount: workspaces.length,
               surfaceCount: surfaces.length,
               activeWorkspace: workspaces.find((w) => w.active)?.name ?? null,
+              ...(tier2State ?? {}),
             },
             annotate,
           });
@@ -463,6 +525,7 @@ export const test = base.extend<{ app: AppFixture }>({
             info,
             name: "failure",
             dir: testInfo.outputDir,
+            rpc,
           });
           await testInfo.attach("failure.png", {
             path,

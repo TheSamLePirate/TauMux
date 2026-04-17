@@ -54,6 +54,60 @@ test.describe("surface", () => {
     expect(surfaces.length).toBe(4);
   });
 
+  test("surface.focus updates the focused flag in pane.list", async ({
+    app,
+  }) => {
+    await app.rpc.surface.split({ direction: "horizontal" });
+    await expectApp(app.rpc).toHaveSurfaceCount(2, 5_000);
+    const surfaces = await app.rpc.surface.list();
+    const target = surfaces[0].id;
+    await app.rpc.surface.focus({ surface_id: target });
+    await expect
+      .poll(
+        async () => {
+          const panes = await app.rpc.pane.list();
+          return panes.find((p) => p.surface_id === target)?.focused ?? false;
+        },
+        { timeout: 5_000 },
+      )
+      .toBe(true);
+  });
+
+  test("surface.send_text reaches the shell's stdin", async ({ app }) => {
+    const sid = app.info.firstSurfaceId;
+    await app.rpc.surface.send_text({
+      surface_id: sid,
+      text: "echo send-text-marker\r",
+    });
+    await expect
+      .poll(
+        async () =>
+          (await app.rpc.surface.read_text({ surface_id: sid })).includes(
+            "send-text-marker",
+          ),
+        { timeout: 5_000 },
+      )
+      .toBe(true);
+  });
+
+  test("surface.send_key enter matches \\r handling", async ({ app }) => {
+    const sid = app.info.firstSurfaceId;
+    await app.rpc.surface.send_text({
+      surface_id: sid,
+      text: "echo key-enter-marker",
+    });
+    await app.rpc.surface.send_key({ surface_id: sid, key: "enter" });
+    await expect
+      .poll(
+        async () =>
+          (await app.rpc.surface.read_text({ surface_id: sid })).includes(
+            "key-enter-marker",
+          ),
+        { timeout: 5_000 },
+      )
+      .toBe(true);
+  });
+
   test("pane.list mirrors surface geometry", async ({ app }) => {
     await app.rpc.surface.split({ direction: "horizontal" });
     await expectApp(app.rpc).toHaveSurfaceCount(2, 5_000);

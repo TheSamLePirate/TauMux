@@ -2,11 +2,14 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { AppInfo } from "./fixtures";
+import type { SocketRpc } from "./client";
 
 export interface ScreenshotOpts {
-  /** Crop strategy. `window` uses screencapture -l; `full-screen` falls back
-   *  to -D 1. Tier-1 defaults to full-screen because `__test.getWindowId`
-   *  lives in Tier 2 — we still capture something useful until Tier 2 lands. */
+  /** Crop strategy.
+   *  - `window` (default on Tier-2 runs): `screencapture -l <CGWindowID>` —
+   *    just the app window, no wallpaper, no chrome pollution.
+   *  - `full-screen`: `screencapture -D 1` — fallback when no window id is
+   *    resolvable. Noisier but always produces something. */
   crop?: "window" | "full-screen";
 }
 
@@ -16,46 +19,73 @@ export interface CaptureArgs {
   info: AppInfo;
   name: string;
   dir: string;
+  /** Socket RPC client — if provided and Tier 2 is ready, we resolve the
+   *  window id via `__test.getWindowId` for a clean windowed capture. */
+  rpc?: SocketRpc;
   opts?: ScreenshotOpts;
 }
 
 /**
- * Capture the app window (or the full screen if we can't resolve a window id)
- * using macOS's built-in `screencapture`. Returns the PNG path.
+ * Capture the app window using macOS's built-in `screencapture`. Returns
+ * the PNG path.
  *
- * Until Tier 2 lands we don't have `__test.getWindowId`, so we degrade to
- * `-D 1` (full screen) which still gives reviewers and Claude Opus something
- * to look at without interactive prompts.
+ * Strategy:
+ *   1. If Tier 2 is ready, ask the webview for its `CGWindowID` (cached on
+ *      `AppInfo.windowId` after first call).
+ *   2. If we have a window id, `screencapture -l <id>` — tight crop.
+ *   3. Otherwise, `screencapture -D 1` full-screen fallback.
+ *   4. Non-macOS platforms get a text placeholder so index entries stay
+ *      consistent and tests never fail from a missing screenshot.
+ *
+ * Falls back automatically if `-l` fails (e.g. window just minimized).
  */
-export function captureWindow(args: CaptureArgs): string {
+export async function captureWindow(args: CaptureArgs): Promise<string> {
   if (process.platform !== "darwin") {
-    // Outside macOS we can't drive screencapture. Write a placeholder so the
-    // index entries stay consistent; tests don't fail on missing images.
     return writePlaceholder(args);
   }
   const outDir = ensureDir(args.dir);
   const safeName = args.name.replace(/[^a-z0-9._-]+/gi, "_").slice(0, 64);
   const outPath = join(outDir, `${safeName}.png`);
 
-  const crop = args.opts?.crop ?? "full-screen";
-  const windowId = args.info.windowId;
+  const crop = args.opts?.crop ?? "window";
+
+  // Resolve windowId lazily. Cache on AppInfo so repeated snaps in one
+  // test don't pay the RPC roundtrip every time.
+  let windowId: number | null = args.info.windowId ?? null;
+  if (!windowId && crop === "window" && args.rpc && args.info.tier2Ready) {
+    try {
+      windowId = await args.rpc.ui.getWindowId();
+      if (windowId) args.info.windowId = windowId;
+    } catch {
+      /* fall through to full-screen */
+    }
+  }
+
   try {
     if (crop === "window" && windowId) {
+      // `-x` silences the shutter; `-o` excludes the drop shadow so the
+      // PNG bbox matches the window bbox (better for side-by-side diffs).
       execFileSync(
         "screencapture",
-        ["-x", "-l", String(windowId), "-o", outPath],
-        {
-          stdio: "ignore",
-        },
+        ["-x", "-o", "-l", String(windowId), outPath],
+        { stdio: "ignore" },
       );
     } else {
-      // `-x` silences the camera-shutter sound; `-D 1` picks the primary display.
       execFileSync("screencapture", ["-x", "-D", "1", outPath], {
         stdio: "ignore",
       });
     }
   } catch {
-    return writePlaceholder(args);
+    // `screencapture -l` can fail on a window that's just been minimised
+    // or moved off-screen — retry with full-screen as a last resort so
+    // we still get *something* for postmortem.
+    try {
+      execFileSync("screencapture", ["-x", "-D", "1", outPath], {
+        stdio: "ignore",
+      });
+    } catch {
+      return writePlaceholder(args);
+    }
   }
   return outPath;
 }

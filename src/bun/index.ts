@@ -50,6 +50,7 @@ import { normalizeMenuActionEvent } from "./menu-events";
 import { SettingsManager } from "./settings-manager";
 import { PiAgentManager } from "./pi-agent-manager";
 import { AppContext } from "./app-context";
+import { switchToAccessoryMode } from "./accessory-mode";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -889,6 +890,18 @@ const mainWindow = new BrowserWindow({
   rpc,
 });
 
+// Daily-driver-safe mode (doc/native-e2e-plan.md §8.2). Switches NSApp to
+// accessory activation policy — no Dock icon, no focus steal, no ⌘+Tab
+// entry — so an e2e test spawned by a developer running HyperTerm as their
+// daily driver does not interrupt the user's workflow. Runs AFTER the
+// BrowserWindow is instantiated so NSApp already exists when we flip it.
+if (HT_E2E) {
+  const ok = switchToAccessoryMode();
+  if (ok)
+    console.log("[e2e] switched to NSApplicationActivationPolicyAccessory");
+  else console.warn("[e2e] accessory mode failed; tests may steal focus");
+}
+
 function applyNativeWindowFrameInset(width: number, height: number): void {
   const webview = mainWindow.webview;
   if (!webview?.ptr) return;
@@ -1459,6 +1472,28 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     createWorkspaceSurface(80, 24, payload["cwd"] as string | undefined);
   } else if (action === "splitSurface") {
     splitSurface(payload["direction"] as "horizontal" | "vertical");
+  } else if (action === "runScript") {
+    // Same flow as the webview-side `runScript` message: spawn a surface
+    // in cwd, tag it with launchFor so the sidebar tracks the script as
+    // "running", then feed the command into stdin after the login shell
+    // finishes async init (zsh ~150ms; 600ms is a safe upper bound).
+    const workspaceId = payload["workspaceId"] as string | undefined;
+    const cwd = payload["cwd"] as string | undefined;
+    const command = payload["command"] as string | undefined;
+    const scriptKey = payload["scriptKey"] as string | undefined;
+    if (workspaceId && cwd && command && scriptKey) {
+      const surfaceId = sessions.createSurface(80, 24, cwd);
+      const title = sessions.getSurface(surfaceId)?.title ?? "shell";
+      rpc.send("surfaceCreated", {
+        surfaceId,
+        title,
+        launchFor: { workspaceId, scriptKey },
+      });
+      broadcastSurfaceCreated(surfaceId, title);
+      setTimeout(() => {
+        sessions.writeStdin(surfaceId, command + "\n");
+      }, 600);
+    }
   } else if (action === "renameSurface") {
     const surfaceId = payload["surfaceId"];
     const title = payload["title"];
