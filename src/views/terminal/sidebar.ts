@@ -451,12 +451,23 @@ export class Sidebar {
     list.className = "sidebar-section-list";
     this.logsEl.appendChild(list);
 
+    let lastItem: HTMLDivElement | null = null;
     for (const log of logs.slice(-10)) {
       const el = document.createElement("div");
       el.className = `log-item ${log.level}`;
       const prefix = log.source ? `[${log.source}] ` : "";
       el.textContent = `${prefix}${log.message}`;
       list.appendChild(el);
+      lastItem = el;
+    }
+    // Auto-scroll the newest entry into view on the next frame. Without
+    // this, a script streaming logs had them appear outside the visible
+    // window and the user had to scroll the sidebar manually to find the
+    // tail. `block: "nearest"` keeps the rest of the sidebar anchored.
+    if (lastItem) {
+      requestAnimationFrame(() =>
+        lastItem?.scrollIntoView({ block: "nearest" }),
+      );
     }
   }
 }

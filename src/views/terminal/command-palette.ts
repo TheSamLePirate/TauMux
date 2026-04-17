@@ -116,6 +116,23 @@ export class CommandPalette {
         if (cmd) this.execute(cmd);
       }
     });
+
+    // Fallback Escape listener — catches the case where the input lost
+    // focus (mouse click on a palette item, webview briefly lost OS
+    // focus, test fixture dispatching on document, …) so Escape still
+    // dismisses. Scoped to `this.visible` so it only fires when open;
+    // registered at the `document` level (capture phase) so it sees
+    // events dispatched on document itself, not just overlay descendants.
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (this.visible && e.key === "Escape") {
+          e.preventDefault();
+          this.hide();
+        }
+      },
+      true,
+    );
   }
 
   setCommands(commands: PaletteCommand[]): void {

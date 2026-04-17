@@ -602,6 +602,7 @@ const payload = JSON.stringify({
 
 const socket = connect(SOCKET_PATH);
 let response = "";
+let gotResponse = false;
 
 socket.on("connect", () => {
   socket.write(payload);
@@ -620,6 +621,7 @@ socket.on("data", (chunk) => {
         console.error(`Error: ${res.error}`);
         process.exit(1);
       }
+      gotResponse = true;
       formatOutput(res.result);
       process.exit(0);
     } catch {
@@ -629,8 +631,22 @@ socket.on("data", (chunk) => {
   response = lines[lines.length - 1];
 });
 
-// Timeout for async responses
+// Timeout for async responses. Distinguish "no response at all" from
+// "response was processed and we're still alive for some reason" — the
+// former is a real error (server alive but command hung, or server just
+// died), the latter is effectively impossible (process.exit above).
 setTimeout(() => {
+  if (!gotResponse) {
+    console.error(
+      `Error: no response from HyperTerm within 5s (method=${rpcCall.method}).`,
+    );
+    console.error(
+      "  The app may be unresponsive, or the command is stuck. " +
+        `Socket: ${SOCKET_PATH}`,
+    );
+    socket.end();
+    process.exit(1);
+  }
   socket.end();
   process.exit(0);
 }, 5000);

@@ -541,6 +541,12 @@ export class SurfaceManager {
     return this.sidebar;
   }
 
+  /** Cap per-workspace log entries. A script calling `ht sidebar.log` in
+   *  a loop used to grow the list unboundedly, bloating both memory and
+   *  the workspaceStateSync payload. Matches the notification-store cap
+   *  convention on the bun side. */
+  private static MAX_LOGS_PER_WORKSPACE = 200;
+
   addLog(
     workspaceId: string | undefined,
     level: string,
@@ -552,6 +558,10 @@ export class SurfaceManager {
       : this.activeWorkspace();
     if (ws) {
       ws.logs.push({ level, message, source, time: Date.now() });
+      const cap = SurfaceManager.MAX_LOGS_PER_WORKSPACE;
+      if (ws.logs.length > cap) {
+        ws.logs.splice(0, ws.logs.length - cap);
+      }
       this.sidebar.setLogs(ws.logs);
     }
   }
@@ -1226,6 +1236,13 @@ export class SurfaceManager {
   }
 
   // Metadata
+  /** Cap the per-workspace status-pill map. A script that set many
+   *  unique keys used to pile up pills indefinitely; the sidebar's
+   *  renderer doesn't wrap gracefully and the workspaceStateSync
+   *  payload grew with every one. 32 pills is plenty for any
+   *  reasonable status dashboard; overflow evicts the oldest. */
+  private static MAX_STATUS_PILLS = 32;
+
   setStatus(
     workspaceId: string | undefined,
     key: string,
@@ -1237,7 +1254,13 @@ export class SurfaceManager {
       ? this.workspaces.find((w) => w.id === workspaceId)
       : this.activeWorkspace();
     if (ws) {
+      const alreadyPresent = ws.status.has(key);
       ws.status.set(key, { value, icon, color });
+      if (!alreadyPresent && ws.status.size > SurfaceManager.MAX_STATUS_PILLS) {
+        // Map preserves insertion order — the first entry is the oldest.
+        const oldestKey = ws.status.keys().next().value;
+        if (oldestKey !== undefined) ws.status.delete(oldestKey);
+      }
       this.updateSidebar();
     }
   }

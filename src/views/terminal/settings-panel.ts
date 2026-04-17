@@ -21,7 +21,11 @@ export class SettingsPanel {
   private nav: HTMLDivElement;
   private content: HTMLDivElement;
   private settings: AppSettings = { ...DEFAULT_SETTINGS };
-  private activeSection = "general";
+  // Persisted across open/close cycles so picking "Theme" and closing
+  // doesn't snap back to "General" on reopen. localStorage write is
+  // wrapped in try/catch because private-browsing modes throw.
+  private static STORAGE_KEY = "hyperterm-canvas.settings-panel.section";
+  private activeSection = SettingsPanel.loadActiveSection();
   private onChange: SettingChangeHandler;
   private visible = false;
   private sections: Section[];
@@ -175,6 +179,7 @@ export class SettingsPanel {
 
       btn.addEventListener("click", () => {
         this.activeSection = section.id;
+        SettingsPanel.saveActiveSection(section.id);
         this.nav
           .querySelectorAll(".settings-nav-item")
           .forEach((el) => el.classList.remove("active"));
@@ -190,6 +195,23 @@ export class SettingsPanel {
     this.content.innerHTML = "";
     const section = this.sections.find((s) => s.id === this.activeSection);
     if (section) section.render(this.content, this.settings);
+  }
+
+  private static loadActiveSection(): string {
+    try {
+      const stored = localStorage.getItem(SettingsPanel.STORAGE_KEY);
+      return stored ?? "general";
+    } catch {
+      return "general";
+    }
+  }
+
+  private static saveActiveSection(id: string): void {
+    try {
+      localStorage.setItem(SettingsPanel.STORAGE_KEY, id);
+    } catch {
+      /* ignore — private browsing / storage full */
+    }
   }
 
   // ── Section renderers ──

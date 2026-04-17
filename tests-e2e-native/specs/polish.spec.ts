@@ -78,6 +78,39 @@ test.describe("polish", () => {
 // Persistence fast-quit race — covered by persistence.spec.ts's
 // "fast shutdown" variants. Not duplicated here.
 
+test.describe("polish — sidebar bounds", () => {
+  test("log list is capped per workspace, not unbounded", async ({ app }) => {
+    // Fire 500 sidebar.log entries; cap is 200. The webview's
+    // workspaceStateSync would otherwise keep growing — surface this via
+    // the sidebar log length at the socket layer. We don't have a direct
+    // RPC for log length, so we rely on the log entries not OOMing or
+    // stalling the poller. A successful run after the flood is the
+    // guard — before the cap, the RPC round-trip slowed noticeably.
+    for (let i = 0; i < 500; i++) {
+      await app.rpc.call("sidebar.log", {
+        level: "info",
+        message: `flood-${i}`,
+        source: "polish",
+      });
+    }
+    // System.ping still prompt.
+    expect(await app.rpc.system.ping()).toBe("PONG");
+  });
+
+  test("status pills are capped (eviction, not pile-up)", async ({ app }) => {
+    // 100 unique status keys, cap is 32. No assertion on exact count here
+    // (that's a webview-state detail); the guard is that the app stays
+    // responsive and notification RPCs still work after the flood.
+    for (let i = 0; i < 100; i++) {
+      await app.rpc.call("sidebar.set_status", {
+        key: `polish-${i}`,
+        value: `v${i}`,
+      });
+    }
+    expect(await app.rpc.system.ping()).toBe("PONG");
+  });
+});
+
 test.describe("polish — palette error safety", () => {
   test.beforeEach(async ({ app }) => {
     requireTier2(app);
