@@ -13,6 +13,26 @@
  */
 
 import { createIcon } from "./icons";
+import {
+  autoResize,
+  dispatch,
+  escapeHtml,
+  extractContent,
+  extractImageBlocks,
+  extractTextBlocks,
+  extractThinkingBlocks,
+  fmtK,
+  formatArgs,
+  type ImageAttachment,
+  mdLite,
+} from "./agent-panel-utils";
+import {
+  appendWelcome,
+  buildToolCallEl,
+  type ChatMessage,
+  createMsgEl,
+  type ToolCallState,
+} from "./agent-panel-messages";
 
 // ── Public interfaces ──
 
@@ -32,41 +52,6 @@ export interface AgentPanelCallbacks {
   onFocus: (surfaceId: string) => void;
   onGetModels: (agentId: string) => void;
   onGetState: (agentId: string) => void;
-}
-
-interface ImageAttachment {
-  type: "image";
-  data: string;
-  mimeType: string;
-  fileName?: string;
-}
-
-interface ChatMessage {
-  role: "user" | "assistant" | "system" | "tool" | "bash";
-  content: string;
-  thinking?: string;
-  toolName?: string;
-  isError?: boolean;
-  timestamp: number;
-  /** For bash messages */
-  command?: string;
-  exitCode?: number;
-  truncated?: boolean;
-  fullOutputPath?: string | null;
-  images?: ImageAttachment[];
-  toolArgs?: unknown;
-}
-
-interface ToolCallState {
-  id: string;
-  name: string;
-  args: string;
-  rawArgs?: unknown;
-  result?: string;
-  isError?: boolean;
-  isRunning: boolean;
-  collapsed: boolean;
-  startTime: number;
 }
 
 interface SlashCommand {
@@ -2118,7 +2103,7 @@ function renderAllMessages(view: AgentPaneView): void {
   }
 
   for (const [, tc] of view._state.toolCalls) {
-    messagesEl.appendChild(buildToolCallEl(view, tc));
+    messagesEl.appendChild(buildToolCallEl(view.agentId, tc));
   }
 
   if (autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -2212,7 +2197,7 @@ function renderToolCall(view: AgentPaneView, tcId: string): void {
   const existing = messagesEl.querySelector(
     `[data-tcid="${tcId}"]`,
   ) as HTMLDivElement | null;
-  const el = buildToolCallEl(view, tc);
+  const el = buildToolCallEl(view.agentId, tc);
   if (existing) {
     existing.replaceWith(el);
   } else {
@@ -2222,73 +2207,6 @@ function renderToolCall(view: AgentPaneView, tcId: string): void {
   }
 
   if (view._state.autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function buildToolCallEl(
-  view: AgentPaneView,
-  tc: ToolCallState,
-): HTMLDivElement {
-  const el = document.createElement("div");
-  el.className = `agent-tc${tc.isRunning ? " agent-tc-run" : ""}${tc.isError ? " agent-tc-err" : " agent-tc-ok"}`;
-  el.dataset["tcid"] = tc.id;
-
-  const hdr = document.createElement("div");
-  hdr.className = "agent-tc-hdr";
-
-  const icon = document.createElement("span");
-  icon.className = "agent-tc-icon";
-  icon.textContent = tc.isRunning ? "\u27f3" : tc.isError ? "\u2717" : "\u2713";
-  hdr.appendChild(icon);
-
-  const name = document.createElement("span");
-  name.className = "agent-tc-name";
-  name.textContent = tc.name;
-  hdr.appendChild(name);
-
-  if (tc.args) {
-    const args = document.createElement("span");
-    args.className = "agent-tc-args";
-    args.textContent =
-      tc.args.length > 80 ? tc.args.slice(0, 77) + "\u2026" : tc.args;
-    args.title = tc.args;
-    hdr.appendChild(args);
-  }
-
-  if (!tc.isRunning) {
-    const elapsed = document.createElement("span");
-    elapsed.className = "agent-tc-elapsed";
-    elapsed.textContent = `${((Date.now() - tc.startTime) / 1000).toFixed(1)}s`;
-    hdr.appendChild(elapsed);
-  }
-
-  const toggle = document.createElement("button");
-  toggle.className = "agent-tc-toggle";
-  toggle.textContent = tc.collapsed ? "\u25b8" : "\u25be";
-  toggle.addEventListener("click", (e) => {
-    e.stopPropagation();
-    tc.collapsed = !tc.collapsed;
-    const body = el.querySelector(".agent-tc-body") as HTMLDivElement | null;
-    if (body) body.classList.toggle("agent-tc-body-hidden", tc.collapsed);
-    toggle.textContent = tc.collapsed ? "\u25b8" : "\u25be";
-  });
-  hdr.appendChild(toggle);
-
-  el.appendChild(hdr);
-
-  if (tc.result !== undefined) {
-    const body = document.createElement("pre");
-    body.className = `agent-tc-body${tc.collapsed ? " agent-tc-body-hidden" : ""}`;
-    if (tc.name === "Edit" || tc.name === "Write") {
-      body.innerHTML = highlightDiff(tc.result.slice(0, 4000));
-    } else {
-      body.textContent = tc.result.slice(0, 4000);
-    }
-    el.appendChild(body);
-  }
-
-  el.appendChild(buildToolActions(view.agentId, tc.rawArgs, tc.result));
-
-  return el;
 }
 
 function renderDropdowns(view: AgentPaneView): void {
@@ -3078,355 +2996,6 @@ function addSystemMessage(view: AgentPaneView, text: string): void {
     timestamp: Date.now(),
   });
   renderAllMessages(view);
-}
-
-function appendWelcome(parent: HTMLDivElement): void {
-  const el = document.createElement("div");
-  el.className = "agent-welcome";
-  el.innerHTML = `
-    <div class="agent-welcome-glyph">\u2726</div>
-    <div class="agent-welcome-title">Pi Agent</div>
-    <div class="agent-welcome-desc">AI coding assistant with full tool access, image prompts, session browsing, tree branching, and the HyperTerm Canvas skill.</div>
-    <div class="agent-welcome-shortcuts">
-      <div class="agent-welcome-shortcut"><kbd>/</kbd><span>Commands</span></div>
-      <div class="agent-welcome-shortcut"><kbd>Enter</kbd><span>Send</span></div>
-      <div class="agent-welcome-shortcut"><kbd>Ctrl+P</kbd><span>Model</span></div>
-      <div class="agent-welcome-shortcut"><kbd>Shift+Tab</kbd><span>Thinking</span></div>
-      <div class="agent-welcome-shortcut"><kbd>Alt+Enter</kbd><span>Follow-up</span></div>
-      <div class="agent-welcome-shortcut"><kbd>Paste</kbd><span>Image</span></div>
-      <div class="agent-welcome-shortcut"><kbd>Esc</kbd><span>Abort</span></div>
-    </div>
-    <div class="agent-welcome-actions">
-      <button class="agent-welcome-btn" data-cmd="/help">Show commands</button>
-      <button class="agent-welcome-btn" data-cmd="/session">Session info</button>
-      <button class="agent-welcome-btn" data-cmd="/resume">Resume</button>
-      <button class="agent-welcome-btn" data-cmd="/tree">Tree</button>
-    </div>
-  `;
-  parent.appendChild(el);
-
-  // Wire welcome action buttons
-  el.querySelectorAll(".agent-welcome-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const cmd = (btn as HTMLElement).dataset["cmd"];
-      if (cmd) {
-        const input = parent
-          .closest(".agent-body")
-          ?.querySelector(".agent-input") as HTMLTextAreaElement | null;
-        if (input) {
-          input.value = cmd;
-          input.dispatchEvent(new Event("input"));
-          input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
-        }
-      }
-    });
-  });
-}
-
-function createMsgEl(agentId: string, msg: ChatMessage): HTMLDivElement {
-  const el = document.createElement("div");
-  el.className = `agent-msg agent-msg-${msg.role}`;
-
-  // Timestamp
-  const time = document.createElement("span");
-  time.className = "agent-msg-time";
-  time.textContent = formatTime(msg.timestamp);
-
-  if (msg.role === "tool") {
-    const hdr = document.createElement("div");
-    hdr.className = `agent-tc-inline-hdr${msg.isError ? " agent-tc-inline-err" : ""}`;
-    hdr.textContent = `${msg.isError ? "\u2717" : "\u2713"} ${msg.toolName ?? "tool"}`;
-    hdr.appendChild(time);
-    el.appendChild(hdr);
-    if (msg.content) {
-      const body = document.createElement("pre");
-      body.className = "agent-tc-inline-body";
-      body.textContent = msg.content.slice(0, 2000);
-      el.appendChild(body);
-    }
-    el.appendChild(buildToolActions(agentId, msg.toolArgs, msg.content));
-    if (msg.images?.length) el.appendChild(buildImageGallery(msg.images));
-    return el;
-  }
-
-  if (msg.role === "bash") {
-    const hdr = document.createElement("div");
-    hdr.className = `agent-tc-inline-hdr${msg.exitCode !== 0 ? " agent-tc-inline-err" : ""}`;
-    hdr.innerHTML = `<span class="agent-bash-prompt">$</span> ${escapeHtml(msg.command ?? "bash")}`;
-    hdr.appendChild(time);
-    el.appendChild(hdr);
-    if (msg.content) {
-      const body = document.createElement("pre");
-      body.className = "agent-tc-inline-body";
-      body.textContent = msg.content.slice(0, 4000);
-      el.appendChild(body);
-    }
-    if (msg.truncated && msg.fullOutputPath) {
-      const note = document.createElement("div");
-      note.className = "agent-dialog-opt-desc";
-      note.textContent = `Full output saved to ${msg.fullOutputPath}`;
-      el.appendChild(note);
-    }
-    el.appendChild(
-      buildToolActions(
-        agentId,
-        { command: msg.command, fullOutputPath: msg.fullOutputPath },
-        msg.content,
-      ),
-    );
-    return el;
-  }
-
-  if (msg.thinking) {
-    const details = document.createElement("details");
-    details.className = "agent-think-block";
-    const summary = document.createElement("summary");
-    summary.innerHTML = `<span class="agent-think-icon">\u25c8</span> Thinking`;
-    details.appendChild(summary);
-    const body = document.createElement("div");
-    body.className = "agent-think-body";
-    body.textContent = msg.thinking;
-    details.appendChild(body);
-    el.appendChild(details);
-  }
-
-  if (msg.role === "user") {
-    el.appendChild(time);
-  }
-
-  if (msg.images?.length) {
-    el.appendChild(buildImageGallery(msg.images));
-  }
-
-  const content = document.createElement("div");
-  content.className = "agent-msg-content";
-  if (msg.role === "assistant") {
-    content.innerHTML = mdLite(msg.content);
-  } else if (msg.role === "system") {
-    content.innerHTML = `<pre class="agent-sys-pre">${escapeHtml(msg.content)}</pre>`;
-  } else {
-    content.textContent = msg.content;
-  }
-  el.appendChild(content);
-  return el;
-}
-
-function buildToolActions(
-  agentId: string,
-  args: unknown,
-  result?: string,
-): HTMLDivElement {
-  const row = document.createElement("div");
-  row.className = "agent-tool-actions";
-
-  const addBtn = (label: string, title: string, onClick: () => void) => {
-    const btn = document.createElement("button");
-    btn.className = "agent-tool-action-btn";
-    btn.textContent = label;
-    btn.title = title;
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      onClick();
-    });
-    row.appendChild(btn);
-  };
-
-  const parsed = parseToolArgs(args);
-  if (parsed.command) {
-    addBtn("Rerun", "Run this command again via pi bash", () => {
-      dispatch("ht-agent-bash", { agentId, command: parsed.command });
-    });
-    addBtn("Copy cmd", "Copy command", () => {
-      void navigator.clipboard.writeText(parsed.command ?? "");
-    });
-  }
-  if (parsed.path) {
-    addBtn("Copy path", "Copy affected path", () => {
-      void navigator.clipboard.writeText(parsed.path ?? "");
-    });
-  }
-  if (result) {
-    addBtn("Copy output", "Copy tool output", () => {
-      void navigator.clipboard.writeText(result);
-    });
-  }
-
-  row.classList.toggle("agent-tool-actions-empty", row.children.length === 0);
-  return row;
-}
-
-function buildImageGallery(images: ImageAttachment[]): HTMLDivElement {
-  const wrap = document.createElement("div");
-  wrap.className = "agent-image-gallery";
-  for (const img of images) {
-    const image = document.createElement("img");
-    image.className = "agent-image-thumb";
-    image.src = `data:${img.mimeType};base64,${img.data}`;
-    image.alt = img.fileName ?? img.mimeType;
-    wrap.appendChild(image);
-  }
-  return wrap;
-}
-
-function parseToolArgs(args: unknown): {
-  command?: string;
-  path?: string;
-  pattern?: string;
-  url?: string;
-  fullOutputPath?: string | null;
-} {
-  if (!args) return {};
-  if (typeof args === "object") {
-    const rec = args as Record<string, unknown>;
-    return {
-      command: rec["command"] as string | undefined,
-      path:
-        (rec["path"] as string | undefined) ??
-        (rec["file_path"] as string | undefined),
-      pattern: rec["pattern"] as string | undefined,
-      url: rec["url"] as string | undefined,
-      fullOutputPath: rec["fullOutputPath"] as string | null | undefined,
-    };
-  }
-  try {
-    return parseToolArgs(JSON.parse(String(args)));
-  } catch {
-    return {};
-  }
-}
-
-function formatArgs(args: unknown): string {
-  if (!args) return "";
-  try {
-    const s = typeof args === "string" ? args : JSON.stringify(args);
-    const parsed = JSON.parse(s);
-    if (parsed.command) return parsed.command;
-    if (parsed.path) return parsed.path;
-    if (parsed.file_path) return parsed.file_path;
-    if (parsed.pattern) return parsed.pattern;
-    return s.length > 120 ? s.slice(0, 117) + "\u2026" : s;
-  } catch {
-    return String(args).slice(0, 120);
-  }
-}
-
-function extractContent(content: unknown): string {
-  if (content == null) return "";
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return String(content);
-  return content
-    .map((c) => {
-      const rec = c as Record<string, unknown>;
-      if (typeof rec["text"] === "string") return rec["text"] as string;
-      if (typeof rec["thinking"] === "string") return rec["thinking"] as string;
-      return "";
-    })
-    .join("");
-}
-
-function extractTextBlocks(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return extractContent(content);
-  return content
-    .map((c) => {
-      const rec = c as Record<string, unknown>;
-      return rec["type"] === "text" ? ((rec["text"] as string) ?? "") : "";
-    })
-    .join("");
-}
-
-function extractThinkingBlocks(content: unknown): string | undefined {
-  if (!Array.isArray(content)) return undefined;
-  const text = content
-    .map((c) => {
-      const rec = c as Record<string, unknown>;
-      return rec["type"] === "thinking"
-        ? ((rec["thinking"] as string) ?? "")
-        : "";
-    })
-    .join("");
-  return text || undefined;
-}
-
-function extractImageBlocks(content: unknown): ImageAttachment[] | undefined {
-  if (!Array.isArray(content)) return undefined;
-  const images = content
-    .map((c) => {
-      const rec = c as Record<string, unknown>;
-      if (rec["type"] !== "image") return null;
-      return {
-        type: "image" as const,
-        data: (rec["data"] as string) ?? "",
-        mimeType: (rec["mimeType"] as string) ?? "image/png",
-      };
-    })
-    .filter((img): img is ImageAttachment => Boolean(img?.data));
-  return images.length ? images : undefined;
-}
-
-function autoResize(el: HTMLTextAreaElement): void {
-  el.style.height = "auto";
-  el.style.height = Math.min(el.scrollHeight, 180) + "px";
-}
-
-function mdLite(text: string): string {
-  let h = escapeHtml(text);
-  // Code blocks with language labels
-  h = h.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
-    const langLabel = lang
-      ? `<span class="agent-code-lang">${lang}</span>`
-      : "";
-    return `<div class="agent-code-wrap">${langLabel}<pre class="agent-code"><code>${code.trim()}</code></pre></div>`;
-  });
-  h = h.replace(/`([^`]+)`/g, '<code class="agent-ic">$1</code>');
-  h = h.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  // Headers
-  h = h.replace(/^### (.+)$/gm, '<div class="agent-md-h3">$1</div>');
-  h = h.replace(/^## (.+)$/gm, '<div class="agent-md-h2">$1</div>');
-  h = h.replace(/^# (.+)$/gm, '<div class="agent-md-h1">$1</div>');
-  // Lists
-  h = h.replace(/^- (.+)$/gm, '<div class="agent-md-li">\u2022 $1</div>');
-  h = h.replace(/^\d+\. (.+)$/gm, '<div class="agent-md-li">$&</div>');
-  h = h.replace(/\n/g, "<br>");
-  return h;
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function highlightDiff(text: string): string {
-  return text
-    .split("\n")
-    .map((line) => {
-      if (line.startsWith("+") && !line.startsWith("+++")) {
-        return `<span class="agent-diff-add">${escapeHtml(line)}</span>`;
-      }
-      if (line.startsWith("-") && !line.startsWith("---")) {
-        return `<span class="agent-diff-del">${escapeHtml(line)}</span>`;
-      }
-      return escapeHtml(line);
-    })
-    .join("\n");
-}
-
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-}
-
-function fmtK(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-function dispatch(event: string, detail: Record<string, unknown>): void {
-  window.dispatchEvent(new CustomEvent(event, { detail }));
 }
 
 const SEND_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>`;
