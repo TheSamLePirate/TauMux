@@ -868,6 +868,17 @@ export class SurfaceManager {
     this.searchBar.toggle();
   }
 
+  /** Tier 2 test introspection: is the find-in-page bar visible? */
+  isSearchBarVisible(): boolean {
+    return this.searchBar.isVisible;
+  }
+
+  /** Tier 2 test introspection: id of the currently-active workspace, or null
+   *  if no workspace exists yet (pre-first-resize state). */
+  getActiveWorkspaceId(): string | null {
+    return this.activeWorkspace()?.id ?? null;
+  }
+
   readScreen(surfaceId: string, lines?: number, scrollback?: boolean): string {
     const view = this.surfaces.get(surfaceId);
     if (!view || !view.term) return "";

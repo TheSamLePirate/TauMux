@@ -36,6 +36,10 @@ export interface AppInfo {
   windowId?: number;
   /** Seconds since fixture created this app. */
   uptimeMs: () => number;
+  /** True when the Tier 2 `__test.*` RPC family is live on this instance.
+   *  Tests that use `app.rpc.ui.*` must check this first, or gate themselves
+   *  via `requireTier2(app)`. */
+  tier2Ready: boolean;
 }
 
 export interface AppFixture {
@@ -152,6 +156,10 @@ async function spawnApp(workerIndex: number): Promise<SpawnResult> {
     HT_CONFIG_DIR: configDir,
     HOME: join(configDir, "home"),
     HT_E2E: "1",
+    // Tier 2: enable the `__test.*` RPC family. The bun-side gate also
+    // requires `HT_CONFIG_DIR` to be under /tmp; `allocateConfigDir` above
+    // lives under `os.tmpdir()` which satisfies that check on macOS/Linux.
+    HYPERTERM_TEST_MODE: "1",
     HYPERTERM_WEB_PORT: String(webMirrorPort),
     LOG_RPC: "0",
   });
@@ -278,12 +286,40 @@ async function spawnApp(workerIndex: number): Promise<SpawnResult> {
     throw enriched;
   }
 
+  // Tier 2 readiness: the webview flips `window.__htTestMode__` on the
+  // `enableTestMode` RPC, which bun sends on the first resize. Poll the
+  // webview state RPC until it responds with a non-null object — that's
+  // proof the router is live and the handlers are wired.
+  let tier2Ready = false;
+  try {
+    await waitFor(
+      async () => {
+        try {
+          const state = await rpc.ui.readState();
+          return state && typeof state === "object" ? true : undefined;
+        } catch {
+          return undefined;
+        }
+      },
+      {
+        timeoutMs: 10_000,
+        intervalMs: 200,
+        message: "Tier 2 handlers never became ready",
+      },
+    );
+    tier2Ready = true;
+  } catch {
+    // Non-fatal — tests that don't use `ui.*` still run. Fixture surface
+    // carries `tier2Ready` so those tests can gate themselves.
+  }
+
   const info: AppInfo = {
     configDir,
     socketPath,
     webMirrorPort,
     firstSurfaceId,
     uptimeMs: () => Date.now() - startMs,
+    tier2Ready,
   };
   return { child, info, rpc, getAppPid: () => appPid };
 }
@@ -450,3 +486,14 @@ export const test = base.extend<{ app: AppFixture }>({
 });
 
 export { expect };
+
+/** Skip the current test if Tier 2 isn't available. Useful at the top of
+ *  specs that drive keyboard shortcuts, read palette state, etc. */
+export function requireTier2(app: AppFixture): void {
+  if (!app.info.tier2Ready) {
+    throw new Error(
+      "Tier 2 (__test.*) is not ready on this app instance — " +
+        "check HYPERTERM_TEST_MODE and HT_CONFIG_DIR gating",
+    );
+  }
+}

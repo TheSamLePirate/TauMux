@@ -112,6 +112,12 @@ jobs:
         # the @playwright/test runner binaries that ship with the package.
         run: bunx playwright install-deps || true
 
+      - name: Audit Tier 2 test hooks (dual-fact gate)
+        # Verifies static + runtime gating for the `__test.*` RPC family
+        # (doc/native-e2e-plan.md §6.5). Any regression here means the
+        # test hooks could become reachable without HYPERTERM_TEST_MODE.
+        run: bun run audit:test-hooks
+
       - name: Run native Playwright tests
         env:
           CI: "1"

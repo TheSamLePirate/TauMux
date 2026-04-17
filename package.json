@@ -21,6 +21,7 @@
     "test:native": "playwright test --config=playwright-native.config.ts",
     "test:native:packaged": "HT_E2E_APP=packaged playwright test --config=playwright-native.config.ts",
     "test:native:design-review": "playwright test --config=playwright-native.config.ts --grep @design-review",
+    "audit:test-hooks": "bun scripts/audit-test-hooks.ts",
     "test:all": "bun run test && bun run test:e2e",
     "typecheck": "tsc --noEmit"
   },

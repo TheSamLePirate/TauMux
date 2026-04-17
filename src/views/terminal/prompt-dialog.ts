@@ -121,3 +121,66 @@ export function closePromptDialog(): void {
   activeResolver = null;
   resolver?.(null);
 }
+
+/** Tier 2 test hook: inspect the currently-open prompt dialog. Returns null
+ *  when no dialog is visible. The shape mirrors `PromptDialogOptions` so
+ *  tests can assert on what the user would see. */
+export function readActivePromptDialog(): {
+  title: string;
+  message: string | null;
+  value: string;
+  placeholder: string;
+} | null {
+  if (!activeOverlay) return null;
+  const titleEl = activeOverlay.querySelector(".prompt-title");
+  const messageEl = activeOverlay.querySelector(".prompt-message");
+  const input = activeOverlay.querySelector(
+    ".prompt-input",
+  ) as HTMLInputElement | null;
+  return {
+    title: titleEl?.textContent ?? "",
+    message: messageEl?.textContent ?? null,
+    value: input?.value ?? "",
+    placeholder: input?.placeholder ?? "",
+  };
+}
+
+/** Tier 2 test hook: type a value into the active dialog and Enter-submit it.
+ *  Returns true if a dialog was submitted, false otherwise. Empty values
+ *  match the production behaviour — the dialog refuses to close. */
+export function submitActivePromptDialog(value: string): boolean {
+  if (!activeOverlay) return false;
+  const input = activeOverlay.querySelector(
+    ".prompt-input",
+  ) as HTMLInputElement | null;
+  if (!input) return false;
+  input.value = value;
+  input.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  return !activeOverlay; // if Enter cleared the dialog, it submitted
+}
+
+/** Tier 2 test hook: cancel the active dialog via Escape. */
+export function cancelActivePromptDialog(): boolean {
+  if (!activeOverlay) return false;
+  const input = activeOverlay.querySelector(
+    ".prompt-input",
+  ) as HTMLInputElement | null;
+  if (input) {
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  } else {
+    closePromptDialog();
+  }
+  return true;
+}

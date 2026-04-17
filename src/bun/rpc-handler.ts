@@ -13,6 +13,7 @@ import { registerSurface } from "./rpc-handlers/surface";
 import { registerSidebar } from "./rpc-handlers/sidebar";
 import { registerPane } from "./rpc-handlers/pane";
 import { registerPanel } from "./rpc-handlers/panel";
+import { registerTestHandlers } from "./rpc-handlers/__test";
 import {
   createNotificationStore,
   registerNotification,
@@ -40,6 +41,9 @@ export interface RpcHandlerOptions {
   panelRegistry?: PanelRegistry;
   /** Callback to trigger a graceful shutdown (wired to `system.shutdown`). */
   shutdown?: () => void;
+  /** Tier 2 gate. When true, `__test.*` handlers are registered; when false
+   *  they are stripped from the dispatch map entirely. */
+  testModeEnabled?: boolean;
 }
 
 export function createRpcHandler(
@@ -89,6 +93,7 @@ export function createRpcHandler(
     registerSidebar(deps),
     registerPane(deps),
     registerPanel(deps),
+    registerTestHandlers(deps, { enabled: options.testModeEnabled === true }),
     registerNotification(deps),
     registerAgent(deps),
     registerBrowserPage(deps),

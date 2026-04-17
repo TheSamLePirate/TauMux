@@ -353,6 +353,10 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       // Read screen response (webview → bun)
       readScreenResponse: { reqId: string; content: string };
 
+      // Generic webview → bun response, used by Tier 2 `__test.*` round-trips
+      // and any future read-style RPC. `result` is opaque JSON.
+      webviewResponse: { reqId: string; result: unknown };
+
       // Workspace state sync (webview → bun for socket API)
       workspaceStateSync: {
         workspaces: {
@@ -606,6 +610,11 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
 
       // Socket API dispatched actions (bun → webview)
       socketAction: { action: string; payload: Record<string, unknown> };
+
+      // Tier 2: bun tells the webview to enable its `__test.*` handler
+      // router. Only sent when the dual-fact runtime gate (env var +
+      // /tmp configDir) passes in bun. Production never sends this.
+      enableTestMode: { enabled: boolean };
 
       // ── Browser surface lifecycle (bun → webview) ──
       browserSurfaceCreated: {

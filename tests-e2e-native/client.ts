@@ -103,6 +103,44 @@ export interface PingVerbose {
   uptimeMs: number;
 }
 
+// ── Tier 2 types ──────────────────────────────────────────────────────────
+
+export interface WebviewState {
+  sidebarVisible: boolean;
+  paletteVisible: boolean;
+  paletteQuery: string;
+  settingsPanelVisible: boolean;
+  processManagerVisible: boolean;
+  searchBarVisible: boolean;
+  focusedSurfaceId: string | null;
+  activeSurfaceType: "terminal" | "browser" | "agent" | null;
+  activeWorkspaceId: string | null;
+  fontSize: number;
+}
+
+export interface PaletteCommandDTO {
+  id: string;
+  label: string;
+  category: string | null;
+  description: string | null;
+  shortcut: string | null;
+}
+
+export interface ActiveDialog {
+  title: string;
+  message: string | null;
+  value: string;
+  placeholder: string;
+}
+
+export interface KeydownParams {
+  key: string;
+  meta?: boolean;
+  shift?: boolean;
+  ctrl?: boolean;
+  alt?: boolean;
+}
+
 /** Typed surface for the socket RPC. Groups flat method names into namespaces
  *  so tests read naturally: `rpc.workspace.list()`, `rpc.surface.split({...})`.
  *  Every method maps 1:1 to a JSON-RPC method on the bun side.
@@ -182,6 +220,50 @@ export interface SocketRpc {
       body: string;
       surface_id?: string;
     }): Promise<"OK">;
+  };
+
+  /** Tier 2 webview-state + driver namespace. Every method routes through a
+   *  test-only webview IPC and is only available when the app was launched
+   *  with `HYPERTERM_TEST_MODE=1` + `HT_CONFIG_DIR` under `/tmp`. Calls made
+   *  without the gate succeed at the socket layer but fail at dispatch with
+   *  `Unknown method: __test.*`. */
+  ui: {
+    keydown(params: KeydownParams): Promise<{ ok: true }>;
+    dispatchEvent(params: {
+      type: string;
+      detail?: unknown;
+    }): Promise<{ ok: true } | { ok: false; reason: string }>;
+    readState(): Promise<WebviewState>;
+    readPaletteCommands(): Promise<PaletteCommandDTO[]>;
+    setPaletteQuery(
+      query: string,
+    ): Promise<{ ok: true; query: string } | { ok: false }>;
+    executePalette(): Promise<
+      { ok: true; id: string; label: string } | { ok: false }
+    >;
+    readDialog(): Promise<ActiveDialog | null>;
+    submitDialog(value: string): Promise<{ ok: boolean }>;
+    cancelDialog(): Promise<{ ok: boolean }>;
+    openRenameWorkspaceDialog(params: {
+      workspaceId: string;
+      name: string;
+    }): Promise<{ ok: true } | { ok: false; reason: string }>;
+    openRenameSurfaceDialog(params: {
+      surfaceId: string;
+      title: string;
+    }): Promise<{ ok: true } | { ok: false; reason: string }>;
+    readSettingsField(key: string): Promise<unknown>;
+    setSettingsField(key: string, value: unknown): Promise<{ ok: true }>;
+    openPalette(): Promise<{ ok: true }>;
+    openSettings(): Promise<{ ok: true }>;
+    toggleProcessManager(): Promise<{ ok: true }>;
+    toggleSidebar(): Promise<{ ok: true }>;
+    getWindowId(): Promise<number | null>;
+    getWindowBounds(): Promise<{
+      width: number;
+      height: number;
+      devicePixelRatio: number;
+    } | null>;
   };
 
   /** Escape hatch for methods not yet typed. Prefer the typed namespaces above. */
@@ -361,6 +443,64 @@ class RpcClient implements SocketRpc {
     clear: () => this.call<"OK">("notification.clear"),
     create: (params: { title: string; body: string; surface_id?: string }) =>
       this.call<"OK">("notification.create", params),
+  };
+
+  ui = {
+    keydown: (params: KeydownParams) =>
+      this.call<{ ok: true }>("__test.keydown", params),
+    dispatchEvent: (params: { type: string; detail?: unknown }) =>
+      this.call<{ ok: true } | { ok: false; reason: string }>(
+        "__test.dispatchEvent",
+        params as Record<string, unknown>,
+      ),
+    readState: () => this.call<WebviewState>("__test.readWebviewState"),
+    readPaletteCommands: () =>
+      this.call<PaletteCommandDTO[]>("__test.readPaletteCommands"),
+    setPaletteQuery: (query: string) =>
+      this.call<{ ok: true; query: string } | { ok: false }>(
+        "__test.setPaletteQuery",
+        { query },
+      ),
+    executePalette: () =>
+      this.call<{ ok: true; id: string; label: string } | { ok: false }>(
+        "__test.executePalette",
+      ),
+    readDialog: () => this.call<ActiveDialog | null>("__test.readDialog"),
+    submitDialog: (value: string) =>
+      this.call<{ ok: boolean }>("__test.submitDialog", { value }),
+    cancelDialog: () => this.call<{ ok: boolean }>("__test.cancelDialog"),
+    openRenameWorkspaceDialog: (params: {
+      workspaceId: string;
+      name: string;
+    }) =>
+      this.call<{ ok: true } | { ok: false; reason: string }>(
+        "__test.openRenameWorkspaceDialog",
+        params,
+      ),
+    openRenameSurfaceDialog: (params: { surfaceId: string; title: string }) =>
+      this.call<{ ok: true } | { ok: false; reason: string }>(
+        "__test.openRenameSurfaceDialog",
+        params,
+      ),
+    readSettingsField: (key: string) =>
+      this.call<unknown>("__test.readSettingsField", { key }),
+    setSettingsField: (key: string, value: unknown) =>
+      this.call<{ ok: true }>("__test.setSettingsField", {
+        key,
+        value: value as Record<string, unknown>[string],
+      }),
+    openPalette: () => this.call<{ ok: true }>("__test.openPalette"),
+    openSettings: () => this.call<{ ok: true }>("__test.openSettings"),
+    toggleProcessManager: () =>
+      this.call<{ ok: true }>("__test.toggleProcessManager"),
+    toggleSidebar: () => this.call<{ ok: true }>("__test.toggleSidebar"),
+    getWindowId: () => this.call<number | null>("__test.getWindowId"),
+    getWindowBounds: () =>
+      this.call<{
+        width: number;
+        height: number;
+        devicePixelRatio: number;
+      } | null>("__test.getWindowBounds"),
   };
 }
 

@@ -20,6 +20,7 @@ import { showToast } from "./toast";
 import { registerAgentEvents } from "./agent-events";
 import { registerBrowserEvents } from "./browser-events";
 import { createSocketActionDispatcher } from "./socket-actions";
+import { createTestActionRouter } from "./__test-handlers";
 import {
   type Binding,
   dispatchKeyboardEvent,
@@ -170,6 +171,12 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
       },
       socketAction: (payload) => {
         handleSocketAction(payload.action, payload.payload);
+      },
+      enableTestMode: (payload) => {
+        // Tier 2 runtime gate. Bun flips this only under HYPERTERM_TEST_MODE=1
+        // + /tmp configDir (see src/bun/index.ts). The webview's test action
+        // router refuses to handle anything until this flag is true.
+        window.__htTestMode__ = payload.enabled === true;
       },
       // Note: browser navigation commands from socket API go through socketAction
       surfaceMetadata: (payload) => {
@@ -1490,7 +1497,31 @@ const dispatchSocketAction = createSocketActionDispatcher({
   },
 });
 
+// Tier 2 test router. No-op in production (window.__htTestMode__ is never
+// set). Consults the flag at dispatch time, so flipping it on/off at runtime
+// (via the `enableTestMode` message) takes effect immediately.
+const dispatchTestAction = createTestActionRouter({
+  surfaceManager,
+  palette,
+  settingsPanel,
+  processManagerPanel,
+  getCurrentSettings: () => currentSettings,
+  applySettings,
+  openCommandPalette,
+  openSettings,
+  toggleProcessManager,
+  toggleSidebar,
+  openRenameWorkspaceDialog: (id, name) => {
+    void promptRenameWorkspace(id, name);
+  },
+  openRenameSurfaceDialog: (id, title) => {
+    void promptRenameSurface(id, title);
+  },
+  rpc,
+});
+
 function handleSocketAction(action: string, payload: Record<string, unknown>) {
+  if (dispatchTestAction(action, payload)) return;
   dispatchSocketAction(action, payload);
 }
 

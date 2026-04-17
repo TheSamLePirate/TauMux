@@ -12,6 +12,7 @@ import {
   toCString,
 } from "../../node_modules/electrobun/dist-macos-arm64/api/bun/proc/native";
 import { fileURLToPath } from "node:url";
+import { tmpdir as osTmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   existsSync,
@@ -60,6 +61,24 @@ const configDir =
 const HT_E2E = process.env["HT_E2E"] === "1";
 if (HT_E2E) {
   console.log(`[e2e] HT_E2E=1 configDir=${configDir}`);
+}
+
+// Tier 2 test-mode gate (doc/native-e2e-plan.md §6.1). **Both facts must be
+// true** before the `__test.*` RPC family is exposed or the webview's test
+// router is enabled:
+//   1. `HYPERTERM_TEST_MODE=1` — explicit opt-in at launch.
+//   2. `HT_CONFIG_DIR` lives under the system's tmp dir — refuses to let a
+//      stray env var in a user shell expose these handlers against the real
+//      Application Support config.
+// Production builds never set either; even a leaked env-var alone fails
+// the path check, so the test surface stays unreachable.
+const HT_TEST_MODE =
+  process.env["HYPERTERM_TEST_MODE"] === "1" &&
+  typeof process.env["HT_CONFIG_DIR"] === "string" &&
+  (process.env["HT_CONFIG_DIR"]!.startsWith(osTmpdir()) ||
+    process.env["HT_CONFIG_DIR"]!.startsWith("/tmp/"));
+if (HT_TEST_MODE) {
+  console.log(`[e2e] Tier 2 test mode enabled (__test.* handlers exposed)`);
 }
 const settingsFile = join(configDir, "settings.json");
 const settingsManager = new SettingsManager(configDir, settingsFile);
@@ -323,6 +342,12 @@ const bunMessageHandlers = {
       app.initialResizeReceived = true;
       // Send settings now that the webview is ready
       rpc.send("restoreSettings", { settings: settingsManager.get() });
+      // Tier 2: flip the webview's test-mode flag before any test fixture
+      // tries to exercise a `__test.*` RPC. Under the dual-fact gate this
+      // is a no-op for production.
+      if (HT_TEST_MODE) {
+        rpc.send("enableTestMode", { enabled: true });
+      }
       // Re-send the web-mirror status — the boot-time send at module
       // load happens before the webview has registered RPC handlers,
       // so the sidebar dot was stuck on "Offline" (its CSS default)
@@ -413,6 +438,16 @@ const bunMessageHandlers = {
     if (resolve) {
       pendingReads.delete(payload.reqId);
       resolve(payload.content);
+    }
+  },
+  webviewResponse: (payload) => {
+    // Generic webview → bun reply used by Tier 2 `__test.*` round-trips and
+    // any future read-style RPC. Shape: `{ reqId, result }` where result is
+    // opaque JSON. `readScreenResponse` stays separate for back-compat.
+    const resolve = pendingReads.get(payload.reqId);
+    if (resolve) {
+      pendingReads.delete(payload.reqId);
+      resolve(payload.result);
     }
   },
   workspaceStateSync: (payload) => {
@@ -1503,16 +1538,19 @@ function dispatch(action: string, payload: Record<string, unknown>) {
 
 // Webview round-trip: send a socketAction with a reqId and wait for the
 // matching response message. Used for readScreen today; kept generic so new
-// read-style APIs (panel.list, settings introspection, …) can reuse the same
-// plumbing without inventing a second pending map.
-const pendingReads = new Map<string, (value: string) => void>();
+// read-style APIs (panel.list, Tier 2 `__test.*`, …) can reuse the same
+// plumbing without inventing a second pending map. The result is unknown
+// because webviewResponse carries arbitrary JSON — readScreenResponse
+// always resolves to a string for back-compat.
+
+const pendingReads = new Map<string, (value: any) => void>();
 
 async function requestWebview(
   method: string,
   params: Record<string, unknown>,
 ): Promise<unknown> {
   const reqId = `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  return new Promise<string>((resolve) => {
+  return new Promise<unknown>((resolve) => {
     pendingReads.set(reqId, resolve);
     rpc.send("socketAction", {
       action: method,
@@ -1521,7 +1559,10 @@ async function requestWebview(
     setTimeout(() => {
       if (pendingReads.has(reqId)) {
         pendingReads.delete(reqId);
-        resolve("");
+        // `readScreen` callers expect "" on timeout; every other method
+        // treats `null` as "no response". Use null here and let the
+        // surface.read_text handler coerce, if needed.
+        resolve(method === "readScreen" ? "" : null);
       }
     }, 3000);
   });
@@ -1540,6 +1581,7 @@ const socketHandler = createRpcHandler(
   {
     panelRegistry,
     shutdown: () => gracefulShutdown(),
+    testModeEnabled: HT_TEST_MODE,
   },
 );
 const socketPath = join(configDir, "hyperterm.sock");

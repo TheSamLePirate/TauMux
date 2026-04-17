@@ -153,6 +153,38 @@ export class CommandPalette {
     return this.visible;
   }
 
+  /** Introspection used by the Tier 2 `__test.readPaletteCommands` RPC.
+   *  Returns the current filtered (visible) command list in render order —
+   *  empty when the palette is closed. Safe to call at any time. */
+  getFilteredCommands(): PaletteCommand[] {
+    return [...this.filtered];
+  }
+
+  /** Current input text, for tests that want to assert on the search query
+   *  state after typing or clearing. */
+  getCurrentQuery(): string {
+    return this.input.value;
+  }
+
+  /** Execute the currently highlighted command (or a specific index). Drives
+   *  Tier 2 `__test.executePalette` — tests can exercise the palette's
+   *  "type to filter, Enter to execute" flow without synthesising Enter
+   *  events through KeyboardEvent, which proved racy in headless webview. */
+  executeSelected(): PaletteCommand | null {
+    const cmd = this.filtered[this.selectedIndex];
+    if (!cmd) return null;
+    this.execute(cmd);
+    return cmd;
+  }
+
+  /** Set the filter query programmatically. Keeps behaviour consistent with
+   *  a real user typing: re-filters and re-renders. */
+  setQuery(query: string): void {
+    this.input.value = query;
+    // `filter`/`render` are private; call them via the same path input uses.
+    this.input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
   private execute(cmd: PaletteCommand): void {
     this.remember(cmd.id);
     this.hide();
