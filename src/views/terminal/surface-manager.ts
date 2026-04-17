@@ -20,7 +20,7 @@ import type {
   SurfaceContextMenuRequest,
   SurfaceMetadata,
 } from "../../shared/types";
-import { WORKSPACE_COLORS } from "../../shared/workspace-colors";
+import { createWorkspaceRecord } from "./workspace-factory";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
 import {
   type AgentPaneView,
@@ -97,7 +97,7 @@ interface SurfaceView {
   title: string;
 }
 
-interface Workspace {
+export interface Workspace {
   id: string;
   layout: PaneLayout;
   surfaceIds: Set<string>;
@@ -216,47 +216,55 @@ export class SurfaceManager {
     return this.sidebar.isVisible();
   }
 
-  /** Add a surface as a new workspace. */
-  addSurface(surfaceId: string, title: string): void {
-    const view = this.createSurfaceView(surfaceId, title);
+  /** Shared tail of every `addXxxSurface` method: register the view,
+   *  build a workspace record, switch to it, schedule the initial
+   *  layout pass with a type-appropriate focus callback. */
+  private addNewWorkspace(
+    surfaceId: string,
+    name: string,
+    view: SurfaceView,
+    onReady: () => void,
+  ): void {
     this.surfaces.set(surfaceId, view);
-
-    const ws: Workspace = {
-      id: `ws:${++this.wsCounter}`,
-      layout: new PaneLayout(surfaceId),
-      surfaceIds: new Set([surfaceId]),
-      name: title,
-      color: WORKSPACE_COLORS[(this.wsCounter - 1) % WORKSPACE_COLORS.length],
-      status: new Map(),
-      progress: null,
-      logs: [],
-    };
+    const ws = createWorkspaceRecord({
+      surfaceId,
+      name,
+      counter: ++this.wsCounter,
+    });
     this.workspaces.push(ws);
     this.switchToWorkspace(this.workspaces.length - 1);
     this.updateSidebar();
+    this.scheduleLayoutForNewSurface(onReady);
+  }
 
-    this.scheduleLayoutForNewSurface(() => view.term?.focus());
+  /** Shared tail of every `addXxxSurfaceAsSplit` method: register the
+   *  view, split the active workspace's pane tree, focus the new pane. */
+  private addSurfaceAsSplitImpl(
+    surfaceId: string,
+    view: SurfaceView,
+    splitFrom: string,
+    direction: "horizontal" | "vertical",
+  ): void {
+    this.surfaces.set(surfaceId, view);
+    const ws = this.activeWorkspace();
+    if (!ws) return;
+    ws.layout.splitSurface(splitFrom, direction, surfaceId);
+    ws.surfaceIds.add(surfaceId);
+    this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+  }
+
+  /** Add a surface as a new workspace. */
+  addSurface(surfaceId: string, title: string): void {
+    const view = this.createSurfaceView(surfaceId, title);
+    this.addNewWorkspace(surfaceId, title, view, () => view.term?.focus());
   }
 
   /** Add a browser surface as a new workspace. */
   addBrowserSurface(surfaceId: string, url: string): void {
     const view = this.createBrowserSurfaceView(surfaceId, url);
-    this.surfaces.set(surfaceId, view);
-
-    const ws: Workspace = {
-      id: `ws:${++this.wsCounter}`,
-      layout: new PaneLayout(surfaceId),
-      surfaceIds: new Set([surfaceId]),
-      name: "Browser",
-      color: WORKSPACE_COLORS[(this.wsCounter - 1) % WORKSPACE_COLORS.length],
-      status: new Map(),
-      progress: null,
-      logs: [],
-    };
-    this.workspaces.push(ws);
-    this.switchToWorkspace(this.workspaces.length - 1);
-    this.updateSidebar();
-    this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+    this.addNewWorkspace(surfaceId, "Browser", view, () =>
+      this.focusSurface(surfaceId),
+    );
   }
 
   /** Add a browser surface as a split within the active workspace. */
@@ -267,15 +275,7 @@ export class SurfaceManager {
     direction: "horizontal" | "vertical",
   ): void {
     const view = this.createBrowserSurfaceView(surfaceId, url);
-    this.surfaces.set(surfaceId, view);
-
-    const ws = this.activeWorkspace();
-    if (!ws) return;
-
-    ws.layout.splitSurface(splitFrom, direction, surfaceId);
-    ws.surfaceIds.add(surfaceId);
-
-    this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+    this.addSurfaceAsSplitImpl(surfaceId, view, splitFrom, direction);
   }
 
   /** Remove a browser surface (same as removeSurface — shared logic). */
@@ -286,22 +286,9 @@ export class SurfaceManager {
   /** Add an agent surface as a new workspace. */
   addAgentSurface(surfaceId: string, agentId: string): void {
     const view = this.createAgentSurfaceView(surfaceId, agentId);
-    this.surfaces.set(surfaceId, view);
-
-    const ws: Workspace = {
-      id: `ws:${++this.wsCounter}`,
-      layout: new PaneLayout(surfaceId),
-      surfaceIds: new Set([surfaceId]),
-      name: "Pi Agent",
-      color: WORKSPACE_COLORS[(this.wsCounter - 1) % WORKSPACE_COLORS.length],
-      status: new Map(),
-      progress: null,
-      logs: [],
-    };
-    this.workspaces.push(ws);
-    this.switchToWorkspace(this.workspaces.length - 1);
-    this.updateSidebar();
-    this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+    this.addNewWorkspace(surfaceId, "Pi Agent", view, () =>
+      this.focusSurface(surfaceId),
+    );
   }
 
   /** Add an agent surface as a split within the active workspace. */
@@ -312,15 +299,7 @@ export class SurfaceManager {
     direction: "horizontal" | "vertical",
   ): void {
     const view = this.createAgentSurfaceView(surfaceId, agentId);
-    this.surfaces.set(surfaceId, view);
-
-    const ws = this.activeWorkspace();
-    if (!ws) return;
-
-    ws.layout.splitSurface(splitFrom, direction, surfaceId);
-    ws.surfaceIds.add(surfaceId);
-
-    this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+    this.addSurfaceAsSplitImpl(surfaceId, view, splitFrom, direction);
   }
 
   /** Remove an agent surface (same as removeSurface — shared logic). */
@@ -366,15 +345,7 @@ export class SurfaceManager {
     direction: "horizontal" | "vertical",
   ): void {
     const view = this.createSurfaceView(surfaceId, title);
-    this.surfaces.set(surfaceId, view);
-
-    const ws = this.activeWorkspace();
-    if (!ws) return;
-
-    ws.layout.splitSurface(splitFrom, direction, surfaceId);
-    ws.surfaceIds.add(surfaceId);
-
-    this.scheduleLayoutForNewSurface(() => this.focusSurface(surfaceId));
+    this.addSurfaceAsSplitImpl(surfaceId, view, splitFrom, direction);
   }
 
   restoreLayout(
