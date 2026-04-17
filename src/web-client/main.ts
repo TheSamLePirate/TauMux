@@ -21,6 +21,13 @@ import {
 import { ICONS } from "./icons";
 import { createPanelRendererRegistry } from "./panel-renderers";
 import { createProtocolDispatcher } from "./protocol-dispatcher";
+import { createLayoutView } from "./layout";
+import {
+  setupPanelDrag,
+  setupPanelMouse,
+  setupPanelResize,
+} from "./panel-interaction";
+import { createSidebarView } from "./sidebar";
 import { createTransport } from "./transport";
 
 declare const Terminal: any;
@@ -187,16 +194,34 @@ function boot() {
   }
   store.subscribe(() => scheduleRender());
 
+  const sidebarView = createSidebarView({
+    store,
+    sendMsg,
+    sidebarEl,
+    sidebarToggleBtn,
+    workspaceSelectEl: wsSelectEl,
+  });
+
+  const layoutView = createLayoutView({
+    container,
+    sidebarEl,
+    terms,
+    gap: GAP,
+    sidebarWidth: SIDEBAR_WIDTH,
+    toolbarHeight: TOOLBAR_HEIGHT,
+  });
+
   function render(state: AppState, prev: AppState) {
     setDotFromState(state);
     if (state.sidebarVisible !== prev.sidebarVisible)
-      applySidebarVisibility(state);
-    if (state.workspaces !== prev.workspaces) updateWorkspaceSelect(state);
+      sidebarView.applyVisibility(state);
+    if (state.workspaces !== prev.workspaces)
+      sidebarView.updateWorkspaceSelect(state);
     if (state.sidebar !== prev.sidebar || state.workspaces !== prev.workspaces)
-      renderSidebar(state);
+      sidebarView.render(state);
     reconcilePanes(state);
     reconcilePanels(state);
-    applyLayout(state);
+    layoutView.applyLayout(state);
     applyChips(state, prev);
     applyFullscreen(state, prev);
     applyGlow(state, prev);
@@ -464,273 +489,6 @@ function boot() {
   }
 
   // ------------------------------------------------------------------
-  // Sidebar
-  // ------------------------------------------------------------------
-
-  function applySidebarVisibility(state: AppState) {
-    sidebarEl.classList.toggle("collapsed", !state.sidebarVisible);
-    document.body.classList.toggle("sidebar-open", state.sidebarVisible);
-  }
-
-  function updateWorkspaceSelect(state: AppState) {
-    wsSelectEl.innerHTML = "";
-    for (const ws of state.workspaces) {
-      const opt = document.createElement("option");
-      opt.value = ws.id;
-      opt.textContent = ws.name || ws.id;
-      if (ws.id === state.activeWorkspaceId) opt.selected = true;
-      wsSelectEl.appendChild(opt);
-    }
-  }
-
-  function renderSidebar(state: AppState) {
-    const { workspaces, activeWorkspaceId, sidebar } = state;
-    let html = "";
-    html +=
-      '<div class="sb-section"><div class="sb-section-title">Workspaces</div>';
-    if (workspaces.length === 0) {
-      html += '<div class="sb-empty">No workspaces</div>';
-    } else {
-      workspaces.forEach((ws, i) => {
-        const active = ws.id === activeWorkspaceId;
-        const color = ws.color || "#89b4fa";
-        html += '<div class="sb-ws' + (active ? " active" : "") + '">';
-        html +=
-          '<div class="sb-ws-name"><span class="sb-ws-dot" style="background:' +
-          color +
-          '"></span>' +
-          escapeHtml(ws.name || "Workspace " + (i + 1)) +
-          "</div>";
-        const count = ws.surfaceIds?.length ?? 0;
-        html +=
-          '<div class="sb-ws-meta">' +
-          (active ? "Active" : "Standby") +
-          " \u00b7 " +
-          count +
-          " pane" +
-          (count !== 1 ? "s" : "") +
-          "</div>";
-        const st = sidebar.status[ws.id];
-        if (st) {
-          html += '<div class="sb-ws-pills">';
-          for (const k in st)
-            html +=
-              '<span class="sb-pill">' +
-              escapeHtml(k) +
-              ": " +
-              escapeHtml(st[k]!.value) +
-              "</span>";
-          html += "</div>";
-        }
-        const pr = sidebar.progress[ws.id];
-        if (pr) {
-          html +=
-            '<div class="sb-progress"><div class="sb-progress-bar" style="width:' +
-            Math.min(100, Math.max(0, pr.value)) +
-            '%"></div></div>';
-        }
-        html += "</div>";
-      });
-    }
-    html += "</div>";
-
-    if (sidebar.notifications.length > 0) {
-      html +=
-        '<div class="sb-section"><div class="sb-section-title">Notifications (' +
-        sidebar.notifications.length +
-        ')<button class="sb-section-clear" data-action="clear-notifs">' +
-        ICONS.close +
-        "</button></div>";
-      const notifs = sidebar.notifications.slice(-5).reverse();
-      for (const n of notifs) {
-        html += '<div class="sb-notif">';
-        html += '<div class="sb-notif-title">' + escapeHtml(n.title) + "</div>";
-        if (n.body)
-          html += '<div class="sb-notif-body">' + escapeHtml(n.body) + "</div>";
-        html += "</div>";
-      }
-      html += "</div>";
-    }
-    if (sidebar.logs.length > 0) {
-      html +=
-        '<div class="sb-section"><div class="sb-section-title">Logs (' +
-        sidebar.logs.length +
-        ')<button class="sb-section-clear" data-action="clear-logs">' +
-        ICONS.close +
-        "</button></div>";
-      const logs = sidebar.logs.slice(-10).reverse();
-      for (const l of logs) {
-        const cls =
-          l.level === "error" || l.level === "warning" || l.level === "success"
-            ? " " + l.level
-            : "";
-        html +=
-          '<div class="sb-log' + cls + '">' + escapeHtml(l.message) + "</div>";
-      }
-      html += "</div>";
-    }
-    sidebarEl.innerHTML = html;
-  }
-
-  sidebarToggleBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const next = !store.getState().sidebarVisible;
-    store.dispatch({ kind: "sidebar/visible", visible: next });
-    sendMsg("sidebarToggle", { visible: next });
-  });
-
-  sidebarEl.addEventListener("click", (e) => {
-    const target = e.target as HTMLElement;
-    const btn = target.closest("[data-action]") as HTMLElement | null;
-    if (!btn) return;
-    const action = btn.getAttribute("data-action");
-    if (action === "clear-notifs") {
-      store.dispatch({ kind: "notification/clear" });
-      sendMsg("clearNotifications", {});
-    } else if (action === "clear-logs") {
-      // Client-side only — logs are local state pushed from the server.
-      // Clearing just hides what's buffered; next server log re-populates.
-      store.dispatch({
-        kind: "sidebar/action",
-        action: "__clearLogs",
-        payload: {},
-      });
-    }
-  });
-
-  // ------------------------------------------------------------------
-  // Layout: computeRects + position panes
-  // ------------------------------------------------------------------
-
-  function computeRects(node: any, bounds: any): Record<string, any> {
-    const result: Record<string, any> = {};
-    computeNode(node, bounds, result);
-    return result;
-  }
-  function computeNode(node: any, bounds: any, result: Record<string, any>) {
-    if (!node) return;
-    if (node.type === "leaf") {
-      result[node.surfaceId] = bounds;
-      return;
-    }
-    const half = GAP / 2;
-    if (node.direction === "horizontal") {
-      const sx = bounds.x + bounds.w * node.ratio;
-      computeNode(
-        node.children[0],
-        { x: bounds.x, y: bounds.y, w: sx - bounds.x - half, h: bounds.h },
-        result,
-      );
-      computeNode(
-        node.children[1],
-        {
-          x: sx + half,
-          y: bounds.y,
-          w: bounds.x + bounds.w - sx - half,
-          h: bounds.h,
-        },
-        result,
-      );
-    } else {
-      const sy = bounds.y + bounds.h * node.ratio;
-      computeNode(
-        node.children[0],
-        { x: bounds.x, y: bounds.y, w: bounds.w, h: sy - bounds.y - half },
-        result,
-      );
-      computeNode(
-        node.children[1],
-        {
-          x: bounds.x,
-          y: sy + half,
-          w: bounds.w,
-          h: bounds.y + bounds.h - sy - half,
-        },
-        result,
-      );
-    }
-  }
-
-  function applyMirrorScale(state: AppState) {
-    const c = container as HTMLElement;
-    if (!state.nativeViewport) {
-      c.style.transform = "";
-      c.style.width = "";
-      c.style.height = "";
-      c.style.transformOrigin = "";
-      c.style.left = "";
-      c.style.top = "";
-      c.style.right = "0";
-      c.style.bottom = "0";
-      return;
-    }
-    const sidebarW = state.sidebarVisible
-      ? sidebarEl.offsetWidth || SIDEBAR_WIDTH
-      : 0;
-    const availW = document.documentElement.clientWidth - sidebarW;
-    const availH = document.documentElement.clientHeight - TOOLBAR_HEIGHT;
-    if (availW <= 0 || availH <= 0) return;
-    const scale = Math.min(
-      availW / state.nativeViewport.width,
-      availH / state.nativeViewport.height,
-    );
-    const scaledW = state.nativeViewport.width * scale;
-    const scaledH = state.nativeViewport.height * scale;
-    c.style.right = "auto";
-    c.style.bottom = "auto";
-    c.style.width = state.nativeViewport.width + "px";
-    c.style.height = state.nativeViewport.height + "px";
-    c.style.transformOrigin = "top left";
-    c.style.transform = "scale(" + scale + ")";
-    c.style.left = Math.round(sidebarW + (availW - scaledW) / 2) + "px";
-    c.style.top = Math.round(TOOLBAR_HEIGHT + (availH - scaledH) / 2) + "px";
-  }
-
-  function applyLayout(state: AppState) {
-    applyMirrorScale(state);
-    const ws = state.workspaces.find((w) => w.id === state.activeWorkspaceId);
-    if (!ws) return;
-    const cw =
-      state.nativeViewport?.width ?? (container as HTMLElement).offsetWidth;
-    const ch =
-      state.nativeViewport?.height ?? (container as HTMLElement).offsetHeight;
-    if (!cw || !ch) return;
-    const rects = computeRects(ws.layout, { x: 0, y: 0, w: cw, h: ch });
-    for (const sid in rects) {
-      const ref = terms[sid];
-      if (!ref) continue;
-      const r = rects[sid];
-      ref.el.style.left = Math.round(r.x) + "px";
-      ref.el.style.top = Math.round(r.y) + "px";
-      ref.el.style.width = Math.round(r.w) + "px";
-      ref.el.style.height = Math.round(r.h) + "px";
-      ref.el.classList.toggle("focused", sid === state.focusedSurfaceId);
-    }
-    scaleTerminals(state);
-  }
-
-  function scaleTerminals(state: AppState) {
-    if (!state.nativeViewport) return;
-    requestAnimationFrame(() => {
-      for (const sid in terms) {
-        const ref = terms[sid]!;
-        const xtermEl = ref.termEl.querySelector(".xterm") as HTMLElement;
-        if (!xtermEl) continue;
-        xtermEl.style.transform = "";
-        const cw = ref.termEl.clientWidth;
-        const ch = ref.termEl.clientHeight;
-        const screen = xtermEl.querySelector(".xterm-screen") as HTMLElement;
-        if (!screen || cw <= 0 || ch <= 0) continue;
-        const sw = screen.offsetWidth;
-        const sh = screen.offsetHeight;
-        if (sw <= 0 || sh <= 0) continue;
-        xtermEl.style.transformOrigin = "top left";
-        xtermEl.style.transform = "scale(" + cw / sw + "," + ch / sh + ")";
-      }
-    });
-  }
-
-  // ------------------------------------------------------------------
   // Fullscreen
   // ------------------------------------------------------------------
 
@@ -839,7 +597,7 @@ function boot() {
       dragH.className = "web-panel-drag";
       dragH.textContent = id;
       el.insertBefore(dragH, el.firstChild);
-      setupPanelDrag(el, dragH, id, ps.surfaceId);
+      setupPanelDrag(el, dragH, id, ps.surfaceId, sendMsg);
     }
     const contentEl = document.createElement("div");
     contentEl.className = "web-panel-content";
@@ -849,12 +607,12 @@ function boot() {
       const resizeH = document.createElement("div");
       resizeH.className = "web-panel-resize";
       el.appendChild(resizeH);
-      setupPanelResize(el, resizeH, id, ps.surfaceId);
+      setupPanelResize(el, resizeH, id, ps.surfaceId, sendMsg);
     }
     ref.termEl.appendChild(el);
     if (meta.interactive) {
       el.classList.add("interactive");
-      setupPanelMouse(contentEl, id, ps.surfaceId);
+      setupPanelMouse(contentEl, id, ps.surfaceId, sendMsg);
     }
     panelsDom[id] = { el, contentEl, panelId: id };
     if (meta.data !== undefined) contentEl.innerHTML = meta.data;
@@ -877,187 +635,6 @@ function boot() {
         });
       }
     }
-  }
-
-  function txy(e: any) {
-    const t = e.touches ? e.touches[0] || e.changedTouches[0] : e;
-    return t || e;
-  }
-
-  let lastMoveTime = 0;
-  function setupPanelMouse(
-    el: HTMLElement,
-    panelId: string,
-    surfaceId: string,
-  ) {
-    function sendXY(
-      evtName: string,
-      cx: number,
-      cy: number,
-      btn: number,
-      btns: number,
-    ) {
-      const rect = el.getBoundingClientRect();
-      sendMsg("panelMouseEvent", {
-        surfaceId,
-        id: panelId,
-        event: evtName,
-        x: Math.round(cx - rect.left),
-        y: Math.round(cy - rect.top),
-        button: btn,
-        buttons: btns,
-      });
-    }
-    el.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      sendXY("mousedown", e.clientX, e.clientY, e.button, e.buttons);
-    });
-    el.addEventListener("mouseup", (e) => {
-      e.stopPropagation();
-      sendXY("mouseup", e.clientX, e.clientY, e.button, 0);
-    });
-    el.addEventListener("click", (e) => {
-      e.stopPropagation();
-      sendXY("click", e.clientX, e.clientY, e.button, 0);
-    });
-    el.addEventListener("mousemove", (e) => {
-      const now = Date.now();
-      if (now - lastMoveTime < 16) return;
-      lastMoveTime = now;
-      sendXY("mousemove", e.clientX, e.clientY, 0, e.buttons);
-    });
-    el.addEventListener("mouseenter", (e) => {
-      sendXY("mouseenter", e.clientX, e.clientY, 0, e.buttons);
-    });
-    el.addEventListener("mouseleave", (e) => {
-      sendXY("mouseleave", e.clientX, e.clientY, 0, 0);
-    });
-    el.addEventListener(
-      "touchstart",
-      (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const t = e.touches[0];
-        if (t) sendXY("mousedown", t.clientX, t.clientY, 0, 1);
-        function onTouchMove(me: TouchEvent) {
-          me.preventDefault();
-          const mt = me.touches[0];
-          if (mt) sendXY("mousemove", mt.clientX, mt.clientY, 0, 1);
-        }
-        function onTouchEnd(me: TouchEvent) {
-          document.removeEventListener("touchmove", onTouchMove);
-          document.removeEventListener("touchend", onTouchEnd);
-          document.removeEventListener("touchcancel", onTouchEnd);
-          const ct = me.changedTouches[0];
-          if (ct) sendXY("mouseup", ct.clientX, ct.clientY, 0, 0);
-        }
-        document.addEventListener("touchmove", onTouchMove, { passive: false });
-        document.addEventListener("touchend", onTouchEnd);
-        document.addEventListener("touchcancel", onTouchEnd);
-      },
-      { passive: false },
-    );
-    el.addEventListener(
-      "wheel",
-      (e) => {
-        const rect = el.getBoundingClientRect();
-        sendMsg("panelMouseEvent", {
-          surfaceId,
-          id: panelId,
-          event: "wheel",
-          x: Math.round(e.clientX - rect.left),
-          y: Math.round(e.clientY - rect.top),
-          deltaX: Math.round(e.deltaX),
-          deltaY: Math.round(e.deltaY),
-          buttons: e.buttons,
-        });
-      },
-      { passive: true },
-    );
-  }
-
-  function setupPanelDrag(
-    el: HTMLElement,
-    handle: HTMLElement,
-    panelId: string,
-    surfaceId: string,
-  ) {
-    function startDrag(e: any) {
-      e.preventDefault();
-      e.stopPropagation();
-      const p = txy(e);
-      const startX = p.clientX;
-      const startY = p.clientY;
-      const startLeft = parseInt(el.style.left) || 0;
-      const startTop = parseInt(el.style.top) || 0;
-      function onMove(me: any) {
-        const mp = txy(me);
-        el.style.left = startLeft + mp.clientX - startX + "px";
-        el.style.top = startTop + mp.clientY - startY + "px";
-      }
-      function onUp() {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.removeEventListener("touchmove", onMove);
-        document.removeEventListener("touchend", onUp);
-        sendMsg("panelMouseEvent", {
-          surfaceId,
-          id: panelId,
-          event: "dragend",
-          x: parseInt(el.style.left) || 0,
-          y: parseInt(el.style.top) || 0,
-        });
-      }
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-      document.addEventListener("touchmove", onMove, { passive: false });
-      document.addEventListener("touchend", onUp);
-    }
-    handle.addEventListener("mousedown", startDrag);
-    handle.addEventListener("touchstart", startDrag, { passive: false });
-  }
-
-  function setupPanelResize(
-    el: HTMLElement,
-    handle: HTMLElement,
-    panelId: string,
-    surfaceId: string,
-  ) {
-    function startResize(e: any) {
-      e.preventDefault();
-      e.stopPropagation();
-      const p = txy(e);
-      const startX = p.clientX;
-      const startY = p.clientY;
-      const startW = el.offsetWidth;
-      const startH = el.offsetHeight;
-      function onMove(me: any) {
-        if (me.preventDefault) me.preventDefault();
-        const mp = txy(me);
-        el.style.width = Math.max(120, startW + mp.clientX - startX) + "px";
-        el.style.height = Math.max(72, startH + mp.clientY - startY) + "px";
-      }
-      function onUp() {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.removeEventListener("touchmove", onMove);
-        document.removeEventListener("touchend", onUp);
-        sendMsg("panelMouseEvent", {
-          surfaceId,
-          id: panelId,
-          event: "resize",
-          width: el.offsetWidth,
-          height: el.offsetHeight,
-        });
-      }
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-      document.addEventListener("touchmove", onMove, { passive: false });
-      document.addEventListener("touchend", onUp);
-    }
-    handle.addEventListener("mousedown", startResize);
-    handle.addEventListener("touchstart", startResize, { passive: false });
   }
 
   // ------------------------------------------------------------------
@@ -1106,8 +683,8 @@ function boot() {
     if (resizeTimer) clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       const s = store.getState();
-      if (!s.fullscreenSurfaceId) applyLayout(s);
-      scaleTerminals(s);
+      if (!s.fullscreenSurfaceId) layoutView.applyLayout(s);
+      layoutView.scaleTerminals(s);
     }, 100);
   });
 
@@ -1116,15 +693,6 @@ function boot() {
       store.dispatch({ kind: "fullscreen/exit" });
     }
   });
-
-  function escapeHtml(s: string): string {
-    return s
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
 
   transport.connect();
 }
