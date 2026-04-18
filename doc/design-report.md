@@ -117,6 +117,24 @@ The `snap(name, opts)` helpers write one JSONL entry per shot to
 - `file` + `line` — source location, linked in the detail modal so you
   can jump to the test that produced a shot.
 
+## Native test env overrides
+
+The native fixture seeds a throwaway `settings.json` before the app
+boots, so every shot is captured against a known visual baseline.
+
+- **Bloom is OFF by default.** The WebGL glow added by
+  `TerminalEffects` isn't pixel-deterministic run-to-run and produced
+  long tails of `over` diffs in the gate. Opt back in with
+  `HT_TEST_BLOOM=on bun run test:native` (or `test:native:bloom-on`)
+  when you specifically want to diff the bloom layer.
+- **Arbitrary settings**: `HT_TEST_SETTINGS_JSON='{"paneGap":8}' bun
+  run test:native` merges the JSON over `DEFAULT_SETTINGS` at boot.
+
+Seeding only happens on a fresh config dir. Persistence specs
+(`settings: … change persists`) call `spawnAppAt` with an existing
+config dir to exercise the real startup-load path, and those spawns
+deliberately bypass the seed.
+
 ## Suite contents
 
 ### `tests-e2e/design/` (web mirror, Chromium)

@@ -254,17 +254,21 @@ async function spawnApp(
   // Seed settings overrides from env vars before the app boots, so the
   // terminal paints its first frame already reflecting the override.
   // Current knobs:
-  //   HT_TEST_BLOOM=off            → bloomIntensity: 0 (deterministic pixels for the gate)
+  //   HT_TEST_BLOOM                → `off` (default) / `on` — bloom WebGL layer
   //   HT_TEST_SETTINGS_JSON=<json> → merged verbatim over DEFAULT_SETTINGS
+  //
+  // Bloom defaults to OFF because the WebGL glow it adds to the xterm
+  // glyphs varies run-to-run and produced a long tail of "over" diffs
+  // in the design-report gate. Opt back in with `HT_TEST_BLOOM=on`.
   //
   // Only seed on a fresh configDir. Persistence tests (e.g. settings-
   // survive-restart) call `spawnAppAt` with an existing configDir to
   // exercise the real startup-load path; overwriting settings.json
-  // there would mask real regressions and failed two tests when this
-  // ran unconditionally.
+  // there would mask real regressions.
   if (!opts.configDir) {
     const overrides: Record<string, unknown> = {};
-    if ((process.env["HT_TEST_BLOOM"] ?? "").toLowerCase() === "off") {
+    const bloomPref = (process.env["HT_TEST_BLOOM"] ?? "off").toLowerCase();
+    if (bloomPref !== "on") {
       overrides["bloomIntensity"] = 0;
     }
     const rawJson = process.env["HT_TEST_SETTINGS_JSON"];
