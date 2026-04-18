@@ -24,13 +24,19 @@ test.describe("@design demos: web mirror", () => {
   for (const demo of ACTIVE_DEMOS) {
     test(`demo-${demo.slug}`, async ({ serverCtx, page }, testInfo) => {
       test.setTimeout(45_000);
+      // Type + run the demo. The shell's cwd is $HOME, so `commandFor`
+      // expands to an absolute scripts/ path + absolute runner path.
+      // When the runner isn't on the HOST PATH (e.g. no python3
+      // installed), skip the test with a clear reason instead of
+      // snapping a "command not found" shot.
+      const command = commandFor(demo);
+      test.skip(
+        command === null,
+        `${demo.runner} is not on the host PATH — install it or remove the demo from the catalog`,
+      );
       await gotoAndSettle(page, serverCtx.baseURL);
       await page.locator(".pane").first().click();
-      // Type + run the demo. The shell's cwd is $HOME, so `commandFor`
-      // expands to an absolute scripts/ path. The fixture boots /bin/sh
-      // with sideband fds, so this still hits the full protocol path.
-      const command = commandFor(demo);
-      await page.keyboard.type(command, { delay: 0 });
+      await page.keyboard.type(command!, { delay: 0 });
       await page.keyboard.press("Enter");
       await page.waitForTimeout(demo.settleMs);
 

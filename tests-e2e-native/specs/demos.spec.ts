@@ -23,6 +23,10 @@ test.describe("@design-review demos", () => {
       if (!id) return;
 
       const command = commandFor(demo);
+      test.skip(
+        command === null,
+        `${demo.runner} is not on the host PATH — install it or remove the demo from the catalog`,
+      );
       await app.rpc.surface.send_text({
         surface_id: id,
         text: command + "\n",

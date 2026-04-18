@@ -11,6 +11,7 @@
  * scripts/demo_X.ts` would fail because the shell's cwd isn't the repo
  * root.
  */
+import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -54,14 +55,44 @@ function shellQuote(a: string): string {
   return `'${a.replace(/'/g, `'\\''`)}'`;
 }
 
+/** Resolve a runner to an absolute path using the HOST's PATH (the
+ *  shell running Playwright, not the Electrobun-spawned shell). The
+ *  native fixture allocates a throwaway `$HOME`, which breaks any
+ *  zshrc that resolves python / pyenv / Homebrew relative to `$HOME`.
+ *  Handing the shell an absolute path sidesteps the whole problem.
+ *
+ *  Returns null when the runner isn't on the host PATH — callers use
+ *  that to `test.skip()` with a clear message instead of snapping a
+ *  broken "command not found" screenshot. Cached per process. */
+const runnerCache = new Map<Runner, string | null>();
+export function resolveRunnerPath(runner: Runner): string | null {
+  if (runnerCache.has(runner)) return runnerCache.get(runner) ?? null;
+  try {
+    const out = execFileSync("/usr/bin/env", ["which", runner], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const resolved = out.length > 0 ? out : null;
+    runnerCache.set(runner, resolved);
+    return resolved;
+  } catch {
+    runnerCache.set(runner, null);
+    return null;
+  }
+}
+
 /** Build the shell command for a demo. Always `cd`s to the repo root
  *  first so demos see the same cwd the user has day-to-day (relative
- *  paths, git context, .env files, etc.). Extra args from `demo.args`
- *  are single-quoted so spaces in repo paths survive. */
-export function commandFor(demo: DemoEntry): string {
+ *  paths, git context, .env files, etc.). The runner is resolved to an
+ *  absolute path so the Electrobun-spawned shell (with a throwaway
+ *  `$HOME`) doesn't need `python3` / `bun` on its PATH. Returns null
+ *  when the runner isn't available — callers should skip the test. */
+export function commandFor(demo: DemoEntry): string | null {
+  const runnerPath = resolveRunnerPath(demo.runner);
+  if (!runnerPath) return null;
   const argStr = (demo.args ?? []).map(shellQuote).join(" ");
   const tail = argStr ? ` ${argStr}` : "";
-  return `cd ${shellQuote(REPO_ROOT)} && ${demo.runner} ${shellQuote(join(SCRIPTS_DIR, demo.file))}${tail}`;
+  return `cd ${shellQuote(REPO_ROOT)} && ${shellQuote(runnerPath)} ${shellQuote(join(SCRIPTS_DIR, demo.file))}${tail}`;
 }
 
 export const DEMOS: DemoEntry[] = [
