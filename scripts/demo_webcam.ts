@@ -271,6 +271,10 @@ const sendTimer = setInterval(() => {
       ht.sendMeta(meta);
       ht.sendData(frame);
       panelId = id;
+      // Close button on the panel → quit the script. Without this the
+      // script keeps streaming (and the panel would immediately reappear
+      // because the next frame re-creates it).
+      ht.onClose(id, () => shutdown("panel closed"));
     } else {
       ht.update(panelId, { data: frame, timeout: 30000 });
     }
@@ -304,17 +308,24 @@ function killFfmpeg(): void {
   }
 }
 
-process.on("SIGINT", () => {
+let shuttingDown = false;
+function shutdown(reason: string): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
   clearInterval(sendTimer);
   killFfmpeg();
   if (panelId) ht.clear(panelId);
-  console.log("\nWebcam stopped.");
+  console.log(`\nWebcam stopped (${reason}).`);
   process.exit(0);
-});
+}
 
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGHUP", () => shutdown("SIGHUP"));
 process.on("exit", killFfmpeg);
 
 ffmpeg.exited.then(() => {
+  if (shuttingDown) return;
   clearInterval(sendTimer);
   if (panelId) ht.clear(panelId);
 });
