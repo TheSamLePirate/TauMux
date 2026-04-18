@@ -470,7 +470,12 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   bgBase: THEME_PRESETS[0].bgBase,
   ansiColors: { ...THEME_PRESETS[0].ansiColors },
 
-  terminalBloom: true,
+  // Bloom defaults to OFF — it's a WebGL glow layer on top of xterm
+  // glyphs, beautiful but CPU/GPU-expensive and not deterministic for
+  // visual regression tests. Users can enable it from the Effects tab
+  // of Settings; `bloomIntensity` stays at a sensible starting value so
+  // re-enabling the toggle gives immediate visible effect.
+  terminalBloom: false,
   bloomIntensity: 1.0,
 
   webMirrorPort: 3000,
