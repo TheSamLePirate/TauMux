@@ -251,6 +251,47 @@ async function spawnApp(
       /* already exists — fine */
     }
   }
+  // Seed settings overrides from env vars before the app boots, so the
+  // terminal paints its first frame already reflecting the override.
+  // Current knobs:
+  //   HT_TEST_BLOOM=off            → bloomIntensity: 0 (deterministic pixels for the gate)
+  //   HT_TEST_SETTINGS_JSON=<json> → merged verbatim over DEFAULT_SETTINGS
+  //
+  // Only seed on a fresh configDir. Persistence tests (e.g. settings-
+  // survive-restart) call `spawnAppAt` with an existing configDir to
+  // exercise the real startup-load path; overwriting settings.json
+  // there would mask real regressions and failed two tests when this
+  // ran unconditionally.
+  if (!opts.configDir) {
+    const overrides: Record<string, unknown> = {};
+    if ((process.env["HT_TEST_BLOOM"] ?? "").toLowerCase() === "off") {
+      overrides["bloomIntensity"] = 0;
+    }
+    const rawJson = process.env["HT_TEST_SETTINGS_JSON"];
+    if (rawJson) {
+      try {
+        Object.assign(overrides, JSON.parse(rawJson));
+      } catch (err) {
+        console.warn(
+          `[e2e] HT_TEST_SETTINGS_JSON not valid JSON — ignored: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    if (Object.keys(overrides).length > 0) {
+      try {
+        const { mkdirSync: ensureDir, writeFileSync } = await import("node:fs");
+        ensureDir(configDir, { recursive: true });
+        writeFileSync(
+          join(configDir, "settings.json"),
+          JSON.stringify(overrides, null, 2),
+        );
+      } catch (err) {
+        console.warn(
+          `[e2e] settings seed failed (${err instanceof Error ? err.message : err}) — using app defaults`,
+        );
+      }
+    }
+  }
   const webMirrorPort = opts.webMirrorPort ?? (await pickFreePort());
   const startMs = Date.now();
 
