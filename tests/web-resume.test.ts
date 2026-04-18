@@ -92,15 +92,15 @@ describe("web resume flow", () => {
     expect(srv.sessionCount).toBe(1);
 
     // Emit some broadcasts, then drop the ws (simulating a network blip).
-    srv.sendNotification("a", "");
-    srv.sendNotification("b", "");
+    srv.sendNotification("id:a", "a", "");
+    srv.sendNotification("id:b", "b", "");
     await Bun.sleep(50);
     ws1.close();
     await Bun.sleep(30);
 
     // Emit more broadcasts while detached — these must stay buffered.
-    srv.sendNotification("c", "");
-    srv.sendNotification("d", "");
+    srv.sendNotification("id:c", "c", "");
+    srv.sendNotification("id:d", "d", "");
     await Bun.sleep(20);
 
     // Reconnect with resume.
@@ -146,7 +146,11 @@ describe("web resume flow", () => {
 
     // Overflow the cap so the session is marked truncated.
     for (let i = 0; i < 8; i++) {
-      srv.sendNotification(`overflow-${i}`, "x".repeat(200));
+      srv.sendNotification(
+        `id:overflow-${i}`,
+        `overflow-${i}`,
+        "x".repeat(200),
+      );
     }
 
     const resumeUrl = `ws://127.0.0.1:${TEST_PORT}/?resume=${encodeURIComponent(

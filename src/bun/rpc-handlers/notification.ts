@@ -79,7 +79,10 @@ export function registerNotification(
       const idx = notifications.list.findIndex((n) => n.id === id);
       if (idx === -1) return "OK";
       notifications.list.splice(idx, 1);
+      // Include the dismissed id so the bun→web bridge can broadcast
+      // a `notificationDismiss` envelope without having to diff lists.
       dispatch("notification", {
+        dismissed: id,
         notifications: notifications.list.map((x) => ({
           id: x.id,
           title: x.title,

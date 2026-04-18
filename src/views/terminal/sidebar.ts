@@ -74,6 +74,15 @@ export class Sidebar {
   /** Notification ids the user has acted on — click, dismiss, or the
    *  source surface gained focus. Glow suppresses while acknowledged. */
   private acknowledgedNotifications: Set<string> = new Set();
+  /** Diffable handles for the notification section — kept across renders
+   *  so that rows already in the DOM are reused instead of rebuilt.
+   *  Tearing them down and re-creating would restart the CSS glow
+   *  animation on every rerender; that made unrelated state changes
+   *  (e.g. a second notification arriving) visibly flicker the first
+   *  one's pulse back to frame zero. */
+  private notificationListEl: HTMLElement | null = null;
+  private notificationCountEl: HTMLElement | null = null;
+  private notificationItemEls: Map<string, HTMLElement> = new Map();
 
   constructor(container: HTMLElement, callbacks: SidebarCallbacks) {
     this.container = container;
@@ -429,16 +438,78 @@ export class Sidebar {
 
   private renderNotifications(): void {
     const notifications = this.notifications;
-    this.notificationsEl.innerHTML = "";
-    if (notifications.length === 0) return;
 
+    // Empty → tear the whole section down and drop our caches so the
+    // next render rebuilds a fresh shell.
+    if (notifications.length === 0) {
+      this.notificationsEl.innerHTML = "";
+      this.notificationListEl = null;
+      this.notificationCountEl = null;
+      this.notificationItemEls.clear();
+      return;
+    }
+
+    // Build the persistent shell (header + list container) on first
+    // use. Subsequent renders reuse these nodes — the header count gets
+    // updated in place, and each row is inserted/updated/removed
+    // individually so CSS animations on unchanged rows keep running.
+    if (!this.notificationListEl || !this.notificationCountEl) {
+      this.notificationsEl.innerHTML = "";
+      const { listEl, countEl } = this.buildNotificationShell();
+      this.notificationListEl = listEl;
+      this.notificationCountEl = countEl;
+    }
+
+    this.notificationCountEl.textContent = `Notifications (${notifications.length})`;
+
+    // Visible subset: newest 5, reversed so the top of the list is the
+    // most recent. Ids never change once assigned, so a simple
+    // map lookup is enough to reuse an existing row.
+    const visible = notifications.slice(-5).reverse();
+    const visibleIds = new Set(visible.map((n) => n.id));
+
+    // Drop rows that fell out of the visible window.
+    for (const [id, el] of [...this.notificationItemEls]) {
+      if (!visibleIds.has(id)) {
+        el.remove();
+        this.notificationItemEls.delete(id);
+      }
+    }
+
+    // Walk the desired order. `cursor` tracks the DOM node that the
+    // next still-existing item should sit before. New rows are
+    // prepended (inserted before `cursor`) so the most recent appears
+    // at the top; the cursor does not advance past them. Existing rows
+    // stay put — we only advance past them. Since the display order is
+    // strictly chronological (newer before older) and ids never change,
+    // this never produces reorderings.
+    let cursor: ChildNode | null = this.notificationListEl.firstChild;
+    for (const n of visible) {
+      const existing = this.notificationItemEls.get(n.id);
+      if (existing) {
+        this.updateNotificationItem(existing, n);
+        cursor = existing.nextSibling;
+      } else {
+        const el = this.buildNotificationItem(n);
+        this.notificationItemEls.set(n.id, el);
+        this.notificationListEl.insertBefore(el, cursor);
+      }
+    }
+  }
+
+  private buildNotificationShell(): {
+    listEl: HTMLElement;
+    countEl: HTMLElement;
+  } {
     const header = document.createElement("div");
     header.className = "sidebar-section-header";
     const title = document.createElement("span");
     title.className = "sidebar-section-title";
     title.append(createIcon("bell", "", 12));
-    title.append(`Notifications (${notifications.length})`);
+    const countEl = document.createElement("span");
+    title.append(countEl);
     header.appendChild(title);
+
     const clearBtn = document.createElement("button");
     clearBtn.className = "sidebar-section-clear";
     clearBtn.title = "Clear notifications";
@@ -450,71 +521,81 @@ export class Sidebar {
     header.appendChild(clearBtn);
     this.notificationsEl.appendChild(header);
 
-    const list = document.createElement("div");
-    list.className = "sidebar-section-list";
-    this.notificationsEl.appendChild(list);
+    const listEl = document.createElement("div");
+    listEl.className = "sidebar-section-list";
+    this.notificationsEl.appendChild(listEl);
 
-    for (const n of notifications.slice(-5).reverse()) {
-      const el = document.createElement("div");
-      el.className = "notification-item";
-      const hasSource =
-        typeof n.surfaceId === "string" && n.surfaceId.length > 0;
-      if (hasSource) el.classList.add("has-source");
-      if (!this.acknowledgedNotifications.has(n.id)) el.classList.add("glow");
-      el.title = hasSource
-        ? "Click to focus the pane that emitted this notification"
-        : "";
+    return { listEl, countEl };
+  }
 
-      const body = document.createElement("button");
-      body.type = "button";
-      body.className = "notification-body-btn";
-      body.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.acknowledgedNotifications.add(n.id);
-        el.classList.remove("glow");
-        if (!hasSource) return;
-        window.dispatchEvent(
-          new CustomEvent("ht-focus-notification-source", {
-            detail: { notificationId: n.id, surfaceId: n.surfaceId },
-          }),
-        );
-      });
+  private buildNotificationItem(n: NotificationInfo): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "notification-item";
+    const hasSource = typeof n.surfaceId === "string" && n.surfaceId.length > 0;
+    if (hasSource) el.classList.add("has-source");
+    if (!this.acknowledgedNotifications.has(n.id)) el.classList.add("glow");
+    el.title = hasSource
+      ? "Click to focus the pane that emitted this notification"
+      : "";
 
-      const titleEl = document.createElement("div");
-      titleEl.className = "notification-title";
-      titleEl.textContent = n.title;
-      body.appendChild(titleEl);
-      if (n.body) {
-        const msg = document.createElement("div");
-        msg.className = "notification-body";
-        msg.textContent = n.body;
-        body.appendChild(msg);
-      }
-      const time = document.createElement("div");
-      time.className = "notification-time";
-      time.textContent = new Date(n.time).toLocaleTimeString();
-      body.appendChild(time);
+    const body = document.createElement("button");
+    body.type = "button";
+    body.className = "notification-body-btn";
+    body.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.acknowledgedNotifications.add(n.id);
+      el.classList.remove("glow");
+      if (!hasSource) return;
+      window.dispatchEvent(
+        new CustomEvent("ht-focus-notification-source", {
+          detail: { notificationId: n.id, surfaceId: n.surfaceId },
+        }),
+      );
+    });
 
-      el.appendChild(body);
-
-      const dismissBtn = document.createElement("button");
-      dismissBtn.type = "button";
-      dismissBtn.className = "notification-dismiss";
-      dismissBtn.title = "Dismiss notification";
-      dismissBtn.setAttribute("aria-label", "Dismiss notification");
-      dismissBtn.append(createIcon("close", "", 10));
-      dismissBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        window.dispatchEvent(
-          new CustomEvent("ht-dismiss-notification", {
-            detail: { id: n.id },
-          }),
-        );
-      });
-      el.appendChild(dismissBtn);
-
-      list.appendChild(el);
+    const titleEl = document.createElement("div");
+    titleEl.className = "notification-title";
+    titleEl.textContent = n.title;
+    body.appendChild(titleEl);
+    if (n.body) {
+      const msg = document.createElement("div");
+      msg.className = "notification-body";
+      msg.textContent = n.body;
+      body.appendChild(msg);
     }
+    const time = document.createElement("div");
+    time.className = "notification-time";
+    time.textContent = new Date(n.time).toLocaleTimeString();
+    body.appendChild(time);
+
+    el.appendChild(body);
+
+    const dismissBtn = document.createElement("button");
+    dismissBtn.type = "button";
+    dismissBtn.className = "notification-dismiss";
+    dismissBtn.title = "Dismiss notification";
+    dismissBtn.setAttribute("aria-label", "Dismiss notification");
+    dismissBtn.append(createIcon("close", "", 10));
+    dismissBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent("ht-dismiss-notification", {
+          detail: { id: n.id },
+        }),
+      );
+    });
+    el.appendChild(dismissBtn);
+
+    return el;
+  }
+
+  private updateNotificationItem(el: HTMLElement, n: NotificationInfo): void {
+    // Glow state is the only thing that can change for an existing row
+    // (notifications themselves are immutable once created — the id
+    // namespace is unique per create). Toggling the class instead of
+    // rebuilding the node keeps the CSS animation running smoothly.
+    const shouldGlow = !this.acknowledgedNotifications.has(n.id);
+    el.classList.toggle("glow", shouldGlow);
   }
 
   setWebServerStatus(running: boolean, port: number, url?: string): void {

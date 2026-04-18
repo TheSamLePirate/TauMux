@@ -1515,16 +1515,24 @@ function dispatch(action: string, payload: Record<string, unknown>) {
       broadcastSurfaceRenamed(surfaceId, title);
     }
   } else if (action === "notification") {
-    // Broadcast notification to web clients
-    const notifications = payload["notifications"] as unknown[];
+    // Broadcast notification events to web clients. The dispatch
+    // payload discriminates on which kind of change happened:
+    //   - `latest`: a new notification was created
+    //   - `dismissed`: a single notification was removed by id
+    //   - `notifications: []`: the whole list was cleared
+    const notifications = payload["notifications"] as unknown[] | undefined;
     const latest = payload["latest"] as Record<string, unknown> | undefined;
+    const dismissed = payload["dismissed"] as string | undefined;
     if (latest) {
       app.webServer?.broadcast({
         type: "notification",
+        id: latest["id"] ?? "",
         surfaceId: latest["surfaceId"] ?? null,
         title: latest["title"] ?? "",
         body: latest["body"] ?? "",
       });
+    } else if (dismissed) {
+      app.webServer?.broadcast({ type: "notificationDismiss", id: dismissed });
     } else if (notifications && notifications.length === 0) {
       app.webServer?.broadcast({ type: "notificationClear" });
     }

@@ -188,3 +188,85 @@ describe("Sidebar notifications — glow lifecycle", () => {
     expect(events).toEqual([]);
   });
 });
+
+describe("Sidebar notifications — incremental DOM updates", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  test("existing notification elements are reused across rerenders", async () => {
+    const { sidebar, container } = await makeSidebar();
+    sidebar.setNotifications([seed({ id: "a", surfaceId: "surface:1" })]);
+    const firstA = container.querySelector(".notification-item") as HTMLElement;
+    expect(firstA).not.toBeNull();
+
+    // A second notification arrives; the existing one must be the
+    // SAME DOM node — not a rebuild — so its CSS glow animation keeps
+    // running from whatever frame it was on.
+    sidebar.setNotifications([
+      seed({ id: "a", surfaceId: "surface:1" }),
+      seed({ id: "b", surfaceId: "surface:2" }),
+    ]);
+    const items = container.querySelectorAll(".notification-item");
+    expect(items.length).toBe(2);
+
+    // The newest is at the top; `a` moves to index 1 but is the same
+    // element reference.
+    const nodeA = Array.from(items).find(
+      (el) => el.querySelector(".notification-title")?.textContent === "a",
+    );
+    expect(nodeA).toBe(firstA);
+  });
+
+  test("dismissed notifications remove their element without touching siblings", async () => {
+    const { sidebar, container } = await makeSidebar();
+    sidebar.setNotifications([
+      seed({ id: "a", surfaceId: "s1" }),
+      seed({ id: "b", surfaceId: "s2" }),
+      seed({ id: "c", surfaceId: "s3" }),
+    ]);
+    const before = Array.from(container.querySelectorAll(".notification-item"));
+    const nodeA = before.find(
+      (el) => el.querySelector(".notification-title")?.textContent === "a",
+    );
+    const nodeC = before.find(
+      (el) => el.querySelector(".notification-title")?.textContent === "c",
+    );
+
+    // Server dismissed `b` → we receive the reduced list.
+    sidebar.setNotifications([
+      seed({ id: "a", surfaceId: "s1" }),
+      seed({ id: "c", surfaceId: "s3" }),
+    ]);
+
+    const after = Array.from(container.querySelectorAll(".notification-item"));
+    expect(after.length).toBe(2);
+    // a and c are the same nodes as before — only b was evicted.
+    expect(after).toContain(nodeA as Element);
+    expect(after).toContain(nodeC as Element);
+  });
+
+  test("header count updates in place without rebuilding the header", async () => {
+    const { sidebar, container } = await makeSidebar();
+    sidebar.setNotifications([seed({ id: "a" })]);
+    const headerBefore = container.querySelector(".sidebar-section-header");
+    expect(headerBefore?.textContent).toContain("Notifications (1)");
+
+    sidebar.setNotifications([seed({ id: "a" }), seed({ id: "b" })]);
+    const headerAfter = container.querySelector(".sidebar-section-header");
+    // Same node, updated text.
+    expect(headerAfter).toBe(headerBefore);
+    expect(headerAfter?.textContent).toContain("Notifications (2)");
+  });
+
+  test("clearing to empty tears the shell down and rebuilds on next add", async () => {
+    const { sidebar, container } = await makeSidebar();
+    sidebar.setNotifications([seed({ id: "a" })]);
+    sidebar.setNotifications([]);
+    expect(container.querySelector(".sidebar-section-header")).toBeNull();
+
+    sidebar.setNotifications([seed({ id: "b" })]);
+    expect(container.querySelector(".sidebar-section-header")).not.toBeNull();
+    expect(container.querySelectorAll(".notification-item").length).toBe(1);
+  });
+});

@@ -160,6 +160,43 @@ describe("web-client store / reducer", () => {
     expect(state.glowingSurfaceIds).not.toContain("s1");
   });
 
+  test("notification/remove drops the matching entry only", () => {
+    let state = dispatchAll([
+      {
+        kind: "notification/add",
+        entry: { id: "n1", title: "a", body: "", surfaceId: "s1", at: 0 },
+      },
+      {
+        kind: "notification/add",
+        entry: { id: "n2", title: "b", body: "", surfaceId: "s2", at: 0 },
+      },
+      {
+        kind: "notification/add",
+        entry: { id: "n3", title: "c", body: "", surfaceId: "s3", at: 0 },
+      },
+    ]);
+    expect(state.sidebar.notifications.length).toBe(3);
+    state = reducer(state, { kind: "notification/remove", id: "n2" });
+    expect(state.sidebar.notifications.map((n) => n.id)).toEqual(["n1", "n3"]);
+    // Glow state is independent of the list — surfaces stay lit until
+    // focused, even after their notification row is dismissed.
+    expect(state.glowingSurfaceIds).toEqual(["s1", "s2", "s3"]);
+  });
+
+  test("notification/remove is a no-op for unknown id", () => {
+    const before = dispatchAll([
+      {
+        kind: "notification/add",
+        entry: { id: "n1", title: "a", body: "", surfaceId: "s1", at: 0 },
+      },
+    ]);
+    const after = reducer(before, {
+      kind: "notification/remove",
+      id: "nope",
+    });
+    expect(after).toBe(before);
+  });
+
   test("notification/clear wipes both notifications and glow", () => {
     let state = dispatchAll([
       {

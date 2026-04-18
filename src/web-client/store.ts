@@ -128,6 +128,7 @@ export type Action =
       payload: Record<string, unknown>;
     }
   | { kind: "notification/add"; entry: NotificationEntry }
+  | { kind: "notification/remove"; id: string }
   | { kind: "notification/clear" }
   | { kind: "glow/clear"; surfaceId?: string }
   | { kind: "panel/meta"; surfaceId: string; meta: SidebandContentMessage }
@@ -453,6 +454,16 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         sidebar: next,
         glowingSurfaceIds: glow.slice(-MAX_GLOWING),
+      };
+    }
+
+    case "notification/remove": {
+      const before = state.sidebar.notifications;
+      const after = before.filter((n) => n.id !== action.id);
+      if (after.length === before.length) return state;
+      return {
+        ...state,
+        sidebar: { ...state.sidebar, notifications: after },
       };
     }
 

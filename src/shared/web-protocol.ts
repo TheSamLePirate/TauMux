@@ -192,10 +192,18 @@ export interface PanelEventPayload {
 }
 
 export interface NotificationPayload {
+  /** Stable id — same across the snapshot store and any subsequent
+   *  `notificationDismiss` envelope so the client can match on it. */
+  id: string;
   title: string;
   body: string;
   surfaceId?: string;
   at: number;
+}
+
+export interface NotificationDismissPayload {
+  /** Notification id previously delivered via a `notification` envelope. */
+  id: string;
 }
 
 export interface SidebarActionPayload {
@@ -229,6 +237,7 @@ export type ServerMessage =
   | Envelope<"sidebandDataFailed", SidebandDataFailedPayload>
   | Envelope<"panelEvent", PanelEventPayload>
   | Envelope<"notification", NotificationPayload>
+  | Envelope<"notificationDismiss", NotificationDismissPayload>
   | Envelope<"notificationClear", Record<string, never>>
   | Envelope<"sidebarState", SidebarStatePayload>
   | Envelope<"sidebarAction", SidebarActionPayload>

@@ -633,15 +633,25 @@ export class WebServer {
     this.broadcastEnvelope("sidebandDataFailed", { surfaceId, id, reason });
   }
 
-  sendNotification(title: string, body: string, surfaceId?: string): void {
+  sendNotification(
+    id: string,
+    title: string,
+    body: string,
+    surfaceId?: string,
+  ): void {
     const at = Date.now();
-    this.store.addNotification({ title, body, surfaceId });
-    this.broadcastEnvelope("notification", { title, body, surfaceId, at });
+    this.store.addNotification({ id, at, title, body, surfaceId });
+    this.broadcastEnvelope("notification", { id, title, body, surfaceId, at });
   }
 
   sendNotificationClear(): void {
     this.store.clearNotifications();
     this.broadcastEnvelope("notificationClear", {});
+  }
+
+  sendNotificationDismiss(id: string): void {
+    this.store.dismissNotification(id);
+    this.broadcastEnvelope("notificationDismiss", { id });
   }
 
   sendSidebarState(visible: boolean): void {
@@ -725,6 +735,7 @@ export class WebServer {
         return;
       case "notification":
         this.sendNotification(
+          (payload["id"] as string) ?? "",
           (payload["title"] as string) ?? "",
           (payload["body"] as string) ?? "",
           payload["surfaceId"] as string | undefined,
@@ -732,6 +743,9 @@ export class WebServer {
         return;
       case "notificationClear":
         this.sendNotificationClear();
+        return;
+      case "notificationDismiss":
+        this.sendNotificationDismiss(payload["id"] as string);
         return;
       case "sidebarState":
         this.sendSidebarState(Boolean(payload["visible"]));

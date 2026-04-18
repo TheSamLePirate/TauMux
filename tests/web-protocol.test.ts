@@ -127,7 +127,7 @@ describe("web protocol v2", () => {
     const { surfaceId, server: srv } = startServer();
     const meta = makeMetadata({ cwd: "/home/alice" });
     srv.sendSurfaceMetadata(surfaceId, meta);
-    srv.sendNotification("Build failed", "tsc error on line 12");
+    srv.sendNotification("notif:1", "Build failed", "tsc error on line 12");
     srv.sendSidebarAction("log", {
       workspaceId: "ws",
       level: "warning",
@@ -162,9 +162,9 @@ describe("web protocol v2", () => {
     );
     await Bun.sleep(30);
     // Emit a handful of broadcasts; each should bump seq by one.
-    srv.sendNotification("n1", "");
-    srv.sendNotification("n2", "");
-    srv.sendNotification("n3", "");
+    srv.sendNotification("id:n1", "n1", "");
+    srv.sendNotification("id:n2", "n2", "");
+    srv.sendNotification("id:n3", "n3", "");
     srv.sendNotificationClear();
     await Bun.sleep(150);
 

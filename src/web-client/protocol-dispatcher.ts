@@ -116,7 +116,13 @@ export function createProtocolDispatcher(
         store.dispatch({
           kind: "notification/add",
           entry: {
-            id: `n:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`,
+            // Server-supplied stable id; enables matching a later
+            // `notificationDismiss` envelope to this entry. Falls back
+            // to a locally-minted id for older servers / reconnect
+            // snapshots that predate the id field.
+            id:
+              p.id ||
+              `n:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`,
             title: p.title || "",
             body: p.body || "",
             surfaceId: p.surfaceId,
@@ -126,6 +132,9 @@ export function createProtocolDispatcher(
         // Bun only emits "notification" on create (not on dismiss/clear
         // rebroadcasts), so this is the right place to fire the cue.
         playNotificationSound();
+        break;
+      case "notificationDismiss":
+        store.dispatch({ kind: "notification/remove", id: p.id });
         break;
       case "notificationClear":
         store.dispatch({ kind: "notification/clear" });

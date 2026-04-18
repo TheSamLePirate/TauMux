@@ -70,10 +70,15 @@ export class WebStateStore {
     this.panels[id] = { surfaceId, meta };
   }
 
-  addNotification(entry: Omit<NotificationEntry, "id" | "at">): void {
+  addNotification(
+    entry: Omit<NotificationEntry, "at"> & { at?: number },
+  ): void {
     const n: NotificationEntry = {
-      id: `n:${++this.notifCounter}`,
-      at: Date.now(),
+      // The RPC handler owns the stable id (`notif:N`) and passes it
+      // through to the web store + the protocol payload; fall back to
+      // a local counter if no id was provided (legacy callers/tests).
+      id: entry.id ?? `n:${++this.notifCounter}`,
+      at: entry.at ?? Date.now(),
       title: entry.title,
       body: entry.body,
       surfaceId: entry.surfaceId,
@@ -89,6 +94,11 @@ export class WebStateStore {
 
   clearNotifications(): void {
     this.notifications = [];
+  }
+
+  dismissNotification(id: string): void {
+    const idx = this.notifications.findIndex((n) => n.id === id);
+    if (idx !== -1) this.notifications.splice(idx, 1);
   }
 
   applySidebarAction(
