@@ -528,6 +528,18 @@ else
 fi
 ```
 
+### Recipe: Run the crazyShell Reviewer
+
+```bash
+# One-shot expert review report into code_reviews/
+bun run review:agent
+
+# Continuous polling review loop for new commits
+bun run review:agent:watch --poll-seconds=900
+```
+
+The repository-local reviewer is proposition-only: it inspects the repo with Hermes, consults `DEV_RULES.md` + `doc/`, and writes a dated markdown report with the reference commit into `code_reviews/`. See `doc/code-review-agent.md` for the report format and watch-loop behavior.
+
 ### Recipe: Watch a port and auto-open
 
 ```bash

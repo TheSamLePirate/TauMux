@@ -1,5 +1,10 @@
 # CLAUDE.md
 
+## Development Rules
+
+- Follow `DEV_RULES.md` for repository-wide coding and maintenance rules.
+- When something is modified, update the relevant tests, run the required verification, update the docs, and update any impacted skill/workflow documentation.
+
 ## Task Completion Requirements
 
 - All of `bun test` and `bun run typecheck` must pass before considering tasks completed.

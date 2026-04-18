@@ -537,12 +537,25 @@ bun test                   # unit + integration suite (666 tests across 44 files
 bun run test:e2e           # Playwright web-mirror e2e (43 tests)
 bun run test:all           # both
 bun run typecheck          # TypeScript check
+bun run review:agent       # run the crazyShell Reviewer once
+bun run review:agent:watch # continuously review new commits into code_reviews/
 bun run build:cli          # standalone ./build/ht-cli binary (for other Macs)
 bun run build:dev          # dev .app (no CLI injection yet — requires stable/canary)
 bun run build:stable       # stable .app + DMG + bundled ht at Contents/MacOS/ht
 ```
 
 A `postBuild` Electrobun hook (`scripts/post-build.ts`) compiles `bin/ht` targeting the build's arch and injects it into the inner bundle before tarring, so `Install 'ht' Command in PATH` works out of the box.
+
+### Automated code review reports
+
+The repository includes a proposition-only reviewer named `crazyShell Reviewer`. It runs Hermes against the repo in inspection mode and writes dated markdown reports to [`code_reviews/`](code_reviews/README.md), including the reference commit in both the filename and the report frontmatter.
+
+```bash
+bun run review:agent
+bun run review:agent:watch --poll-seconds=900
+```
+
+See [`doc/code-review-agent.md`](doc/code-review-agent.md) for the workflow and report format.
 
 ### Continuous integration
 
@@ -566,6 +579,7 @@ The `tests-e2e/` suite exercises the web mirror (HTTP + WebSocket + xterm.js ren
 - [`doc/system-webview-ui.md`](doc/system-webview-ui.md) — workspaces, panes, sidebar, process manager, keyboard UX
 - [`doc/system-process-metadata.md`](doc/system-process-metadata.md) — live process metadata: poller, parsers, diff, renderers, CLI
 - [`doc/system-browser-pane.md`](doc/system-browser-pane.md) — built-in browser pane: architecture, automation API, CLI, settings
+- [`doc/code-review-agent.md`](doc/code-review-agent.md) — crazyShell Reviewer workflow, outputs, watch loop
 - [`scripts/README_python.md`](scripts/README_python.md), [`scripts/README_typescript.md`](scripts/README_typescript.md) — client library reference
 
 ## Tech stack
