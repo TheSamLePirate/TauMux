@@ -19,7 +19,10 @@ import {
   type Store,
 } from "./store";
 import { ICONS } from "./icons";
-import { createPanelRendererRegistry } from "./panel-renderers";
+import {
+  createPanelRendererRegistry,
+  releasePanelBlobUrl,
+} from "./panel-renderers";
 import { createProtocolDispatcher } from "./protocol-dispatcher";
 import { createLayoutView } from "./layout";
 import {
@@ -139,6 +142,12 @@ function boot() {
     string,
     { el: HTMLElement; contentEl: HTMLElement; panelId: string }
   > = {};
+  // Binary sideband frames arrive synchronously from the WebSocket but
+  // DOM creation is deferred to rAF via the store subscription. If a
+  // frame arrives before `ensurePanelDom` has run for its id, buffer it
+  // here and flush once the DOM exists. Mirrors PanelManager.pendingData
+  // on the native side.
+  const pendingPanelData: Record<string, Uint8Array> = {};
 
   // ------------------------------------------------------------------
   // Transport + protocol dispatch
@@ -539,9 +548,18 @@ function boot() {
     // Remove DOM panels whose state entry is gone.
     for (const id in panelsDom) {
       if (!state.panels[id]) {
+        // Revoke any blob URL tied to this panel (image / canvas2d
+        // renderers). Without this, every webcam frame's blob stays
+        // reachable until the page unloads.
+        releasePanelBlobUrl(panelsDom[id]!.contentEl);
         panelsDom[id]!.el.remove();
         delete panelsDom[id];
       }
+    }
+    // Drop buffered binary frames for panels that never materialized
+    // (e.g. meta cleared or failed before rAF ran).
+    for (const id in pendingPanelData) {
+      if (!state.panels[id]) delete pendingPanelData[id];
     }
     // Create / update panels from state.
     for (const id in state.panels) {
@@ -617,6 +635,13 @@ function boot() {
     panelsDom[id] = { el, contentEl, panelId: id };
     if (meta.data !== undefined) contentEl.innerHTML = meta.data;
 
+    // Flush any binary frame that arrived before this DOM was created.
+    const pending = pendingPanelData[id];
+    if (pending) {
+      delete pendingPanelData[id];
+      renderPanelData(id, pending, true);
+    }
+
     // Inform the script of the terminal pixel size for interactive panels
     // when we're not scaling to a native viewport.
     if (!store.getState().nativeViewport) {
@@ -646,9 +671,13 @@ function boot() {
   function renderPanelData(panelId: string, data: unknown, isBinary: boolean) {
     const state = store.getState();
     const ps = state.panels[panelId];
-    if (!ps) return;
     const dom = panelsDom[panelId];
-    if (!dom) return;
+    if (!ps || !dom) {
+      // DOM not created yet (rAF hasn't fired since the meta envelope
+      // arrived). Stash bytes and let ensurePanelDom flush them.
+      if (isBinary) pendingPanelData[panelId] = data as Uint8Array;
+      return;
+    }
     const renderer = panelRenderers.get(ps.meta.type);
     if (renderer)
       renderer(

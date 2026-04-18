@@ -483,13 +483,21 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       const existing = state.panels[id];
       if (action.meta.type === "update" && existing) {
+        // Preserve the original content kind (html/svg/image/…) and id.
+        // Otherwise the "update" type clobbers the renderer key and every
+        // subsequent binary frame for this panel becomes unrenderable.
         return {
           ...state,
           panels: {
             ...state.panels,
             [id]: {
               ...existing,
-              meta: { ...existing.meta, ...action.meta },
+              meta: {
+                ...existing.meta,
+                ...action.meta,
+                type: existing.meta.type,
+                id: existing.meta.id,
+              },
             },
           },
         };

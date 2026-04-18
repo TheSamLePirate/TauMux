@@ -25,7 +25,7 @@ This document is in two parts:
 | M9 | Client resize proposals via ResizeObserver + FitAddon (opt-in) | ✅ done |
 | M10 | Docs refresh | ✅ done |
 
-Tests: 666 passing across 44 files (bun test) + 43 Playwright e2e (bun run test:e2e). Typecheck + lint clean.
+Tests: 672 passing across 45 files (bun test) + 43 Playwright e2e (bun run test:e2e). Typecheck + lint clean.
 
 **New files** (at M10 close). `src/bun/web/{asset-loader,connection,page,server,state-store}.ts`, `src/shared/web-protocol.ts`, `src/shared/web-theme-tokens.css`, `src/web-client/{main,store,icons}.ts`, `src/web-client/client.css`, `scripts/build-web-client.ts`, `tests/{web-protocol,web-resume,web-coalescer,web-auth,web-client-store,session-history}.test.ts`.
 
@@ -33,6 +33,53 @@ Tests: 666 passing across 44 files (bun test) + 43 Playwright e2e (bun run test:
 `src/web-client/{transport,protocol-dispatcher,panel-renderers,sidebar,layout,panel-interaction}.ts`, each paired with a focused test file. `SidebandMetaMessage` and `PanelEvent` became discriminated unions in `src/shared/types.ts`, narrowed at the wire boundary so flush ops can't leak into the render path. The Electrobun message handlers in `src/bun/index.ts` are now gated by `satisfies BunMessageHandlers` for compile-time coverage.
 
 **Legacy.** `src/bun/web-server.ts` is now a 4-line re-export shim so existing imports keep working. The old 1.5k-line blob is gone.
+
+**Post-M10 sideband-render fixes** (web-mirror panel pipeline). Three
+bugs that only surfaced under live sideband traffic from
+`demo_gitdiff`, `demo_gitgraph`, and `demo_webcam`:
+
+- **Binary frame arriving before the panel DOM exists.** The text
+  `sidebandMeta` envelope dispatched through the store schedules DOM
+  creation via `requestAnimationFrame`, but the binary `sidebandData`
+  frame is processed synchronously in the same microtask flush and
+  hits `renderPanelData` before `reconcilePanels` ever runs — so
+  `panelsDom[id]` is undefined and the payload was dropped.
+  `src/web-client/main.ts` now carries a `pendingPanelData: Record<
+  id, Uint8Array>` buffer (mirror of `PanelManager.pendingData` on
+  the native side); late-arriving frames are stashed and flushed in
+  `ensurePanelDom` after the DOM exists. `reconcilePanels` drops
+  buffered entries for panels that got cleared before rAF fired,
+  matching item 11 in §1.3 ("binary/JSON frame race") which was
+  latent until fast polling demos hit the path.
+- **`type: "update"` clobbering the renderer key.** Reducer and
+  server state-store merged update metas with `{ ...existing, ...msg }`,
+  which overwrote `meta.type` from the original content kind (e.g.
+  `"image"`) to `"update"`. The renderer registry is keyed by type,
+  so every subsequent binary frame for the panel silently did
+  nothing. Fixed in `src/web-client/store.ts` and
+  `src/bun/web/state-store.ts` by preserving `existing.meta.type`
+  and `existing.meta.id` across the merge. The latter matters for
+  snapshots sent to fresh clients.
+- **Image/canvas2d blob constructed from the wrong bytes.**
+  `renderImage` and `renderCanvas2d` built Blobs from
+  `bytes.buffer as ArrayBuffer`. For binary frames `bytes` is a
+  `subarray(4 + headerLen)` of the WebSocket `ArrayBuffer`, so
+  `.buffer` referred to the full frame including the 4-byte length
+  prefix and the JSON header — the resulting Blob was prepended with
+  garbage and never decoded as an image. Switched to
+  `new Blob([bytes as Uint8Array<ArrayBuffer>], { type })` in
+  `src/web-client/panel-renderers.ts`; Blob constructor respects
+  `byteOffset` / `byteLength` when given a typed-array view.
+- **Blob URL accumulation.** The webcam demo pushes ~30 fps, so
+  without revocation each run leaks ~1800 blob URLs/minute.
+  `panel-renderers.ts` now tracks per-contentEl blob URLs in a
+  `WeakMap` and revokes the previous URL on each new frame; a new
+  `releasePanelBlobUrl` helper is called from `main.ts`
+  `reconcilePanels` when a panel DOM is torn down.
+
+Tests: `tests/web-client-store.test.ts` updated to assert the
+preserved content type (the old test was asserting the buggy
+behaviour while its comment described the correct one).
 
 ---
 

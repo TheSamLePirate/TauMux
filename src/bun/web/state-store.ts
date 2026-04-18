@@ -49,9 +49,17 @@ export class WebStateStore {
     }
     const existing = this.panels[id];
     if (meta.type === "update" && existing) {
+      // Preserve the original content kind so snapshots handed to new web
+      // clients carry `html`/`svg`/… — not the `update` sentinel, which
+      // isn't a renderer key on the client side.
       this.panels[id] = {
         surfaceId: existing.surfaceId,
-        meta: { ...existing.meta, ...meta },
+        meta: {
+          ...existing.meta,
+          ...meta,
+          type: existing.meta.type,
+          id: existing.meta.id,
+        },
       };
       return;
     }

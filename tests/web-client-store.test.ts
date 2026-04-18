@@ -233,8 +233,10 @@ describe("web-client store / reducer", () => {
       meta: { id: "p1", type: "update", x: 99 },
     });
     expect(state.panels["p1"]!.meta.x).toBe(99);
-    // The original type is preserved on update.
-    expect(state.panels["p1"]!.meta.type).toBe("update");
+    // The original content type survives an "update" meta — otherwise
+    // the renderer key flips to "update" and subsequent binary frames
+    // can't be routed to a registered renderer.
+    expect(state.panels["p1"]!.meta.type).toBe("image");
 
     state = reducer(state, {
       kind: "panel/meta",

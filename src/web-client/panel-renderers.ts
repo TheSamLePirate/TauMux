@@ -49,14 +49,42 @@ const IMAGE_MIME_BY_FORMAT: Record<string, string> = {
   gif: "image/gif",
 };
 
+// Blob URLs created for a panel's content element. At ~30 fps the webcam
+// demo burns through ~1800 URLs/minute; without explicit revocation the
+// browser holds onto the backing blobs until the page unloads. Tracked
+// per contentEl so the main boot closure can revoke on panel teardown.
+const panelBlobUrls = new WeakMap<HTMLElement, string>();
+
+function swapPanelBlobUrl(el: HTMLElement, next: string): void {
+  const prev = panelBlobUrls.get(el);
+  panelBlobUrls.set(el, next);
+  if (prev) URL.revokeObjectURL(prev);
+}
+
+/** Revoke the blob URL currently associated with a panel's content
+ *  element. Safe to call on panels that never created one. */
+export function releasePanelBlobUrl(el: HTMLElement): void {
+  const prev = panelBlobUrls.get(el);
+  if (prev) {
+    URL.revokeObjectURL(prev);
+    panelBlobUrls.delete(el);
+  }
+}
+
 /** Replace (or update) a blob-URL image inside `contentEl`. Covers
  *  `<meta type="image" format="png|jpeg|…">` + binary bytes. */
 export const renderImage: PanelRenderer = (contentEl, data, meta, isBinary) => {
   const format = (meta["format"] as string | undefined) ?? "png";
   const mime = IMAGE_MIME_BY_FORMAT[format] ?? "image/png";
   const bytes = decodeB64(data, isBinary);
-  const blob = new Blob([bytes.buffer as ArrayBuffer], { type: mime });
+  // Pass the typed-array view, not `bytes.buffer` — for binary frames the
+  // underlying ArrayBuffer is the full WebSocket frame (size prefix +
+  // JSON header + payload), and `subarray` only narrows the view, not the
+  // buffer. Blob([TypedArray]) respects byteOffset/byteLength; Blob
+  // ([ArrayBuffer]) does not.
+  const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mime });
   const url = URL.createObjectURL(blob);
+  swapPanelBlobUrl(contentEl, url);
   const img = contentEl.querySelector("img") as HTMLImageElement | null;
   if (img) {
     img.src = url;
@@ -89,7 +117,11 @@ export const renderCanvas2d: PanelRenderer = (
     contentEl.innerHTML = "";
     contentEl.appendChild(canvas);
   }
-  const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "image/png" });
+  // Same reasoning as renderImage: feed the TypedArray view, not the
+  // underlying ArrayBuffer.
+  const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], {
+    type: "image/png",
+  });
   void createImageBitmap(blob).then((bitmap) => {
     if (canvas!.width !== bitmap.width) canvas!.width = bitmap.width;
     if (canvas!.height !== bitmap.height) canvas!.height = bitmap.height;
