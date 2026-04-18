@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { basename, join } from "node:path";
 import type { AppInfo } from "./fixtures";
 import type { SocketRpc } from "./client";
 
@@ -115,16 +115,40 @@ export interface IndexEntry {
   path: string;
   state?: Record<string, unknown>;
   annotate?: Record<string, unknown>;
+  /** Visible terminal buffer (ANSI-stripped) for the focused surface at
+   *  the time of the snap. The report renders it below the PNG. */
+  terminal?: string;
 }
 
 export function writeIndexEntry(entry: IndexEntry): void {
-  const indexDir = join(process.cwd(), "test-results");
-  if (!existsSync(indexDir)) mkdirSync(indexDir, { recursive: true });
-  const indexPath = join(indexDir, INDEX_FILE_RELATIVE);
+  // Persistent stage dir sits outside `test-results/` so Playwright
+  // doesn't wipe it between suite runs (e.g. web → native).
+  const stageDir = join(process.cwd(), ".design-artifacts");
+  const stageShots = join(stageDir, "shots/native");
+  if (!existsSync(stageShots)) mkdirSync(stageShots, { recursive: true });
+
+  // Copy the PNG out of testInfo.outputDir into the stage so the report
+  // builder can still find it after Playwright's next startup cleanup.
+  let persistedPath = entry.path;
+  if (entry.path && existsSync(entry.path) && entry.path.endsWith(".png")) {
+    const safe = `${entry.spec.replace(/\W+/g, "_")}-${entry.testSlug}-${entry.step}.png`;
+    const dest = join(stageShots, safe);
+    try {
+      copyFileSync(entry.path, dest);
+      persistedPath = dest;
+    } catch {
+      /* fall through — keep the original path */
+    }
+  }
+
+  const indexPath = join(stageDir, INDEX_FILE_RELATIVE);
+  if (!existsSync(stageDir)) mkdirSync(stageDir, { recursive: true });
   const line =
     JSON.stringify({
       timestamp: new Date().toISOString(),
+      suite: "native",
       ...entry,
+      path: persistedPath,
     }) + "\n";
   try {
     appendFileSync(indexPath, line);
@@ -132,3 +156,5 @@ export function writeIndexEntry(entry: IndexEntry): void {
     /* best-effort */
   }
 }
+
+void basename;

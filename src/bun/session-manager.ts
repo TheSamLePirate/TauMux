@@ -64,6 +64,10 @@ export class SessionManager {
   private surfaces = new Map<string, Surface>();
   private counter = 0;
   private shell: string;
+  /** Extra args passed to the shell alongside the hardcoded `-l`. Tests use
+   *  this to append `-f` (zsh) or `--norc` (bash) so slow rc files don't
+   *  fight a settle timeout. */
+  private extraShellArgs: string[] = [];
 
   // Callbacks — wired by index.ts to send to webview via RPC
   onStdout: ((surfaceId: string, data: string) => void) | null = null;
@@ -80,8 +84,9 @@ export class SessionManager {
   /** Fires when the PTY exits, before the surface is removed. */
   onSurfaceExit: ((surfaceId: string, exitCode: number) => void) | null = null;
 
-  constructor(shell?: string) {
+  constructor(shell?: string, extraShellArgs: string[] = []) {
     this.shell = resolveShell(shell);
+    this.extraShellArgs = [...extraShellArgs];
   }
 
   /** Update the shell used for new surfaces. Does not affect existing PTYs.
@@ -161,7 +166,7 @@ export class SessionManager {
     try {
       pty.spawn({
         shell: this.shell,
-        args: ["-l"],
+        args: ["-l", ...this.extraShellArgs],
         cols,
         rows,
         cwd: surfaceCwd,

@@ -4,6 +4,7 @@
 
 - All of `bun test` and `bun run typecheck` must pass before considering tasks completed.
 - Run `bun start` to verify the app launches and the terminal works after UI changes.
+- For visual work, `bun run report:design:web` (fast) or `bun run test:full-suite` (web + native) regenerate `test-results/design-report/index.html`. Baseline via `bun run baseline:design`. Full workflow in `doc/design-report.md`.
 
 ## Project Snapshot
 

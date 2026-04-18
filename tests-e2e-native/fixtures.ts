@@ -572,6 +572,33 @@ export const test = base.extend<{ app: AppFixture }>({
               /* best-effort */
             }
           }
+          // Capture the visible terminal buffer for the focused surface
+          // (or the first one if unknown). The report renders this under
+          // each shot so reviewers can see the PTY text alongside the
+          // panel overlay without opening the PNG full-size.
+          let terminal = "";
+          try {
+            const focusedSurfaceId =
+              (tier2State?.["focusedSurfaceId"] as string | null | undefined) ??
+              surfaces[0]?.id;
+            if (focusedSurfaceId) {
+              const raw = await rpc.surface.read_text({
+                surface_id: focusedSurfaceId,
+                lines: 120,
+              });
+              const stripped = (raw ?? "")
+                // Strip ANSI CSI escapes so the report doesn't render garbage.
+                .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+                .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+                .replace(/\r/g, "")
+                .replace(/\n{3,}/g, "\n\n")
+                .trimEnd();
+              terminal =
+                stripped.length > 4000 ? stripped.slice(-4000) : stripped;
+            }
+          } catch {
+            /* best-effort */
+          }
           writeIndexEntry({
             spec,
             test: testInfo.title,
@@ -585,6 +612,7 @@ export const test = base.extend<{ app: AppFixture }>({
               ...(tier2State ?? {}),
             },
             annotate,
+            terminal,
           });
         } catch {
           /* index is best-effort; never fail a test because of it */

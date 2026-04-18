@@ -52,7 +52,13 @@ async function pickFreePort(): Promise<number> {
   });
 }
 
-const sessions = new SessionManager("/bin/sh");
+// `/bin/sh -l` on macOS closes extra fds before exec, which kills the
+// sideband channel (fd 3/4/5) before any demo can write a byte. `zsh`
+// keeps them open, matching production behaviour. We also pass `-f` to
+// skip the user's rc files — oh-my-zsh / p10k add several hundred ms of
+// boot time and can eat keystrokes that land during init, which makes
+// `demo_*.ts` specs flake by snapshotting a half-typed prompt.
+const sessions = new SessionManager("/bin/zsh", ["-f"]);
 const surfaceId = sessions.createSurface(80, 24);
 
 const port = await pickFreePort();
@@ -85,6 +91,19 @@ const server = new WebServer(
 // surface-close so tests that close a shell observe the notification.
 sessions.onStdout = (id, data) => {
   server.broadcastStdout(id, data);
+};
+// Sideband wiring — without this the web mirror never receives panel
+// meta / binary frames from demo scripts. Production does the same in
+// src/bun/index.ts; tests deliberately mirror that contract so
+// `bun scripts/demo_*.ts` inside the test shell shows up in screenshots.
+sessions.onSidebandMeta = (id, meta) => {
+  server.sendSidebandMeta(id, meta);
+};
+sessions.onSidebandData = (id, contentId, data) => {
+  server.broadcastSidebandBinary(id, contentId, data);
+};
+sessions.onSidebandDataFailed = (id, contentId, reason) => {
+  server.sendSidebandDataFailed(id, contentId, reason);
 };
 sessions.onSurfaceClosed = (id) => {
   server.sendSurfaceClosed(id);

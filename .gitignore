@@ -25,3 +25,6 @@ assets/web-client/
 # Pixel-diff baseline (scripts/baseline-screenshots.ts). Lives outside
 # /test-results/ because Playwright wipes that directory on every run.
 /.screenshot-baseline/
+# Design-report staging — PNGs + JSONL survive between `test:e2e` and
+# `test:native` by living outside /test-results/ (Playwright wipes that).
+/.design-artifacts/

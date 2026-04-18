@@ -27,7 +27,13 @@
     "review:agent:watch": "bun scripts/run-code-review-watch.ts",
     "screenshots:baseline": "bun scripts/baseline-screenshots.ts",
     "screenshots:diff": "bun scripts/diff-screenshots.ts",
+    "test:design:web": "playwright test tests-e2e/design --reporter=list",
+    "test:design:native": "playwright test --config=playwright-native.config.ts --grep @design-review",
+    "report:design": "rm -rf .design-artifacts && bun run test:design:web && bun run test:design:native && bun scripts/build-design-report.ts",
+    "report:design:web": "rm -rf .design-artifacts && bun run test:design:web && bun scripts/build-design-report.ts",
+    "baseline:design": "bun scripts/promote-design-baseline.ts",
     "test:all": "bun run test && bun run test:e2e",
+    "test:full-suite": "bun run typecheck && bun run test && rm -rf .design-artifacts && bun run test:e2e && bun run test:native && bun scripts/build-design-report.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
