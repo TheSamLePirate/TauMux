@@ -357,6 +357,8 @@ function mapCommand(): RpcCall {
         method: "sidebar.set_status",
         params: {
           workspace_id: flags["workspace"],
+          surface_id:
+            flags["surface"] || process.env["HT_SURFACE"] || undefined,
           key: positional[0],
           value: positional[1],
           icon: flags["icon"],
@@ -368,6 +370,8 @@ function mapCommand(): RpcCall {
         method: "sidebar.clear_status",
         params: {
           workspace_id: flags["workspace"],
+          surface_id:
+            flags["surface"] || process.env["HT_SURFACE"] || undefined,
           key: positional[0],
         },
       };
@@ -376,6 +380,8 @@ function mapCommand(): RpcCall {
         method: "sidebar.set_progress",
         params: {
           workspace_id: flags["workspace"],
+          surface_id:
+            flags["surface"] || process.env["HT_SURFACE"] || undefined,
           value: parseFloat(positional[0] || "0"),
           label: flags["label"],
         },
@@ -383,13 +389,19 @@ function mapCommand(): RpcCall {
     case "clear-progress":
       return {
         method: "sidebar.clear_progress",
-        params: { workspace_id: flags["workspace"] },
+        params: {
+          workspace_id: flags["workspace"],
+          surface_id:
+            flags["surface"] || process.env["HT_SURFACE"] || undefined,
+        },
       };
     case "log":
       return {
         method: "sidebar.log",
         params: {
           workspace_id: flags["workspace"],
+          surface_id:
+            flags["surface"] || process.env["HT_SURFACE"] || undefined,
           level: flags["level"] || "info",
           message: positional[0],
           source: flags["source"],

@@ -13,7 +13,11 @@ import {
   type ServerWorkspaceRef,
   type Snapshot,
 } from "../../shared/web-protocol";
-import { NERD_FONT_REGULAR, NERD_FONT_BOLD } from "./asset-loader";
+import {
+  NERD_FONT_REGULAR,
+  NERD_FONT_BOLD,
+  NOTIFICATION_SOUND_FINISH,
+} from "./asset-loader";
 import { buildHtmlPage, invalidatePageCache } from "./page";
 import {
   CLIENT_MESSAGE_MAX_BYTES,
@@ -170,6 +174,20 @@ export class WebServer {
                 "cache-control": "public, max-age=31536000",
               },
             });
+          }
+          if (
+            url.pathname === "/audio/finish.mp3" &&
+            NOTIFICATION_SOUND_FINISH
+          ) {
+            return new Response(
+              NOTIFICATION_SOUND_FINISH.buffer as ArrayBuffer,
+              {
+                headers: {
+                  "content-type": "audio/mpeg",
+                  "cache-control": "public, max-age=31536000",
+                },
+              },
+            );
           }
 
           if (url.pathname.endsWith(".map")) {

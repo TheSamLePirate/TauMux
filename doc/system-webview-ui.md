@@ -87,27 +87,45 @@ Click and drag on the Surface Bar (but not on the chips or buttons) to rearrange
 
 ## 4. The Sidebar
 
-The Sidebar is your ambient dashboard. It's hidden by default but can be toggled via `Cmd+B`. Every workspace becomes a card:
+The Sidebar is your ambient dashboard. It's hidden by default but can be toggled via `Cmd+B`. It's laid out top-to-bottom as: **Notifications → Workspaces → Logs → Web mirror footer**. Urgent signals sit above the workspace list so they're visible without scrolling.
 
-### 1. Workspace card header
-A colored dot (workspace accent), the name, an index badge (`01`, `02`, …) that matches the `Cmd+N` jump shortcut, a pane-count badge if there's more than one pane, and a close button.
+### 1. Notifications (top of sidebar)
+Emitted via `ht notify` (or the `notification.create` RPC). Each notification is an individually interactive row:
 
-### 2. Focused foreground command
+- **Click the body** — focuses the workspace and pane that emitted it. If the notification has no associated surface (external source), clicking is a no-op.
+- **Hover-revealed `×`** — dismisses that single notification (routes through `dismissNotification` → `notification.dismiss` RPC). No need to clear the entire list.
+- **Glow pulse** — a purple/cyan animation loops on each row until the user *clicks it*, *dismisses it*, or *focuses the source surface* by any other means (keyboard, palette, click on a pane). Same visual family as the surface-pane notify-glow.
+- **Finish sound** — when a new notification arrives, `assets/audio/finish.mp3` plays in both the native webview (relative `audio/finish.mp3`) and the web mirror (served by the Bun HTTP server at `/audio/finish.mp3`). Autoplay failures (policy-blocked tabs) are swallowed — the sound is a cue, not a requirement. Playback fires on *create* only; dismiss/clear rebroadcasts stay silent.
+
+The header shows `Notifications (N)` with a batch-clear button. The ring-buffer is capped at 500 entries process-wide (see `doc/system-rpc-socket.md`).
+
+### 2. Workspace card
+A colored accent dot, the workspace name, and a close button. No more index/pane-count badges — the card now leans on the header, status lines, and package card for density.
+
+### 3. Focused foreground command
 When the focused pane in that workspace is running something other than the shell, a monospace accent chip shows the full foreground argv (e.g. `bun run dev`, `vim src/foo.ts`). Falls back to the focused pane's title otherwise.
 
-### 3. Listening port chips
-Aggregated across *every* pane in the workspace, deduped by port number. Clickable just like the pane-header chips — opens the URL in the system browser. This is the fastest way to see "what's listening where" across many workspaces at a glance.
+### 4. Surface labels
+Below the meta row, when the workspace has more than one pane, its surfaces are listed as plain one-line labels (no bubble, just a `·` bullet). First four shown; overflow collapses to a `+N more` italic line.
 
-### 4. Status & Progress (Per-Workspace)
-If a script in the active workspace has used the RPC API to push metadata (via `ht set-status` or `ht set-progress`), it appears here.
-- **Status Pills** are great for showing build states (e.g., `Build: Passing`).
-- **Progress Bars** show fractional completion (0.0 to 1.0) for long-running scripts.
+### 5. Listening port chips
+Aggregated across *every* pane in the workspace, deduped by port number. Clickable — opens `http://localhost:<port>` in the system browser.
 
-### 5. Logs
-A continuous feed of structural logs pushed via the RPC API (`ht log`). Logs are color-coded by severity (`info`, `error`, `success`, `warning`).
+### 6. Package.json card (collapsible dropdown)
+Workspaces whose resolved cwd has a `package.json` get a card with the package name/version, and a toggle caret (`▸` / `▾`). Collapsed by default to keep the sidebar compact.
 
-### 6. Notifications & Web Mirror status
-At the bottom of the sidebar: the latest notification ring-buffer (from `ht notify`) and a live indicator for the web mirror showing its URL when running.
+When expanded, the body shows the description, `bin` entries, and every script as a clickable "run" button with a live state dot (green = running in any pane, red = last run exited non-zero within ~10 s, grey = idle). Click to spawn the script in a new pane tagged with its script key. The card is omitted entirely when no `package.json` is resolved.
+
+### 7. Status entries & progress (per-workspace)
+Pushed via `ht set-status` / `ht set-progress`. Status entries render as two-line rows — **icon + uppercase key** on top for scanability, **value** below in monospace with strong contrast. Multiple statuses stack vertically.
+
+Status is **routed to the emitting pane's workspace**: the `ht` CLI auto-forwards `HT_SURFACE`, and the Bun handler resolves that surface to its owning workspace. Scripts in any pane correctly write into their own card, not whatever workspace happens to be selected. Explicit `--workspace <id>` still wins; only when neither hint is available does the server fall back to the active workspace.
+
+### 8. Logs
+A feed of structured logs pushed via `ht log`. Levels `info`, `progress`, `success`, `warning`, `error`. Auto-scrolls unless the user has scrolled up to read history.
+
+### 9. Web mirror footer
+Always pinned at the bottom: dot indicator (green = online, dim = offline) and the `:port` when a web mirror is running.
 
 The sidebar only re-renders when the visible projection changes (port set or focused-surface foreground pid) — cwd churn or tree reshuffles don't trigger a redraw, so it stays calm even when something's busy.
 

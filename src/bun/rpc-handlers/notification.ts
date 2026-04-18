@@ -72,5 +72,23 @@ export function registerNotification(
       dispatch("notification", { notifications: [] });
       return "OK";
     },
+
+    "notification.dismiss": (params) => {
+      const id = params["id"] as string | undefined;
+      if (!id) return "OK";
+      const idx = notifications.list.findIndex((n) => n.id === id);
+      if (idx === -1) return "OK";
+      notifications.list.splice(idx, 1);
+      dispatch("notification", {
+        notifications: notifications.list.map((x) => ({
+          id: x.id,
+          title: x.title,
+          body: x.body,
+          time: x.time,
+          surfaceId: x.surfaceId ?? null,
+        })),
+      });
+      return "OK";
+    },
   };
 }

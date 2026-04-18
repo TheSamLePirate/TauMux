@@ -471,7 +471,7 @@ textarea {
 .sidebar-section-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .sidebar-empty {
@@ -486,9 +486,9 @@ textarea {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 4px;
   width: calc(var(--sidebar-width) - 24px);
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: 10px;
   border: 1px solid rgba(39, 39, 42, 0.72);
   background: rgba(255, 255, 255, 0.02);
@@ -525,8 +525,8 @@ textarea {
 }
 
 .workspace-item.active {
-  gap: 6px;
-  padding: 10px 10px;
+  gap: 5px;
+  padding: 8px 8px;
   border-color: var(--accent-primary-soft);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 50%),
@@ -652,6 +652,42 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.workspace-surfaces {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-left: 14px;
+  margin-top: 2px;
+}
+
+.workspace-surface-line {
+  display: block;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.workspace-surface-line::before {
+  content: "\2022";
+  display: inline-block;
+  width: 10px;
+  color: var(--text-dim);
+  opacity: 0.55;
+}
+
+.workspace-surface-more {
+  color: var(--text-dim);
+  font-style: italic;
+  opacity: 0.75;
 }
 
 .workspace-surface-chip {
@@ -1312,18 +1348,51 @@ textarea {
 
 .workspace-package {
   margin: 6px 10px 6px 14px;
-  padding: 8px 10px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.04);
+  overflow: hidden;
 }
 
 .workspace-package-header {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 6px;
+  padding: 6px 10px;
   font-size: 10px;
   color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.workspace-package-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-strong);
+}
+
+.workspace-package.expanded .workspace-package-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.workspace-package-caret {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--text-dim);
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.1s ease;
+}
+
+.workspace-package-header:hover .workspace-package-caret {
+  color: var(--text-strong);
+}
+
+.workspace-package-body {
+  padding: 8px 10px;
 }
 
 .workspace-package-icon {
@@ -1533,26 +1602,50 @@ textarea {
   outline: none;
 }
 
-/* ── Status pills ── */
+/* ── Status entries (two-line: icon+key on top, value below) ── */
 
 .workspace-status {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  padding-left: 14px;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 10px 2px 14px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.status-pill {
+.status-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.status-entry-key {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 5px;
+  color: var(--text-dim);
   font-size: 9px;
-  color: var(--text-muted);
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.status-entry-key .ht-icon {
+  opacity: 0.7;
+}
+
+.status-entry-value {
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 /* ── Progress bar ── */
@@ -2765,6 +2858,89 @@ body.terminal-typing .panel {
   box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.03);
 }
 
+.notification-item {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+.notification-body-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 32px 10px 12px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: default;
+  font: inherit;
+}
+
+.notification-item.has-source .notification-body-btn {
+  cursor: pointer;
+}
+
+.notification-item.has-source .notification-body-btn:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.notification-dismiss {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.notification-item:hover .notification-dismiss {
+  opacity: 0.7;
+}
+
+.notification-dismiss:hover,
+.notification-dismiss:focus-visible {
+  opacity: 1;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+  outline: none;
+}
+
+@keyframes notification-glow-pulse {
+  0% {
+    border-color: rgba(168, 85, 247, 0.35);
+    box-shadow:
+      0 0 0 0 rgba(168, 85, 247, 0),
+      inset 0 0 0 0 rgba(168, 85, 247, 0);
+  }
+  50% {
+    border-color: rgba(168, 85, 247, 0.85);
+    box-shadow:
+      0 0 14px 1px rgba(168, 85, 247, 0.35),
+      inset 0 0 12px 0 rgba(103, 232, 249, 0.08);
+  }
+  100% {
+    border-color: rgba(168, 85, 247, 0.35);
+    box-shadow:
+      0 0 0 0 rgba(168, 85, 247, 0),
+      inset 0 0 0 0 rgba(168, 85, 247, 0);
+  }
+}
+
+.notification-item.glow {
+  animation: notification-glow-pulse 2s ease-in-out infinite;
+}
+
 .notification-title {
   color: var(--text-main);
   font-size: 11px;
@@ -3906,7 +4082,7 @@ body::after {
 .workspace-meta-row,
 .workspace-ports,
 .workspace-status {
-  padding-left: 16px;
+  margin: 4px 0 0 14px;
   gap: 6px;
 }
 
@@ -3941,7 +4117,7 @@ body::after {
 
 .workspace-package {
   margin: 0 0 0 16px;
-  padding: 10px 12px;
+  padding: 0;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.035);
@@ -3949,7 +4125,12 @@ body::after {
 
 .workspace-package-header {
   gap: 8px;
+  padding: 8px 12px;
   font-size: 11px;
+}
+
+.workspace-package-body {
+  padding: 10px 12px;
 }
 
 .workspace-package-name {

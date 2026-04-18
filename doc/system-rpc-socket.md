@@ -116,7 +116,7 @@ ht read-screen --scrollback
 The HyperTerm Canvas Sidebar is designed to be an ambient dashboard for your scripts. You can push metadata to it directly from the CLI.
 
 ### Status Pills
-Status pills are key/value pairs that appear under the workspace name in the sidebar.
+Status pills are key/value pairs that appear under the workspace name in the sidebar. The sidebar renders them as stacked two-line rows (icon + uppercase key on top, high-contrast value below).
 
 ```bash
 # Set a green status pill indicating a successful build
@@ -128,6 +128,8 @@ ht set-status build "failing" --color "#f38ba8" --icon "✗"
 # Remove the pill
 ht clear-status build
 ```
+
+Status is **attributed to the caller's workspace automatically** — inside a HyperTerm shell, `HT_SURFACE` is set on every child process and `ht` forwards it in the `surface_id` param; the Bun-side handler then resolves which workspace owns that surface. You rarely need `--workspace <id>` explicitly. When neither `--workspace` nor `HT_SURFACE` is available (e.g. running `ht` from an external shell), the server falls back to the currently-active workspace. The same resolution applies to `clear-status`, `set-progress`, `clear-progress`, and `log`.
 
 ### Progress Bars
 Display a global progress bar for long-running tasks within a workspace.
@@ -155,11 +157,25 @@ ht log --level success "Tests passed (42/42)"
 
 ## 5. System Notifications
 
-Trigger native-looking notifications that overlay the terminal UI.
+Trigger notifications that land in the sidebar (and the web mirror) with a glow animation and a short `finish.mp3` cue.
 
 ```bash
 ht notify --title "Deployment Complete" --body "Production updated to v1.2.0"
 ```
+
+The CLI auto-forwards `HT_SURFACE`, so notifications emitted from inside a pane carry a `surface_id`. That drives three behaviors:
+
+- Clicking the notification in the sidebar focuses the originating workspace + pane.
+- Focusing the source pane by any means clears that notification's glow.
+- The glow keeps pulsing until the user clicks, dismisses, or focuses the source.
+
+Dismiss individual entries from the sidebar's `×` button, or via the `notification.dismiss` RPC method:
+
+```bash
+echo '{"id":"1","method":"notification.dismiss","params":{"id":"notif:42"}}' | nc -U /tmp/hyperterm.sock
+```
+
+`ht list-notifications` returns the current ring-buffer; `ht clear-notifications` empties it.
 
 ---
 
@@ -280,7 +296,7 @@ All methods accept an optional `surface_id` in their params; if omitted, the ser
 
 **`sidebar.*`** — `set_status`, `clear_status`, `set_progress`, `clear_progress`, `log`.
 
-**`notification.*`** — `create`, `list`, `clear`.
+**`notification.*`** — `create`, `list`, `clear`, `dismiss`.
 
 **`pane.*`** — `list`.
 

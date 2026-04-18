@@ -121,7 +121,9 @@ ht set-status deploy "v1.2.3"
 ht clear-status build
 ```
 
-Status pills are capped at **32 per workspace**; the oldest is evicted on overflow. Use consistent keys per tool so updates replace rather than accumulate.
+Status pills are capped at **32 per workspace**; the oldest is evicted on overflow. Use consistent keys per tool so updates replace rather than accumulate. They render in the sidebar as two-line rows (icon + uppercase key on top, value below).
+
+**Workspace attribution.** `ht set-status` (and `clear-status`, `set-progress`, `clear-progress`, `log`) automatically forward `HT_SURFACE` from the shell's env; the Bun handler resolves it to the owning workspace. Scripts running in any pane write to their own workspace card, not the currently-selected one. Explicit `--workspace <id>` still takes precedence.
 
 ### Progress bars
 
@@ -149,7 +151,20 @@ ht list-notifications
 ht clear-notifications
 ```
 
-Notification list is bounded at **500 entries** process-wide.
+Notification list is bounded at **500 entries** process-wide. Emitted notifications carry a `surface_id` (from `HT_SURFACE`), which enables three behaviors in the sidebar:
+
+- Clicking a notification focuses the workspace + pane that emitted it.
+- Focusing the source pane by any means stops that notification's glow.
+- The pulsing glow runs until the user clicks, dismisses with `×`, or focuses the source.
+
+A short `assets/audio/finish.mp3` plays on arrival (both native webview and web mirror). Playback is best-effort; browser autoplay policies may block it until after user interaction.
+
+Dismiss a single notification (no CLI shortcut yet — use raw JSON-RPC):
+
+```bash
+echo '{"id":"1","method":"notification.dismiss","params":{"id":"notif:42"}}' \
+  | nc -U /tmp/hyperterm.sock
+```
 
 ---
 

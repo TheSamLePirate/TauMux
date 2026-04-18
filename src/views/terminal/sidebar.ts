@@ -43,6 +43,8 @@ export interface NotificationInfo {
   title: string;
   body: string;
   time: number;
+  /** Surface that emitted this notification (null for external sources). */
+  surfaceId?: string | null;
 }
 
 export interface LogEntry {
@@ -62,6 +64,14 @@ export class Sidebar {
   private serverUrlEl: HTMLElement;
   private callbacks: SidebarCallbacks;
   private visible = true;
+  /** Workspaces whose package.json card is currently expanded. */
+  private expandedPackages: Set<string> = new Set();
+  /** Most recent notification list; kept so `acknowledgeBySurface` can
+   *  reason about which notifications share the focused surface. */
+  private notifications: NotificationInfo[] = [];
+  /** Notification ids the user has acted on — click, dismiss, or the
+   *  source surface gained focus. Glow suppresses while acknowledged. */
+  private acknowledgedNotifications: Set<string> = new Set();
 
   constructor(container: HTMLElement, callbacks: SidebarCallbacks) {
     this.container = container;
@@ -96,13 +106,15 @@ export class Sidebar {
 
     container.appendChild(header);
 
-    this.listEl = document.createElement("div");
-    this.listEl.className = "sidebar-workspaces";
-    container.appendChild(this.listEl);
-
+    // Notifications render above the workspace list so urgent signals are
+    // immediately visible without scrolling.
     this.notificationsEl = document.createElement("div");
     this.notificationsEl.className = "sidebar-notifications";
     container.appendChild(this.notificationsEl);
+
+    this.listEl = document.createElement("div");
+    this.listEl.className = "sidebar-workspaces";
+    container.appendChild(this.listEl);
 
     this.logsEl = document.createElement("div");
     this.logsEl.className = "sidebar-logs";
@@ -144,7 +156,7 @@ export class Sidebar {
       return;
     }
 
-    for (const [index, ws] of workspaces.entries()) {
+    for (const ws of workspaces) {
       const item = document.createElement("div");
       item.className = `workspace-item${ws.active ? " active" : ""}`;
       item.dataset["workspaceId"] = ws.id;
@@ -164,20 +176,8 @@ export class Sidebar {
       name.textContent = ws.name;
       header.appendChild(name);
 
-      const indexBadge = document.createElement("span");
-      indexBadge.className = "workspace-index";
-      indexBadge.textContent = String(index + 1).padStart(2, "0");
-      header.appendChild(indexBadge);
-
       const headerRight = document.createElement("div");
       headerRight.className = "workspace-header-right";
-
-      if (ws.paneCount > 1) {
-        const paneBadge = document.createElement("span");
-        paneBadge.className = "workspace-pane-count";
-        paneBadge.textContent = String(ws.paneCount);
-        headerRight.appendChild(paneBadge);
-      }
 
       const closeBtn = document.createElement("button");
       closeBtn.className = "workspace-close";
@@ -219,23 +219,27 @@ export class Sidebar {
           meta.appendChild(focused);
         }
 
-        // Inline surface chips (only if >1 pane)
-        if (ws.surfaceTitles.length > 1) {
-          for (const title of ws.surfaceTitles.slice(0, 3)) {
-            const chip = document.createElement("span");
-            chip.className = "workspace-surface-chip";
-            chip.textContent = title;
-            meta.appendChild(chip);
-          }
-          if (ws.surfaceTitles.length > 3) {
-            const more = document.createElement("span");
-            more.className = "workspace-surface-chip workspace-chip-more";
-            more.textContent = `+${ws.surfaceTitles.length - 3}`;
-            meta.appendChild(more);
-          }
-        }
-
         if (meta.childElementCount > 0) item.appendChild(meta);
+      }
+
+      // Surface titles as flat one-line labels (no bubble).
+      if (ws.surfaceTitles.length > 1) {
+        const surfaces = document.createElement("div");
+        surfaces.className = "workspace-surfaces";
+        for (const title of ws.surfaceTitles.slice(0, 4)) {
+          const line = document.createElement("span");
+          line.className = "workspace-surface-line";
+          line.textContent = title;
+          line.title = title;
+          surfaces.appendChild(line);
+        }
+        if (ws.surfaceTitles.length > 4) {
+          const more = document.createElement("span");
+          more.className = "workspace-surface-line workspace-surface-more";
+          more.textContent = `+${ws.surfaceTitles.length - 4} more`;
+          surfaces.appendChild(more);
+        }
+        item.appendChild(surfaces);
       }
 
       // ── Row 2b: listening ports (compact, clickable) ──
@@ -288,26 +292,47 @@ export class Sidebar {
         item.appendChild(cwdRow);
       }
 
-      // ── Row 2c: package.json card + script runners ──
+      // ── Row 2c: package.json card + script runners (collapsible) ──
       if (ws.packageJson) {
-        item.appendChild(renderPackageCard(ws.id, ws.packageJson, ws));
+        const expanded = this.expandedPackages.has(ws.id);
+        item.appendChild(
+          renderPackageCard(ws.id, ws.packageJson, ws, expanded, () => {
+            if (this.expandedPackages.has(ws.id)) {
+              this.expandedPackages.delete(ws.id);
+            } else {
+              this.expandedPackages.add(ws.id);
+            }
+            this.setWorkspaces(workspaces);
+          }),
+        );
       }
 
-      // ── Row 3: status pills (compact) ──
+      // ── Row 3: status entries (icon+key on top line, value on line below) ──
       if (ws.statusPills.length > 0) {
         const statusContainer = document.createElement("div");
         statusContainer.className = "workspace-status";
         for (const pill of ws.statusPills) {
-          const pillEl = document.createElement("span");
-          pillEl.className = "status-pill";
+          const entry = document.createElement("div");
+          entry.className = "status-entry";
+
+          const keyLine = document.createElement("div");
+          keyLine.className = "status-entry-key";
           if (pill.icon && pill.icon in ICON_TEMPLATES) {
-            pillEl.append(createIcon(pill.icon as IconName, "", 10));
+            keyLine.append(createIcon(pill.icon as IconName, "", 10));
           }
-          const text = document.createElement("span");
-          text.textContent = `${pill.key}: ${pill.value}`;
-          pillEl.appendChild(text);
-          if (pill.color) pillEl.style.color = pill.color;
-          statusContainer.appendChild(pillEl);
+          const keyText = document.createElement("span");
+          keyText.textContent = pill.key;
+          keyLine.appendChild(keyText);
+          entry.appendChild(keyLine);
+
+          const valueLine = document.createElement("div");
+          valueLine.className = "status-entry-value";
+          valueLine.textContent = pill.value;
+          valueLine.title = pill.value;
+          if (pill.color) valueLine.style.color = pill.color;
+          entry.appendChild(valueLine);
+
+          statusContainer.appendChild(entry);
         }
         item.appendChild(statusContainer);
       }
@@ -367,6 +392,35 @@ export class Sidebar {
   }
 
   setNotifications(notifications: NotificationInfo[]): void {
+    this.notifications = notifications;
+    // Prune the acknowledged set of ids that are no longer present —
+    // otherwise reusing an id later would silently suppress its glow.
+    const alive = new Set(notifications.map((n) => n.id));
+    for (const id of [...this.acknowledgedNotifications]) {
+      if (!alive.has(id)) this.acknowledgedNotifications.delete(id);
+    }
+    this.renderNotifications();
+  }
+
+  /** Mark every notification emitted by `surfaceId` as acknowledged —
+   *  called when that surface gains focus, which is the user's implicit
+   *  "I've seen it" signal. Stops the glow without removing the items. */
+  acknowledgeBySurface(surfaceId: string): void {
+    let changed = false;
+    for (const n of this.notifications) {
+      if (
+        n.surfaceId === surfaceId &&
+        !this.acknowledgedNotifications.has(n.id)
+      ) {
+        this.acknowledgedNotifications.add(n.id);
+        changed = true;
+      }
+    }
+    if (changed) this.renderNotifications();
+  }
+
+  private renderNotifications(): void {
+    const notifications = this.notifications;
     this.notificationsEl.innerHTML = "";
     if (notifications.length === 0) return;
 
@@ -395,20 +449,62 @@ export class Sidebar {
     for (const n of notifications.slice(-5).reverse()) {
       const el = document.createElement("div");
       el.className = "notification-item";
+      const hasSource =
+        typeof n.surfaceId === "string" && n.surfaceId.length > 0;
+      if (hasSource) el.classList.add("has-source");
+      if (!this.acknowledgedNotifications.has(n.id)) el.classList.add("glow");
+      el.title = hasSource
+        ? "Click to focus the pane that emitted this notification"
+        : "";
+
+      const body = document.createElement("button");
+      body.type = "button";
+      body.className = "notification-body-btn";
+      body.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.acknowledgedNotifications.add(n.id);
+        el.classList.remove("glow");
+        if (!hasSource) return;
+        window.dispatchEvent(
+          new CustomEvent("ht-focus-notification-source", {
+            detail: { notificationId: n.id, surfaceId: n.surfaceId },
+          }),
+        );
+      });
+
       const titleEl = document.createElement("div");
       titleEl.className = "notification-title";
       titleEl.textContent = n.title;
-      el.appendChild(titleEl);
+      body.appendChild(titleEl);
       if (n.body) {
-        const body = document.createElement("div");
-        body.className = "notification-body";
-        body.textContent = n.body;
-        el.appendChild(body);
+        const msg = document.createElement("div");
+        msg.className = "notification-body";
+        msg.textContent = n.body;
+        body.appendChild(msg);
       }
       const time = document.createElement("div");
       time.className = "notification-time";
       time.textContent = new Date(n.time).toLocaleTimeString();
-      el.appendChild(time);
+      body.appendChild(time);
+
+      el.appendChild(body);
+
+      const dismissBtn = document.createElement("button");
+      dismissBtn.type = "button";
+      dismissBtn.className = "notification-dismiss";
+      dismissBtn.title = "Dismiss notification";
+      dismissBtn.setAttribute("aria-label", "Dismiss notification");
+      dismissBtn.append(createIcon("close", "", 10));
+      dismissBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.dispatchEvent(
+          new CustomEvent("ht-dismiss-notification", {
+            detail: { id: n.id },
+          }),
+        );
+      });
+      el.appendChild(dismissBtn);
+
       list.appendChild(el);
     }
   }
@@ -498,12 +594,21 @@ function renderPackageCard(
   workspaceId: string,
   pkg: PackageInfo,
   ws: WorkspaceInfo,
+  expanded: boolean,
+  onToggle: () => void,
 ): HTMLElement {
   const card = document.createElement("div");
-  card.className = "workspace-package";
+  card.className = `workspace-package${expanded ? " expanded" : ""}`;
 
-  const header = document.createElement("div");
+  const header = document.createElement("button");
+  header.type = "button";
   header.className = "workspace-package-header";
+  header.setAttribute("aria-expanded", String(expanded));
+  header.title = expanded ? "Collapse package.json" : "Expand package.json";
+  header.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onToggle();
+  });
 
   const icon = document.createElement("span");
   icon.className = "workspace-package-icon";
@@ -529,14 +634,25 @@ function renderPackageCard(
     header.appendChild(typeEl);
   }
 
+  const caret = document.createElement("span");
+  caret.className = "workspace-package-caret";
+  caret.textContent = expanded ? "\u25BE" : "\u25B8";
+  header.appendChild(caret);
+
   card.appendChild(header);
+
+  if (!expanded) return card;
+
+  const body = document.createElement("div");
+  body.className = "workspace-package-body";
+  card.appendChild(body);
 
   if (pkg.description) {
     const descEl = document.createElement("div");
     descEl.className = "workspace-package-desc";
     descEl.textContent = pkg.description;
     descEl.title = pkg.description;
-    card.appendChild(descEl);
+    body.appendChild(descEl);
   }
 
   if (pkg.bin) {
@@ -556,7 +672,7 @@ function renderPackageCard(
       chip.textContent = name;
       binEl.appendChild(chip);
     }
-    card.appendChild(binEl);
+    body.appendChild(binEl);
   }
 
   const scriptKeys = pkg.scripts ? Object.keys(pkg.scripts) : [];
@@ -606,7 +722,7 @@ function renderPackageCard(
       scripts.appendChild(row);
     }
 
-    card.appendChild(scripts);
+    body.appendChild(scripts);
   }
 
   return card;

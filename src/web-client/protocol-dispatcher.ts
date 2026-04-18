@@ -17,6 +17,7 @@
  */
 
 import type { Store } from "./store";
+import { playNotificationSound } from "./sounds";
 
 export interface ProtocolDispatcherDeps {
   store: Store;
@@ -31,7 +32,7 @@ export interface ProtocolDispatcherDeps {
 }
 
 /** eslint-disable: server payloads are untyped at the boundary. */
- 
+
 type Payload = any;
 
 export function createProtocolDispatcher(
@@ -122,6 +123,9 @@ export function createProtocolDispatcher(
             at: p.at || Date.now(),
           },
         });
+        // Bun only emits "notification" on create (not on dismiss/clear
+        // rebroadcasts), so this is the right place to fire the cue.
+        playNotificationSound();
         break;
       case "notificationClear":
         store.dispatch({ kind: "notification/clear" });

@@ -438,7 +438,7 @@ Errors are returned as `{"id":"1","error":"message"}`. See [`doc/system-rpc-sock
 
 **Sidebar:** `sidebar.set_status`, `sidebar.clear_status`, `sidebar.set_progress`, `sidebar.clear_progress`, `sidebar.log`
 
-**Notifications:** `notification.create`, `notification.list`, `notification.clear`
+**Notifications:** `notification.create`, `notification.list`, `notification.clear`, `notification.dismiss`
 
 **Panes:** `pane.list`
 

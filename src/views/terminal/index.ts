@@ -1447,6 +1447,23 @@ window.addEventListener("ht-clear-notifications", () => {
   rpc.send("clearNotifications");
 });
 
+window.addEventListener("ht-dismiss-notification", (e: Event) => {
+  const detail = (e as CustomEvent).detail as { id?: string } | undefined;
+  if (detail?.id) rpc.send("dismissNotification", { id: detail.id });
+});
+
+window.addEventListener("ht-focus-notification-source", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    | { surfaceId?: string | null }
+    | undefined;
+  const surfaceId = detail?.surfaceId;
+  if (!surfaceId) return;
+  const ws = surfaceManager.findWorkspaceForSurface(surfaceId);
+  if (!ws) return;
+  surfaceManager.focusWorkspaceById(ws.id);
+  surfaceManager.focusSurface(surfaceId);
+});
+
 // ── Browser pane events ──
 registerBrowserEvents(rpc);
 

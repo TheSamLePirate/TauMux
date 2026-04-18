@@ -31,6 +31,9 @@ export default {
         "vendor/fonts/nerd-regular.ttf",
       "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf":
         "vendor/fonts/nerd-bold.ttf",
+      // Notification sounds — served to the webview (relative path) and
+      // to the web-mirror client via HTTP from the vendor copy.
+      "assets/audio/finish.mp3": "views/terminal/audio/finish.mp3",
       // Web-mirror client bundle (produced by scripts/build-web-client.ts)
       "assets/web-client/client.js": "vendor/web-client/client.js",
       "assets/web-client/client.css": "vendor/web-client/client.css",

@@ -42,6 +42,7 @@ export const VENDOR_MAP: Record<string, string> = {
   "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf":
     "fonts/nerd-regular.ttf",
   "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf": "fonts/nerd-bold.ttf",
+  "assets/audio/finish.mp3": "../views/terminal/audio/finish.mp3",
   "assets/web-client/client.js": "web-client/client.js",
   "assets/web-client/client.css": "web-client/client.css",
   "assets/web-client/tokens.css": "web-client/tokens.css",
@@ -126,4 +127,7 @@ export const NERD_FONT_REGULAR = readBinaryAsset(
 );
 export const NERD_FONT_BOLD = readBinaryAsset(
   "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf",
+);
+export const NOTIFICATION_SOUND_FINISH = readBinaryAsset(
+  "assets/audio/finish.mp3",
 );

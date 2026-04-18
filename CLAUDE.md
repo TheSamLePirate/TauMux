@@ -73,7 +73,7 @@ Electrobun Webview (src/views/terminal/)
 - `src/bun/` — Main process. PTY management, sideband parsing, metadata poller, settings, socket + RPC, web mirror. Runs in Bun.
 - `src/views/terminal/` — Webview code. xterm.js, chip rendering, pane layout, process manager, settings panel, sidebar. Runs in system WebView.
 - `src/shared/` — Types shared between bun and webview. RPC contracts, `SurfaceMetadata`, `AppSettings`, sideband protocol types.
-- `tests/` — Bun test files (666 tests across 44 files). Parser tests (`ps` / `lsof` / sideband), PTY manager, RPC handlers, pane layout, web-client reducer + view modules, agent-panel sub-modules, SurfaceManager smoke suite. `bunfig.toml` scopes bare `bun test` to this directory so `tests-e2e/` Playwright specs are not picked up.
+- `tests/` — Bun test files (718 tests across 51 files). Parser tests (`ps` / `lsof` / sideband), PTY manager, RPC handlers, pane layout, web-client reducer + view modules, agent-panel sub-modules, SurfaceManager smoke suite. `bunfig.toml` scopes bare `bun test` to this directory so `tests-e2e/` Playwright specs are not picked up.
 - `scripts/` — Demo scripts + client libraries (Python, TS) for the sideband protocol. Also build hooks (`post-build.ts` for CLI injection into the .app, `build-cli.ts` for standalone binary).
 - `doc/` — Extensive subsystem docs (PTY, RPC, sideband, canvas panels, webview UI, process metadata).
 
@@ -94,3 +94,4 @@ Electrobun Webview (src/views/terminal/)
 - **Adding a keyboard shortcut** — append a `Binding<KeyCtx>` entry to `KEYBOARD_BINDINGS` (or `HIGH_PRIORITY_BINDINGS` for shortcuts that must fire even when the palette is visible) in `src/views/terminal/index.ts`. Use `keyMatch({ key, meta?, shift?, ctrl?, alt? })` for the matcher. `id` / `description` / `category` are there so a future help dialog or command palette can enumerate the same array.
 - **Adding a metadata field** — see `doc/system-process-metadata.md` § 7.
 - **Adding a pane-bar chip** — extend `renderSurfaceChips` in `surface-manager.ts`; matching CSS in `index.css`. Same class conventions (`surface-chip`, `chip-*` variants).
+- **Adding a bundled binary asset (audio/image/font)** — drop the file in `assets/<type>/`, add a copy rule in `electrobun.config.ts` (destination under `vendor/` for packaged builds), register it in `src/bun/web/asset-loader.ts` (`VENDOR_MAP` + `readBinaryAsset` export), and serve it from `src/bun/web/server.ts` if the web mirror needs it. `assets/audio/finish.mp3` is the reference case — webview plays via relative `audio/finish.mp3`, web mirror fetches from `/audio/finish.mp3`.

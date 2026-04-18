@@ -483,6 +483,9 @@ export class SurfaceManager {
     }
     // Clear notification glow when surface becomes selected
     this.clearGlow(surfaceId);
+    // And quiet any sidebar notifications emitted from this surface —
+    // focusing the pane is an implicit "I've seen it" signal.
+    this.sidebar.acknowledgeBySurface(surfaceId);
     const focusedView = this.surfaces.get(surfaceId);
     if (focusedView?.surfaceType === "browser" && focusedView.browserView) {
       // Browser panes don't have a terminal to focus
@@ -1093,6 +1096,14 @@ export class SurfaceManager {
   focusWorkspaceById(id: string): void {
     const idx = this.workspaces.findIndex((w) => w.id === id);
     if (idx !== -1) this.switchToWorkspace(idx);
+  }
+
+  findWorkspaceForSurface(
+    surfaceId: string,
+  ): { id: string; index: number } | null {
+    const idx = this.workspaces.findIndex((w) => w.surfaceIds.has(surfaceId));
+    if (idx === -1) return null;
+    return { id: this.workspaces[idx].id, index: idx };
   }
 
   closeWorkspaceById(id: string): void {

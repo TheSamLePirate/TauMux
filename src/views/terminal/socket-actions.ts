@@ -22,6 +22,7 @@
  */
 
 import { showToast } from "./toast";
+import { playNotificationSound } from "./sounds";
 import type { SurfaceManager } from "./surface-manager";
 
 type RpcSend = (name: any, payload: any) => void;
@@ -146,6 +147,7 @@ const SOCKET_ACTION_HANDLERS: Record<string, Handler> = {
         title: string;
         body: string;
         time: number;
+        surfaceId?: string | null;
       }[]) || [];
     surfaceManager.getSidebar().setNotifications(notifs);
     if (notifs.length === 0) {
@@ -155,6 +157,10 @@ const SOCKET_ACTION_HANDLERS: Record<string, Handler> = {
       // Glow the source surface pane
       const notifSurfaceId = (p["surfaceId"] as string) ?? null;
       surfaceManager.notifyGlow(notifSurfaceId);
+      // `latest` is only populated on create dispatches — not on
+      // dismiss/clear rebroadcasts — so the sound only fires when a
+      // genuinely new notification arrives.
+      if (p["latest"]) playNotificationSound();
     }
   },
   log: (p, { surfaceManager }) => {

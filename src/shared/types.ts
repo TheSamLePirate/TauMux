@@ -385,6 +385,7 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
 
       // Notifications
       clearNotifications: void;
+      dismissNotification: { id: string };
 
       // Native menus
       showContextMenu: NativeContextMenuRequest;

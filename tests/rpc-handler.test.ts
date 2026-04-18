@@ -275,6 +275,44 @@ describe("RPC Handler", () => {
     expect(dispatched[0].payload["message"]).toBe("fail");
   });
 
+  test("sidebar.set_status resolves workspaceId from surface_id when missing", () => {
+    const handler = setup({
+      workspaces: [
+        {
+          id: "ws:A",
+          name: "A",
+          color: "#89b4fa",
+          surfaceIds: ["surface:1"],
+          focusedSurfaceId: "surface:1",
+          layout: { type: "leaf", surfaceId: "surface:1" },
+        },
+        {
+          id: "ws:B",
+          name: "B",
+          color: "#f5c2e7",
+          surfaceIds: ["surface:2"],
+          focusedSurfaceId: "surface:2",
+          layout: { type: "leaf", surfaceId: "surface:2" },
+        },
+      ],
+      activeWorkspaceId: "ws:A",
+    });
+    // Script running in ws:B calls ht set-status; only HT_SURFACE=surface:2
+    // is available.
+    handler("sidebar.set_status", {
+      surface_id: "surface:2",
+      key: "build",
+      value: "ok",
+    });
+    expect(dispatched[0].payload["workspaceId"]).toBe("ws:B");
+  });
+
+  test("sidebar.set_status leaves workspaceId undefined when neither hint is present", () => {
+    const handler = setup();
+    handler("sidebar.set_status", { key: "build", value: "ok" });
+    expect(dispatched[0].payload["workspaceId"]).toBeUndefined();
+  });
+
   // ── Notifications ──
 
   test("notification.create stores and returns OK", () => {

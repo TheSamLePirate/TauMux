@@ -484,6 +484,9 @@ const bunMessageHandlers = {
   clearNotifications: () => {
     socketHandler("notification.clear", {});
   },
+  dismissNotification: (payload) => {
+    socketHandler("notification.dismiss", { id: payload.id });
+  },
   showContextMenu: (payload) => {
     ContextMenu.showContextMenu(buildContextMenu(payload));
   },
