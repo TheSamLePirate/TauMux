@@ -43,6 +43,24 @@ export function buildReviewScopeLabel(
   return `incremental review from ${shortCommit(previousReviewedCommit)}..${shortCommit(headCommit)}`;
 }
 
+export function diffUnexpectedStatus(before: string[], after: string[]): string[] {
+  const beforeSet = new Set(before);
+  return after.filter((line) => {
+    if (beforeSet.has(line)) return false;
+    return !line.includes("code_reviews/");
+  });
+}
+
+export function buildUnexpectedMutationFailureMessage(
+  mutations: string[],
+): string {
+  return (
+    "[crazyShell-reviewer] hard failure: review run mutated files outside " +
+    "code_reviews/: " +
+    mutations.join("; ")
+  );
+}
+
 export function buildCrazyShellReviewerPrompt(
   input: ReviewPromptInput,
 ): string {

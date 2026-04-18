@@ -49,4 +49,4 @@ CRAZYSHELL_REVIEW_POLL_SECONDS=900 bun run review:agent:watch
 
 - The watcher triggers when the current HEAD commit has no review report yet.
 - Reports are proposition-only; the reviewer should not modify code.
-- If the review run appears to mutate files outside `code_reviews/`, the saved report includes a warning banner.
+- Any detected mutation outside `code_reviews/` is treated as a hard failure and the review run exits non-zero.

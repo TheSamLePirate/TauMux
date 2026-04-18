@@ -3,6 +3,8 @@ import {
   buildCrazyShellReviewerPrompt,
   buildReviewFilename,
   buildReviewScopeLabel,
+  buildUnexpectedMutationFailureMessage,
+  diffUnexpectedStatus,
   extractReviewedCommitFromReport,
   shortCommit,
   toFileSafeTimestamp,
@@ -72,6 +74,30 @@ describe("code review agent helpers", () => {
     );
     expect(toFileSafeTimestamp("2026-04-18T08:10:00.000Z")).toBe(
       "2026-04-18T08-10-00.000Z",
+    );
+  });
+
+  test("diffUnexpectedStatus ignores code_reviews outputs but flags other mutations", () => {
+    expect(
+      diffUnexpectedStatus(
+        ["M README.md"],
+        [
+          "M README.md",
+          "?? code_reviews/2026-04-18T08-10-00.000Z__ec7bc7aa8a10.md",
+          "M src/bun/index.ts",
+        ],
+      ),
+    ).toEqual(["M src/bun/index.ts"]);
+  });
+
+  test("buildUnexpectedMutationFailureMessage formats a hard-failure error", () => {
+    expect(
+      buildUnexpectedMutationFailureMessage([
+        "M src/bun/index.ts",
+        "?? scripts/example.ts",
+      ]),
+    ).toBe(
+      "[crazyShell-reviewer] hard failure: review run mutated files outside code_reviews/: M src/bun/index.ts; ?? scripts/example.ts",
     );
   });
 });

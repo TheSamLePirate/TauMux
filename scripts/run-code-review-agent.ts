@@ -12,6 +12,8 @@ import { spawnSync } from "node:child_process";
 import {
   buildCrazyShellReviewerPrompt,
   buildReviewFilename,
+  buildUnexpectedMutationFailureMessage,
+  diffUnexpectedStatus,
   extractReviewedCommitFromReport,
   shortCommit,
 } from "../src/shared/code-review-agent";
@@ -79,6 +81,10 @@ if (!reportBody.trim()) {
 
 const afterStatus = gitLines(["status", "--short"]);
 const unexpectedMutations = diffUnexpectedStatus(beforeStatus, afterStatus);
+if (unexpectedMutations.length > 0) {
+  console.error(buildUnexpectedMutationFailureMessage(unexpectedMutations));
+  process.exit(1);
+}
 const fileName = buildReviewFilename(reviewTimestamp, headCommit);
 const outPath = join(REVIEWS_DIR, fileName);
 const document = buildReviewDocument({
@@ -86,23 +92,17 @@ const document = buildReviewDocument({
   branch,
   headCommit,
   previousReviewedCommit,
-  unexpectedMutations,
   reportBody,
 });
 
 writeFileSync(outPath, document);
-console.log(
-  `[crazyShell-reviewer] wrote ${relative(REPO_ROOT, outPath)}${
-    unexpectedMutations.length > 0 ? " (with mutation warning)" : ""
-  }`,
-);
+console.log(`[crazyShell-reviewer] wrote ${relative(REPO_ROOT, outPath)}`);
 
 function buildReviewDocument(input: {
   reviewTimestamp: string;
   branch: string;
   headCommit: string;
   previousReviewedCommit: string | null;
-  unexpectedMutations: string[];
   reportBody: string;
 }): string {
   const lines = [
@@ -118,16 +118,6 @@ function buildReviewDocument(input: {
     "---",
     "",
   ];
-
-  if (input.unexpectedMutations.length > 0) {
-    lines.push(
-      "> WARNING: The review run appears to have modified files outside `code_reviews/`.",
-    );
-    lines.push(
-      `> Unexpected status entries: ${input.unexpectedMutations.join("; ")}`,
-    );
-    lines.push("");
-  }
 
   lines.push(input.reportBody.trim());
   lines.push("");

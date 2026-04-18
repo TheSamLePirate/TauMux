@@ -538,7 +538,7 @@ bun run review:agent
 bun run review:agent:watch --poll-seconds=900
 ```
 
-The repository-local reviewer is proposition-only: it inspects the repo with Hermes, consults `DEV_RULES.md` + `doc/`, and writes a dated markdown report with the reference commit into `code_reviews/`. See `doc/code-review-agent.md` for the report format and watch-loop behavior.
+The repository-local reviewer is proposition-only: it inspects the repo with Hermes, consults `DEV_RULES.md` + `doc/`, and writes a dated markdown report with the reference commit into `code_reviews/`. If the run mutates anything outside `code_reviews/`, it fails hard instead of saving a warning report. See `doc/code-review-agent.md` for the report format and watch-loop behavior.
 
 ### Recipe: Watch a port and auto-open
 

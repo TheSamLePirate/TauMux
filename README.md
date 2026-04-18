@@ -548,7 +548,7 @@ A `postBuild` Electrobun hook (`scripts/post-build.ts`) compiles `bin/ht` target
 
 ### Automated code review reports
 
-The repository includes a proposition-only reviewer named `crazyShell Reviewer`. It runs Hermes against the repo in inspection mode and writes dated markdown reports to [`code_reviews/`](code_reviews/README.md), including the reference commit in both the filename and the report frontmatter.
+The repository includes a proposition-only reviewer named `crazyShell Reviewer`. It runs Hermes against the repo in inspection mode and writes dated markdown reports to [`code_reviews/`](code_reviews/README.md), including the reference commit in both the filename and the report frontmatter. If the run mutates anything outside `code_reviews/`, the runner exits non-zero and treats the review as invalid.
 
 ```bash
 bun run review:agent

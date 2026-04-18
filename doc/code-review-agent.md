@@ -69,7 +69,7 @@ CRAZYSHELL_REVIEW_POLL_SECONDS=900 bun run review:agent:watch
 - builds a strong reviewer prompt for Hermes
 - runs `hermes chat` in inspection-only mode
 - writes the resulting markdown to `code_reviews/`
-- warns in the saved report if the run appears to have mutated files outside `code_reviews/`
+- hard-fails the run if any mutation is detected outside `code_reviews/`
 
 ### 2. Watch loop
 
@@ -136,6 +136,7 @@ If no previous review exists, the agent performs a fresh review of the current s
 - It should not write, patch, or delete project files.
 - It should use repository docs as authoritative context.
 - It should preserve project priorities: PTY correctness first, overlays never becoming source of truth, and explicit subsystem ownership.
+- If the run mutates anything outside `code_reviews/`, the runner must fail hard and no review report should be treated as valid output.
 
 ## Maintenance expectations
 
