@@ -145,7 +145,6 @@ function buildOneWorkspace(
     name: ws.name,
     color: ws.color,
     active: index === activeWorkspaceIndex,
-    paneCount: ws.surfaceIds.size,
     surfaceTitles,
     focusedSurfaceTitle,
     focusedSurfaceCommand,

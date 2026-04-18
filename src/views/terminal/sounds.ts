@@ -1,29 +1,11 @@
-// Small audio helper for one-shot notification sounds. A single
-// HTMLAudioElement is cached per source and rewound before every play so
-// bursts of notifications don't leak DOM elements. Playback failures
-// (autoplay policy, missing file) are swallowed — the sound is a nice-to-
-// have cue, never required for correctness.
+// Webview-side bindings for the shared audio helper. Holds the
+// relative path the Electrobun webview resolves against its own
+// `index.html`.
 
-const cache = new Map<string, HTMLAudioElement>();
+import { playNotificationSound as play } from "../../shared/sounds";
 
-function getAudio(src: string): HTMLAudioElement {
-  let el = cache.get(src);
-  if (!el) {
-    el = new Audio(src);
-    el.preload = "auto";
-    cache.set(src, el);
-  }
-  return el;
-}
+const NOTIFICATION_SOUND_URL = "audio/finish.mp3";
 
 export function playNotificationSound(): void {
-  try {
-    const audio = getAudio("audio/finish.mp3");
-    audio.currentTime = 0;
-    void audio.play().catch(() => {
-      /* autoplay blocked or file missing — ignore */
-    });
-  } catch {
-    /* older browsers that throw synchronously on play() */
-  }
+  play(NOTIFICATION_SOUND_URL);
 }

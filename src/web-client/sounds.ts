@@ -1,29 +1,10 @@
-// One-shot notification sounds for the web mirror. Cached HTMLAudioElement
-// per source so bursts of notifications don't leak DOM elements. Failures
-// are swallowed — the cue is a nice-to-have, never required for
-// correctness. Autoplay policies will block playback until the user has
-// interacted with the page; we just let those attempts fail silently.
+// Web-mirror bindings for the shared audio helper. The mirror fetches
+// the mp3 from the Bun HTTP server's /audio/ route.
 
-const cache = new Map<string, HTMLAudioElement>();
+import { playNotificationSound as play } from "../shared/sounds";
 
-function getAudio(src: string): HTMLAudioElement {
-  let el = cache.get(src);
-  if (!el) {
-    el = new Audio(src);
-    el.preload = "auto";
-    cache.set(src, el);
-  }
-  return el;
-}
+const NOTIFICATION_SOUND_URL = "/audio/finish.mp3";
 
 export function playNotificationSound(): void {
-  try {
-    const audio = getAudio("/audio/finish.mp3");
-    audio.currentTime = 0;
-    void audio.play().catch(() => {
-      /* autoplay blocked or file missing — ignore */
-    });
-  } catch {
-    /* older browsers that throw synchronously on play() */
-  }
+  play(NOTIFICATION_SOUND_URL);
 }

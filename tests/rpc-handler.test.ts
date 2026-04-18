@@ -346,6 +346,72 @@ describe("RPC Handler", () => {
     expect(result.length).toBe(0);
   });
 
+  test("notification.dismiss removes a single entry by id", () => {
+    const handler = setup();
+    handler("notification.create", { title: "A", body: "1" });
+    handler("notification.create", { title: "B", body: "2" });
+    handler("notification.create", { title: "C", body: "3" });
+
+    const listed = handler("notification.list", {}) as Record<
+      string,
+      unknown
+    >[];
+    expect(listed.length).toBe(3);
+
+    const middleId = listed[1]["id"] as string;
+    const result = handler("notification.dismiss", { id: middleId });
+    expect(result).toBe("OK");
+
+    const after = handler("notification.list", {}) as Record<string, unknown>[];
+    expect(after.length).toBe(2);
+    expect(after.map((n) => n["title"])).toEqual(["A", "C"]);
+  });
+
+  test("notification.dismiss broadcasts the updated list", () => {
+    const handler = setup();
+    handler("notification.create", { title: "A", body: "1" });
+    handler("notification.create", { title: "B", body: "2" });
+    dispatched.length = 0; // drop the creates; keep only dismiss dispatch
+
+    const listed = handler("notification.list", {}) as Record<
+      string,
+      unknown
+    >[];
+    handler("notification.dismiss", { id: listed[0]["id"] });
+
+    expect(dispatched.length).toBe(1);
+    expect(dispatched[0].action).toBe("notification");
+    const remaining = dispatched[0].payload["notifications"] as unknown[];
+    expect(remaining.length).toBe(1);
+  });
+
+  test("notification.dismiss is a no-op for unknown id", () => {
+    const handler = setup();
+    handler("notification.create", { title: "A", body: "1" });
+    dispatched.length = 0;
+
+    const result = handler("notification.dismiss", {
+      id: "notif:does-not-exist",
+    });
+    expect(result).toBe("OK");
+    // No rebroadcast when nothing changed — we don't want the webview
+    // to rerender the whole notification list on misses.
+    expect(dispatched.length).toBe(0);
+
+    const listed = handler("notification.list", {}) as unknown[];
+    expect(listed.length).toBe(1);
+  });
+
+  test("notification.dismiss with missing id is a no-op", () => {
+    const handler = setup();
+    handler("notification.create", { title: "A", body: "1" });
+    dispatched.length = 0;
+
+    expect(handler("notification.dismiss", {})).toBe("OK");
+    expect(dispatched.length).toBe(0);
+    expect((handler("notification.list", {}) as unknown[]).length).toBe(1);
+  });
+
   // ── Panes ──
 
   test("pane.list returns surfaces in active workspace", () => {

@@ -9,7 +9,6 @@ export interface WorkspaceInfo {
   name: string;
   color?: string;
   active: boolean;
-  paneCount: number;
   surfaceTitles: string[];
   focusedSurfaceTitle?: string | null;
   /** Full argv of the focused surface's foreground process, if it differs
@@ -66,6 +65,9 @@ export class Sidebar {
   private visible = true;
   /** Workspaces whose package.json card is currently expanded. */
   private expandedPackages: Set<string> = new Set();
+  /** Most recent workspace list; kept so client-only UI toggles
+   *  (e.g. package-card expand) can rerender without a fresh feed. */
+  private workspaces: WorkspaceInfo[] = [];
   /** Most recent notification list; kept so `acknowledgeBySurface` can
    *  reason about which notifications share the focused surface. */
   private notifications: NotificationInfo[] = [];
@@ -146,6 +148,12 @@ export class Sidebar {
   }
 
   setWorkspaces(workspaces: WorkspaceInfo[]): void {
+    this.workspaces = workspaces;
+    this.renderWorkspaces();
+  }
+
+  private renderWorkspaces(): void {
+    const workspaces = this.workspaces;
     this.listEl.innerHTML = "";
 
     if (workspaces.length === 0) {
@@ -302,7 +310,7 @@ export class Sidebar {
             } else {
               this.expandedPackages.add(ws.id);
             }
-            this.setWorkspaces(workspaces);
+            this.renderWorkspaces();
           }),
         );
       }
