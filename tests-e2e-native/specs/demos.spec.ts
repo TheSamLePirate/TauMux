@@ -1,4 +1,4 @@
-import { test } from "../fixtures";
+import { expect, test } from "../fixtures";
 import { sleep } from "../helpers/wait";
 import { ACTIVE_DEMOS, commandFor } from "../../tests-e2e/design/helpers/demos";
 
@@ -28,6 +28,17 @@ test.describe("@design-review demos", () => {
         text: command + "\n",
       });
       await sleep(demo.settleMs);
+
+      // Panel render assertion via the RPC panel registry. If sideband
+      // broke between the fd write and the webview renderer this is
+      // how we see it before promoting a broken baseline.
+      if (!demo.expectNoPanel) {
+        const panels = await app.rpc.panel.list({ surface_id: id });
+        expect(
+          panels.length,
+          `native demo "${demo.slug}" produced no panel within ${demo.settleMs}ms`,
+        ).toBeGreaterThan(0);
+      }
 
       await app.snap(`demo-${demo.slug}`, {
         suite: "native",

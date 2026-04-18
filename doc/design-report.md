@@ -9,16 +9,70 @@ visual regressions without opening each PNG by hand.
 ## Commands
 
 ```
-bun run test:full-suite      # typecheck + unit + web e2e + native e2e + report
-bun run report:design        # same coverage but skips typecheck/unit
-bun run report:design:web    # web only — no macOS/Electrobun needed
+bun run test:full-suite      # typecheck + unit + web + native + gated report + audit
+bun run report:design        # advisory report (no gate); skips typecheck/unit
+bun run report:design:gate   # rebuild + pixel-diff + CI gate (exits 1 on regression)
+bun run report:design:web    # advisory, web only — no macOS/Electrobun needed
 bun run test:design:web      # web design suite, no report rebuild
 bun run test:design:native   # native @design-review suite, no report rebuild
-bun run baseline:design      # promote the current shots → tests-e2e-baselines/
+bun run test:design:audit    # strict audit: manifest ↔ PNGs ↔ spec step names
+bun run baseline:design      # promote current shots + regenerate manifest
 ```
 
 Each command ends with an `index.html` you can `open` directly — no
 server needed, PNGs are copied in and referenced relatively.
+
+## Advisory mode vs gate mode
+
+Two modes share the same report structure.
+
+- **Advisory** (`report:design`, `report:design:web`). Writes the HTML
+  gallery, always exits 0. Right for local exploration where you want
+  to browse the shots regardless of drift.
+- **Gate** (`report:design:gate`, or any command ending in `--gate`).
+  Exits non-zero when any shot has status `over`, `missing`,
+  `dim-mismatch`, `baseline-only`, or `corrupt`, or an un-allowlisted
+  `new` shot. The HTML report shows a red banner at the top with the
+  set of failing statuses. This is the mode `test:full-suite` runs.
+
+Gate fail statuses:
+
+- `over` — pixel diff > 0.5% of total pixels.
+- `dim-mismatch` — current PNG resolution differs from baseline. Always
+  fails because diff is undefined.
+- `missing` — the JSONL registered a shot but the PNG isn't on disk.
+  Indicates a capture / copy failure.
+- `baseline-only` — the committed baseline has a PNG the current run
+  never produced. Surfaces deleted / renamed / regressed tests.
+- `corrupt` — the PNG didn't decode. Distinct from `new` so postmortems
+  aren't misleading.
+- `new` — a current shot with no committed baseline. Fails **unless**
+  allowlisted in `tests-e2e-baselines/.new-allowed` (one canonical key
+  per line, `#` comments allowed).
+
+`tests-e2e-baselines/.new-allowed` is a pressure-release valve: add the
+key of a legitimately new shot before `test:full-suite` runs, review it
+in the HTML, promote with `baseline:design`, then delete the line.
+Leaving stale allowlist entries rotates into "muted regressions" fast,
+so treat this file as short-lived.
+
+## Manifest + audit
+
+Every `baseline:design` regenerates `tests-e2e-baselines/manifest.json`
+listing every committed shot as `{ key, suite, slug, test, step,
+width, height }`. `bun run test:design:audit` (invoked automatically by
+`test:full-suite`) checks three invariants:
+
+1. Every manifest entry has a corresponding PNG on disk.
+2. Every PNG on disk has a manifest entry. Prevents a promote that
+   forgot to re-save the manifest.
+3. Every `snap()` call in the spec files has a baseline with the same
+   step name. Catches tests that claim a shot the baseline doesn't
+   have — the class of bug that put `dialog-rename-workspace` into
+   the initial drop as a perpetual "new".
+
+The auditor exits non-zero in `--strict` mode (the default for
+`test:design:audit`) on any mismatch.
 
 ## Baseline workflow
 
@@ -108,14 +162,25 @@ Drives the real Electrobun app via the JSON-RPC client in
 ## Plumbing
 
 ```
-tests-e2e/design/helpers/snap.ts      ← web snap helper
-tests-e2e-native/screenshot.ts         ← native snap helper (captureWindow + writeIndexEntry)
-tests-e2e-native/fixtures.ts           ← wires snap() on the `app` fixture; captures tier-2 state + terminal text
-tests-e2e/design/helpers/demos.ts      ← shared demo catalog used by both suites
-scripts/build-design-report.ts         ← JSONL → HTML report
-scripts/promote-design-baseline.ts     ← copy shots into tests-e2e-baselines/
-tests-e2e-baselines/                   ← committed PNG references for pixel-diff
-.design-artifacts/                     ← staged PNGs + JSONL, survives Playwright's test-results wipe (gitignored)
+src/design-report/                      ← pure TS module — unit-tested helpers
+  types.ts                              · shared types + canonical key helpers
+  index-io.ts                           · parseIndexLines, latestPerKey
+  shot-classify.ts                      · classifyShot, tryDecodePng
+  enumerate-baseline.ts                 · walks tests-e2e-baselines/
+  manifest.ts                           · read/write/index manifest.json
+  new-allowed.ts                        · parse .new-allowed
+  gate.ts                               · evaluateGate — pure pass/fail decision
+  render-html.ts                        · standalone HTML template
+tests-e2e/design/helpers/snap.ts        ← web snap helper
+tests-e2e-native/screenshot.ts          ← native snap helper
+tests-e2e-native/fixtures.ts            ← wires snap() on the `app` fixture
+tests-e2e/design/helpers/demos.ts       ← shared demo catalog used by both suites
+scripts/build-design-report.ts          ← orchestrator (thin)
+scripts/promote-design-baseline.ts      ← copy shots + (re)generate manifest.json
+scripts/audit-design-baselines.ts       ← manifest/PNG/spec invariants
+tests/design-report/                    ← bun test coverage for the module
+tests-e2e-baselines/                    ← committed PNG references + manifest + .new-allowed
+.design-artifacts/                      ← staged PNGs + JSONL, survives Playwright's test-results wipe (gitignored)
 ```
 
 ### Why a stage directory outside `test-results/`

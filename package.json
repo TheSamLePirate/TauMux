@@ -31,9 +31,11 @@
     "test:design:native": "playwright test --config=playwright-native.config.ts --grep @design-review",
     "report:design": "rm -rf .design-artifacts && bun run test:design:web && bun run test:design:native && bun scripts/build-design-report.ts",
     "report:design:web": "rm -rf .design-artifacts && bun run test:design:web && bun scripts/build-design-report.ts",
+    "report:design:gate": "rm -rf .design-artifacts && bun run test:design:web && bun run test:design:native && bun scripts/build-design-report.ts --gate",
+    "test:design:audit": "bun scripts/audit-design-baselines.ts --strict",
     "baseline:design": "bun scripts/promote-design-baseline.ts",
     "test:all": "bun run test && bun run test:e2e",
-    "test:full-suite": "bun run typecheck && bun run test && rm -rf .design-artifacts && bun run test:e2e && bun run test:native && bun scripts/build-design-report.ts",
+    "test:full-suite": "bun run typecheck && bun run test && rm -rf .design-artifacts && bun run test:e2e && bun run test:native && bun scripts/build-design-report.ts --gate && bun run test:design:audit",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

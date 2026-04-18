@@ -1,0 +1,788 @@
+{
+  "generatedAt": "2026-04-18T12:46:49.110Z",
+  "shots": [
+    {
+      "key": "native::demos-demo-3d-demo-3d",
+      "suite": "native",
+      "slug": "demos-demo-3d-demo-3d",
+      "test": "demo-3d-demo-3d",
+      "step": "demo-3d-demo-3d",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-canvas-heatmap-demo-canvas-heatmap",
+      "suite": "native",
+      "slug": "demos-demo-canvas-heatmap-demo-canvas-heatmap",
+      "test": "demo-canvas-heatmap-demo-canvas-heatmap",
+      "step": "demo-canvas-heatmap-demo-canvas-heatmap",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-canvas-life-demo-canvas-life",
+      "suite": "native",
+      "slug": "demos-demo-canvas-life-demo-canvas-life",
+      "test": "demo-canvas-life-demo-canvas-life",
+      "step": "demo-canvas-life-demo-canvas-life",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-canvas-mandelbrot-demo-canvas-mandelbrot",
+      "suite": "native",
+      "slug": "demos-demo-canvas-mandelbrot-demo-canvas-mandelbrot",
+      "test": "demo-canvas-mandelbrot-demo-canvas-mandelbrot",
+      "step": "demo-canvas-mandelbrot-demo-canvas-mandelbrot",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-canvas-particles-demo-canvas-particles",
+      "suite": "native",
+      "slug": "demos-demo-canvas-particles-demo-canvas-particles",
+      "test": "demo-canvas-particles-demo-canvas-particles",
+      "step": "demo-canvas-particles-demo-canvas-particles",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-chart-demo-chart",
+      "suite": "native",
+      "slug": "demos-demo-chart-demo-chart",
+      "test": "demo-chart-demo-chart",
+      "step": "demo-chart-demo-chart",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-clock-demo-clock",
+      "suite": "native",
+      "slug": "demos-demo-clock-demo-clock",
+      "test": "demo-clock-demo-clock",
+      "step": "demo-clock-demo-clock",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-colorpick-demo-colorpick",
+      "suite": "native",
+      "slug": "demos-demo-colorpick-demo-colorpick",
+      "test": "demo-colorpick-demo-colorpick",
+      "step": "demo-colorpick-demo-colorpick",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-dashboard-demo-dashboard",
+      "suite": "native",
+      "slug": "demos-demo-dashboard-demo-dashboard",
+      "test": "demo-dashboard-demo-dashboard",
+      "step": "demo-dashboard-demo-dashboard",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-draw-demo-draw",
+      "suite": "native",
+      "slug": "demos-demo-draw-demo-draw",
+      "test": "demo-draw-demo-draw",
+      "step": "demo-draw-demo-draw",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-files-demo-files",
+      "suite": "native",
+      "slug": "demos-demo-files-demo-files",
+      "test": "demo-files-demo-files",
+      "step": "demo-files-demo-files",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-gallery-demo-gallery",
+      "suite": "native",
+      "slug": "demos-demo-gallery-demo-gallery",
+      "test": "demo-gallery-demo-gallery",
+      "step": "demo-gallery-demo-gallery",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-gitdiff-demo-gitdiff",
+      "suite": "native",
+      "slug": "demos-demo-gitdiff-demo-gitdiff",
+      "test": "demo-gitdiff-demo-gitdiff",
+      "step": "demo-gitdiff-demo-gitdiff",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-gitgraph-demo-gitgraph",
+      "suite": "native",
+      "slug": "demos-demo-gitgraph-demo-gitgraph",
+      "test": "demo-gitgraph-demo-gitgraph",
+      "step": "demo-gitgraph-demo-gitgraph",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-image-demo-image",
+      "suite": "native",
+      "slug": "demos-demo-image-demo-image",
+      "test": "demo-image-demo-image",
+      "step": "demo-image-demo-image",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-interactive-py-demo-interactive-py",
+      "suite": "native",
+      "slug": "demos-demo-interactive-py-demo-interactive-py",
+      "test": "demo-interactive-py-demo-interactive-py",
+      "step": "demo-interactive-py-demo-interactive-py",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-interactive-showcase-demo-interactive-showcase",
+      "suite": "native",
+      "slug": "demos-demo-interactive-showcase-demo-interactive-showcase",
+      "test": "demo-interactive-showcase-demo-interactive-showcase",
+      "step": "demo-interactive-showcase-demo-interactive-showcase",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-json-demo-json",
+      "suite": "native",
+      "slug": "demos-demo-json-demo-json",
+      "test": "demo-json-demo-json",
+      "step": "demo-json-demo-json",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-mdpreview-demo-mdpreview",
+      "suite": "native",
+      "slug": "demos-demo-mdpreview-demo-mdpreview",
+      "test": "demo-mdpreview-demo-mdpreview",
+      "step": "demo-mdpreview-demo-mdpreview",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-procs-demo-procs",
+      "suite": "native",
+      "slug": "demos-demo-procs-demo-procs",
+      "test": "demo-procs-demo-procs",
+      "step": "demo-procs-demo-procs",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-qrcode-demo-qrcode",
+      "suite": "native",
+      "slug": "demos-demo-qrcode-demo-qrcode",
+      "test": "demo-qrcode-demo-qrcode",
+      "step": "demo-qrcode-demo-qrcode",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::demos-demo-sysmon-demo-sysmon",
+      "suite": "native",
+      "slug": "demos-demo-sysmon-demo-sysmon",
+      "test": "demo-sysmon-demo-sysmon",
+      "step": "demo-sysmon-demo-sysmon",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-component-palette-open-empty-palette-open-empty",
+      "suite": "native",
+      "slug": "design-review-component-palette-open-empty-palette-open-empty",
+      "test": "review-component-palette-open-empty-palette-open-empty",
+      "step": "review-component-palette-open-empty-palette-open-empty",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-component-palette-open-filtered-palette-open-filtered",
+      "suite": "native",
+      "slug": "design-review-component-palette-open-filtered-palette-open-filtered",
+      "test": "review-component-palette-open-filtered-palette-open-filtered",
+      "step": "review-component-palette-open-filtered-palette-open-filtered",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-component-process-manager-open-process-manager-open",
+      "suite": "native",
+      "slug": "design-review-component-process-manager-open-process-manager-open",
+      "test": "review-component-process-manager-open-process-manager-open",
+      "step": "review-component-process-manager-open-process-manager-open",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-component-rename-surface-dialog-dialog-rename-surface",
+      "suite": "native",
+      "slug": "design-review-component-rename-surface-dialog-dialog-rename-surface",
+      "test": "review-component-rename-surface-dialog-dialog-rename-surface",
+      "step": "review-component-rename-surface-dialog-dialog-rename-surface",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-component-settings-general-settings-general",
+      "suite": "native",
+      "slug": "design-review-component-settings-general-settings-general",
+      "test": "review-component-settings-general-settings-general",
+      "step": "review-component-settings-general-settings-general",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-component-sidebar-closed-sidebar-closed",
+      "suite": "native",
+      "slug": "design-review-component-sidebar-closed-sidebar-closed",
+      "test": "review-component-sidebar-closed-sidebar-closed",
+      "step": "review-component-sidebar-closed-sidebar-closed",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-component-sidebar-open-sidebar-open",
+      "suite": "native",
+      "slug": "design-review-component-sidebar-open-sidebar-open",
+      "test": "review-component-sidebar-open-sidebar-open",
+      "step": "review-component-sidebar-open-sidebar-open",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-scenario-boot-empty-boot-empty",
+      "suite": "native",
+      "slug": "design-review-scenario-boot-empty-boot-empty",
+      "test": "review-scenario-boot-empty-boot-empty",
+      "step": "review-scenario-boot-empty-boot-empty",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-scenario-browser-surface-browser-surface",
+      "suite": "native",
+      "slug": "design-review-scenario-browser-surface-browser-surface",
+      "test": "review-scenario-browser-surface-browser-surface",
+      "step": "review-scenario-browser-surface-browser-surface",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-scenario-notification-toast-notification-toast",
+      "suite": "native",
+      "slug": "design-review-scenario-notification-toast-notification-toast",
+      "test": "review-scenario-notification-toast-notification-toast",
+      "step": "review-scenario-notification-toast-notification-toast",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-scenario-pty-colors-pty-colors",
+      "suite": "native",
+      "slug": "design-review-scenario-pty-colors-pty-colors",
+      "test": "review-scenario-pty-colors-pty-colors",
+      "step": "review-scenario-pty-colors-pty-colors",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-scenario-pty-long-scrollback-pty-long-scrollback",
+      "suite": "native",
+      "slug": "design-review-scenario-pty-long-scrollback-pty-long-scrollback",
+      "test": "review-scenario-pty-long-scrollback-pty-long-scrollback",
+      "step": "review-scenario-pty-long-scrollback-pty-long-scrollback",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-scenario-split-2x2-split-2x2",
+      "suite": "native",
+      "slug": "design-review-scenario-split-2x2-split-2x2",
+      "test": "review-scenario-split-2x2-split-2x2",
+      "step": "review-scenario-split-2x2-split-2x2",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-scenario-split-3-unbalanced-split-3-unbalanced",
+      "suite": "native",
+      "slug": "design-review-scenario-split-3-unbalanced-split-3-unbalanced",
+      "test": "review-scenario-split-3-unbalanced-split-3-unbalanced",
+      "step": "review-scenario-split-3-unbalanced-split-3-unbalanced",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-scenario-split-horizontal-split-horizontal",
+      "suite": "native",
+      "slug": "design-review-scenario-split-horizontal-split-horizontal",
+      "test": "review-scenario-split-horizontal-split-horizontal",
+      "step": "review-scenario-split-horizontal-split-horizontal",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-scenario-split-vertical-split-vertical",
+      "suite": "native",
+      "slug": "design-review-scenario-split-vertical-split-vertical",
+      "test": "review-scenario-split-vertical-split-vertical",
+      "step": "review-scenario-split-vertical-split-vertical",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "native::design-review-scenario-workspace-second-workspace-second",
+      "suite": "native",
+      "slug": "design-review-scenario-workspace-second-workspace-second",
+      "test": "review-scenario-workspace-second-workspace-second",
+      "step": "review-scenario-workspace-second-workspace-second",
+      "width": 2400,
+      "height": 1600
+    },
+    {
+      "key": "web::components-layout-full-viewport-layout-full-viewport",
+      "suite": "web",
+      "slug": "components-layout-full-viewport-layout-full-viewport",
+      "test": "layout-full-viewport-layout-full-viewport",
+      "step": "layout-full-viewport-layout-full-viewport",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::components-layout-full-viewport-sidebar-open-layout-full-viewport-sidebar-open",
+      "suite": "web",
+      "slug": "components-layout-full-viewport-sidebar-open-layout-full-viewport-sidebar-open",
+      "test": "layout-full-viewport-sidebar-open-layout-full-viewport-sidebar-open",
+      "step": "layout-full-viewport-sidebar-open-layout-full-viewport-sidebar-open",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::components-pane-bar-btn-hover-pane-bar-btn-hover",
+      "suite": "web",
+      "slug": "components-pane-bar-btn-hover-pane-bar-btn-hover",
+      "test": "pane-bar-btn-hover-pane-bar-btn-hover",
+      "step": "pane-bar-btn-hover-pane-bar-btn-hover",
+      "width": 1278,
+      "height": 34
+    },
+    {
+      "key": "web::components-pane-bar-detail-pane-bar-detail",
+      "suite": "web",
+      "slug": "components-pane-bar-detail-pane-bar-detail",
+      "test": "pane-bar-detail-pane-bar-detail",
+      "step": "pane-bar-detail-pane-bar-detail",
+      "width": 975,
+      "height": 34
+    },
+    {
+      "key": "web::components-pane-default-pane-default",
+      "suite": "web",
+      "slug": "components-pane-default-pane-default",
+      "test": "pane-default-pane-default",
+      "step": "pane-default-pane-default",
+      "width": 976,
+      "height": 668
+    },
+    {
+      "key": "web::components-pane-fullscreen-pane-fullscreen",
+      "suite": "web",
+      "slug": "components-pane-fullscreen-pane-fullscreen",
+      "test": "pane-fullscreen-pane-fullscreen",
+      "step": "pane-fullscreen-pane-fullscreen",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::components-pane-with-content-pane-with-content",
+      "suite": "web",
+      "slug": "components-pane-with-content-pane-with-content",
+      "test": "pane-with-content-pane-with-content",
+      "step": "pane-with-content-pane-with-content",
+      "width": 976,
+      "height": 668
+    },
+    {
+      "key": "web::components-sidebar-collapsed-sidebar-collapsed",
+      "suite": "web",
+      "slug": "components-sidebar-collapsed-sidebar-collapsed",
+      "test": "sidebar-collapsed-sidebar-collapsed",
+      "step": "sidebar-collapsed-sidebar-collapsed",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::components-sidebar-expanded-sidebar-expanded",
+      "suite": "web",
+      "slug": "components-sidebar-expanded-sidebar-expanded",
+      "test": "sidebar-expanded-sidebar-expanded",
+      "step": "sidebar-expanded-sidebar-expanded",
+      "width": 304,
+      "height": 668
+    },
+    {
+      "key": "web::components-toolbar-default-toolbar-default",
+      "suite": "web",
+      "slug": "components-toolbar-default-toolbar-default",
+      "test": "toolbar-default-toolbar-default",
+      "step": "toolbar-default-toolbar-default",
+      "width": 1280,
+      "height": 52
+    },
+    {
+      "key": "web::components-toolbar-fullscreen-btn-hover-toolbar-fullscreen-btn-hover",
+      "suite": "web",
+      "slug": "components-toolbar-fullscreen-btn-hover-toolbar-fullscreen-btn-hover",
+      "test": "toolbar-fullscreen-btn-hover-toolbar-fullscreen-btn-hover",
+      "step": "toolbar-fullscreen-btn-hover-toolbar-fullscreen-btn-hover",
+      "width": 1280,
+      "height": 52
+    },
+    {
+      "key": "web::components-toolbar-sidebar-btn-focus-toolbar-sidebar-btn-focus",
+      "suite": "web",
+      "slug": "components-toolbar-sidebar-btn-focus-toolbar-sidebar-btn-focus",
+      "test": "toolbar-sidebar-btn-focus-toolbar-sidebar-btn-focus",
+      "step": "toolbar-sidebar-btn-focus-toolbar-sidebar-btn-focus",
+      "width": 1280,
+      "height": 52
+    },
+    {
+      "key": "web::components-toolbar-sidebar-btn-hover-toolbar-sidebar-btn-hover",
+      "suite": "web",
+      "slug": "components-toolbar-sidebar-btn-hover-toolbar-sidebar-btn-hover",
+      "test": "toolbar-sidebar-btn-hover-toolbar-sidebar-btn-hover",
+      "step": "toolbar-sidebar-btn-hover-toolbar-sidebar-btn-hover",
+      "width": 1280,
+      "height": 52
+    },
+    {
+      "key": "web::components-toolbar-status-dot-connected-toolbar-status-dot-connected",
+      "suite": "web",
+      "slug": "components-toolbar-status-dot-connected-toolbar-status-dot-connected",
+      "test": "toolbar-status-dot-connected-toolbar-status-dot-connected",
+      "step": "toolbar-status-dot-connected-toolbar-status-dot-connected",
+      "width": 1280,
+      "height": 52
+    },
+    {
+      "key": "web::components-toolbar-workspace-select-open-toolbar-workspace-select-focus",
+      "suite": "web",
+      "slug": "components-toolbar-workspace-select-open-toolbar-workspace-select-focus",
+      "test": "toolbar-workspace-select-open-toolbar-workspace-select-focus",
+      "step": "toolbar-workspace-select-open-toolbar-workspace-select-focus",
+      "width": 1280,
+      "height": 52
+    },
+    {
+      "key": "web::demos-demo-3d-demo-3d",
+      "suite": "web",
+      "slug": "demos-demo-3d-demo-3d",
+      "test": "demo-3d-demo-3d",
+      "step": "demo-3d-demo-3d",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-canvas-heatmap-demo-canvas-heatmap",
+      "suite": "web",
+      "slug": "demos-demo-canvas-heatmap-demo-canvas-heatmap",
+      "test": "demo-canvas-heatmap-demo-canvas-heatmap",
+      "step": "demo-canvas-heatmap-demo-canvas-heatmap",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-canvas-life-demo-canvas-life",
+      "suite": "web",
+      "slug": "demos-demo-canvas-life-demo-canvas-life",
+      "test": "demo-canvas-life-demo-canvas-life",
+      "step": "demo-canvas-life-demo-canvas-life",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-canvas-mandelbrot-demo-canvas-mandelbrot",
+      "suite": "web",
+      "slug": "demos-demo-canvas-mandelbrot-demo-canvas-mandelbrot",
+      "test": "demo-canvas-mandelbrot-demo-canvas-mandelbrot",
+      "step": "demo-canvas-mandelbrot-demo-canvas-mandelbrot",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-canvas-particles-demo-canvas-particles",
+      "suite": "web",
+      "slug": "demos-demo-canvas-particles-demo-canvas-particles",
+      "test": "demo-canvas-particles-demo-canvas-particles",
+      "step": "demo-canvas-particles-demo-canvas-particles",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-chart-demo-chart",
+      "suite": "web",
+      "slug": "demos-demo-chart-demo-chart",
+      "test": "demo-chart-demo-chart",
+      "step": "demo-chart-demo-chart",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-clock-demo-clock",
+      "suite": "web",
+      "slug": "demos-demo-clock-demo-clock",
+      "test": "demo-clock-demo-clock",
+      "step": "demo-clock-demo-clock",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-colorpick-demo-colorpick",
+      "suite": "web",
+      "slug": "demos-demo-colorpick-demo-colorpick",
+      "test": "demo-colorpick-demo-colorpick",
+      "step": "demo-colorpick-demo-colorpick",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-dashboard-demo-dashboard",
+      "suite": "web",
+      "slug": "demos-demo-dashboard-demo-dashboard",
+      "test": "demo-dashboard-demo-dashboard",
+      "step": "demo-dashboard-demo-dashboard",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-draw-demo-draw",
+      "suite": "web",
+      "slug": "demos-demo-draw-demo-draw",
+      "test": "demo-draw-demo-draw",
+      "step": "demo-draw-demo-draw",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-files-demo-files",
+      "suite": "web",
+      "slug": "demos-demo-files-demo-files",
+      "test": "demo-files-demo-files",
+      "step": "demo-files-demo-files",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-gallery-demo-gallery",
+      "suite": "web",
+      "slug": "demos-demo-gallery-demo-gallery",
+      "test": "demo-gallery-demo-gallery",
+      "step": "demo-gallery-demo-gallery",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-gitdiff-demo-gitdiff",
+      "suite": "web",
+      "slug": "demos-demo-gitdiff-demo-gitdiff",
+      "test": "demo-gitdiff-demo-gitdiff",
+      "step": "demo-gitdiff-demo-gitdiff",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-gitgraph-demo-gitgraph",
+      "suite": "web",
+      "slug": "demos-demo-gitgraph-demo-gitgraph",
+      "test": "demo-gitgraph-demo-gitgraph",
+      "step": "demo-gitgraph-demo-gitgraph",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-image-demo-image",
+      "suite": "web",
+      "slug": "demos-demo-image-demo-image",
+      "test": "demo-image-demo-image",
+      "step": "demo-image-demo-image",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-interactive-py-demo-interactive-py",
+      "suite": "web",
+      "slug": "demos-demo-interactive-py-demo-interactive-py",
+      "test": "demo-interactive-py-demo-interactive-py",
+      "step": "demo-interactive-py-demo-interactive-py",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-interactive-showcase-demo-interactive-showcase",
+      "suite": "web",
+      "slug": "demos-demo-interactive-showcase-demo-interactive-showcase",
+      "test": "demo-interactive-showcase-demo-interactive-showcase",
+      "step": "demo-interactive-showcase-demo-interactive-showcase",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-json-demo-json",
+      "suite": "web",
+      "slug": "demos-demo-json-demo-json",
+      "test": "demo-json-demo-json",
+      "step": "demo-json-demo-json",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-mdpreview-demo-mdpreview",
+      "suite": "web",
+      "slug": "demos-demo-mdpreview-demo-mdpreview",
+      "test": "demo-mdpreview-demo-mdpreview",
+      "step": "demo-mdpreview-demo-mdpreview",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-procs-demo-procs",
+      "suite": "web",
+      "slug": "demos-demo-procs-demo-procs",
+      "test": "demo-procs-demo-procs",
+      "step": "demo-procs-demo-procs",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-qrcode-demo-qrcode",
+      "suite": "web",
+      "slug": "demos-demo-qrcode-demo-qrcode",
+      "test": "demo-qrcode-demo-qrcode",
+      "step": "demo-qrcode-demo-qrcode",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::demos-demo-sysmon-demo-sysmon",
+      "suite": "web",
+      "slug": "demos-demo-sysmon-demo-sysmon",
+      "test": "demo-sysmon-demo-sysmon",
+      "step": "demo-sysmon-demo-sysmon",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::scenarios-auth-open-auth-open",
+      "suite": "web",
+      "slug": "scenarios-auth-open-auth-open",
+      "test": "auth-open-auth-open",
+      "step": "auth-open-auth-open",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::scenarios-auth-required-correct-token-auth-required-correct-token",
+      "suite": "web",
+      "slug": "scenarios-auth-required-correct-token-auth-required-correct-token",
+      "test": "auth-required-correct-token-auth-required-correct-token",
+      "step": "auth-required-correct-token-auth-required-correct-token",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::scenarios-auth-required-missing-token-auth-required-missing-token",
+      "suite": "web",
+      "slug": "scenarios-auth-required-missing-token-auth-required-missing-token",
+      "test": "auth-required-missing-token-auth-required-missing-token",
+      "step": "auth-required-missing-token-auth-required-missing-token",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::scenarios-boot-empty-boot-empty",
+      "suite": "web",
+      "slug": "scenarios-boot-empty-boot-empty",
+      "test": "boot-empty-boot-empty",
+      "step": "boot-empty-boot-empty",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::scenarios-boot-sidebar-collapsed-boot-sidebar-collapsed",
+      "suite": "web",
+      "slug": "scenarios-boot-sidebar-collapsed-boot-sidebar-collapsed",
+      "test": "boot-sidebar-collapsed-boot-sidebar-collapsed",
+      "step": "boot-sidebar-collapsed-boot-sidebar-collapsed",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::scenarios-boot-sidebar-expanded-boot-sidebar-expanded",
+      "suite": "web",
+      "slug": "scenarios-boot-sidebar-expanded-boot-sidebar-expanded",
+      "test": "boot-sidebar-expanded-boot-sidebar-expanded",
+      "step": "boot-sidebar-expanded-boot-sidebar-expanded",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::scenarios-pty-colors-showcase-pty-colors-showcase",
+      "suite": "web",
+      "slug": "scenarios-pty-colors-showcase-pty-colors-showcase",
+      "test": "pty-colors-showcase-pty-colors-showcase",
+      "step": "pty-colors-showcase-pty-colors-showcase",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::scenarios-pty-directory-listing-pty-directory-listing",
+      "suite": "web",
+      "slug": "scenarios-pty-directory-listing-pty-directory-listing",
+      "test": "pty-directory-listing-pty-directory-listing",
+      "step": "pty-directory-listing-pty-directory-listing",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::scenarios-pty-long-scrollback-pty-long-scrollback",
+      "suite": "web",
+      "slug": "scenarios-pty-long-scrollback-pty-long-scrollback",
+      "test": "pty-long-scrollback-pty-long-scrollback",
+      "step": "pty-long-scrollback-pty-long-scrollback",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "key": "web::scenarios-viewport-narrow-viewport-900x700",
+      "suite": "web",
+      "slug": "scenarios-viewport-narrow-viewport-900x700",
+      "test": "viewport-narrow-viewport-900x700",
+      "step": "viewport-narrow-viewport-900x700",
+      "width": 900,
+      "height": 700
+    },
+    {
+      "key": "web::scenarios-viewport-regular-viewport-1280x800",
+      "suite": "web",
+      "slug": "scenarios-viewport-regular-viewport-1280x800",
+      "test": "viewport-regular-viewport-1280x800",
+      "step": "viewport-regular-viewport-1280x800",
+      "width": 1280,
+      "height": 800
+    }
+  ]
+}

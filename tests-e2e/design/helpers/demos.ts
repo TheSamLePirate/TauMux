@@ -4,10 +4,12 @@
  * (`tests-e2e-native/specs/demos.spec.ts`) suites iterate this list so
  * the design report groups the same demo side-by-side across platforms.
  *
- * The launched shell runs in `$HOME` (web fixture uses `/bin/sh`; native
- * fixture allocates a throwaway `HOME`). We always call demos via an
- * absolute path resolved at test time — `bun scripts/demo_X.ts` would
- * fail because the shell's cwd isn't the repo root.
+ * The launched shell runs in `$HOME` (web fixture now uses `/bin/zsh
+ * -l -f` since `/bin/sh -l` closes extra fds on macOS and killed the
+ * sideband channel; native fixture allocates a throwaway `HOME`). We
+ * always call demos via an absolute path resolved at test time — `bun
+ * scripts/demo_X.ts` would fail because the shell's cwd isn't the repo
+ * root.
  */
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +39,11 @@ export interface DemoEntry {
   args?: string[];
   /** Skip entirely (needs input, hardware, long tutorial, etc.). */
   skip?: boolean;
+  /** Opt out of the `.web-panel` / `rpc.panel.list` assertion. Set to
+   *  true for demos that print to stdout only (none today — future-
+   *  proofing). The assertion catches sideband regressions that would
+   *  otherwise silently produce "UI only, no panel" screenshots. */
+  expectNoPanel?: boolean;
   /** Notes shown in the report's state JSON. */
   notes?: string;
 }

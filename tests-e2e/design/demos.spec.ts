@@ -1,4 +1,4 @@
-import { test } from "../fixtures";
+import { expect, test } from "../fixtures";
 import { snap } from "./helpers/snap";
 import { ACTIVE_DEMOS, commandFor } from "./helpers/demos";
 
@@ -33,6 +33,21 @@ test.describe("@design demos: web mirror", () => {
       await page.keyboard.type(command, { delay: 0 });
       await page.keyboard.press("Enter");
       await page.waitForTimeout(demo.settleMs);
+
+      // Panel render assertion — this catches sideband regressions
+      // (fd closure, shell rc interference, server not broadcasting)
+      // that would otherwise produce a "UI only, no overlay" shot.
+      // `expectNoPanel` is the opt-out when a future demo is
+      // stdout-only by design.
+      if (!demo.expectNoPanel) {
+        const panelCount = await page.locator(".web-panel").count();
+        expect(
+          panelCount,
+          `demo "${demo.slug}" produced no .web-panel within ${demo.settleMs}ms — ` +
+            "check sideband wiring, shell fd inheritance, or bump settleMs.",
+        ).toBeGreaterThan(0);
+      }
+
       await snap(page, testInfo, `demo-${demo.slug}`, {
         state: {
           suite: "web",

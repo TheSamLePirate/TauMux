@@ -1,0 +1,16 @@
+# One canonical key per line. Any shot listed here is allowed to
+# appear as status `new` in gated mode — use when a legitimately new
+# capture needs to land without flapping CI while its baseline is
+# being reviewed.
+#
+# Key format: <suite>::<spec>-<test-slug>-<step>
+#
+# Workflow: add a line here → `bun run test:full-suite` passes → review
+# the shot in the HTML report → `bun run baseline:design` freezes it
+# → delete the line. Leaving stale allowlist entries is a smell the
+# auditor does not yet catch; treat this file as short-lived.
+
+# Native rename-workspace dialog shot wasn't captured in the initial
+# baseline drop (promoted before a full native run reached it). Next
+# `test:full-suite` should produce it; promote, then delete this line.
+native::design-review-component-rename-workspace-dialog-dialog-rename-workspace
