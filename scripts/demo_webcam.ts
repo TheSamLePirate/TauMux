@@ -290,6 +290,35 @@ const sendTimer = setInterval(() => {
   }
 }, minFrameInterval);
 
+// Cleanup — kill ffmpeg on any exit path so the camera LED goes off.
+// Must be installed *before* the reader loop below; that loop awaits
+// forever and would prevent process.on("SIGINT", …) from ever running.
+let ffmpegKilled = false;
+function killFfmpeg(): void {
+  if (ffmpegKilled) return;
+  ffmpegKilled = true;
+  try {
+    ffmpeg.kill();
+  } catch {
+    /* already gone */
+  }
+}
+
+process.on("SIGINT", () => {
+  clearInterval(sendTimer);
+  killFfmpeg();
+  if (panelId) ht.clear(panelId);
+  console.log("\nWebcam stopped.");
+  process.exit(0);
+});
+
+process.on("exit", killFfmpeg);
+
+ffmpeg.exited.then(() => {
+  clearInterval(sendTimer);
+  if (panelId) ht.clear(panelId);
+});
+
 // Reader: extract JPEG frames from ffmpeg stdout into latestFrame
 const reader = ffmpeg.stdout.getReader();
 let buffer = new Uint8Array(0);
@@ -375,29 +404,6 @@ if (capturedCount === 0) {
   );
 }
 
-// Cleanup — kill ffmpeg on any exit path so the camera LED goes off.
-let ffmpegKilled = false;
-function killFfmpeg(): void {
-  if (ffmpegKilled) return;
-  ffmpegKilled = true;
-  try {
-    ffmpeg.kill();
-  } catch {
-    /* already gone */
-  }
-}
-
-process.on("SIGINT", () => {
-  clearInterval(sendTimer);
-  killFfmpeg();
-  if (panelId) ht.clear(panelId);
-  console.log("\nWebcam stopped.");
-  process.exit(0);
-});
-
-process.on("exit", killFfmpeg);
-
-ffmpeg.exited.then(() => {
-  clearInterval(sendTimer);
-  if (panelId) ht.clear(panelId);
-});
+// SIGINT / exit / ffmpeg-exited handlers were registered above the
+// reader loop — installing them here would be dead code because the
+// loop's top-level await never returns under normal operation.

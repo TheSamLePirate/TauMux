@@ -48,7 +48,11 @@ export class WebStateStore {
       return;
     }
     const existing = this.panels[id];
-    if (meta.type === "update" && existing) {
+    if (meta.type === "update") {
+      // Drop updates for panels that have already been cleared. Same
+      // behaviour as native PanelManager, and prevents a just-closed
+      // panel from reappearing in snapshots for new web clients.
+      if (!existing) return;
       // Preserve the original content kind so snapshots handed to new web
       // clients carry `html`/`svg`/… — not the `update` sentinel, which
       // isn't a renderer key on the client side.

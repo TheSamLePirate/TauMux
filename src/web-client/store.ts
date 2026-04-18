@@ -482,7 +482,13 @@ export function reducer(state: AppState, action: Action): AppState {
         return { ...state, panels: omitKey(state.panels, id) };
       }
       const existing = state.panels[id];
-      if (action.meta.type === "update" && existing) {
+      if (action.meta.type === "update") {
+        // Drop updates whose target panel is gone — matches the native
+        // PanelManager, which ignores updates for ids it has no entry
+        // for. Without this the web mirror resurrected a just-closed
+        // panel on the next streaming frame (webcam at 30 fps made the
+        // close button look broken).
+        if (!existing) return state;
         // Preserve the original content kind (html/svg/image/…) and id.
         // Otherwise the "update" type clobbers the renderer key and every
         // subsequent binary frame for this panel becomes unrenderable.

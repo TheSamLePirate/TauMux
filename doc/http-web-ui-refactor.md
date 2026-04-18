@@ -81,6 +81,25 @@ Tests: `tests/web-client-store.test.ts` updated to assert the
 preserved content type (the old test was asserting the buggy
 behaviour while its comment described the correct one).
 
+**Post-M10 panel lifecycle fixes** (cleanup on quit / close):
+
+- **`type: "update"` resurrecting cleared panels.** When a panel was
+  removed (clear meta, close event, or surface teardown), the next
+  streaming frame's `type: "update"` meta went through the reducer's
+  fallback "create" branch and re-added the panel with the update
+  sentinel as its type. Webcam at 30 fps made the close button look
+  completely broken — the panel vanished for one frame and popped
+  back. The native `PanelManager` ignores updates for unknown ids;
+  `src/web-client/store.ts` and `src/bun/web/state-store.ts` now
+  match that behaviour: update with no existing entry is a no-op.
+- **`demo_webcam.ts` never installing its SIGINT handler.** The
+  reader-loop `for (;;) await reader.read()` sits before the
+  `process.on("SIGINT", …)` registration. Because the top-level
+  await never returns, the registration is unreachable — Ctrl+C
+  drops straight to Bun's default terminate path and `ht.clear`
+  never runs. Panel stayed on both native and web. Handlers are
+  now installed before the reader loop.
+
 ---
 
 ## Part 1 — Analysis
