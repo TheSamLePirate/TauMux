@@ -1106,6 +1106,31 @@ export class SurfaceManager {
     return { id: this.workspaces[idx].id, index: idx };
   }
 
+  /** Surface container's rect in CSS pixels relative to the webview
+   *  window, plus the current DPR. Returned to the bun side so
+   *  `ht screenshot --surface <id>` can crop a window capture to the
+   *  pane region. Returns null if the surface isn't currently mounted. */
+  getSurfaceRect(
+    surfaceId: string,
+  ): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    devicePixelRatio: number;
+  } | null {
+    const view = this.surfaces.get(surfaceId);
+    if (!view) return null;
+    const r = view.container.getBoundingClientRect();
+    return {
+      x: r.left,
+      y: r.top,
+      width: r.width,
+      height: r.height,
+      devicePixelRatio: window.devicePixelRatio || 1,
+    };
+  }
+
   closeWorkspaceById(id: string): void {
     const ws = this.workspaces.find((w) => w.id === id);
     if (!ws) return;

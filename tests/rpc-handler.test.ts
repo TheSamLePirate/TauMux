@@ -72,7 +72,9 @@ describe("RPC Handler", () => {
     expect(result.methods).toContain("system.ping");
     expect(result.methods).toContain("workspace.list");
     expect(result.methods).toContain("surface.list");
+    expect(result.methods).toContain("surface.screenshot");
     expect(result.methods).toContain("notification.create");
+    expect(result.methods).toContain("notification.dismiss");
     expect(result.methods.length).toBeGreaterThan(20);
   });
 

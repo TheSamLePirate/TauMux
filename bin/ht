@@ -318,6 +318,32 @@ function mapCommand(): RpcCall {
         },
       };
 
+    case "screenshot": {
+      // `ht screenshot` captures the app window via macOS
+      // `screencapture -l <windowId>`. Without --full-window, the
+      // result is cropped to the target surface (focused by default,
+      // or --surface / HT_SURFACE). Output path is optional — when
+      // omitted, a timestamped PNG lands in the system tmpdir.
+      //
+      // `ht screenshot surface` is a long-form alias kept so the help
+      // text and the `ht screenshot <target>` form both parse: the
+      // token is consumed as a positional but has no effect beyond the
+      // command routing.
+      const target = positional[0];
+      const fullWindow =
+        flags["full-window"] === "true" || target === "window";
+      return {
+        method: "surface.screenshot",
+        params: {
+          surface_id: fullWindow
+            ? undefined
+            : flags["surface"] || process.env["HT_SURFACE"] || undefined,
+          output: flags["output"] || flags["o"],
+          full_window: fullWindow,
+        },
+      };
+    }
+
     case "list-panes":
       return { method: "pane.list", params: {} };
 
@@ -778,6 +804,19 @@ function formatOutput(result: unknown): void {
     console.log(`Sent ${signal} to pid ${pid} (port :${port})`);
     return;
   }
+  if (command === "screenshot" && result && typeof result === "object") {
+    const { path, cropped, surface_id } = result as {
+      path: string;
+      cropped?: boolean;
+      surface_id?: string;
+    };
+    if (cropped && surface_id) {
+      console.log(`${path}  (cropped to ${surface_id})`);
+    } else {
+      console.log(path);
+    }
+    return;
+  }
   // Format specific types
   if (Array.isArray(result)) {
     if (result.length === 0) {
@@ -953,6 +992,10 @@ I/O:
   send [--surface S] "text"         Send text to terminal
   send-key [--surface S] <key>      Send key (enter|tab|escape|...)
   read-screen [--surface S] [--lines N]  Read terminal content
+  screenshot [--surface S] [--output PATH] [--full-window]
+                                    Capture a PNG of the surface (or the
+                                    whole app window with --full-window).
+                                    macOS only; prints the resulting path.
 
 Sidebar:
   set-status <key> <value> [--icon I] [--color #hex]

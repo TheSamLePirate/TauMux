@@ -89,6 +89,17 @@ ht read-screen --surface surface:2 --scrollback  # full scrollback buffer
 ht capture-pane --lines 50                       # tmux alias
 ```
 
+### Screenshot a pane (macOS only)
+
+```bash
+ht screenshot                            # focused pane → /tmp/ht-screenshot-<id>-<ts>.png
+ht screenshot --surface surface:2        # specific pane
+ht screenshot --output ~/Desktop/build.png
+ht screenshot --full-window              # whole app window, no cropping
+```
+
+Captures the window via `screencapture -l <CGWindowID>`, then crops to the surface using `sips --cropOffset` (surface rect × devicePixelRatio). Prints the resulting PNG path on stdout.
+
 ### Surface titles
 
 Programs emitting OSC 0/2 title escapes (vim, htop, ssh, tmux, …) automatically update the pane title in the sidebar and pane header. Explicit user renames via `rename-surface` lock the title — subsequent OSC escapes are ignored for the life of that surface.
@@ -644,7 +655,7 @@ ht browser list --json
 `list-surfaces`, `new-split`, `close-surface`, `focus-surface`, `list-panes`
 
 ### I/O
-`send`, `send-key`, `read-screen`, `capture-pane`
+`send`, `send-key`, `read-screen`, `capture-pane`, `screenshot`
 
 ### Sidebar
 `set-status`, `clear-status`, `set-progress`, `clear-progress`, `log`

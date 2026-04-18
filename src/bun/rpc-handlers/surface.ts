@@ -1,5 +1,21 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { join, isAbsolute, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, unlinkSync } from "node:fs";
 import type { Handler, HandlerDeps } from "./types";
 import { KEY_MAP, resolveSurfaceId } from "./shared";
+import { getMainWindowId } from "../accessory-mode";
+
+const execFileAsync = promisify(execFile);
+
+interface SurfaceRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  devicePixelRatio: number;
+}
 
 export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
   const { sessions, getState, dispatch, requestWebview, metadataPoller } = deps;
@@ -186,6 +202,136 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
         lines: params["lines"],
         scrollback: params["scrollback"],
       });
+    },
+
+    "surface.screenshot": async (params) => {
+      if (process.platform !== "darwin") {
+        throw new Error(
+          "surface.screenshot is only supported on macOS (uses `screencapture`)",
+        );
+      }
+      const windowId = getMainWindowId();
+      if (windowId === null) {
+        throw new Error(
+          "cannot resolve the app window id — is the window actually open?",
+        );
+      }
+
+      // Resolve target surface. `full_window: true` skips the crop
+      // entirely and returns the raw window capture — useful for
+      // grabbing titlebar + sidebar in bug reports.
+      const fullWindow = params["full_window"] === true;
+      const surfaceId = fullWindow
+        ? null
+        : resolveSurfaceId(params, getState().focusedSurfaceId);
+
+      // Output path: explicit > timestamped default in tmp. The caller
+      // is responsible for directory creation on any parent they pass
+      // in; we only create the tmp directory if we chose it.
+      const outPathRaw = params["output"] as string | undefined;
+      const outPath = outPathRaw
+        ? isAbsolute(outPathRaw)
+          ? outPathRaw
+          : resolve(process.cwd(), outPathRaw)
+        : join(
+            tmpdir(),
+            `ht-screenshot-${surfaceId ?? "window"}-${Date.now()}.png`,
+          );
+      const parent = outPath.slice(0, outPath.lastIndexOf("/"));
+      if (parent && !existsSync(parent)) {
+        mkdirSync(parent, { recursive: true });
+      }
+
+      // Capture to a staging path when we need to crop afterwards, so
+      // we can drop the intermediate without touching the caller's file.
+      const needsCrop = surfaceId !== null;
+      const capturePath = needsCrop
+        ? join(tmpdir(), `ht-screenshot-raw-${Date.now()}.png`)
+        : outPath;
+
+      try {
+        // `-x` silences the shutter; `-o` strips the drop shadow so the
+        // PNG's (0,0) is the window's top-left — critical for the crop
+        // math below.
+        await execFileAsync("screencapture", [
+          "-x",
+          "-o",
+          "-l",
+          String(windowId),
+          capturePath,
+        ]);
+      } catch (err) {
+        throw new Error(
+          `screencapture failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      if (!needsCrop) return { path: outPath, window_id: windowId };
+
+      // Ask the webview for the surface rect in CSS pixels + current
+      // DPR. The capture PNG is in backing-store pixels, so we scale
+      // the rect by DPR before cropping.
+      if (!requestWebview) {
+        throw new Error("webview bridge unavailable; cannot locate surface");
+      }
+      const rect = (await requestWebview("getSurfaceRect", {
+        surfaceId: surfaceId ?? "",
+      })) as SurfaceRect | null;
+      if (!rect) {
+        // Surface isn't mounted — keep the raw capture so the caller
+        // still gets *something* rather than an empty failure.
+        try {
+          if (capturePath !== outPath) {
+            await execFileAsync("cp", [capturePath, outPath]);
+            unlinkSync(capturePath);
+          }
+        } catch {
+          /* best-effort cleanup */
+        }
+        return { path: outPath, window_id: windowId, cropped: false };
+      }
+
+      const dpr = rect.devicePixelRatio || 1;
+      const cropX = Math.max(0, Math.round(rect.x * dpr));
+      const cropY = Math.max(0, Math.round(rect.y * dpr));
+      const cropW = Math.max(1, Math.round(rect.width * dpr));
+      const cropH = Math.max(1, Math.round(rect.height * dpr));
+
+      try {
+        // `sips -c H W --cropOffset Y X <in> -o <out>` crops a region
+        // anchored at (X, Y) with size (W, H). Ships with macOS.
+        await execFileAsync("sips", [
+          "-c",
+          String(cropH),
+          String(cropW),
+          "--cropOffset",
+          String(cropY),
+          String(cropX),
+          capturePath,
+          "-o",
+          outPath,
+        ]);
+      } catch (err) {
+        throw new Error(
+          `sips crop failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      } finally {
+        if (capturePath !== outPath) {
+          try {
+            unlinkSync(capturePath);
+          } catch {
+            /* best-effort */
+          }
+        }
+      }
+
+      return {
+        path: outPath,
+        window_id: windowId,
+        surface_id: surfaceId,
+        cropped: true,
+        rect: { x: cropX, y: cropY, width: cropW, height: cropH },
+      };
     },
   };
 }

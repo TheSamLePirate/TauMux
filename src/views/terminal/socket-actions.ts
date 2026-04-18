@@ -185,6 +185,21 @@ const SOCKET_ACTION_HANDLERS: Record<string, Handler> = {
     });
   },
 
+  // ── Surface rect read (async — requires rpc response) ──
+  // Returns the surface container's bounding rect in CSS pixels relative
+  // to the webview window, plus the current devicePixelRatio. The bun
+  // side multiplies by DPR to crop a `screencapture -l` output (which is
+  // in backing-store pixels) to the surface region.
+  getSurfaceRect: (p, { surfaceManager, rpc }) => {
+    const sid =
+      (p["surfaceId"] as string) || surfaceManager.getActiveSurfaceId() || "";
+    const rect = surfaceManager.getSurfaceRect(sid);
+    rpc.send("webviewResponse", {
+      reqId: p["reqId"] as string,
+      result: rect,
+    });
+  },
+
   // ── Screen read (async — requires rpc response) ──
   readScreen: (p, { surfaceManager, rpc }) => {
     const sid =

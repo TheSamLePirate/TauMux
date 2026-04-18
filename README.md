@@ -434,7 +434,7 @@ Errors are returned as `{"id":"1","error":"message"}`. See [`doc/system-rpc-sock
 
 **Workspaces:** `workspace.list`, `workspace.current`, `workspace.create`, `workspace.select`, `workspace.close`, `workspace.rename`, `workspace.next`, `workspace.previous`
 
-**Surfaces:** `surface.list`, `surface.split`, `surface.close`, `surface.focus`, `surface.send_text`, `surface.send_key`, `surface.read_text`, `surface.metadata`, `surface.open_port`, `surface.kill_port`, `surface.kill_pid`
+**Surfaces:** `surface.list`, `surface.split`, `surface.close`, `surface.focus`, `surface.send_text`, `surface.send_key`, `surface.read_text`, `surface.metadata`, `surface.open_port`, `surface.kill_port`, `surface.kill_pid`, `surface.screenshot`
 
 **Sidebar:** `sidebar.set_status`, `sidebar.clear_status`, `sidebar.set_progress`, `sidebar.clear_progress`, `sidebar.log`
 

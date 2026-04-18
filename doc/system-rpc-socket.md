@@ -109,6 +109,30 @@ ht read-screen --scrollback
 
 *(Note: `ht capture-pane` is an alias for `ht read-screen` for users familiar with tmux).*
 
+### Screenshotting a surface (macOS only)
+
+`ht screenshot` captures a PNG of the app window using macOS's built-in
+`screencapture -l <windowId>`, and crops it to the target surface by
+default:
+
+```bash
+# Screenshot the focused pane (or HT_SURFACE) to a timestamped tmp file
+ht screenshot
+# → /var/folders/.../ht-screenshot-surface:1-1744966000000.png
+
+# Pick a specific pane and output path
+ht screenshot --surface surface:2 --output ~/Desktop/build.png
+
+# Full window (titlebar + sidebar + all panes), skip cropping
+ht screenshot --full-window --output /tmp/window.png
+```
+
+Under the hood: the server resolves the `CGWindowID` via FFI, captures
+via `screencapture -l`, then crops the result with `sips
+--cropOffset` using the surface's DOM rect × `devicePixelRatio`. Non-
+macOS platforms return `"surface.screenshot is only supported on macOS"`
+today.
+
 ---
 
 ## 4. The Sidebar: Status, Progress, and Logs
@@ -292,7 +316,7 @@ All methods accept an optional `surface_id` in their params; if omitted, the ser
 
 **`workspace.*`** — `list`, `current`, `create`, `select`, `close`, `rename`, `next`, `previous`.
 
-**`surface.*`** — `list`, `split`, `close`, `focus`, `send_text`, `send_key`, `read_text`, **`metadata`**, **`open_port`**, **`kill_port`**, **`kill_pid`**.
+**`surface.*`** — `list`, `split`, `close`, `focus`, `send_text`, `send_key`, `read_text`, **`metadata`**, **`open_port`**, **`kill_port`**, **`kill_pid`**, **`screenshot`** (macOS only).
 
 **`sidebar.*`** — `set_status`, `clear_status`, `set_progress`, `clear_progress`, `log`.
 
