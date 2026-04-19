@@ -2,12 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { __setAudioFactory, playNotificationSound } from "../src/shared/sounds";
 
 // Minimal fake HTMLAudioElement. The helper only touches `preload`,
-// `currentTime`, and `play()` — enough to assert behaviour without
+// `play()`, and `cloneNode()` — enough to assert behaviour without
 // dragging in happy-dom.
 class FakeAudio {
   public src: string;
   public preload: string = "";
-  public currentTime: number = 0;
   public playCalls = 0;
   public playMode: "promise-resolve" | "promise-reject" | "sync-throw" =
     "promise-resolve";
@@ -21,6 +20,15 @@ class FakeAudio {
     if (this.playMode === "promise-reject")
       return Promise.reject(new Error("autoplay blocked"));
     return Promise.resolve();
+  }
+  cloneNode(_deep?: boolean): FakeAudio {
+    // Hit the Stub constructor so each clone also lands in `instances`.
+    // The Stub inherits from this class; `this.constructor` resolves to
+    // Stub at runtime.
+    const Ctor = this.constructor as new (src?: string) => FakeAudio;
+    const c = new Ctor(this.src);
+    c.preload = this.preload;
+    return c;
   }
 }
 
@@ -44,34 +52,31 @@ describe("playNotificationSound", () => {
     instances.length = 0;
   });
 
-  test("constructs an Audio for the given src and plays it", () => {
+  test("constructs a template + a played clone on first call", () => {
     installFactory();
     playNotificationSound("audio/finish.mp3");
 
-    expect(instances.length).toBe(1);
+    // 1 template (preloaded, never played) + 1 clone (played once).
+    expect(instances.length).toBe(2);
     expect(instances[0]!.src).toBe("audio/finish.mp3");
     expect(instances[0]!.preload).toBe("auto");
-    expect(instances[0]!.playCalls).toBe(1);
+    expect(instances[0]!.playCalls).toBe(0);
+    expect(instances[1]!.playCalls).toBe(1);
   });
 
-  test("caches the Audio element across calls with the same src", () => {
+  test("caches the template but plays a fresh clone per call", () => {
     installFactory();
     playNotificationSound("audio/finish.mp3");
     playNotificationSound("audio/finish.mp3");
     playNotificationSound("audio/finish.mp3");
 
-    expect(instances.length).toBe(1);
-    expect(instances[0]!.playCalls).toBe(3);
-  });
-
-  test("resets currentTime before each replay so the cue doesn't drift", () => {
-    installFactory();
-    playNotificationSound("audio/finish.mp3");
-    instances[0]!.currentTime = 2.5; // simulate playback progress
-
-    playNotificationSound("audio/finish.mp3");
-
-    expect(instances[0]!.currentTime).toBe(0);
+    // 1 template + 3 clones. Reusing one element would have made the
+    // 2nd and 3rd plays silent on WebKit.
+    expect(instances.length).toBe(4);
+    expect(instances[0]!.playCalls).toBe(0); // template: never played
+    expect(instances.slice(1).map((i) => i.playCalls)).toEqual([1, 1, 1]);
+    // Each clone is a distinct object — that's the whole point.
+    expect(new Set(instances.slice(1)).size).toBe(3);
   });
 
   test("swallows rejected play() promises (autoplay policy)", async () => {
@@ -108,14 +113,17 @@ describe("playNotificationSound", () => {
     expect(() => playNotificationSound("audio/finish.mp3")).not.toThrow();
   });
 
-  test("separate sources get separate Audio elements", () => {
+  test("separate sources get separate templates (+ a clone each)", () => {
     installFactory();
     playNotificationSound("audio/one.mp3");
     playNotificationSound("audio/two.mp3");
 
-    expect(instances.length).toBe(2);
+    // 2 templates + 2 clones = 4 instances.
+    expect(instances.length).toBe(4);
     expect(instances.map((i) => i.src)).toEqual([
       "audio/one.mp3",
+      "audio/one.mp3",
+      "audio/two.mp3",
       "audio/two.mp3",
     ]);
   });
