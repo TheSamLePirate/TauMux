@@ -47,12 +47,34 @@ function getTemplate(src: string): HTMLAudioElement {
   return el;
 }
 
+export interface PlayOptions {
+  /** When explicitly `false`, the call is a no-op. Lets the host gate
+   *  the cue from a settings store without wrapping every call site in
+   *  an if-guard. Defaults to `true`. */
+  enabled?: boolean;
+  /** Playback volume, clamped to [0, 1]. Applied to the cloned
+   *  instance so concurrent plays at different volumes don't stomp on
+   *  each other. Defaults to 1. */
+  volume?: number;
+}
+
+function clampVolume(v: number | undefined): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return 1;
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
+}
+
 /** Play the notification-arrival cue. `src` is resolved relative to
  *  whatever the host expects (webview: relative, web mirror: absolute).
  *  Each call plays a fresh cloned element so repeated triggers play
  *  reliably on WebKit (which silently stalls on reused <audio> nodes
  *  after their first play-through). */
-export function playNotificationSound(src: string): void {
+export function playNotificationSound(
+  src: string,
+  opts: PlayOptions = {},
+): void {
+  if (opts.enabled === false) return;
   try {
     const template = getTemplate(src);
     // Clone first, then fall back to `new Audio(src)` if the clone
@@ -67,6 +89,12 @@ export function playNotificationSound(src: string): void {
       const Ctor = audioFactory ?? (globalThis as { Audio?: AudioCtor }).Audio;
       if (!Ctor) throw new Error("Audio is not available in this environment");
       instance = new Ctor(src);
+    }
+    // Volume goes on the clone, not the template — each playback
+    // instance owns its level, so a mid-drag slider tweak doesn't
+    // retroactively mute already-playing cues.
+    if (opts.volume !== undefined) {
+      instance.volume = clampVolume(opts.volume);
     }
     const result = instance.play();
     if (result && typeof result.catch === "function") {

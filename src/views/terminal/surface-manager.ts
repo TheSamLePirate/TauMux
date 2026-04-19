@@ -20,6 +20,7 @@ import { buildSidebarWorkspaces, samePortSet } from "./sidebar-state";
 import { PaneDragController } from "./pane-drag";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
 import { attachSidebarResize } from "../../shared/sidebar-resize";
+import { setNotificationSoundSettings } from "./sounds";
 import {
   type AgentPaneView,
   createAgentPaneView,
@@ -832,6 +833,10 @@ export class SurfaceManager {
   applySettings(s: AppSettings): void {
     this.fontSize = s.fontSize;
     this.terminalEffectsEnabled = s.terminalBloom;
+    setNotificationSoundSettings({
+      enabled: s.notificationSoundEnabled,
+      volume: s.notificationSoundVolume,
+    });
 
     const bg = s.bgBase;
     const secRgb = hexToRgb(s.secondaryColor);

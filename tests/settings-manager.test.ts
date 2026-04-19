@@ -1,6 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { SettingsManager } from "../src/bun/settings-manager";
 import {
+  DEFAULT_SETTINGS,
+  validateSettings,
+  type AppSettings,
+} from "../src/shared/settings";
+import {
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -69,5 +74,31 @@ describe("SettingsManager persistence recovery", () => {
     expect(typeof mgr.get().shellPath).toBe("string");
     // No backup for valid-but-partial JSON.
     expect(existsSync(`${file}.bak`)).toBe(false);
+  });
+});
+
+describe("notification sound settings", () => {
+  test("defaults: enabled + full volume", () => {
+    expect(DEFAULT_SETTINGS.notificationSoundEnabled).toBe(true);
+    expect(DEFAULT_SETTINGS.notificationSoundVolume).toBe(1);
+  });
+
+  test("validateSettings clamps volume into [0, 1] and coerces the toggle to boolean", () => {
+    const tooLoud: AppSettings = {
+      ...DEFAULT_SETTINGS,
+      notificationSoundVolume: 2.5,
+      // typecast to test the coercion path; runtime JSON.parse can
+      // deliver non-booleans if a user hand-edits settings.json.
+      notificationSoundEnabled: "yes" as unknown as boolean,
+    };
+    const tooQuiet: AppSettings = {
+      ...DEFAULT_SETTINGS,
+      notificationSoundVolume: -0.4,
+      notificationSoundEnabled: 0 as unknown as boolean,
+    };
+    expect(validateSettings(tooLoud).notificationSoundVolume).toBe(1);
+    expect(validateSettings(tooLoud).notificationSoundEnabled).toBe(true);
+    expect(validateSettings(tooQuiet).notificationSoundVolume).toBe(0);
+    expect(validateSettings(tooQuiet).notificationSoundEnabled).toBe(false);
   });
 });

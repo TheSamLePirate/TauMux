@@ -246,6 +246,22 @@ export class SettingsPanel {
       { value: "pnpm", label: "pnpm" },
       { value: "yarn", label: "yarn" },
     ]);
+
+    this.toggleField(
+      c,
+      "Notification Sound",
+      s.notificationSoundEnabled,
+      "notificationSoundEnabled",
+      { note: "Plays `finish.mp3` when a sidebar notification arrives." },
+    );
+    this.sliderField(
+      c,
+      "Notification Volume",
+      s.notificationSoundVolume,
+      "notificationSoundVolume",
+      { min: 0, max: 1, step: 0.05 },
+      (v) => `${Math.round(v * 100)}%`,
+    );
   }
 
   private renderAppearance(c: HTMLElement, s: AppSettings): void {

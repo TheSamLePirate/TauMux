@@ -16,6 +16,65 @@
 import { playNotificationSound as play } from "../shared/sounds";
 
 const NOTIFICATION_SOUND_URL = "/audio/finish.mp3";
+const SOUND_ENABLED_KEY = "ht:notification-sound-enabled";
+const SOUND_VOLUME_KEY = "ht:notification-sound-volume";
+
+/** The web mirror stores its own notification-sound prefs in
+ *  localStorage — independent of the native AppSettings so the user can
+ *  mute the browser tab without affecting the desktop app. Reads are
+ *  tolerant: missing/invalid entries fall back to enabled + volume 1. */
+function loadEnabled(): boolean {
+  try {
+    const raw = globalThis.localStorage?.getItem(SOUND_ENABLED_KEY);
+    if (raw === null || raw === undefined) return true;
+    return raw !== "0" && raw.toLowerCase() !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function loadVolume(): number {
+  try {
+    const raw = globalThis.localStorage?.getItem(SOUND_VOLUME_KEY);
+    if (!raw) return 1;
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n)) return 1;
+    if (n < 0) return 0;
+    if (n > 1) return 1;
+    return n;
+  } catch {
+    return 1;
+  }
+}
+
+let enabled = loadEnabled();
+let volume = loadVolume();
+
+export function setNotificationSoundSettings(opts: {
+  enabled?: boolean;
+  volume?: number;
+}): void {
+  if (typeof opts.enabled === "boolean") {
+    enabled = opts.enabled;
+    try {
+      globalThis.localStorage?.setItem(SOUND_ENABLED_KEY, enabled ? "1" : "0");
+    } catch {
+      /* private mode / quota — silently continue */
+    }
+  }
+  if (typeof opts.volume === "number" && Number.isFinite(opts.volume)) {
+    volume = Math.max(0, Math.min(1, opts.volume));
+    try {
+      globalThis.localStorage?.setItem(SOUND_VOLUME_KEY, String(volume));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+export function getNotificationSoundEnabled(): boolean {
+  return enabled;
+}
 
 let audioUnlocked = false;
 
@@ -67,5 +126,5 @@ if (typeof window !== "undefined") {
 }
 
 export function playNotificationSound(): void {
-  play(NOTIFICATION_SOUND_URL);
+  play(NOTIFICATION_SOUND_URL, { enabled, volume });
 }

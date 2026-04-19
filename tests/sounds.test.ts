@@ -127,4 +127,35 @@ describe("playNotificationSound", () => {
       "audio/two.mp3",
     ]);
   });
+
+  test("enabled=false short-circuits before touching Audio", () => {
+    installFactory();
+    playNotificationSound("audio/finish.mp3", { enabled: false });
+
+    // No template, no clone, no play call — the cue is fully silent.
+    expect(instances.length).toBe(0);
+  });
+
+  test("volume is applied to the played clone, not the template", () => {
+    installFactory();
+    playNotificationSound("audio/finish.mp3", { volume: 0.25 });
+
+    expect(instances.length).toBe(2);
+    // Template stays at the default; only the clone carries the volume.
+    expect((instances[0] as unknown as { volume: number }).volume).not.toBe(
+      0.25,
+    );
+    expect((instances[1] as unknown as { volume: number }).volume).toBe(0.25);
+    expect(instances[1]!.playCalls).toBe(1);
+  });
+
+  test("volume clamps out-of-range values", () => {
+    installFactory();
+    playNotificationSound("audio/finish.mp3", { volume: 2.5 });
+    playNotificationSound("audio/finish.mp3", { volume: -0.5 });
+
+    // Two clones — indexes 1 and 2.
+    expect((instances[1] as unknown as { volume: number }).volume).toBe(1);
+    expect((instances[2] as unknown as { volume: number }).volume).toBe(0);
+  });
 });

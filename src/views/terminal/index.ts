@@ -474,6 +474,29 @@ function buildPaletteCommands(): PaletteCommand[] {
       action: () => toggleTerminalEffects(),
     },
     {
+      // Route through the normal settings pipeline so the persisted
+      // value round-trips to disk and the settings panel reflects the
+      // flip immediately.
+      id: "toggle-notification-sound",
+      category: "View",
+      label:
+        (currentSettings?.notificationSoundEnabled ?? true)
+          ? "Mute Notification Sound"
+          : "Unmute Notification Sound",
+      description:
+        (currentSettings?.notificationSoundEnabled ?? true)
+          ? "Stop playing finish.mp3 when sidebar notifications arrive."
+          : "Play finish.mp3 when sidebar notifications arrive.",
+      action: () => {
+        const next = !(currentSettings?.notificationSoundEnabled ?? true);
+        const base = currentSettings ?? DEFAULT_SETTINGS;
+        applySettings(mergeSettings(base, { notificationSoundEnabled: next }));
+        rpc.send("updateSettings", {
+          settings: { notificationSoundEnabled: next },
+        });
+      },
+    },
+    {
       id: "focus-left",
       category: "Navigation",
       label: "Focus Pane Left",

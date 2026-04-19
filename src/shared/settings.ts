@@ -56,6 +56,15 @@ export interface AppSettings {
   /** Command used to run `package.json` scripts from the sidebar. */
   packageRunner: "bun" | "npm" | "pnpm" | "yarn";
 
+  // Notifications
+  /** Master toggle for the arrival cue when a sidebar notification
+   *  lands. Dismissing individual notifications is always silent; this
+   *  gate only controls the `finish.mp3` one-shot. */
+  notificationSoundEnabled: boolean;
+  /** Playback volume for the arrival cue. 0 is silent, 1 is full
+   *  volume. Drives `HTMLAudioElement.volume` on every play. */
+  notificationSoundVolume: number;
+
   // Advanced
   paneGap: number;
   sidebarWidth: number;
@@ -485,6 +494,9 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
 
   packageRunner: "bun",
 
+  notificationSoundEnabled: true,
+  notificationSoundVolume: 1.0,
+
   paneGap: 2,
   sidebarWidth: 320,
 
@@ -511,6 +523,8 @@ export function validateSettings(s: AppSettings): AppSettings {
     webMirrorAuthToken: (s.webMirrorAuthToken ?? "").trim(),
     paneGap: clamp(Math.round(s.paneGap), 0, 20),
     sidebarWidth: clamp(Math.round(s.sidebarWidth), 200, 600),
+    notificationSoundEnabled: !!s.notificationSoundEnabled,
+    notificationSoundVolume: clamp(s.notificationSoundVolume, 0, 1),
     browserSearchEngine:
       s.browserSearchEngine === "duckduckgo" ||
       s.browserSearchEngine === "bing" ||
