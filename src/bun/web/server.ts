@@ -56,6 +56,7 @@ export class WebServer {
   onSidebarToggle: ((visible: boolean) => void) | null = null;
   onFocusSurface: ((surfaceId: string) => void) | null = null;
   onClearNotifications: (() => void) | null = null;
+  onDismissNotification: ((id: string) => void) | null = null;
   onPanelUpdate:
     | ((
         surfaceId: string,
@@ -866,6 +867,11 @@ export class WebServer {
       }
       case "clearNotifications": {
         this.onClearNotifications?.();
+        break;
+      }
+      case "dismissNotification": {
+        const id = fields["id"];
+        if (typeof id === "string" && id) this.onDismissNotification?.(id);
         break;
       }
       case "surfaceResizeRequest": {

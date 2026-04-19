@@ -680,13 +680,44 @@ body.sidebar-resizing {
   transition: width var(--ht-t-medium);
 }
 
+.sb-notif-zone,
+.sb-main-zone,
+.sb-log-zone {
+  display: block;
+}
+
+/* Incremental row — never rebuilt during its lifetime, so the `.glow`
+ * animation ticks uninterrupted until the user clicks / dismisses /
+ * focuses the source pane. Mirrors the native webview's notification
+ * item (see src/views/terminal/index.css `.notification-item`). */
 .sb-notif {
-  padding: 8px 10px;
+  position: relative;
   margin-bottom: 6px;
   border-radius: var(--ht-radius-card-lg);
   background: var(--ht-bg-card);
   border: 1px solid var(--ht-border-soft);
   border-left: 2px solid var(--ht-accent);
+  overflow: hidden;
+}
+
+.sb-notif-body-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 32px 8px 10px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: default;
+  font: inherit;
+}
+
+.sb-notif.has-source .sb-notif-body-btn {
+  cursor: pointer;
+}
+
+.sb-notif.has-source .sb-notif-body-btn:hover {
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .sb-notif-title {
@@ -699,6 +730,68 @@ body.sidebar-resizing {
   font-size: 11px;
   color: var(--ht-text-muted);
   margin-top: 2px;
+}
+
+.sb-notif-dismiss {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--ht-text-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--ht-t-fast, 120ms),
+    color var(--ht-t-fast, 120ms),
+    background var(--ht-t-fast, 120ms);
+}
+
+.sb-notif-dismiss svg {
+  width: 10px;
+  height: 10px;
+}
+
+.sb-notif:hover .sb-notif-dismiss {
+  opacity: 0.7;
+}
+
+.sb-notif-dismiss:hover,
+.sb-notif-dismiss:focus-visible {
+  opacity: 1;
+  color: var(--ht-sem-error, #f87171);
+  background: rgba(248, 113, 113, 0.08);
+  outline: none;
+}
+
+@keyframes sb-notification-glow {
+  0% {
+    border-color: rgba(168, 85, 247, 0.35);
+    box-shadow:
+      0 0 0 0 rgba(168, 85, 247, 0),
+      inset 0 0 0 0 rgba(168, 85, 247, 0);
+  }
+  50% {
+    border-color: rgba(168, 85, 247, 0.85);
+    box-shadow:
+      0 0 14px 1px rgba(168, 85, 247, 0.35),
+      inset 0 0 12px 0 rgba(103, 232, 249, 0.08);
+  }
+  100% {
+    border-color: rgba(168, 85, 247, 0.35);
+    box-shadow:
+      0 0 0 0 rgba(168, 85, 247, 0),
+      inset 0 0 0 0 rgba(168, 85, 247, 0);
+  }
+}
+
+.sb-notif.glow {
+  animation: sb-notification-glow 2s ease-in-out infinite;
 }
 
 .sb-log {

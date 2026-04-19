@@ -1668,6 +1668,11 @@ function setupWebServerCallbacks(ws: WebServer) {
     // Clear via the RPC handler which dispatches to native + broadcasts
     socketHandler("notification.clear", {});
   };
+  ws.onDismissNotification = (id) => {
+    // Same shape as clear — let the RPC handler own the splice + dispatch
+    // so native webview + web clients stay in sync on the same id.
+    socketHandler("notification.dismiss", { id });
+  };
 }
 
 // Env var (if set) implies explicit opt-in; otherwise honor the user setting.

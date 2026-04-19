@@ -266,6 +266,10 @@ export interface FocusSurfacePayload {
   surfaceId: string;
 }
 
+export interface DismissNotificationClientPayload {
+  id: string;
+}
+
 export interface SidebarTogglePayload {
   visible: boolean;
 }
@@ -295,6 +299,7 @@ export type ClientMessage =
   | ClientEnvelope<"focusSurface", FocusSurfacePayload>
   | ClientEnvelope<"sidebarToggle", SidebarTogglePayload>
   | ClientEnvelope<"clearNotifications", Record<string, never>>
+  | ClientEnvelope<"dismissNotification", DismissNotificationClientPayload>
   | ClientEnvelope<"panelMouseEvent", PanelMouseEventPayload>;
 
 export type ClientMessageType = ClientMessage["type"];

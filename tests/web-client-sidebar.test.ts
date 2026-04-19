@@ -303,4 +303,100 @@ describe("createSidebarView event wiring", () => {
     );
     expect(clearNetworkCalls.length).toBe(0);
   });
+
+  test("dismiss button removes the entry + emits dismissNotification", async () => {
+    const { store, sendMsg, sidebarEl, view } = await setup({
+      notifications: [
+        { id: "n1", title: "alpha" },
+        { id: "n2", title: "beta" },
+      ],
+    });
+    view.render(store.getState());
+
+    const dismissBtn = sidebarEl.querySelector(
+      "[data-action='dismiss-notif'][data-id='n2']",
+    ) as HTMLElement;
+    dismissBtn.dispatchEvent(new Event("click", { bubbles: true }));
+
+    expect(store.getState().sidebar.notifications.map((n) => n.id)).toEqual([
+      "n1",
+    ]);
+    expect(sendMsg).toHaveBeenCalledWith("dismissNotification", { id: "n2" });
+  });
+
+  test("body click emits focusSurface + clears glow immediately", async () => {
+    const { sendMsg, sidebarEl, view, store } = await setup({
+      workspaces: [{ id: "ws1", surfaceIds: ["s1"] }],
+      activeWorkspaceId: "ws1",
+    });
+    // Manually seed a notification whose surfaceId matches a pane.
+    store.dispatch({
+      kind: "notification/add",
+      entry: {
+        id: "n7",
+        title: "hi",
+        body: "",
+        surfaceId: "s1",
+        at: 0,
+      },
+    });
+    view.render(store.getState());
+
+    const row = sidebarEl.querySelector(
+      ".sb-notif[data-id='n7']",
+    ) as HTMLElement;
+    expect(row.classList.contains("glow")).toBe(true);
+
+    const body = row.querySelector(
+      "[data-action='focus-notif']",
+    ) as HTMLElement;
+    body.dispatchEvent(new Event("click", { bubbles: true }));
+
+    expect(sendMsg).toHaveBeenCalledWith("focusSurface", { surfaceId: "s1" });
+    expect(row.classList.contains("glow")).toBe(false);
+  });
+
+  test("row element is reused across renders (preserves the glow animation)", async () => {
+    const { sidebarEl, view, store } = await setup({
+      notifications: [{ id: "n1", title: "alpha" }],
+    });
+    view.render(store.getState());
+    const before = sidebarEl.querySelector(".sb-notif[data-id='n1']");
+    expect(before).not.toBeNull();
+
+    // Second notification arrives — the existing `n1` row must be the
+    // SAME DOM node so its CSS animation keeps running.
+    store.dispatch({
+      kind: "notification/add",
+      entry: {
+        id: "n2",
+        title: "beta",
+        body: "",
+        surfaceId: undefined,
+        at: 0,
+      },
+    });
+    view.render(store.getState());
+    const after = sidebarEl.querySelector(".sb-notif[data-id='n1']");
+    expect(after).toBe(before);
+  });
+
+  test("focused surfaceId auto-acks its notifications (glow stops)", async () => {
+    const { sidebarEl, view, store } = await setup({
+      workspaces: [{ id: "ws1", surfaceIds: ["s1"] }],
+      activeWorkspaceId: "ws1",
+    });
+    store.dispatch({
+      kind: "notification/add",
+      entry: { id: "n1", title: "x", body: "", surfaceId: "s1", at: 0 },
+    });
+    store.dispatch({ kind: "focus/set", surfaceId: "s1" });
+    view.render(store.getState());
+
+    expect(
+      sidebarEl
+        .querySelector(".sb-notif[data-id='n1']")
+        ?.classList.contains("glow"),
+    ).toBe(false);
+  });
 });
