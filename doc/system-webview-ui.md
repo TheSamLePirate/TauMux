@@ -89,6 +89,8 @@ Click and drag on the Surface Bar (but not on the chips or buttons) to rearrange
 
 The Sidebar is your ambient dashboard. It's hidden by default but can be toggled via `Cmd+B`. It's laid out top-to-bottom as: **Notifications → Workspaces → Logs → Web mirror footer**. Urgent signals sit above the workspace list so they're visible without scrolling.
 
+The sidebar is **resizable**: a 6 px drag handle sits on its right edge. Drag to set any width between 200 and 600 px; double-click resets to the 320 px default; keyboard users can focus the handle and nudge via Arrow keys (Shift = 32 px steps) or Home/End (jump to bounds). The width persists through the `sidebarWidth` setting (native) and `localStorage` (web mirror). While dragging, width transitions are disabled on the sidebar and terminal container so pane reflow tracks the cursor 1:1 instead of easing behind. Every frame re-runs `applyLayout()` so xterm fit and pane positions stay tight.
+
 ### 1. Notifications (top of sidebar)
 Emitted via `ht notify` (or the `notification.create` RPC). Each notification is an individually interactive row:
 

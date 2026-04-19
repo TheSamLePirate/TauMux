@@ -343,6 +343,66 @@ textarea {
   pointer-events: none;
 }
 
+/* ── Sidebar resize handle ─────────────────────────────────────────
+ * Pinned to the sidebar's right edge. A 6 px hit target is wider than
+ * the 1 px visual indicator so the cursor snaps to col-resize over a
+ * generous band — classic Finder/VS Code behavior.
+ * While the user drags, `body.sidebar-resizing` disables transitions
+ * on the sidebar width + terminal-container left so the pane reflows
+ * 1:1 with the cursor instead of easing behind. */
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -3px;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 60;
+  touch-action: none;
+  background: transparent;
+  transition: background var(--transition-fast);
+}
+
+.sidebar-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background var(--transition-fast);
+}
+
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle:focus-visible::after,
+body.sidebar-resizing .sidebar-resize-handle::after {
+  background: var(--accent-primary);
+  box-shadow: 0 0 8px 1px var(--accent-primary-soft, rgba(255, 255, 255, 0.1));
+}
+
+.sidebar-resize-handle:focus-visible {
+  outline: none;
+}
+
+#sidebar.collapsed .sidebar-resize-handle {
+  display: none;
+}
+
+/* Kill the width/left transitions during active drag — otherwise the
+ * pane reflow eases a few frames behind the cursor and looks laggy. */
+body.sidebar-resizing,
+body.sidebar-resizing #sidebar,
+body.sidebar-resizing #terminal-container {
+  transition: none !important;
+}
+
+body.sidebar-resizing {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
 .sidebar-header,
 .sidebar-notifications,
 .sidebar-logs,

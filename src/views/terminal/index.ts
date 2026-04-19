@@ -1442,6 +1442,18 @@ window.addEventListener("resize", () => {
   hideSurfaceContextMenu();
 });
 
+window.addEventListener("ht-sidebar-resize-commit", (e: Event) => {
+  const detail = (e as CustomEvent).detail as { width?: number } | undefined;
+  const width = detail?.width;
+  if (typeof width !== "number") return;
+  // Route through the normal settings pipeline so the clamp + persist
+  // + bun-side `sidebarChanged` broadcast all stay in one code path.
+  const base = currentSettings ?? DEFAULT_SETTINGS;
+  const merged = mergeSettings(base, { sidebarWidth: width });
+  applySettings(merged);
+  rpc.send("updateSettings", { settings: { sidebarWidth: width } });
+});
+
 window.addEventListener("ht-clear-notifications", () => {
   clearTypingFocusMode();
   rpc.send("clearNotifications");

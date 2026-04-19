@@ -19,6 +19,7 @@ import { TerminalSearchBar } from "./terminal-search";
 import { buildSidebarWorkspaces, samePortSet } from "./sidebar-state";
 import { PaneDragController } from "./pane-drag";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
+import { attachSidebarResize } from "../../shared/sidebar-resize";
 import {
   type AgentPaneView,
   createAgentPaneView,
@@ -187,6 +188,43 @@ export class SurfaceManager {
             );
           }
         }
+      },
+    });
+    this.wireSidebarResize();
+  }
+
+  /** Attach the drag-to-resize behavior to the sidebar's handle. Live
+   *  moves update the CSS variable + re-fit every xterm in the active
+   *  workspace; commits persist through the settings RPC so the value
+   *  survives restarts. The update traffic is already rAF-throttled in
+   *  `attachSidebarResize`. */
+  private wireSidebarResize(): void {
+    attachSidebarResize({
+      handle: this.sidebar.getResizeHandle(),
+      min: 200,
+      max: 600,
+      defaultWidth: 320,
+      // Native webview: the sidebar is pinned to x=0 of the viewport,
+      // so the new width is simply clientX.
+      getSidebarLeft: () => 0,
+      onLive: (width) => {
+        document.documentElement.style.setProperty(
+          "--sidebar-width",
+          `${width}px`,
+        );
+        this.applyLayout();
+      },
+      onCommit: (width) => {
+        document.documentElement.style.setProperty(
+          "--sidebar-width",
+          `${width}px`,
+        );
+        this.applyLayout();
+        window.dispatchEvent(
+          new CustomEvent("ht-sidebar-resize-commit", {
+            detail: { width },
+          }),
+        );
       },
     });
   }
@@ -1110,9 +1148,7 @@ export class SurfaceManager {
    *  window, plus the current DPR. Returned to the bun side so
    *  `ht screenshot --surface <id>` can crop a window capture to the
    *  pane region. Returns null if the surface isn't currently mounted. */
-  getSurfaceRect(
-    surfaceId: string,
-  ): {
+  getSurfaceRect(surfaceId: string): {
     x: number;
     y: number;
     width: number;

@@ -32,6 +32,7 @@ import {
 } from "./panel-interaction";
 import { createSidebarView } from "./sidebar";
 import { createTransport } from "./transport";
+import { attachSidebarResize } from "../shared/sidebar-resize";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -80,6 +81,33 @@ const TERM_OPTS = {
 const GAP = 2;
 const TOOLBAR_HEIGHT = 36;
 const SIDEBAR_WIDTH = 260;
+const SIDEBAR_MIN = 200;
+const SIDEBAR_MAX = 600;
+const SIDEBAR_WIDTH_KEY = "ht:sidebar-width";
+
+/** Read the persisted sidebar width. Returns the default when the
+ *  storage entry is missing, unparseable, or out of bounds. */
+function loadSidebarWidth(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    if (!raw) return SIDEBAR_WIDTH;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < SIDEBAR_MIN || n > SIDEBAR_MAX) {
+      return SIDEBAR_WIDTH;
+    }
+    return n;
+  } catch {
+    return SIDEBAR_WIDTH;
+  }
+}
+
+function saveSidebarWidth(width: number): void {
+  try {
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
+  } catch {
+    /* quota / privacy-mode — silently skip */
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Font load gate — after fonts resolve, we boot.
@@ -219,6 +247,45 @@ function boot() {
     sidebarWidth: SIDEBAR_WIDTH,
     toolbarHeight: TOOLBAR_HEIGHT,
   });
+
+  // Apply the persisted sidebar width before first render so the pane
+  // container lands on its final left offset instead of jumping mid-
+  // session. The variable also drives the resize handle's x position.
+  const initialSidebarWidth = loadSidebarWidth();
+  document.documentElement.style.setProperty(
+    "--ht-sidebar-width",
+    `${initialSidebarWidth}px`,
+  );
+
+  // Drag-to-resize. Live moves mutate the CSS variable; the layout
+  // view re-runs on every frame so xterm fit follows the handle in
+  // lockstep. Commits persist the final width to localStorage.
+  const resizeHandleEl = document.getElementById("sidebar-resize-handle");
+  if (resizeHandleEl) {
+    attachSidebarResize({
+      handle: resizeHandleEl,
+      min: SIDEBAR_MIN,
+      max: SIDEBAR_MAX,
+      defaultWidth: SIDEBAR_WIDTH,
+      // Web mirror sidebar hugs the viewport's left edge.
+      getSidebarLeft: () => 0,
+      onLive: (width) => {
+        document.documentElement.style.setProperty(
+          "--ht-sidebar-width",
+          `${width}px`,
+        );
+        layoutView.applyLayout(store.getState());
+      },
+      onCommit: (width) => {
+        document.documentElement.style.setProperty(
+          "--ht-sidebar-width",
+          `${width}px`,
+        );
+        saveSidebarWidth(width);
+        layoutView.applyLayout(store.getState());
+      },
+    });
+  }
 
   function render(state: AppState, prev: AppState) {
     setDotFromState(state);

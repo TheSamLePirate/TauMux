@@ -520,6 +520,61 @@ body.sidebar-open #pane-container {
   transition: left var(--ht-t-medium);
 }
 
+/* ── Sidebar resize handle ─────────────────────────────────────────
+ * 6 px hit target, 1 px visual indicator. Mirrors the native webview
+ * handle (see src/views/terminal/index.css). */
+#sidebar-resize-handle {
+  position: absolute;
+  top: var(--ht-titlebar-height);
+  bottom: 0;
+  left: var(--ht-sidebar-width);
+  width: 6px;
+  margin-left: -3px;
+  cursor: col-resize;
+  z-index: 30;
+  touch-action: none;
+  background: transparent;
+  display: none;
+}
+
+body.sidebar-open #sidebar-resize-handle {
+  display: block;
+}
+
+#sidebar-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background var(--ht-t-fast, 120ms);
+}
+
+#sidebar-resize-handle:hover::after,
+#sidebar-resize-handle:focus-visible::after,
+body.sidebar-resizing #sidebar-resize-handle::after {
+  background: var(--ht-accent, #89b4fa);
+  box-shadow: 0 0 8px 1px rgba(137, 180, 250, 0.35);
+}
+
+#sidebar-resize-handle:focus-visible {
+  outline: none;
+}
+
+body.sidebar-resizing,
+body.sidebar-resizing #sidebar,
+body.sidebar-resizing #pane-container {
+  transition: none !important;
+}
+
+body.sidebar-resizing {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
 .sb-section {
   padding: 10px var(--ht-space-section);
 }

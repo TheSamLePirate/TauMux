@@ -83,6 +83,11 @@ export class Sidebar {
   private notificationListEl: HTMLElement | null = null;
   private notificationCountEl: HTMLElement | null = null;
   private notificationItemEls: Map<string, HTMLElement> = new Map();
+  /** Drag handle pinned to the sidebar's right edge. Owned here so the
+   *  SurfaceManager can attach the resize behavior after construction
+   *  (it needs to thread live/commit callbacks into the relayout + RPC
+   *  pipelines). */
+  private resizeHandleEl: HTMLElement;
 
   constructor(container: HTMLElement, callbacks: SidebarCallbacks) {
     this.container = container;
@@ -154,6 +159,27 @@ export class Sidebar {
     serverRow.appendChild(this.serverUrlEl);
     this.footerEl.appendChild(serverRow);
     container.appendChild(this.footerEl);
+
+    // Drag-to-resize handle. Pinned to the right edge of the sidebar,
+    // outside the scroll region so it stays hittable regardless of how
+    // far the workspace list is scrolled. `tabIndex=0` exposes it to
+    // keyboard users; the shared behavior module wires ArrowLeft /
+    // ArrowRight / Home / End for fine adjustment.
+    this.resizeHandleEl = document.createElement("div");
+    this.resizeHandleEl.className = "sidebar-resize-handle";
+    this.resizeHandleEl.setAttribute("role", "separator");
+    this.resizeHandleEl.setAttribute("aria-orientation", "vertical");
+    this.resizeHandleEl.setAttribute("aria-label", "Resize sidebar");
+    this.resizeHandleEl.tabIndex = 0;
+    this.resizeHandleEl.title = "Drag to resize · double-click to reset";
+    container.appendChild(this.resizeHandleEl);
+  }
+
+  /** Exposed so the owning SurfaceManager can attach the shared
+   *  `attachSidebarResize` behavior — it's the layer that knows how to
+   *  relayout xterms and persist the final width via RPC. */
+  getResizeHandle(): HTMLElement {
+    return this.resizeHandleEl;
   }
 
   setWorkspaces(workspaces: WorkspaceInfo[]): void {
