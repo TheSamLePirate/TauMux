@@ -201,6 +201,8 @@ echo '{"id":"1","method":"notification.dismiss","params":{"id":"notif:42"}}' | n
 
 `ht list-notifications` returns the current ring-buffer; `ht clear-notifications` empties it.
 
+The arrival sound is user-configurable: the `notificationSoundEnabled` + `notificationSoundVolume` fields in `AppSettings` gate and level it, and the webview's command palette (`⌘⇧P → Mute / Unmute Notification Sound`) flips the toggle on the fly. The web mirror has its own independent mute + volume prefs in `localStorage`.
+
 ---
 
 ## 6. Live Process Metadata

@@ -9,6 +9,8 @@ Two sidebar pills appear while Claude Code is running:
 
 On `Stop`, an `ht notify` fires with the label in the title and the original prompt + duration + cost in the body — same surface the HyperTerm sidebar already uses for the `finish.mp3` sound cue, pane glow, and click-to-focus. Nothing else is spawned (no afplay, no native toast).
 
+The arrival sound respects HyperTerm's `notificationSoundEnabled` / `notificationSoundVolume` settings — mute and volume live in **Settings → General**, and the webview's command palette has a **Mute / Unmute Notification Sound** entry for quick toggling without touching the bridge config.
+
 ## Wire-up
 
 Runs as shell hooks from `~/.claude/settings.json`. Four entry points, dispatched via argv[2]:

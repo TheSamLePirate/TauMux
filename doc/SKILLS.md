@@ -168,7 +168,7 @@ Notification list is bounded at **500 entries** process-wide. Emitted notificati
 - Focusing the source pane by any means stops that notification's glow.
 - The pulsing glow runs until the user clicks, dismisses with `×`, or focuses the source.
 
-A short `assets/audio/finish.mp3` plays on arrival (both native webview and web mirror). Playback is best-effort; browser autoplay policies may block it until after user interaction.
+A short `assets/audio/finish.mp3` plays on arrival (both native webview and web mirror). Playback is best-effort; browser autoplay policies may block it until after user interaction. The user can toggle the cue (**Settings → General → Notification Sound**, or the **Mute / Unmute Notification Sound** command-palette entry) and adjust volume via the companion slider; the web mirror keeps its own mute + volume preference in `localStorage`.
 
 Dismiss a single notification (no CLI shortcut yet — use raw JSON-RPC):
 

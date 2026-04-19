@@ -99,6 +99,8 @@ Emitted via `ht notify` (or the `notification.create` RPC). Each notification is
 - **Glow pulse** — a purple/cyan animation loops on each row until the user *clicks it*, *dismisses it*, or *focuses the source surface* by any other means (keyboard, palette, click on a pane). Same visual family as the surface-pane notify-glow.
 - **Finish sound** — when a new notification arrives, `assets/audio/finish.mp3` plays in both the native webview (relative `audio/finish.mp3`) and the web mirror (served by the Bun HTTP server at `/audio/finish.mp3`). Autoplay failures (policy-blocked tabs) are swallowed — the sound is a cue, not a requirement. Playback fires on *create* only; dismiss/clear rebroadcasts stay silent.
 
+  *Settings:* the cue is gated by two `AppSettings` fields — `notificationSoundEnabled` (master toggle, default on) and `notificationSoundVolume` (`0..1`, default `1`). Both live in **Settings → General** as a toggle + slider. The slider applies to the played *clone*, not the cached template, so a mid-cue slider tweak doesn't stomp an in-flight play. The command palette (`⌘⇧P`) carries a **Mute / Unmute Notification Sound** entry that flips the toggle through the same `updateSettings` RPC the settings panel uses, so persistence + UI reflect each other instantly. The web mirror holds its own independent preference under `localStorage` (`ht:notification-sound-enabled`, `ht:notification-sound-volume`) so you can silence a browser tab without affecting the desktop app.
+
 The header shows `Notifications (N)` with a batch-clear button. The ring-buffer is capped at 500 entries process-wide (see `doc/system-rpc-socket.md`).
 
 ### 2. Workspace card
