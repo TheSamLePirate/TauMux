@@ -32,6 +32,7 @@ import {
 } from "./panel-interaction";
 import { createSidebarView } from "./sidebar";
 import { createTransport } from "./transport";
+import { attachDictationInput, type DictationInput } from "./dictation-input";
 import { attachSidebarResize } from "../shared/sidebar-resize";
 import {
   formatTelegramTimestamp,
@@ -172,6 +173,8 @@ function boot() {
     termEl: HTMLElement;
     barTitle: HTMLElement;
     chipsEl: HTMLElement;
+    /** Mobile / dictation input shim attached to xterm's helper textarea. */
+    dictation?: DictationInput;
     /** Telegram-only handle on the chat DOM and its update fn. */
     telegram?: {
       messagesEl: HTMLElement;
@@ -412,6 +415,24 @@ function boot() {
     term.onData((data: string) => sendMsg("stdin", { surfaceId, data }));
     term.onBinary((data: string) => sendMsg("stdin", { surfaceId, data }));
 
+    // Mobile / dictation shim: capture-phase listener on xterm's hidden
+    // helper textarea forwards iOS Dictation, SuperWhisper, WhisperFlow
+    // and other beforeinput-driven keyboards directly to stdin so xterm's
+    // keydown-centric path can't lose / duplicate text. Hardware
+    // keyboards on desktop are unaffected (xterm preventDefaults their
+    // keydown, suppressing the follow-on beforeinput).
+    let dictation: DictationInput | null = null;
+    const helperTa = termEl.querySelector<HTMLTextAreaElement>(
+      ".xterm-helper-textarea",
+    );
+    if (helperTa) {
+      dictation = attachDictationInput({
+        textarea: helperTa,
+        term,
+        onData: (data) => sendMsg("stdin", { surfaceId, data }),
+      });
+    }
+
     el.addEventListener("click", () => {
       if (store.getState().focusedSurfaceId === surfaceId) return;
       store.dispatch({ kind: "focus/set", surfaceId });
@@ -458,6 +479,7 @@ function boot() {
       termEl,
       barTitle,
       chipsEl,
+      dictation: dictation ?? undefined,
     };
 
     // Paint chips from existing metadata, if any.
@@ -468,6 +490,13 @@ function boot() {
   function disposePane(surfaceId: string) {
     const ref = terms[surfaceId];
     if (!ref) return;
+    if (ref.dictation) {
+      try {
+        ref.dictation.dispose();
+      } catch {
+        /* ignore */
+      }
+    }
     if (ref.term) {
       try {
         ref.term.dispose();
