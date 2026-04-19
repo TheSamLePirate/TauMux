@@ -1,4 +1,4 @@
-// HyperTerm Canvas web-mirror protocol.
+// τ-mux web-mirror protocol.
 //
 // Every WebSocket message on the wire is an Envelope<T>. The envelope
 // carries a protocol version and a monotonic per-connection sequence

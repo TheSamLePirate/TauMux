@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — Color Picker
+ * τ-mux — Color Picker
  *
  * A full HSL color picker with a sat/light gradient square, hue bar,
  * live preview, saved palette, and Catppuccin Mocha presets.
@@ -28,8 +28,8 @@ const hasHyperTerm = META_FD !== null && DATA_FD !== null;
 
 if (!hasHyperTerm) {
   console.log(
-    "This script requires HyperTerm Canvas.\n" +
-      "Run it inside the HyperTerm terminal emulator.",
+    "This script requires τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator.",
   );
   process.exit(0);
 }
@@ -744,7 +744,7 @@ async function readEvents(): Promise<void> {
 // Startup
 // ---------------------------------------------------------------------------
 
-console.log("HyperTerm Color Picker started.");
+console.log("τ-mux Color Picker started.");
 console.log("Click the gradient square to pick saturation/lightness.");
 console.log("Click the hue bar to change hue.");
 console.log("Click the preview swatch to save the current color.");

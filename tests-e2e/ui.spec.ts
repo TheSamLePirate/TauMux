@@ -18,7 +18,7 @@ test.describe("web mirror: UI rendering", () => {
     await expect(page.locator("#toolbar")).toBeVisible();
     await expect(page.locator("#sidebar-toggle-btn")).toBeVisible();
     await expect(page.locator("#workspace-select")).toBeVisible();
-    await expect(page.locator("#toolbar-title")).toHaveText("HyperTerm Remote");
+    await expect(page.locator("#toolbar-title")).toHaveText("τ-mux Remote");
 
     // Pane container holds the xterm.
     await expect(page.locator("#pane-container")).toBeVisible();

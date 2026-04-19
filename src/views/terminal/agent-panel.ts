@@ -1,6 +1,6 @@
 /**
  * Agent Panel — a pro dark-themed interactive chat UI for the pi coding agent.
- * Fully integrated with HyperTerm Canvas. Features:
+ * Fully integrated with τ-mux. Features:
  *  - Slash command autocomplete with all pi commands
  *  - Real-time streaming with thinking blocks and tool calls
  *  - Model/thinking cycling (Ctrl+P / Shift+Tab)

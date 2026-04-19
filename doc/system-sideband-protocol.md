@@ -1,6 +1,6 @@
-# HyperTerm Canvas: Sideband Protocol & Interactivity Guide
+# τ-mux: Sideband Protocol & Interactivity Guide
 
-HyperTerm Canvas isn't just a terminal emulator; it's a hybrid environment where traditional text output (TTY) seamlessly blends with rich, floating, interactive graphical elements.
+τ-mux isn't just a terminal emulator; it's a hybrid environment where traditional text output (TTY) seamlessly blends with rich, floating, interactive graphical elements.
 
 This is made possible by the **Sideband Protocol**, a unique channel of communication that lives alongside standard input (`stdin`), standard output (`stdout`), and standard error (`stderr`).
 
@@ -10,7 +10,7 @@ This guide will teach you how to write scripts that spawn rich UI elements, upda
 
 ## Channels & File Descriptors
 
-When a script is executed inside HyperTerm Canvas, it is granted access to sideband channels via extra file descriptors. The default channels are:
+When a script is executed inside τ-mux, it is granted access to sideband channels via extra file descriptors. The default channels are:
 
 1. **`HYPERTERM_META_FD` (default: `3`)**: **Metadata Channel**. Your script writes JSONL (JSON Lines) here. This instructs the terminal to create, update, or clear UI panels.
 2. **`HYPERTERM_DATA_FD` (default: `4`)**: **Binary Data Channel**. Your script writes raw bytes (like PNG image data or raw HTML strings) here immediately after sending a metadata message that expects binary content.
@@ -121,7 +121,7 @@ To delete a panel from the screen, send a `clear` message.
 
 ## 3. Making Panels Interactive
 
-The real magic happens when you make panels interactive. By setting `"interactive": true` in the metadata, HyperTerm Canvas will forward user events back to your script via **FD 5**.
+The real magic happens when you make panels interactive. By setting `"interactive": true` in the metadata, τ-mux will forward user events back to your script via **FD 5**.
 
 ### Supported Events
 When the user interacts with your panel, you will receive JSON lines on FD 5 resembling:
@@ -252,6 +252,6 @@ No changes to the parser, RPC, or pty-manager are needed. Scripts can immediatel
 
 ## Security & Limitations
 
-- **XSS Warning:** HTML and SVG content sent via FD 4 is rendered directly into the DOM (`innerHTML`) without sanitization. Only run trusted scripts inside HyperTerm Canvas.
+- **XSS Warning:** HTML and SVG content sent via FD 4 is rendered directly into the DOM (`innerHTML`) without sanitization. Only run trusted scripts inside τ-mux.
 - **Protocol Synchronization:** The terminal reads `byteLength` bytes exactly. If your script declares `byteLength: 500` but only writes 400 bytes to FD 4, the terminal's parser will hang indefinitely waiting for the remaining 100 bytes, breaking subsequent panel rendering for that specific pane.
 - **Scrollback Truncation:** `inline` panels are anchored to a specific row in the terminal buffer. If your terminal generates massive amounts of text output and exceeds the scrollback limit (10,000 lines), old text is discarded. This may cause `inline` panels anchored to older lines to disappear or misalign.

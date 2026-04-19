@@ -1,6 +1,6 @@
-# Claude Code ↔ HyperTerm Canvas
+# Claude Code ↔ τ-mux
 
-Glue that surfaces Claude Code session state into HyperTerm's sidebar, the same way `pi-extensions/ht-notify-summary` does for the pi coding agent.
+Glue that surfaces Claude Code session state into τ-mux's sidebar, the same way `pi-extensions/ht-notify-summary` does for the pi coding agent.
 
 ## What's here
 

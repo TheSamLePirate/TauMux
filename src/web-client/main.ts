@@ -1,4 +1,4 @@
-// HyperTerm Canvas web-mirror client (entry).
+// τ-mux web-mirror client (entry).
 //
 // Bundled by scripts/build-web-client.ts into assets/web-client/client.js.
 // This module wires three pieces:

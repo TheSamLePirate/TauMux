@@ -4,7 +4,7 @@ Real-time scrolling heatmap — renders system load as a thermal spectrogram.
 Each column is a snapshot of per-core CPU usage, scrolling left over time.
 Click to pause/resume. Scroll to change update speed.
 
-Run inside HyperTerm Canvas: python3 scripts/demo_canvas_heatmap.py
+Run inside τ-mux: python3 scripts/demo_canvas_heatmap.py
 """
 
 import struct
@@ -18,7 +18,7 @@ sys.path.insert(0, __file__.rsplit("/", 1)[0])
 from hyperterm import ht
 
 if not ht.available:
-    print("Not running inside HyperTerm Canvas. Exiting.")
+    print("Not running inside τ-mux. Exiting.")
     sys.exit(0)
 
 ht.on_error(

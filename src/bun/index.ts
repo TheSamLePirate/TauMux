@@ -24,7 +24,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import type {
-  HyperTermRPC,
+  TauMuxRPC,
   PersistedLayout,
   PaneNode,
   TelegramWireMessage,
@@ -324,7 +324,7 @@ function readPiSessionTree(
 // Define RPC handlers.
 //
 // `bunMessageHandlers` is extracted into a typed const with a `satisfies`
-// clause so that adding a new method to `HyperTermRPC["bun"]["messages"]`
+// clause so that adding a new method to `TauMuxRPC["bun"]["messages"]`
 // without a matching handler here becomes a compile-time error.
 // (Electrobun's native `handlers.messages` type treats each key as
 // optional, which is why we need this belt-and-braces assertion.)
@@ -333,9 +333,9 @@ function readPiSessionTree(
 // safe because handler bodies only execute after rpc is fully
 // initialized.
 type BunMessageHandlers = {
-  [K in keyof HyperTermRPC["bun"]["messages"]]: HyperTermRPC["bun"]["messages"][K] extends void
+  [K in keyof TauMuxRPC["bun"]["messages"]]: TauMuxRPC["bun"]["messages"][K] extends void
     ? () => void | Promise<void>
-    : (payload: HyperTermRPC["bun"]["messages"][K]) => void | Promise<void>;
+    : (payload: TauMuxRPC["bun"]["messages"][K]) => void | Promise<void>;
 };
 
 const bunMessageHandlers = {
@@ -919,7 +919,7 @@ const bunMessageHandlers = {
   },
 } satisfies BunMessageHandlers;
 
-const rpc = BrowserView.defineRPC<HyperTermRPC>({
+const rpc = BrowserView.defineRPC<TauMuxRPC>({
   handlers: { messages: bunMessageHandlers },
 });
 
@@ -931,7 +931,7 @@ const domReadyDebounce = new Map<string, ReturnType<typeof setTimeout>>();
 
 // Create the main window
 const mainWindow = new BrowserWindow({
-  title: "HyperTerm Canvas",
+  title: "τ-mux",
   titleBarStyle: "hiddenInset",
   transparent: false,
   styleMask: {
@@ -949,7 +949,7 @@ const mainWindow = new BrowserWindow({
 
 // Daily-driver-safe mode (doc/native-e2e-plan.md §8.2). Switches NSApp to
 // accessory activation policy — no Dock icon, no focus steal, no ⌘+Tab
-// entry — so an e2e test spawned by a developer running HyperTerm as their
+// entry — so an e2e test spawned by a developer running τ-mux as their
 // daily driver does not interrupt the user's workflow. Runs AFTER the
 // BrowserWindow is instantiated so NSApp already exists when we flip it.
 if (HT_E2E) {

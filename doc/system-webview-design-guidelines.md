@@ -1,6 +1,6 @@
-# HyperTerm Canvas: Webview Design Guidelines
+# τ-mux: Webview Design Guidelines
 
-This document defines the visual system for the Electrobun webview. The goal is simple: make HyperTerm Canvas feel like a serious macOS app, not a terminal wrapped in ad hoc styling.
+This document defines the visual system for the Electrobun webview. The goal is simple: make τ-mux feel like a serious macOS app, not a terminal wrapped in ad hoc styling.
 
 Use this alongside [system-webview-ui.md](system-webview-ui.md). That document explains structure and behavior; this one explains visual rules and design intent.
 

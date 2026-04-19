@@ -29,7 +29,7 @@ export function buildHtmlPage(): string {
   p.push(
     '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">',
   );
-  p.push("<title>HyperTerm Remote</title>");
+  p.push("<title>τ-mux Remote</title>");
   p.push("<style>");
   p.push(XTERM_CSS);
   p.push("</style>");
@@ -73,7 +73,7 @@ const APP_HTML = `\
   <button class="toolbar-btn" id="sidebar-toggle-btn" title="Toggle Sidebar">&#x2261;</button>
   <button class="toolbar-btn" id="back-btn" title="Back to split view">&#x2190;</button>
   <select id="workspace-select"></select>
-  <span id="toolbar-title">HyperTerm Remote</span>
+  <span id="toolbar-title">τ-mux Remote</span>
   <span class="toolbar-spacer"></span>
   <span id="client-count"></span>
   <button class="toolbar-btn" id="fullscreen-btn" title="Fullscreen">&#x26F6;</button>

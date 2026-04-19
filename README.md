@@ -1,4 +1,4 @@
-# HyperTerm Canvas
+# τ-mux
 
 A hybrid terminal emulator where a traditional PTY text layer (xterm.js) coexists with floating canvas overlays and a live, cross-pane view of every process your shells spawn. Scripts running inside the terminal can stream structured content (images, charts, interactive widgets) through extra file descriptors, while the main process continuously observes cwd / pid / ports / CPU / RSS for every descendant of every shell and ships those observations into the UI and any attached CLI. Built on [Electrobun](https://electrobun.dev) + [Bun](https://bun.sh).
 
@@ -29,7 +29,7 @@ A hybrid terminal emulator where a traditional PTY text layer (xterm.js) coexist
 - **Process Manager.** A full-screen overlay (⌘⌥P) that tabulates every process in every workspace with CPU / memory / kill buttons. Shift-click for SIGKILL.
 - **`ht` CLI.** Control everything from a shell: spawn panes, send keys, manipulate layouts, open ports in a browser (`ht open 3000`), send signals (`ht kill 8080`), inspect trees (`ht ps`), tail metadata (`ht metadata`). Installs via an in-app menu item — no Bun required on other Macs.
 - **Web mirror.** The entire native UI, including chips and metadata, mirrored over WebSocket to anything on the LAN.
-- **Client libraries.** Python + TypeScript helpers for the sideband protocol. Safe no-ops when not running inside HyperTerm.
+- **Client libraries.** Python + TypeScript helpers for the sideband protocol. Safe no-ops when not running inside τ-mux.
 - **Built-in browser.** Split a WebKit browser alongside terminals with `⌘⇧L`. Address bar with smart URL detection and configurable search engines. Full scriptable API: click, type, fill, wait, snapshot, eval, console capture — 40+ commands via `ht browser` CLI.
 - **Themeable.** 10 built-in presets (Catppuccin, Tokyo Night, Dracula, Nord, Rosé Pine, Gruvbox, Solarized, Synthwave '84, Everforest, Obsidian) plus per-color overrides.
 
@@ -46,7 +46,7 @@ Production build + DMG:
 bun run build:stable                 # builds .app with bundled `ht` CLI and DMG
 ```
 
-The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`. Click **HyperTerm Canvas → Install 'ht' Command in PATH** from the menu to symlink it to `/usr/local/bin/ht` (asks for admin when needed). Works on any Mac, no Bun required.
+The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`. Click **τ-mux → Install 'ht' Command in PATH** from the menu to symlink it to `/usr/local/bin/ht` (asks for admin when needed). Works on any Mac, no Bun required.
 
 ## Architecture
 
@@ -122,7 +122,7 @@ The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`.
 
 ## CLI (`ht`)
 
-Installed via **HyperTerm Canvas → Install 'ht' Command in PATH** (production builds) or `bun link` (dev). Controls HyperTerm Canvas through a Unix socket.
+Installed via **τ-mux → Install 'ht' Command in PATH** (production builds) or `bun link` (dev). Controls τ-mux through a Unix socket.
 
 ```bash
 # System
@@ -238,7 +238,7 @@ Above the workspace list: a summary ("N processes · X.X% CPU · Y.Y M RSS"). Ea
 
 ## Sideband protocol (fd 3/4/5)
 
-Scripts running inside HyperTerm can render structured content through extra file descriptors. The channel map is discoverable via the `HYPERTERM_CHANNELS` JSON env var; the default layout is:
+Scripts running inside τ-mux can render structured content through extra file descriptors. The channel map is discoverable via the `HYPERTERM_CHANNELS` JSON env var; the default layout is:
 
 - **fd 3** — metadata channel (script → terminal, JSONL)
 - **fd 4** — binary data channel (script → terminal, raw bytes)
@@ -324,7 +324,7 @@ ht.clear(id);
 ht.onEvent((e) => console.log(e));
 ```
 
-Both libraries are safe no-ops when not running inside HyperTerm — detection is a simple `HYPERTERM_PROTOCOL_VERSION` env check.
+Both libraries are safe no-ops when not running inside τ-mux — detection is a simple `HYPERTERM_PROTOCOL_VERSION` env check.
 
 ### Demo scripts
 

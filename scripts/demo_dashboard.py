@@ -13,7 +13,7 @@ import time
 from hyperterm import ht
 
 if not ht.available:
-    print("Not running inside HyperTerm Canvas.")
+    print("Not running inside τ-mux.")
     sys.exit(0)
 
 ht.on_error(

@@ -65,7 +65,7 @@ test.describe("metadata", () => {
             ?.name ?? null,
         { timeout: 5_000 },
       )
-      .toBe("hyperterm-canvas");
+      .toBe("tau-mux");
   });
 
   test("cd to /tmp (no repo) leaves metadata.git null", async ({ app }) => {

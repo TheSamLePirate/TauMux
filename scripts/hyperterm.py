@@ -1,5 +1,5 @@
 """
-HyperTerm Canvas — Python client library.
+τ-mux — Python client library.
 
 Usage:
     from hyperterm import ht
@@ -13,7 +13,7 @@ Usage:
     ht.on_close(panel_id, lambda: print("Closed!"))
     ht.run_event_loop()  # blocks until event fd closes
 
-When not running inside HyperTerm, all methods are safe no-ops.
+When not running inside τ-mux, all methods are safe no-ops.
 """
 
 import os
@@ -29,7 +29,7 @@ def _next_id(prefix: str = "ht") -> str:
     return f"{prefix}_{os.getpid()}_{_counter}"
 
 
-class HyperTerm:
+class TauMux:
     def __init__(self):
         self.debug = os.environ.get("HYPERTERM_DEBUG", "") != ""
         self.protocol_version = int(
@@ -641,4 +641,4 @@ class HyperTerm:
 
 
 # Convenience singleton
-ht = HyperTerm()
+ht = TauMux()

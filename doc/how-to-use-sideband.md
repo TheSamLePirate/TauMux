@@ -1,7 +1,7 @@
 # How to Use the Sideband Protocol
 
 A hands-on guide to rendering images, SVG, HTML, and interactive canvases
-on top of a HyperTerm Canvas terminal using `scripts/hyperterm.py` (Python)
+on top of a τ-mux terminal using `scripts/hyperterm.py` (Python)
 or `scripts/hyperterm.ts` (Bun / TypeScript). Demo scripts under `scripts/`
 show every feature end-to-end.
 
@@ -12,7 +12,7 @@ show every feature end-to-end.
 
 ## 0. One-minute example
 
-Inside any HyperTerm terminal pane, from this repo root:
+Inside any τ-mux terminal pane, from this repo root:
 
 ```bash
 python3 scripts/demo_interactive.py
@@ -22,8 +22,8 @@ You should see a button float above the terminal. Clicking it updates a
 counter inside the panel and streams events back on fd 5. Press Ctrl-C to
 clear and exit.
 
-If you see `"Not running inside HyperTerm Canvas."`, the current shell
-isn't a HyperTerm pane — make sure you're in the app, not an external
+If you see `"Not running inside τ-mux."`, the current shell
+isn't a τ-mux pane — make sure you're in the app, not an external
 terminal.
 
 ---
@@ -62,7 +62,7 @@ so scripts can discover extra channels declared on the bun side.
 from hyperterm import ht
 
 if not ht.available:
-    print("not in HyperTerm")
+    print("not in τ-mux")
     sys.exit(0)
 
 # Show a floating SVG panel
@@ -125,11 +125,11 @@ Full API surface (all defined in `scripts/hyperterm.py`):
 ## 3. Using the TypeScript library — `scripts/hyperterm.ts`
 
 ```ts
-import { HyperTerm } from "./hyperterm";
+import { TauMux } from "./hyperterm";
 
-const ht = new HyperTerm();
+const ht = new TauMux();
 if (!ht.available) {
-  console.log("not in HyperTerm");
+  console.log("not in τ-mux");
   process.exit(0);
 }
 
@@ -349,7 +349,7 @@ what it demonstrates.
 | [`demo_canvas_particles.ts`](../scripts/demo_canvas_particles.ts) | Particle system with mouse interaction. |
 | [`demo_canvas_life.ts`](../scripts/demo_canvas_life.ts) | Conway's Game of Life. |
 
-Run any of them from a HyperTerm pane:
+Run any of them from a τ-mux pane:
 
 ```bash
 python3 scripts/demo_image.py path/to/image.png
@@ -416,7 +416,7 @@ Useful anchor files for when the docs fall out of sync with reality.
 
 | Symptom | Likely cause | Fix |
 | ------- | ------------ | --- |
-| `"Not running inside HyperTerm Canvas."` on startup | `HYPERTERM_META_FD` not set | Run the script inside a HyperTerm pane (not a plain terminal). |
+| `"Not running inside τ-mux."` on startup | `HYPERTERM_META_FD` not set | Run the script inside a τ-mux pane (not a plain terminal). |
 | Panel never appears, no error event | `byteLength` doesn't match bytes written to fd 4 | Count your bytes — the parser waits for exactly `byteLength` or times out. |
 | Panel appears for a second then vanishes | Content renderer threw | Check the app's console; the renderer's throw is surfaced as an internal error. |
 | `ht panels` lists the panel but nothing draws | Custom `type` with no renderer | Register a renderer (see §9) or use a built-in type. |

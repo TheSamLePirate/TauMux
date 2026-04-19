@@ -1,5 +1,5 @@
 /**
- * Minimal PNG encoder for HyperTerm Canvas demos.
+ * Minimal PNG encoder for τ-mux demos.
  * Produces zlib-compressed RGBA PNGs — typically 5-20x smaller than uncompressed.
  * Zero dependencies beyond Bun's built-in zlib.
  */

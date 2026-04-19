@@ -1,15 +1,15 @@
 # ht-bridge
 
-Surfaces Claude Code session events into HyperTerm Canvas's sidebar, replacing the old `afplay` + `cmux-notify` hooks.
+Surfaces Claude Code session events into τ-mux's sidebar, replacing the old `afplay` + `cmux-notify` hooks.
 
 Two sidebar pills appear while Claude Code is running:
 
 - **`Claude`** — active task label. Set on `UserPromptSubmit` (first 40 chars of the prompt, truncated at clause boundaries), cleared on `Stop`. Flips to a yellow **Waiting for input** or red **Approval needed** state on `Notification` events.
 - **`cc`** — persistent session ticker. Updated on every prompt and every stop: `turn N · 2.1 min · $0.034`. Cost + tokens come from parsing the transcript JSONL Claude Code writes incrementally, so nothing extra needs to be wired.
 
-On `Stop`, an `ht notify` fires with the label in the title and the original prompt + duration + cost in the body — same surface the HyperTerm sidebar already uses for the `finish.mp3` sound cue, pane glow, and click-to-focus. Nothing else is spawned (no afplay, no native toast).
+On `Stop`, an `ht notify` fires with the label in the title and the original prompt + duration + cost in the body — same surface the τ-mux sidebar already uses for the `finish.mp3` sound cue, pane glow, and click-to-focus. Nothing else is spawned (no afplay, no native toast).
 
-The arrival sound respects HyperTerm's `notificationSoundEnabled` / `notificationSoundVolume` settings — mute and volume live in **Settings → General**, and the webview's command palette has a **Mute / Unmute Notification Sound** entry for quick toggling without touching the bridge config.
+The arrival sound respects τ-mux's `notificationSoundEnabled` / `notificationSoundVolume` settings — mute and volume live in **Settings → General**, and the webview's command palette has a **Mute / Unmute Notification Sound** entry for quick toggling without touching the bridge config.
 
 ## Wire-up
 
@@ -22,7 +22,7 @@ Runs as shell hooks from `~/.claude/settings.json`. Four entry points, dispatche
 | `notify-idle` | `Notification` matcher=`idle_prompt`  | Yellow "Waiting for input" pill + notify    |
 | `notify-permission` | `Notification` matcher=`permission_prompt` | Red "Approval needed" pill + notify |
 
-Each hook is fire-and-forget. `ht` is spawned with `stdio: ignore`; errors are swallowed unless `HT_CLAUDE_DEBUG=1` is set. If HyperTerm isn't running the socket call fails silently and nothing else breaks.
+Each hook is fire-and-forget. `ht` is spawned with `stdio: ignore`; errors are swallowed unless `HT_CLAUDE_DEBUG=1` is set. If τ-mux isn't running the socket call fails silently and nothing else breaks.
 
 ## State
 
@@ -47,7 +47,7 @@ Token costs come from `config.json → pricing` (`$ / million tokens`, keyed by 
 
 ## Manual test
 
-With HyperTerm running and this bridge wired into `settings.json`, trigger each hook manually:
+With τ-mux running and this bridge wired into `settings.json`, trigger each hook manually:
 
 ```bash
 # label pill
@@ -63,4 +63,4 @@ echo '{"session_id":"manual-test","transcript_path":"/Users/you/.claude/projects
   | bun ~/.claude/scripts/ht-bridge/src/index.ts stop
 ```
 
-Check the sidebar of whichever HyperTerm workspace `HT_SURFACE` points at; the native `surface_id` resolution plumbing (see `src/bun/rpc-handlers/sidebar.ts`) routes each pill to the caller's workspace automatically.
+Check the sidebar of whichever τ-mux workspace `HT_SURFACE` points at; the native `surface_id` resolution plumbing (see `src/bun/rpc-handlers/sidebar.ts`) routes each pill to the caller's workspace automatically.

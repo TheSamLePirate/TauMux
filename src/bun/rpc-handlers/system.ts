@@ -29,7 +29,7 @@ export function registerSystem(
       return "PONG";
     },
 
-    "system.version": () => `hyperterm-canvas ${VERSION}`,
+    "system.version": () => `tau-mux ${VERSION}`,
 
     // Graceful exit: returns immediately with an acknowledgement, then
     // defers the actual shutdown so the client receives the RPC response

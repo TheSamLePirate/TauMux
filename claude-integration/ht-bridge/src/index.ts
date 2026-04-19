@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * ht-bridge — Claude Code → HyperTerm Canvas sidebar bridge.
+ * ht-bridge — Claude Code → τ-mux sidebar bridge.
  *
  * Mirrors the pi-extensions/ht-notify-summary shape for Claude Code's
  * shell-hook surface. Invoked by ~/.claude/settings.json with an event
@@ -24,7 +24,7 @@
  *   $TMPDIR/ht-claude-bridge/<session_id>.json
  * Files older than 24 h are pruned on every invocation.
  *
- * Every `ht` call is fire-and-forget (no awaiting) — if HyperTerm isn't
+ * Every `ht` call is fire-and-forget (no awaiting) — if τ-mux isn't
  * running the ht CLI just fails silently and the hook continues. Nothing
  * in this runner is allowed to block Claude Code's hook pipeline; set
  * HT_CLAUDE_DEBUG=1 to surface errors on stderr.

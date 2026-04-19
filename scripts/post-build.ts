@@ -78,3 +78,8 @@ if (chmod.exitCode !== 0) {
 }
 
 console.log("[post-build] ht CLI binary injected successfully.");
+
+// CFBundleDisplayName ("τ-mux") is set by scripts/post-package.ts after
+// the full Electrobun build completes — Electrobun re-generates
+// Info.plist from a hardcoded template late in its pipeline, so any
+// edit here would be clobbered before reaching the shipped artifacts.

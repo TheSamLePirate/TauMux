@@ -2,7 +2,14 @@ import type { ElectrobunConfig } from "electrobun";
 
 export default {
   app: {
-    name: "HyperTerm Canvas",
+    // ASCII-safe bundle name — drives `tau-mux.app` filename + Info.plist
+    // CFBundleName. The user-facing display name (menu bar / dock / About
+    // dialog / "<app> would like to access…" prompts) is overridden to
+    // "τ-mux" via CFBundleDisplayName, written into Info.plist by
+    // scripts/post-build.ts. Keeping the bundle filename ASCII avoids
+    // USTAR tarball errors during packaging and prevents path-quoting
+    // surprises in CI / shell scripts.
+    name: "tau-mux",
     identifier: "dev.hyperterm.canvas",
     version: "0.0.1",
     description:
@@ -52,9 +59,9 @@ export default {
       // via ffmpeg subprocess) and any script that captures mic audio.
       entitlements: {
         "com.apple.security.device.camera":
-          "HyperTerm Canvas needs camera access so scripts like demo_webcam.ts can stream the webcam into a sideband panel.",
+          "τ-mux needs camera access so scripts like demo_webcam.ts can stream the webcam into a sideband panel.",
         "com.apple.security.device.microphone":
-          "HyperTerm Canvas needs microphone access so scripts can capture and display audio-reactive visualisations.",
+          "τ-mux needs microphone access so scripts can capture and display audio-reactive visualisations.",
       },
     },
     linux: {

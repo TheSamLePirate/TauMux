@@ -1,4 +1,4 @@
-// HyperTerm Canvas web-mirror client store.
+// τ-mux web-mirror client store.
 //
 // Pure state + reducer + tiny observer store. No DOM or xterm imports,
 // so this module is exercised directly from bun test without JSDOM.

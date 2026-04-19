@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — File Explorer
+ * τ-mux — File Explorer
  *
  * A two-pane file browser with directory navigation, file previews,
  * search/filter, and keyboard controls. Renders as an interactive HTML
@@ -37,8 +37,8 @@ const hasHyperTerm = META_FD !== null && DATA_FD !== null;
 
 if (!hasHyperTerm) {
   console.log(
-    "This script requires HyperTerm Canvas.\n" +
-      "Run it inside the HyperTerm terminal emulator.",
+    "This script requires τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator.",
   );
   process.exit(0);
 }
@@ -1361,7 +1361,7 @@ try {
 currentDir = resolve(currentDir);
 scanDirectory(currentDir);
 
-console.log("HyperTerm File Explorer");
+console.log("τ-mux File Explorer");
 console.log(`Directory: ${currentDir}`);
 console.log(`Found ${entries.length} items.\n`);
 console.log("Controls:");

@@ -51,7 +51,7 @@ export function appendWelcome(parent: HTMLDivElement): void {
   el.innerHTML = `
     <div class="agent-welcome-glyph">\u2726</div>
     <div class="agent-welcome-title">Pi Agent</div>
-    <div class="agent-welcome-desc">AI coding assistant with full tool access, image prompts, session browsing, tree branching, and the HyperTerm Canvas skill.</div>
+    <div class="agent-welcome-desc">AI coding assistant with full tool access, image prompts, session browsing, tree branching, and the τ-mux skill.</div>
     <div class="agent-welcome-shortcuts">
       <div class="agent-welcome-shortcut"><kbd>/</kbd><span>Commands</span></div>
       <div class="agent-welcome-shortcut"><kbd>Enter</kbd><span>Send</span></div>

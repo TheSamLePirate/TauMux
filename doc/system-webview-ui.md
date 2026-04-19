@@ -1,6 +1,6 @@
-# HyperTerm Canvas: Webview & UI System Guide
+# τ-mux: Webview & UI System Guide
 
-The frontend of HyperTerm Canvas runs inside an [Electrobun](https://electrobun.dev) Webview. This environment is responsible for taking the raw data provided by the Bun backend and turning it into a beautiful, interactive, macOS-oriented terminal workspace UI.
+The frontend of τ-mux runs inside an [Electrobun](https://electrobun.dev) Webview. This environment is responsible for taking the raw data provided by the Bun backend and turning it into a beautiful, interactive, macOS-oriented terminal workspace UI.
 
 For the visual system and styling rules that govern this UI, see [system-webview-design-guidelines.md](system-webview-design-guidelines.md).
 
@@ -10,7 +10,7 @@ This guide details how the UI is structured, how the tiling window manager works
 
 ## 1. The Layout: Workspaces & Panes
 
-HyperTerm Canvas operates using a **Tiling Window Manager** approach, heavily inspired by `tmux`.
+τ-mux operates using a **Tiling Window Manager** approach, heavily inspired by `tmux`.
 
 ### Workspaces
 The highest level of organization is the Workspace. You can think of a Workspace as a "Tab" or a "Virtual Desktop".
@@ -30,7 +30,7 @@ Within a Workspace, the screen can be divided into multiple `Surfaces`.
 
 ## 2. Keyboard Shortcuts
 
-Because HyperTerm prioritizes keyboard-centric workflows, most actions can be performed without touching the mouse.
+Because τ-mux prioritizes keyboard-centric workflows, most actions can be performed without touching the mouse.
 
 *Note: In macOS, `Cmd` is the Command key. In Linux/Windows, this usually maps to the `Super` or `Ctrl` key depending on the OS integration.*
 
@@ -209,7 +209,7 @@ See [`system-browser-pane.md`](system-browser-pane.md) for the full browser auto
 ## 8. UI Architecture & Performance Notes
 
 ### `xterm.js` Integration
-HyperTerm Canvas uses `xterm.js` for the text grid. It is configured with:
+τ-mux uses `xterm.js` for the text grid. It is configured with:
 - **WebLinksAddon:** URLs in the terminal become clickable.
 - **FitAddon:** When you resize a pane, `FitAddon` recalculates the rows/columns to perfectly fill the new DOM dimensions and signals the PTY backend to adjust.
 - **Scrollback:** The UI maintains up to **10,000 lines** of scrollback history per pane.

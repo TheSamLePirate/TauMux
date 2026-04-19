@@ -1,23 +1,23 @@
 ---
 name: hyperterm-canvas
-description: Operate HyperTerm Canvas through the `ht` CLI. Manage workspaces, terminal panes, browser panes, agent panes, sideband canvas panels, sidebar status, notifications, live process metadata, full browser automation, and the Telegram bridge. Use when running long-lived processes in panes, automating browser interactions, orchestrating multi-pane workflows, inspecting live process state, surfacing status to the user through the HyperTerm UI, or sending/reading Telegram messages from a script.
+description: Operate τ-mux through the `ht` CLI. Manage workspaces, terminal panes, browser panes, agent panes, sideband canvas panels, sidebar status, notifications, live process metadata, full browser automation, and the Telegram bridge. Use when running long-lived processes in panes, automating browser interactions, orchestrating multi-pane workflows, inspecting live process state, surfacing status to the user through the τ-mux UI, or sending/reading Telegram messages from a script.
 ---
 
-# HyperTerm Canvas — Complete `ht` CLI Skill
+# τ-mux — Complete `ht` CLI Skill
 
 This skill covers every capability of the `ht` command line interface — terminal panes, browser panes, agent panes, sideband canvas panels, workspace management, sidebar state, notifications, live process metadata, script-runner surfaces, full browser automation, and the Telegram bridge.
 
 ## Prerequisites
 
-- HyperTerm Canvas must be running
-- `ht` must be in PATH (install via menu: **HyperTerm Canvas → Install 'ht' Command in PATH**)
+- τ-mux must be running
+- `ht` must be in PATH (install via menu: **τ-mux → Install 'ht' Command in PATH**)
 - Default socket: `/tmp/hyperterm.sock` (override with `HT_SOCKET_PATH`)
 
 Quick check:
 
 ```bash
 ht ping        # → PONG
-ht version     # → hyperterm-canvas 0.0.1
+ht version     # → tau-mux 0.0.1
 ```
 
 ---
@@ -487,7 +487,7 @@ export HT_TELEGRAM_CHAT=8446656662
 
 ### Terminal surfaces
 
-Use `surface:N` IDs. The `--surface` flag targets a specific pane. Without it, commands target the focused surface. Inside a HyperTerm terminal, `HT_SURFACE` is auto-set.
+Use `surface:N` IDs. The `--surface` flag targets a specific pane. Without it, commands target the focused surface. Inside a τ-mux terminal, `HT_SURFACE` is auto-set.
 
 ```bash
 ht send --surface surface:3 "ls\n"

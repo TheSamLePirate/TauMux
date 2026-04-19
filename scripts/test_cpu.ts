@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Real-time CPU usage graph rendered as a floating SVG panel.
- * Run inside HyperTerm Canvas: bun scripts/test_cpu.ts
+ * Run inside τ-mux: bun scripts/test_cpu.ts
  */
 
 import { cpus } from "os";
@@ -200,7 +200,7 @@ async function readEvents() {
   }
 }
 
-// Print ASCII bar when not in HyperTerm
+// Print ASCII bar when not in τ-mux
 function printAsciiBar(usage: number) {
   const barLen = 40;
   const filled = Math.round((usage / 100) * barLen);
@@ -219,7 +219,7 @@ panelH = HEIGHT + 20;
 if (hasHyperTerm) {
   console.log("CPU monitor started — updating every 100ms (Ctrl+C to stop)");
 } else {
-  console.log("CPU monitor (no HyperTerm — ASCII fallback, Ctrl+C to stop)");
+  console.log("CPU monitor (no τ-mux — ASCII fallback, Ctrl+C to stop)");
 }
 
 // Start reading events in background

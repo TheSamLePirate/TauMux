@@ -6,7 +6,7 @@
  * 
  * Welcome to the Sideband Masterclass! 🎓
  * 
- * This tutorial script demonstrates every major feature of the HyperTerm Canvas 
+ * This tutorial script demonstrates every major feature of the τ-mux 
  * Sideband protocol in a single, massive, interactive dashboard.
  * 
  * It will teach you:
@@ -19,7 +19,7 @@
  * 7. Best practices: Graceful shutdown and memory cleanup on exit.
  * 
  * 🏃‍♂️ TO RUN:
- * Open a HyperTerm Canvas pane and run:
+ * Open a τ-mux pane and run:
  *   bun scripts/demo_massive_tutorial.ts
  * =============================================================================
  */
@@ -33,16 +33,16 @@ declare const process: any;
 // CHAPTER 1: INITIALIZATION & SAFETY CHECKS
 // =============================================================================
 // The sideband protocol relies on specific file descriptors (3, 4, 5) 
-// injected by the terminal emulator at spawn time. If we aren't in HyperTerm,
+// injected by the terminal emulator at spawn time. If we aren't in τ-mux,
 // we must gracefully exit.
 
 if (!ht.available) {
-  console.error("❌ Not running inside HyperTerm Canvas.");
-  console.error("Please run this script from inside a HyperTerm pane.");
+  console.error("❌ Not running inside τ-mux.");
+  console.error("Please run this script from inside a τ-mux pane.");
   process.exit(1);
 }
 
-console.log("🚀 Starting HyperTerm Sideband Masterclass...");
+console.log("🚀 Starting τ-mux Sideband Masterclass...");
 console.log("📚 Read the source code of this script to see the tutorial commentary.");
 
 // We track our active panels so we can clean them up gracefully on exit.

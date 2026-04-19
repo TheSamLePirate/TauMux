@@ -4,14 +4,14 @@
  * Click cells to toggle them. The simulation runs continuously.
  * Starts with a random soup.
  *
- * Run inside HyperTerm Canvas: bun scripts/demo_canvas_life.ts
+ * Run inside τ-mux: bun scripts/demo_canvas_life.ts
  */
 
 import { ht } from "./hyperterm";
 import { encodePNG } from "./png";
 
 if (!ht.available) {
-  console.log("Not running inside HyperTerm Canvas. Exiting.");
+  console.log("Not running inside τ-mux. Exiting.");
   process.exit(0);
 }
 

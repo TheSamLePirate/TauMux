@@ -1,10 +1,10 @@
 # Pi Agent Pane
 
-This document describes the in-app Pi agent pane inside HyperTerm Canvas.
+This document describes the in-app Pi agent pane inside τ-mux.
 
 ## Goals
 
-The Pi agent pane is a first-class surface type alongside terminal and browser panes. It is designed for the HyperTerm Canvas use case:
+The Pi agent pane is a first-class surface type alongside terminal and browser panes. It is designed for the τ-mux use case:
 
 - keep agent work visible in the pane layout
 - expose Pi RPC functionality without dropping to an external terminal
@@ -162,7 +162,7 @@ Added webview RPC message types in `src/shared/types.ts`:
 
 ## Styling Notes
 
-The refreshed styling keeps the existing HyperTerm visual direction:
+The refreshed styling keeps the existing τ-mux visual direction:
 
 - dark, low-noise surfaces
 - small, dense controls

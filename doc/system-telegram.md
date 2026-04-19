@@ -1,6 +1,6 @@
 # Telegram Bridge
 
-This document describes the in-app Telegram integration in HyperTerm Canvas — a first-class pane backed by a long-poll bot service, with bidirectional message flow, optional notification forwarding, and CLI access via `ht telegram`.
+This document describes the in-app Telegram integration in τ-mux — a first-class pane backed by a long-poll bot service, with bidirectional message flow, optional notification forwarding, and CLI access via `ht telegram`.
 
 ## Goals
 

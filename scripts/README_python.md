@@ -1,8 +1,8 @@
 # hyperterm.py — Python Client Library
 
-Python client library for the HyperTerm Canvas sideband protocol. Display images, SVG graphics, HTML widgets, and interactive panels as floating overlays inside the terminal.
+Python client library for the τ-mux sideband protocol. Display images, SVG graphics, HTML widgets, and interactive panels as floating overlays inside the terminal.
 
-All methods are **safe no-ops** when not running inside HyperTerm Canvas.
+All methods are **safe no-ops** when not running inside τ-mux.
 
 ## Requirements
 
@@ -39,7 +39,7 @@ for event in ht.events():
 
 ### `ht.available`
 
-`bool` — `True` when running inside HyperTerm Canvas (fd 3 and fd 4 are open).
+`bool` — `True` when running inside τ-mux (fd 3 and fd 4 are open).
 
 ### `ht.debug`
 
@@ -200,7 +200,7 @@ Events arrive as JSON dicts on fd 5:
 
 ## How It Works
 
-HyperTerm Canvas spawns scripts with sideband channels (extensible via `HYPERTERM_CHANNELS`). Default channels:
+τ-mux spawns scripts with sideband channels (extensible via `HYPERTERM_CHANNELS`). Default channels:
 
 - **fd 3** (`HYPERTERM_META_FD`) — metadata channel (script -> terminal, JSONL)
 - **fd 4** (`HYPERTERM_DATA_FD`) — binary data channel (script -> terminal, raw bytes)

@@ -1,6 +1,6 @@
 import { Electroview } from "electrobun/view";
 import type {
-  HyperTermRPC,
+  TauMuxRPC,
   NativeContextMenuRequest,
   SurfaceContextMenuRequest,
 } from "../../shared/types";
@@ -62,7 +62,7 @@ const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 32;
 let typingFocusActive = false;
 
-const rpc = Electroview.defineRPC<HyperTermRPC>({
+const rpc = Electroview.defineRPC<TauMuxRPC>({
   handlers: {
     messages: {
       writeStdout: (payload) => {

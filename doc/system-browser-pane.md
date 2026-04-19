@@ -1,6 +1,6 @@
-# HyperTerm Canvas: Built-in Browser Pane
+# τ-mux: Built-in Browser Pane
 
-HyperTerm Canvas includes a built-in WebKit browser that can be split alongside terminal panes. Browser panes share the same tiling layout, workspace management, and CLI/socket API as terminal panes — they're first-class surfaces. A rich scriptable API allows AI agents to navigate, interact with DOM elements, inspect page state, and automate web workflows without leaving the terminal.
+τ-mux includes a built-in WebKit browser that can be split alongside terminal panes. Browser panes share the same tiling layout, workspace management, and CLI/socket API as terminal panes — they're first-class surfaces. A rich scriptable API allows AI agents to navigate, interact with DOM elements, inspect page state, and automate web workflows without leaving the terminal.
 
 ---
 
@@ -399,7 +399,7 @@ Settings persist to `~/.config/hyperterm-canvas/settings.json` alongside all oth
 
 ## 8. Browser History
 
-HyperTerm maintains a local browser history store:
+τ-mux maintains a local browser history store:
 
 - Persisted to `~/Library/Application Support/hyperterm-canvas/browser-history.json`
 - Stores URL, title, visit count, and last visited timestamp
@@ -441,7 +441,7 @@ All browser panes share a `persist:browser-shared` partition. Logging into a sit
 
 ### Cookie Store
 
-HyperTerm maintains a local cookie store that can import, export, and auto-inject cookies into browser panes:
+τ-mux maintains a local cookie store that can import, export, and auto-inject cookies into browser panes:
 
 - Persisted to `~/.config/hyperterm-canvas/cookie-store.json`
 - Stores name, value, domain, path, expiry, secure flag, httpOnly flag, sameSite attribute

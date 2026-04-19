@@ -96,7 +96,7 @@ Run the companion doc to learn what each script demonstrates: [`doc/how-to-use-s
 
 **Teaches.** Minimal fixed-position clock.
 
-**Fixes applied.** **Migrated from broken raw-fd writes (update() was setting `data:` without `byteLength`, so the fd4 read never fired and the clock face stayed frozen) to the `HyperTerm` class, which now auto-inlines sub-2 KB HTML.** Wired `onTerminalResize`, `onClose`, `onError` through the lib.
+**Fixes applied.** **Migrated from broken raw-fd writes (update() was setting `data:` without `byteLength`, so the fd4 read never fired and the clock face stayed frozen) to the `τ-mux` class, which now auto-inlines sub-2 KB HTML.** Wired `onTerminalResize`, `onClose`, `onError` through the lib.
 
 ### [`scripts/demo_3d.ts`](../scripts/demo_3d.ts) — **A**
 
@@ -112,7 +112,7 @@ Run the companion doc to learn what each script demonstrates: [`doc/how-to-use-s
 
 **Teaches.** Image carousel with grid/list modes, drag-resize, click/scroll nav.
 
-**Fixes applied.** Full migration from broken raw-fd helpers (previous partial migration had left undefined symbols) to the `HyperTerm` class; `timeout: 15000` on image show; `shuttingDown` flag cancels stdin + event readers on cleanup; `onError` handler.
+**Fixes applied.** Full migration from broken raw-fd helpers (previous partial migration had left undefined symbols) to the `τ-mux` class; `timeout: 15000` on image show; `shuttingDown` flag cancels stdin + event readers on cleanup; `onError` handler.
 
 ### [`scripts/demo_webcam.ts`](../scripts/demo_webcam.ts) — **A**
 
@@ -136,7 +136,7 @@ Run the companion doc to learn what each script demonstrates: [`doc/how-to-use-s
 
 **Teaches.** Live Markdown preview with file watcher + CSS theming.
 
-**Fixes applied.** Migrated from raw-fd writes to `HyperTerm` class; `timeout: 25000` on HTML updates; `onTerminalResize` rerenders cached HTML; watcher wrapped in try/finally with `watchBusy` guard; `onError` handler.
+**Fixes applied.** Migrated from raw-fd writes to `τ-mux` class; `timeout: 25000` on HTML updates; `onTerminalResize` rerenders cached HTML; watcher wrapped in try/finally with `watchBusy` guard; `onError` handler.
 
 ---
 

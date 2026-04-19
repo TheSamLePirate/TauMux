@@ -1,8 +1,8 @@
-# HyperTerm Canvas: CLI & RPC Socket Guide
+# τ-mux: CLI & RPC Socket Guide
 
-The `ht` Command Line Interface provides complete programmatic control over HyperTerm Canvas from outside the terminal GUI. Whether you want to automate workspace setups, pipe logs into the sidebar, or script complex multi-pane layouts, the CLI gives you access to the terminal's internal state.
+The `ht` Command Line Interface provides complete programmatic control over τ-mux from outside the terminal GUI. Whether you want to automate workspace setups, pipe logs into the sidebar, or script complex multi-pane layouts, the CLI gives you access to the terminal's internal state.
 
-Under the hood, `ht` communicates with HyperTerm Canvas via a JSON-RPC Unix Socket located at `/tmp/hyperterm.sock`.
+Under the hood, `ht` communicates with τ-mux via a JSON-RPC Unix Socket located at `/tmp/hyperterm.sock`.
 
 ---
 
@@ -22,7 +22,7 @@ ht ping
 # Output: PONG
 
 ht version
-# Output: hyperterm-canvas 0.0.1
+# Output: tau-mux 0.0.1
 ```
 
 ---
@@ -59,9 +59,9 @@ ht rename-workspace "frontend-build"
 
 ## 2. Managing Splits and Panes (Surfaces)
 
-A workspace is divided into panes (referred to internally as "surfaces"). Every terminal instance running inside HyperTerm is a surface with a unique ID (e.g., `surface:5`).
+A workspace is divided into panes (referred to internally as "surfaces"). Every terminal instance running inside τ-mux is a surface with a unique ID (e.g., `surface:5`).
 
-When you run `ht` inside a HyperTerm pane, the environment variables `HT_WORKSPACE_ID` and `HT_SURFACE_ID` are automatically set. If you don't specify a `--surface` flag in your commands, `ht` will target the pane it was executed from.
+When you run `ht` inside a τ-mux pane, the environment variables `HT_WORKSPACE_ID` and `HT_SURFACE_ID` are automatically set. If you don't specify a `--surface` flag in your commands, `ht` will target the pane it was executed from.
 
 **Splitting the current pane:**
 ```bash
@@ -137,7 +137,7 @@ today.
 
 ## 4. The Sidebar: Status, Progress, and Logs
 
-The HyperTerm Canvas Sidebar is designed to be an ambient dashboard for your scripts. You can push metadata to it directly from the CLI.
+The τ-mux Sidebar is designed to be an ambient dashboard for your scripts. You can push metadata to it directly from the CLI.
 
 ### Status Pills
 Status pills are key/value pairs that appear under the workspace name in the sidebar. The sidebar renders them as stacked two-line rows (icon + uppercase key on top, high-contrast value below).
@@ -153,7 +153,7 @@ ht set-status build "failing" --color "#f38ba8" --icon "✗"
 ht clear-status build
 ```
 
-Status is **attributed to the caller's workspace automatically** — inside a HyperTerm shell, `HT_SURFACE` is set on every child process and `ht` forwards it in the `surface_id` param; the Bun-side handler then resolves which workspace owns that surface. You rarely need `--workspace <id>` explicitly. When neither `--workspace` nor `HT_SURFACE` is available (e.g. running `ht` from an external shell), the server falls back to the currently-active workspace. The same resolution applies to `clear-status`, `set-progress`, `clear-progress`, and `log`.
+Status is **attributed to the caller's workspace automatically** — inside a τ-mux shell, `HT_SURFACE` is set on every child process and `ht` forwards it in the `surface_id` param; the Bun-side handler then resolves which workspace owns that surface. You rarely need `--workspace <id>` explicitly. When neither `--workspace` nor `HT_SURFACE` is available (e.g. running `ht` from an external shell), the server falls back to the currently-active workspace. The same resolution applies to `clear-status`, `set-progress`, `clear-progress`, and `log`.
 
 ### Progress Bars
 Display a global progress bar for long-running tasks within a workspace.
@@ -263,7 +263,7 @@ ht kill 3000                         # SIGTERM (default)
 ht kill 3000 --signal SIGKILL        # or SIGHUP, SIGUSR1, etc.
 ```
 
-Every metadata command accepts `--surface <id>` to target a non-focused pane. Inside a HyperTerm shell, `HT_SURFACE` is auto-set so the CLI uses the *current* pane by default.
+Every metadata command accepts `--surface <id>` to target a non-focused pane. Inside a τ-mux shell, `HT_SURFACE` is auto-set so the CLI uses the *current* pane by default.
 
 **Raw JSON:**
 

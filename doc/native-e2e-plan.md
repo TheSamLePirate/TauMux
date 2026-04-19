@@ -51,7 +51,7 @@ driver harness around it.
 - **Hermetic.** Tests never touch `~/Library/Application
   Support/hyperterm-canvas/`. Failures don't pollute the dev
   environment.
-- **Coexistent.** Tests run without disturbing a live HyperTerm
+- **Coexistent.** Tests run without disturbing a live τ-mux
   Canvas that the developer is actively using — including Claude
   Code running as a shell process inside one of the daily-driver's
   panes. No focus theft, no state collision, no clipboard clobber.
@@ -63,7 +63,7 @@ driver harness around it.
 - **Fast enough for CI.** <5 min wall clock for the full suite on
   `macos-latest`. Individual tests <5s steady state.
 - **Typed from the outside.** A TypeScript RPC client that mirrors
-  `HyperTermRPC["bun"]["requests"]` + socket methods, so tests get
+  `TauMuxRPC["bun"]["requests"]` + socket methods, so tests get
   completion + compile-time shape checks.
 - **Crisp failure output.** On any assertion fail: the app's stderr,
   the last N lines of every surface's screen buffer, a JSON dump of
@@ -92,7 +92,7 @@ driver harness around it.
 │                                                                │
 │   test.ts                                                      │
 │      ↓ uses fixture:                                           │
-│   HyperTermApp (class) ─ typed wrapper over socket RPC         │
+│   TauMuxApp (class) ─ typed wrapper over socket RPC         │
 │      ↓                                                         │
 │   socket $HT_CONFIG_DIR/ht.sock  (JSON-RPC)                    │
 │                                                                │
@@ -153,7 +153,7 @@ Two supported modes:
 | Mode | Command | When |
 | --- | --- | --- |
 | `dev` | `bun start` (via spawn) | local dev, PR CI — faster startup, same code paths |
-| `packaged` | `build/stable/macos-arm64/HyperTermCanvas.app/Contents/MacOS/HyperTermCanvas` | release CI — catches packaging regressions (postBuild CLI inject, bundle integrity) |
+| `packaged` | `build/stable/macos-arm64/τ-mux.app/Contents/MacOS/τ-mux` | release CI — catches packaging regressions (postBuild CLI inject, bundle integrity) |
 
 Default to `dev`. `HT_E2E_APP=packaged` flips it. Both paths honor
 `HT_CONFIG_DIR`, `HT_E2E`, `HT_WEB_MIRROR_PORT`, and
@@ -189,7 +189,7 @@ Each Playwright worker gets:
 A thin wrapper — `tests-e2e-native/client.ts`:
 
 ```ts
-import type { HyperTermRPC } from "../src/shared/types";
+import type { TauMuxRPC } from "../src/shared/types";
 
 // Every socket method, typed from the domain handlers.
 export interface SocketRpc {
@@ -521,7 +521,7 @@ export function registerTestHandlers(deps: HandlerDeps): Record<string, Handler>
 
 Merged into the dispatch table inside `createRpcHandler` after the
 other domains, same pattern as `registerSidebar` / `registerAgent`.
-Adding `__test.*` to `HyperTermRPC["webview"]["requests"]` under a
+Adding `__test.*` to `TauMuxRPC["webview"]["requests"]` under a
 conditional type keeps the satisfies check clean.
 
 **Webview side — `src/views/terminal/__test-handlers.ts`:**
@@ -668,7 +668,7 @@ macOS's built-in `screencapture` CLI is the primary path:
   `screencapture -D 1 -t png -T 0` for a full-screen capture —
   noisier, but gives us something.
 - **Last-resort fallback** (no Tier 2, no bounds): `osascript -e
-  'tell application "System Events" to tell process "HyperTerm
+  'tell application "System Events" to tell process "τ-mux
   Canvas" to get position of window 1 & size of window 1'`. Brittle
   when bundle is shared with the daily driver (§8) but usable in
   isolation.
@@ -816,9 +816,9 @@ Canonical states worth tagging (opinionated starter list):
 
 ---
 
-## 8. Running alongside a daily-driver HyperTerm
+## 8. Running alongside a daily-driver τ-mux
 
-Tests must not interfere with a live HyperTerm Canvas that the
+Tests must not interfere with a live τ-mux that the
 developer is actively using — including Claude Code running as a
 shell process inside one of the daily-driver's panes. The isolation
 story:
@@ -854,7 +854,7 @@ When `HT_E2E=1`, the test instance:
 - Skips the startup "install `ht` CLI" prompt (which would
   otherwise nag the test run).
 - Opts out of LaunchServices "recent document" registration.
-- Skips the macOS first-run bundle sparkle ("`HyperTerm Canvas` is
+- Skips the macOS first-run bundle sparkle ("`τ-mux` is
   an app downloaded from the Internet. Are you sure you want to open
   it?") by setting `com.apple.quarantine` attribute removal on the
   build artifact during `bun run build:stable`.
@@ -869,7 +869,7 @@ disruptive to the developer.
 ### 8.3 Claude Code interaction
 
 Claude Code is a zsh child process inside a pane of the user's
-HyperTerm — not a separate app. It has no bundle ID, no window, no
+τ-mux — not a separate app. It has no bundle ID, no window, no
 Dock presence. Claude Code sees `HT_SOCKET_PATH` inherited from its
 parent shell, which was set by the daily-driver at its launch; any
 `ht` command Claude Code runs hits the daily-driver socket — which
@@ -939,7 +939,7 @@ produce a dedicated test build:
 
 - `scripts/build-test-app.ts` → `.app` with
   `CFBundleIdentifier = com.crazyshell.hyperterm.e2e` and
-  `CFBundleName = "HyperTerm E2E"`.
+  `CFBundleName = "τ-mux E2E"`.
 - Separate LaunchServices entry, separate NSUserDefaults domain,
   separate Keychain items. Zero overlap with the user's install.
 - CI uses this bundle for `native-packaged` tests; local dev uses
@@ -1087,7 +1087,7 @@ Acceptance: full `test:native` green on CI for three consecutive
 main builds, no skipped tests, no `.only`. `grep '"__test\\.'`
 on the stable bundle returns zero matches. Screenshots attached
 on every run. A manual `bun run test:native` while the developer's
-daily HyperTerm is open produces zero focus-steal events and zero
+daily τ-mux is open produces zero focus-steal events and zero
 modifications to `~/Library/Application Support/hyperterm-canvas/`.
 
 ---
@@ -1105,6 +1105,6 @@ modifications to `~/Library/Application Support/hyperterm-canvas/`.
 - Canonical-state PNG screenshots from every major UI configuration,
   attached to every CI run and feedable to Claude Opus for design
   review without a reviewer needing to run the app.
-- Tests that respect the developer's daily HyperTerm Canvas — no
+- Tests that respect the developer's daily τ-mux — no
   focus steal, no state collision, no clipboard clobber, safe to
   run while Claude Code is working in another pane.

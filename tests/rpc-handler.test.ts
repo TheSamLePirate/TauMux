@@ -54,7 +54,7 @@ describe("RPC Handler", () => {
   test("system.version returns version string", () => {
     const handler = setup();
     const result = handler("system.version", {}) as string;
-    expect(result).toContain("hyperterm-canvas");
+    expect(result).toContain("tau-mux");
   });
 
   test("system.identify returns focused state", () => {

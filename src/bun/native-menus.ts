@@ -2,7 +2,7 @@ import type { ApplicationMenuItemConfig } from "electrobun/bun";
 import type { NativeContextMenuRequest } from "../shared/types";
 import { WORKSPACE_COLOR_OPTIONS } from "../shared/workspace-colors";
 
-export const APP_NAME = "HyperTerm Canvas";
+export const APP_NAME = "τ-mux";
 export const ELECTROBUN_DOCS_URL =
   "https://www.electrobun.dev/docs/apis/bun/BrowserWindow";
 

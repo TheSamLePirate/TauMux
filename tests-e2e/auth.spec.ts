@@ -75,7 +75,7 @@ test.describe("web mirror: HTTP auth", () => {
     const res = await request.get(`${serverCtx.baseURL}/`);
     expect(res.status()).toBe(200);
     const html = await res.text();
-    expect(html).toContain("HyperTerm Remote");
+    expect(html).toContain("τ-mux Remote");
   });
 
   test("token required: GET / without token returns 401", async ({
@@ -101,7 +101,7 @@ test.describe("web mirror: HTTP auth", () => {
     const res = await request.get(`${ctx.baseURL}/?t=s3cret`);
     expect(res.status()).toBe(200);
     const html = await res.text();
-    expect(html).toContain("HyperTerm Remote");
+    expect(html).toContain("τ-mux Remote");
   });
 
   test("token required: Authorization: Bearer header is accepted", async ({

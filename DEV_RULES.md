@@ -13,7 +13,7 @@ This file defines the development rules to enforce when coding in this repositor
 ## 2. Required architecture mindset
 
 - Follow `/Users/olivierveinand/Documents/DEV/architecture-guide.md` as the architectural standard where it fits this project.
-- Adapt the principles to HyperTerm Canvas instead of forcing mismatched stack-specific patterns.
+- Adapt the principles to τ-mux instead of forcing mismatched stack-specific patterns.
 - Use contract-first thinking for subsystem boundaries and cross-process communication.
 - Keep module boundaries explicit.
 - Avoid barrel-export patterns for shared code.

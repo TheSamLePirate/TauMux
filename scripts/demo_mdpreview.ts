@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — Live Markdown Previewer
+ * τ-mux — Live Markdown Previewer
  *
  * Renders a markdown file to a styled HTML panel with Catppuccin Mocha dark
  * theme. Watches the file for changes and auto-refreshes the panel.
@@ -11,17 +11,17 @@
  */
 
 // ---------------------------------------------------------------------------
-// HyperTerm client setup
+// τ-mux client setup
 // ---------------------------------------------------------------------------
 
-import { HyperTerm } from "./hyperterm";
+import { TauMux } from "./hyperterm";
 
-const ht = new HyperTerm();
+const ht = new TauMux();
 
 if (!ht.available) {
   console.log(
-    "This script requires HyperTerm Canvas.\n" +
-      "Run it inside the HyperTerm terminal emulator.",
+    "This script requires τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator.",
   );
   process.exit(0);
 }
@@ -592,7 +592,7 @@ function stopWatching(): void {
 // Startup
 // ---------------------------------------------------------------------------
 
-console.log(`HyperTerm Markdown Previewer started.`);
+console.log(`τ-mux Markdown Previewer started.`);
 console.log(`Watching: ${resolvedPath}`);
 console.log(`Poll interval: ${POLL_INTERVAL}ms`);
 console.log("Press Ctrl+C to exit.\n");

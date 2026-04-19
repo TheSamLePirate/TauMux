@@ -4,7 +4,7 @@ Interactive Mandelbrot set explorer rendered on a canvas2d panel.
 Click anywhere on the fractal to zoom in at that point.
 Scroll to zoom in/out. Drag to reposition the panel.
 
-Run inside HyperTerm Canvas: python3 scripts/demo_canvas_mandelbrot.py
+Run inside τ-mux: python3 scripts/demo_canvas_mandelbrot.py
 """
 
 import struct
@@ -17,7 +17,7 @@ sys.path.insert(0, __file__.rsplit("/", 1)[0])
 from hyperterm import ht
 
 if not ht.available:
-    print("Not running inside HyperTerm Canvas. Exiting.")
+    print("Not running inside τ-mux. Exiting.")
     sys.exit(0)
 
 ht.on_error(

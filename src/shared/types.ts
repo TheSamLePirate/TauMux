@@ -321,7 +321,7 @@ export type NativeContextMenuRequest =
 // bun.messages = what bun RECEIVES from webview
 // webview.messages = what webview RECEIVES from bun
 
-export interface HyperTermRPC extends ElectrobunRPCSchema {
+export interface TauMuxRPC extends ElectrobunRPCSchema {
   bun: {
     requests: Record<string, never>;
     messages: {

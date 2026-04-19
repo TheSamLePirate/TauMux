@@ -1,6 +1,6 @@
 # crazyShell Reviewer Agent
 
-This document describes the repository-local code review agent for HyperTerm Canvas.
+This document describes the repository-local code review agent for τ-mux.
 
 ## Goal
 

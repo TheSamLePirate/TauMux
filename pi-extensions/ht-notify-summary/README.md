@@ -1,6 +1,6 @@
 # ht-notify-summary
 
-A pi extension that surfaces pi agent turns into HyperTerm Canvas using a
+A pi extension that surfaces pi agent turns into τ-mux using a
 fast model (default: **Claude Haiku**, `reasoningEffort: "off"`).
 
 | Hook                  | Action                                                                       |
@@ -48,7 +48,7 @@ pi -e ./pi-extensions/ht-notify-summary/index.ts
 
 ## Requirements
 
-- HyperTerm Canvas running (socket `/tmp/hyperterm.sock`)
+- τ-mux running (socket `/tmp/hyperterm.sock`)
 - `ht` CLI on `PATH` (or set `htBinary` in `config.json`)
 - An API key for the configured provider/model (Anthropic Haiku by default)
 

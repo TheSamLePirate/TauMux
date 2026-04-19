@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — Git Branch Graph
+ * τ-mux — Git Branch Graph
  *
  * Fullscreen interactive git commit graph with:
  * - colored branch rail visualization with merge edges
@@ -31,8 +31,8 @@ const hasHyperTerm = META_FD !== null && DATA_FD !== null;
 
 if (!hasHyperTerm) {
   console.log(
-    "This script requires HyperTerm Canvas.\n" +
-      "Run it inside the HyperTerm terminal emulator.",
+    "This script requires τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator.",
   );
   process.exit(0);
 }

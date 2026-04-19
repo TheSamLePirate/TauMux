@@ -1,7 +1,7 @@
 /**
  * ht-notify-summary
  *
- * Surfaces pi agent turns into HyperTerm Canvas:
+ * Surfaces pi agent turns into τ-mux:
  *
  *   before_agent_start → `ht set-status Pi "<3–5 word task>"` (sidebar pill)
  *   agent_end          → `ht clear-status Pi`

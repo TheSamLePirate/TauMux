@@ -8,7 +8,7 @@
 
 ## Project Snapshot
 
-HyperTerm Canvas is a hybrid terminal emulator built on Electrobun + Bun:
+τ-mux is a hybrid terminal emulator built on Electrobun + Bun:
 
 - **Traditional PTY text layer** (xterm.js) coexists with multiple floating canvas overlays.
 - **Sideband protocol** (fd 3/4/5) lets scripts render structured content (images, SVG, HTML, interactive widgets).
@@ -67,7 +67,7 @@ Electrobun Webview (src/views/terminal/)
 - **Keyboard never goes to panels or chips.** All keystrokes go to xterm.js → stdin. Panels are visual output + mouse interaction; chips are mouse / keyboard-activation only.
 - **Each content block = its own DOM element.** Not a single shared canvas. Independent panels with CSS transforms.
 - **No sandboxing of fd4 content** for now. HTML/SVG from fd4 is rendered directly. Scripts are trusted.
-- **Electrobun RPC is the webview bridge.** Socket RPC is the CLI/external bridge. They share the handler registry aggregated in `src/bun/rpc-handler.ts` from per-domain modules under `src/bun/rpc-handlers/` (system / workspace / surface / sidebar / pane / notification / agent / browser-* / telegram). The Electrobun-facing handlers in `src/bun/index.ts` are gated by `satisfies BunMessageHandlers` so any new method in `HyperTermRPC["bun"]["messages"]` without a wired handler fails the typecheck.
+- **Electrobun RPC is the webview bridge.** Socket RPC is the CLI/external bridge. They share the handler registry aggregated in `src/bun/rpc-handler.ts` from per-domain modules under `src/bun/rpc-handlers/` (system / workspace / surface / sidebar / pane / notification / agent / browser-* / telegram). The Electrobun-facing handlers in `src/bun/index.ts` are gated by `satisfies BunMessageHandlers` so any new method in `TauMuxRPC["bun"]["messages"]` without a wired handler fails the typecheck.
 - **Metadata pipeline never touches the PTY.** `SurfaceMetadataPoller` reads pids we already own and runs `ps` / `lsof` — if it breaks, the terminal keeps working.
 
 ## Directory Roles

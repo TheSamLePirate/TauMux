@@ -13,7 +13,7 @@ Final state of the branch at the last commit:
 - Seven new focused modules (sidebar, layout, panel-interaction,
   keyboard-shortcuts) plus three new test files covering them
 - Discriminated unions for `SidebandMetaMessage` and `PanelEvent`
-- Compile-time coverage check on `HyperTermRPC["bun"]["messages"]`
+- Compile-time coverage check on `TauMuxRPC["bun"]["messages"]`
   via `satisfies BunMessageHandlers`
 
 ---
@@ -119,7 +119,7 @@ handlers out into a typed `const bunMessageHandlers` with
 `satisfies BunMessageHandlers`. Electrobun's native handler type
 treats every method as optional; the satisfies check turns a missing
 handler into a compile error, so new methods added to
-`HyperTermRPC["bun"]["messages"]` can no longer silently fail at
+`TauMuxRPC["bun"]["messages"]` can no longer silently fail at
 runtime.
 
 ---

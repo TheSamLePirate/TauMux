@@ -4,7 +4,7 @@
  * Calls `[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory]`
  * via Bun FFI into libobjc so an e2e test run does NOT:
  *   - show up in the Dock,
- *   - steal keyboard focus from the user's daily-driver HyperTerm,
+ *   - steal keyboard focus from the user's daily-driver τ-mux,
  *   - participate in ⌘+Tab cycling,
  *   - register as a recent application.
  *

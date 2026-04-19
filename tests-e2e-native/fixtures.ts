@@ -18,10 +18,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
 // Electrobun's stable build produces a single `launcher` executable inside
 // the .app bundle; the actual app name is configured by the .plist. No
-// `HyperTermCanvas` or `HyperTerm Canvas` binary exists here — run the
+// `τ-mux` binary exists here — run the
 // launcher and it spawns the bun child the same way `electrobun dev` does.
 const PACKAGED_APP_PATH =
-  "build/stable-macos-arm64/HyperTerm Canvas.app/Contents/MacOS/launcher";
+  "build/stable-macos-arm64/tau-mux.app/Contents/MacOS/launcher";
 
 /**
  * Per-test spawn of the real Electrobun app. Two modes:
@@ -202,7 +202,7 @@ export { allocateConfigDir, wipeConfigDir };
  *     always sets HT_E2E=1 internally; this guards against anyone
  *     importing the client outside the fixture and pointing it at a
  *     real config.
- *   - Warn if the user's daily-driver HyperTerm socket is up. We're
+ *   - Warn if the user's daily-driver τ-mux socket is up. We're
  *     fully isolated via HT_CONFIG_DIR so this is informational, not a
  *     failure — it just explains why focus is preserved on the daily
  *     driver through the run.
@@ -214,7 +214,7 @@ function preflight(): void {
   );
   if (existsSync(defaultDailyDriverSocket)) {
     console.log(
-      `[e2e] daily-driver HyperTerm socket detected at ` +
+      `[e2e] daily-driver τ-mux socket detected at ` +
         `${defaultDailyDriverSocket}; test instance fully isolated via HT_CONFIG_DIR`,
     );
   }

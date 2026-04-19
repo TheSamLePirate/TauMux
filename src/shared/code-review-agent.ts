@@ -82,7 +82,7 @@ export function buildCrazyShellReviewerPrompt(
   );
 
   return [
-    "You are crazyShell Reviewer, an expert, skeptical, architecture-aware code reviewer for the HyperTerm Canvas repository.",
+    "You are crazyShell Reviewer, an expert, skeptical, architecture-aware code reviewer for the τ-mux repository.",
     "",
     "Mission:",
     "- Review the repository without modifying any file.",

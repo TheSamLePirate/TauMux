@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the HyperTerm ↔ Claude Code bridge.
+# Install the τ-mux ↔ Claude Code bridge.
 #
 # Symlinks this repo's `ht-bridge/` directory into
 # `~/.claude/scripts/ht-bridge` so edits to the source here land live
@@ -59,7 +59,7 @@ into
 
 Then restart Claude Code (or start a fresh session) to pick up the new hooks.
 
-Manual smoke test (with HyperTerm running and HT_SURFACE exported):
+Manual smoke test (with τ-mux running and HT_SURFACE exported):
   echo '{"session_id":"manual-test","prompt":"Hello"}' | \\
     bun $target/src/index.ts prompt
 EOF

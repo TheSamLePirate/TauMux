@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — JSON Inspector
+ * τ-mux — JSON Inspector
  *
  * An interactive tree viewer for JSON data with expand/collapse, type
  * coloring (Catppuccin Mocha), scroll, hover highlight, and JSONPath
@@ -35,8 +35,8 @@ const hasHyperTerm = META_FD !== null && DATA_FD !== null;
 
 if (!hasHyperTerm) {
   console.log(
-    "This script requires HyperTerm Canvas.\n" +
-      "Run it inside the HyperTerm terminal emulator.",
+    "This script requires τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator.",
   );
   process.exit(0);
 }
@@ -733,7 +733,7 @@ totalKeys = countKeys(data);
 depth = maxDepth(data);
 nodes = flattenTree(data);
 
-console.log("HyperTerm JSON Inspector started.");
+console.log("τ-mux JSON Inspector started.");
 console.log(
   `Keys: ${totalKeys}  Size: ${formatSize(jsonSize)}  Depth: ${depth}`,
 );

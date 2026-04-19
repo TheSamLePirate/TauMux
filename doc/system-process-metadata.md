@@ -1,6 +1,6 @@
-# HyperTerm Canvas: Live Process Metadata
+# τ-mux: Live Process Metadata
 
-HyperTerm watches every descendant of every shell it spawns and pushes that snapshot live into the UI and every attached client. No tmux, no shell integration, no node-pty — just `ps` and `lsof` run against pids the `PtyManager` already owns. This document covers what we track, how the pipeline is wired, how to extend it, how to consume it, and what to do when the numbers look wrong.
+τ-mux watches every descendant of every shell it spawns and pushes that snapshot live into the UI and every attached client. No tmux, no shell integration, no node-pty — just `ps` and `lsof` run against pids the `PtyManager` already owns. This document covers what we track, how the pipeline is wired, how to extend it, how to consume it, and what to do when the numbers look wrong.
 
 ---
 

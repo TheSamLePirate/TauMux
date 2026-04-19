@@ -1,6 +1,6 @@
 # Browser Pane — Full Implementation Plan
 
-> Add built-in browser panes to HyperTerm Canvas, with the same level of integration as cmux's WKWebView browser: split alongside terminals, address bar, navigation, history, scriptable API, and CLI control.
+> Add built-in browser panes to τ-mux, with the same level of integration as cmux's WKWebView browser: split alongside terminals, address bar, navigation, history, scriptable API, and CLI control.
 
 ---
 
@@ -62,9 +62,9 @@ Added full cmux-style browser automation API:
 
 cmux is native Swift/AppKit. Each browser pane is a real `WKWebView` instance managed directly by Swift code. It has unfettered access to WebKit internals: `WKProcessPool` for cookie sharing, `WKWebViewConfiguration` for content appearance (dark mode), `WKUIDelegate` for dialog handling, the accessibility tree API for agent snapshots.
 
-### How HyperTerm Canvas will do it
+### How τ-mux will do it
 
-HyperTerm Canvas runs inside an Electrobun `BrowserWindow`. The terminal UI is itself a webview (`views://terminal/index.html`). Browser panes will use **Electrobun's `<electrobun-webview>` custom element** — an OOPIF (Out-Of-Process IFrame) that:
+τ-mux runs inside an Electrobun `BrowserWindow`. The terminal UI is itself a webview (`views://terminal/index.html`). Browser panes will use **Electrobun's `<electrobun-webview>` custom element** — an OOPIF (Out-Of-Process IFrame) that:
 
 - Runs in a fully isolated process (crash isolation, memory isolation)
 - Supports loading any URL (http, https, local files)
@@ -161,7 +161,7 @@ export interface BrowserSurfaceState {
 
 #### 2.3 Add browser RPC messages
 
-Add to `HyperTermRPC.bun.messages` (webview → bun):
+Add to `TauMuxRPC.bun.messages` (webview → bun):
 
 ```typescript
 // Browser surface lifecycle
@@ -180,7 +180,7 @@ browserTitleChanged: { surfaceId: string; title: string };
 browserSetZoom: { surfaceId: string; zoom: number };
 ```
 
-Add to `HyperTermRPC.webview.messages` (bun → webview):
+Add to `TauMuxRPC.webview.messages` (bun → webview):
 
 ```typescript
 // Browser surface lifecycle
@@ -850,7 +850,7 @@ When the user types in the address bar, the webview sends a lightweight RPC to b
 Alternatively, add an RPC request:
 
 ```typescript
-// In HyperTermRPC.bun.requests:
+// In TauMuxRPC.bun.requests:
 browserHistorySearch: {
   params: { query: string; limit?: number };
   response: BrowserHistoryEntry[];

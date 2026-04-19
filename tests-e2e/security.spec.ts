@@ -244,7 +244,7 @@ test.describe("web mirror: HTTP method + path safety", () => {
       if (res.status() === 200) {
         const body = await res.text();
         // Anything that's not our page shouldn't land here.
-        expect(body).toContain("HyperTerm Remote");
+        expect(body).toContain("τ-mux Remote");
       } else {
         expect(res.status()).toBe(404);
       }
@@ -276,7 +276,7 @@ test.describe("web mirror: HTTP method + path safety", () => {
     // response is the app page, unchanged by the request body.
     expect(res.status()).toBe(200);
     const body = await res.text();
-    expect(body).toContain("HyperTerm Remote");
+    expect(body).toContain("τ-mux Remote");
     expect(body).not.toContain("malicious");
   });
 

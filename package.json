@@ -1,5 +1,5 @@
 {
-  "name": "hyperterm-canvas",
+  "name": "tau-mux",
   "version": "0.0.2",
   "type": "module",
   "description": "A hybrid terminal emulator with structured rendering channels",
@@ -15,7 +15,7 @@
     "build:stable": "HYPERTERM_INCLUDE_TEST_HOOKS=0 bun scripts/build-web-client.ts --minify && HYPERTERM_INCLUDE_TEST_HOOKS=0 electrobun build --env=stable",
     "build:cli": "bun scripts/build-cli.ts",
     "build:web-client": "bun scripts/build-web-client.ts",
-    "package:mac": "bun scripts/build-web-client.ts --minify && electrobun build --env=stable",
+    "package:mac": "bun scripts/build-web-client.ts --minify && electrobun build --env=stable && bun scripts/post-package.ts",
     "test": "bun scripts/build-web-client.ts && bun test tests/",
     "test:e2e": "playwright test",
     "test:native": "playwright test --config=playwright-native.config.ts",

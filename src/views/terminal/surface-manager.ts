@@ -1594,7 +1594,7 @@ export class SurfaceManager {
     const titleEl = document.getElementById("titlebar-text");
 
     if (titleEl) {
-      titleEl.textContent = workspace?.name ?? "HyperTerm Canvas";
+      titleEl.textContent = workspace?.name ?? "τ-mux";
     }
 
     const badgeEl = document.getElementById("titlebar-badge-text");

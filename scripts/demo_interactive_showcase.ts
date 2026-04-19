@@ -22,7 +22,7 @@ declare const process: any;
 // 1. SETUP & SAFETY
 // -----------------------------------------------------------------------------
 if (!ht.available) {
-  console.error("❌ Not running inside HyperTerm Canvas.");
+  console.error("❌ Not running inside τ-mux.");
   process.exit(1);
 }
 

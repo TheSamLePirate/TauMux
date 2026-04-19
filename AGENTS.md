@@ -12,7 +12,7 @@
 
 ## Project Snapshot
 
-HyperTerm Canvas is a hybrid terminal emulator built on Electrobun + Bun:
+τ-mux is a hybrid terminal emulator built on Electrobun + Bun:
 
 - **Traditional PTY text layer** (xterm.js) coexists with multiple floating canvas overlays.
 - **Sideband protocol** (fd 3/4/5) lets scripts render structured content (images, SVG, HTML, interactive widgets).
@@ -91,6 +91,6 @@ Electrobun Webview (src/views/terminal/)
 - **Adding a settings field** — extend `AppSettings` + `DEFAULT_SETTINGS` + `validateSettings`; add field renderer in `SettingsPanel`; read in `SurfaceManager.applySettings` for webview concerns or in the `updateSettings` RPC handler for bun concerns. See how `shellPath`, `webMirrorPort`, `paneGap`, `bloomIntensity` are threaded end-to-end.
 - **Adding a socket/CLI command** — add method in `rpc-handler.ts` (namespace `system.*`, `workspace.*`, `surface.*`, `sidebar.*`, `notification.*`, `pane.*`, `browser.*`); add case in `bin/ht mapCommand` (or `mapBrowserSubcommand` for browser commands); optionally add a formatter in `formatOutput`.
 - **Adding a browser automation command** — add `browser.*` method in `rpc-handler.ts`; for DOM interaction, build a JS string and `dispatch("browser.evalJs", ...)`. Add subcommand in `mapBrowserSubcommand()` in `bin/ht`. See `doc/system-browser-pane.md` § 6.
-- **Agent skill** — the `.agents/skills/hyperterm-canvas/` directory contains a complete skill file that any AI coding agent can load to operate HyperTerm Canvas through the `ht` CLI. It covers terminals, browser panes, sidebar, notifications, metadata, and full browser automation.
+- **Agent skill** — the `.agents/skills/hyperterm-canvas/` directory contains a complete skill file that any AI coding agent can load to operate τ-mux through the `ht` CLI. It covers terminals, browser panes, sidebar, notifications, metadata, and full browser automation.
 - **Adding a metadata field** — see `doc/system-process-metadata.md` § 7.
 - **Adding a pane-bar chip** — extend `renderSurfaceChips` in `surface-manager.ts`; matching CSS in `index.css`. Same class conventions (`surface-chip`, `chip-*` variants).

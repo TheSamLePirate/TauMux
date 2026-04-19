@@ -20,7 +20,7 @@
 import type { SurfaceManager } from "./surface-manager";
 
 /** Loose RPC interface — we build payloads dynamically from CustomEvent
- *  details so the statically-typed HyperTermRPC send signature can't
+ *  details so the statically-typed TauMuxRPC send signature can't
  *  narrow them without a lot of boilerplate. The bun-side handler
  *  still validates shape at the real call site. Callers pass the
  *  electrobun rpc object and we cast internally. */

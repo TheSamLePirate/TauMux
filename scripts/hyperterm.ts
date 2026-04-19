@@ -1,5 +1,5 @@
 /**
- * HyperTerm Canvas — TypeScript/Bun client library.
+ * τ-mux — TypeScript/Bun client library.
  *
  * Usage:
  *   import { ht } from "./hyperterm";
@@ -10,7 +10,7 @@
  *
  *   ht.onEvent((event) => console.log(event));
  *
- * When not running inside HyperTerm, all methods are safe no-ops.
+ * When not running inside τ-mux, all methods are safe no-ops.
  */
 
 let _counter = 0;
@@ -105,7 +105,7 @@ export interface TerminalResizeData {
 }
 
 /** Raw event from fd5 — superset of all event fields */
-export interface HyperTermEvent {
+export interface TauMuxEvent {
   id: string;
   event: string;
   x?: number;
@@ -142,7 +142,7 @@ export interface ChannelMap {
 
 // === Event dispatcher ===
 
-type EventCallback = (event: HyperTermEvent) => void;
+type EventCallback = (event: TauMuxEvent) => void;
 
 class EventDispatcher {
   private listeners: EventCallback[] = [];
@@ -221,7 +221,7 @@ class EventDispatcher {
     this.closeResolvers.clear();
   }
 
-  dispatch(event: HyperTermEvent): void {
+  dispatch(event: TauMuxEvent): void {
     // Global listeners
     for (const cb of this.listeners) cb(event);
 
@@ -285,7 +285,7 @@ function syncWrite(fd: number, bytes: Uint8Array): void {
   }
 }
 
-export class HyperTerm {
+export class TauMux {
   readonly available: boolean;
   readonly debug: boolean;
   readonly protocolVersion: number;
@@ -404,7 +404,7 @@ export class HyperTerm {
     };
     // Inline small SVGs in the meta line — skips the fd4 hop, lower latency.
     if (
-      data.byteLength <= HyperTerm.INLINE_DATA_MAX &&
+      data.byteLength <= TauMux.INLINE_DATA_MAX &&
       opts.dataChannel === undefined
     ) {
       meta["data"] = svg;
@@ -429,7 +429,7 @@ export class HyperTerm {
       ...filterUndefined(opts),
     };
     if (
-      data.byteLength <= HyperTerm.INLINE_DATA_MAX &&
+      data.byteLength <= TauMux.INLINE_DATA_MAX &&
       opts.dataChannel === undefined
     ) {
       meta["data"] = html;
@@ -535,7 +535,7 @@ export class HyperTerm {
     } else if (typeof fields["data"] === "string") {
       const encoded = encoder.encode(fields["data"] as string);
       if (
-        encoded.byteLength <= HyperTerm.INLINE_DATA_MAX &&
+        encoded.byteLength <= TauMux.INLINE_DATA_MAX &&
         channel === undefined
       ) {
         inlineData = fields["data"] as string;
@@ -610,7 +610,7 @@ export class HyperTerm {
           buffer = buffer.slice(idx + 1);
           if (!line) continue;
           try {
-            this.dispatcher.dispatch(JSON.parse(line) as HyperTermEvent);
+            this.dispatcher.dispatch(JSON.parse(line) as TauMuxEvent);
           } catch {
             if (this.debug)
               console.error("[hyperterm] Invalid event JSON:", line);
@@ -630,7 +630,7 @@ export class HyperTerm {
   }
 
   /** Register a raw event listener (receives all events). */
-  onEvent(callback: (event: HyperTermEvent) => void): void {
+  onEvent(callback: (event: TauMuxEvent) => void): void {
     this.ensureEventLoop();
     this.dispatcher.addListener(callback);
   }
@@ -812,4 +812,4 @@ function filterUndefined(
 }
 
 /** Convenience singleton */
-export const ht = new HyperTerm();
+export const ht = new TauMux();

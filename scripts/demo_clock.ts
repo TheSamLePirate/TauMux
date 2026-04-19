@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — Fixed Clock Widget
+ * τ-mux — Fixed Clock Widget
  *
  * A minimal clock rendered at the top-right corner using position: "fixed".
  * No title bar, no drag handle, no resize — just the raw time display.
@@ -10,13 +10,13 @@
  *   bun scripts/demo_clock.ts
  */
 
-import { HyperTerm } from "./hyperterm";
+import { TauMux } from "./hyperterm";
 
-const ht = new HyperTerm();
+const ht = new TauMux();
 if (!ht.available) {
   console.log(
-    "This script requires HyperTerm Canvas.\n" +
-      "Run it inside the HyperTerm terminal emulator.",
+    "This script requires τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator.",
   );
   process.exit(0);
 }

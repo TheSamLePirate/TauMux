@@ -1,6 +1,6 @@
 #!/bin/bash
 # Integration test: writes metadata + binary data through the sideband protocol.
-# Run this INSIDE HyperTerm Canvas to test fd3/fd4/fd5 channels.
+# Run this INSIDE τ-mux to test fd3/fd4/fd5 channels.
 #
 # fd3 = metadata (this script writes JSONL)
 # fd4 = binary data (this script writes raw bytes)
@@ -9,14 +9,14 @@
 META_FD=${HYPERTERM_META_FD:-3}
 DATA_FD=${HYPERTERM_DATA_FD:-4}
 
-echo "=== HyperTerm Sideband Test ==="
+echo "=== τ-mux Sideband Test ==="
 echo "META_FD=$META_FD  DATA_FD=$DATA_FD"
 
 # Test 1: SVG panel
 echo "--- Test 1: SVG panel ---"
 SVG='<svg width="200" height="120" xmlns="http://www.w3.org/2000/svg">
   <rect width="200" height="120" rx="8" fill="#313244"/>
-  <text x="100" y="45" text-anchor="middle" fill="#cdd6f4" font-size="16" font-family="sans-serif">Hello HyperTerm!</text>
+  <text x="100" y="45" text-anchor="middle" fill="#cdd6f4" font-size="16" font-family="sans-serif">Hello τ-mux!</text>
   <text x="100" y="75" text-anchor="middle" fill="#a6e3a1" font-size="12" font-family="sans-serif">SVG Panel Working</text>
   <circle cx="100" cy="100" r="10" fill="#f38ba8"/>
 </svg>'

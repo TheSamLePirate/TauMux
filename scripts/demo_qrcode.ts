@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — QR Code Generator
+ * τ-mux — QR Code Generator
  *
  * Generates QR codes from text input, rendered as SVG in a floating panel.
  * Pure TypeScript QR encoding — no external dependencies.
@@ -29,8 +29,8 @@ const hasHyperTerm = META_FD !== null && DATA_FD !== null;
 
 if (!hasHyperTerm) {
   console.log(
-    "This script requires HyperTerm Canvas.\n" +
-      "Run it inside the HyperTerm terminal emulator.",
+    "This script requires τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator.",
   );
   process.exit(0);
 }
@@ -1302,7 +1302,7 @@ async function runInteractiveMode(): Promise<void> {
 
 const args = process.argv.slice(2);
 
-console.log("HyperTerm QR Code Generator");
+console.log("τ-mux QR Code Generator");
 console.log("---------------------------");
 
 // Start event loop in background

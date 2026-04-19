@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — Drawing App
+ * τ-mux — Drawing App
  *
  * A fully-featured Paint-style drawing application that renders as an
  * interactive HTML panel via the sideband protocol. All interactivity is
@@ -30,8 +30,8 @@ const hasHyperTerm = META_FD !== null && DATA_FD !== null;
 
 if (!hasHyperTerm) {
   console.log(
-    "This script requires HyperTerm Canvas.\n" +
-      "Run it inside the HyperTerm terminal emulator.",
+    "This script requires τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator.",
   );
   process.exit(0);
 }
@@ -927,7 +927,7 @@ async function readEvents(): Promise<void> {
 // Startup
 // ---------------------------------------------------------------------------
 
-console.log("HyperTerm Drawing App started.");
+console.log("τ-mux Drawing App started.");
 console.log(
   fullPane
     ? "Mode: full-pane (fixed position)"

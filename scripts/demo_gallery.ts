@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — Image Gallery
+ * τ-mux — Image Gallery
  *
  * Browse images in a directory with a navigation bar and full-size preview.
  * Supports PNG, JPEG, WebP, and GIF files.
@@ -11,18 +11,18 @@
 
 import { readdirSync, statSync } from "fs";
 import { resolve, basename, extname } from "path";
-import { HyperTerm } from "./hyperterm";
+import { TauMux } from "./hyperterm";
 
 // ---------------------------------------------------------------------------
-// HyperTerm client setup
+// τ-mux client setup
 // ---------------------------------------------------------------------------
 
-const ht = new HyperTerm();
+const ht = new TauMux();
 
 if (!ht.available) {
   console.log(
-    "This script requires HyperTerm Canvas.\n" +
-      "Run it inside the HyperTerm terminal emulator.",
+    "This script requires τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator.",
   );
   process.exit(0);
 }
@@ -407,7 +407,7 @@ function printCurrentInfo(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Event handling (fd5 via HyperTerm dispatcher)
+// Event handling (fd5 via τ-mux dispatcher)
 // ---------------------------------------------------------------------------
 
 ht.onEvent((event) => {
@@ -561,7 +561,7 @@ function cleanup(): void {
 // Startup
 // ---------------------------------------------------------------------------
 
-console.log(`HyperTerm Image Gallery`);
+console.log(`τ-mux Image Gallery`);
 console.log(`Directory: ${targetDir}`);
 console.log(`Found ${files.length} image(s):\n`);
 

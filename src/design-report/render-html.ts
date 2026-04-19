@@ -17,7 +17,7 @@ export function renderHtml(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HyperTerm design report</title>
+<title>τ-mux design report</title>
 <style>
   :root {
     --bg: #0f1114;
@@ -186,7 +186,7 @@ export function renderHtml(
 <body>
 <div id="gate-banner" class="gate-banner off"></div>
 <header>
-  <h1>HyperTerm design report <small id="summary-line"></small></h1>
+  <h1>τ-mux design report <small id="summary-line"></small></h1>
   <div class="toolbar">
     <input id="q" type="search" placeholder="Filter (spec, test, step, state…)">
     <select id="suite">

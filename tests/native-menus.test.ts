@@ -63,7 +63,7 @@ describe("native menus", () => {
   });
 
   test("formatWindowTitle reflects the active workspace when present", () => {
-    expect(formatWindowTitle("Workspace A")).toBe("Workspace A - HyperTerm Canvas");
+    expect(formatWindowTitle("Workspace A")).toBe("Workspace A - τ-mux");
     expect(formatWindowTitle(null)).toBe(APP_NAME);
   });
 });

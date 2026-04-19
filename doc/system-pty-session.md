@@ -1,21 +1,21 @@
-# HyperTerm Canvas: PTY & Process Management Guide
+# τ-mux: PTY & Process Management Guide
 
-At its core, a terminal emulator is a program that manages other programs. HyperTerm Canvas uses a highly optimized architecture to handle shell processes without relying on heavy external C++ bindings like `node-pty`. 
+At its core, a terminal emulator is a program that manages other programs. τ-mux uses a highly optimized architecture to handle shell processes without relying on heavy external C++ bindings like `node-pty`. 
 
-This document explains how HyperTerm manages processes, memory, and output buffering under the hood.
+This document explains how τ-mux manages processes, memory, and output buffering under the hood.
 
 ---
 
 ## 1. The PTY Architecture
 
-Most Node.js-based terminal emulators (like VS Code's terminal or Hyper) use `node-pty`. HyperTerm Canvas, built on top of [Bun](https://bun.sh), takes a different approach by utilizing Bun's native `Bun.spawn` API with the `{ terminal: true }` option.
+Most Node.js-based terminal emulators (like VS Code's terminal or Hyper) use `node-pty`. τ-mux, built on top of [Bun](https://bun.sh), takes a different approach by utilizing Bun's native `Bun.spawn` API with the `{ terminal: true }` option.
 
 This provides several benefits:
 - **Zero Dependencies:** No native module compilation required (no `node-gyp`).
 - **Startup Speed:** Shells spawn in less than 50ms.
 - **Native OS Integration:** Bun communicates directly with the Unix `openpty` APIs.
 
-When you open a new terminal tab or split a terminal pane, HyperTerm creates a `PtyManager`. This manager is responsible for tracking the Process ID (PID), capturing standard output (stdout), and passing keyboard input (stdin) down to the shell.
+When you open a new terminal tab or split a terminal pane, τ-mux creates a `PtyManager`. This manager is responsible for tracking the Process ID (PID), capturing standard output (stdout), and passing keyboard input (stdin) down to the shell.
 
 > **Note:** Browser panes (`⌘⇧L`) do not use PTYs. They are managed by `BrowserSurfaceManager` and render via `<electrobun-webview>` OOPIF elements. See [`system-browser-pane.md`](system-browser-pane.md) for the browser pane architecture.
 
@@ -23,7 +23,7 @@ When you open a new terminal tab or split a terminal pane, HyperTerm creates a `
 
 ## 2. Environment Variables & Context
 
-When HyperTerm spawns a new shell (e.g., `zsh` or `bash`), it injects a specific set of environment variables. If you are writing CLI tools or scripts, you can rely on these variables to know you are running inside HyperTerm Canvas.
+When τ-mux spawns a new shell (e.g., `zsh` or `bash`), it injects a specific set of environment variables. If you are writing CLI tools or scripts, you can rely on these variables to know you are running inside τ-mux.
 
 | Variable | Description |
 |---|---|
@@ -43,7 +43,7 @@ When HyperTerm spawns a new shell (e.g., `zsh` or `bash`), it injects a specific
 
 ## 3. Output Buffering & History
 
-HyperTerm Canvas needs to be able to display the terminal output in the GUI (`xterm.js`), but it also needs to let scripts read the screen contents programmatically (via `ht read-screen`).
+τ-mux needs to be able to display the terminal output in the GUI (`xterm.js`), but it also needs to let scripts read the screen contents programmatically (via `ht read-screen`).
 
 To achieve this, the `SessionManager` maintains a rolling **Output Buffer** for every active surface.
 
@@ -66,14 +66,14 @@ When you run `ht read-screen --scrollback`, you are reading from this 64KB buffe
 
 ## 4. Process Termination & Signals
 
-When you close a pane (via the GUI 'X' button or `ht close-surface`), HyperTerm must clean up the underlying shell.
+When you close a pane (via the GUI 'X' button or `ht close-surface`), τ-mux must clean up the underlying shell.
 
 1. The `SessionManager` calls `pty.destroy()`.
 2. Bun sends a `SIGKILL` (signal 9) to the underlying shell process.
 3. The File Descriptors (0, 1, 2, 3, 4, 5) are forcibly closed.
 
 ### Limitations regarding deep process trees
-Because HyperTerm uses `SIGKILL`, it guarantees the shell will die instantly. However, if your shell had spawned child processes (e.g., you ran `npm run dev` which spawned `node server.js`), sending SIGKILL to the shell might leave `node server.js` running as an orphaned process in the background.
+Because τ-mux uses `SIGKILL`, it guarantees the shell will die instantly. However, if your shell had spawned child processes (e.g., you ran `npm run dev` which spawned `node server.js`), sending SIGKILL to the shell might leave `node server.js` running as an orphaned process in the background.
 
 If you are writing scripts intended to be killed by closing the pane, ensure your scripts properly handle `SIGHUP` or listen for the closure of standard input (`stdin`) to clean themselves up.
 
@@ -81,7 +81,7 @@ If you are writing scripts intended to be killed by closing the pane, ensure you
 
 ## 5. Shell selection and settings integration
 
-By default HyperTerm spawns whatever `$SHELL` points to (falling back to `/bin/zsh`). Two layers override this:
+By default τ-mux spawns whatever `$SHELL` points to (falling back to `/bin/zsh`). Two layers override this:
 
 1. **`settings.json`** — the `shellPath` key in `AppSettings`. When set, `SessionManager` is constructed with that value (`new SessionManager(shellPath)`). Changing the value in **Settings → General → Shell** calls `sessions.setShell(newValue)`; the new shell takes effect for *new* surfaces — existing PTYs are never re-parented.
 2. **`-l` flag** — every spawn launches the shell with `-l` so dotfiles (`.zprofile`, `.zshrc`) load. This is important for PATH inheritance in GUI launches.
@@ -121,4 +121,4 @@ Importantly, the metadata pipeline never touches the PTY — it only reads pids 
 
 Terminal output is a continuous stream of bytes. Sometimes, a multi-byte UTF-8 character (like an emoji: 🚀) gets split right down the middle across two network chunks.
 
-HyperTerm's `PtyManager` uses `TextDecoder("utf-8", { stream: true })`. This guarantees that if half an emoji arrives in Chunk A, the decoder will buffer it and wait for Chunk B before emitting the character to the UI, preventing strange `` symbols from appearing in your terminal.
+τ-mux's `PtyManager` uses `TextDecoder("utf-8", { stream: true })`. This guarantees that if half an emoji arrives in Chunk A, the decoder will buffer it and wait for Chunk B before emitting the character to the UI, preventing strange `` symbols from appearing in your terminal.

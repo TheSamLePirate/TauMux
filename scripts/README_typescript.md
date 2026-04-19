@@ -1,8 +1,8 @@
 # hyperterm.ts — TypeScript/Bun Client Library
 
-TypeScript client library for the HyperTerm Canvas sideband protocol. Display images, SVG graphics, HTML widgets, and interactive panels as floating overlays inside the terminal.
+TypeScript client library for the τ-mux sideband protocol. Display images, SVG graphics, HTML widgets, and interactive panels as floating overlays inside the terminal.
 
-All methods are **safe no-ops** when not running inside HyperTerm Canvas.
+All methods are **safe no-ops** when not running inside τ-mux.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ ht.onEvent((event) => console.log(event));
 
 ### `ht.available`
 
-`boolean` — `true` when running inside HyperTerm Canvas (fd 3 and fd 4 are open).
+`boolean` — `true` when running inside τ-mux (fd 3 and fd 4 are open).
 
 ### `ht.debug`
 
@@ -175,12 +175,12 @@ interface PanelOptions {
 }
 ```
 
-## HyperTermEvent
+## TauMuxEvent
 
 Events received via `onEvent`:
 
 ```typescript
-interface HyperTermEvent {
+interface TauMuxEvent {
   id: string;        // Panel ID (or "__system__" for protocol events)
   event: string;     // "dragend", "resize", "click", "close", "error"
   x?: number;        // Position or click coordinates
@@ -204,7 +204,7 @@ interface HyperTermEvent {
 
 ## How It Works
 
-HyperTerm Canvas spawns scripts with sideband channels (extensible via `HYPERTERM_CHANNELS`). Default channels:
+τ-mux spawns scripts with sideband channels (extensible via `HYPERTERM_CHANNELS`). Default channels:
 
 - **fd 3** (`HYPERTERM_META_FD`) — metadata channel (script -> terminal, JSONL)
 - **fd 4** (`HYPERTERM_DATA_FD`) — binary data channel (script -> terminal, raw bytes)
@@ -223,8 +223,8 @@ The module exports both a singleton and the class:
 import { ht } from "./hyperterm";
 
 // Class (for custom instances or testing)
-import { HyperTerm } from "./hyperterm";
-const myHt = new HyperTerm();
+import { TauMux } from "./hyperterm";
+const myHt = new TauMux();
 ```
 
 ## Examples

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Demo: inline panel that scrolls with terminal content.
- * Run inside HyperTerm Canvas: bun scripts/test_inline.ts
+ * Run inside τ-mux: bun scripts/test_inline.ts
  */
 
 const META_FD = process.env["HYPERTERM_META_FD"]
@@ -14,7 +14,7 @@ const DATA_FD = process.env["HYPERTERM_DATA_FD"]
 const hasHyperTerm = META_FD !== null && DATA_FD !== null;
 
 if (!hasHyperTerm) {
-  console.log("This demo requires HyperTerm Canvas (run inside the terminal).");
+  console.log("This demo requires τ-mux (run inside the terminal).");
   process.exit(0);
 }
 

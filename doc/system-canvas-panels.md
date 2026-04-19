@@ -1,8 +1,8 @@
-# HyperTerm Canvas: Floating Panels & Rich Graphics Guide
+# τ-mux: Floating Panels & Rich Graphics Guide
 
-The defining feature of HyperTerm Canvas is its ability to render rich graphical elements directly over the terminal text grid. This is handled by the **Panel System** inside the Webview.
+The defining feature of τ-mux is its ability to render rich graphical elements directly over the terminal text grid. This is handled by the **Panel System** inside the Webview.
 
-Unlike traditional terminal graphics (like Sixel or Kitty image protocol) which try to hack images into the rigid character grid, HyperTerm Canvas renders real DOM elements (`<img>`, `<svg>`, `<canvas>`) that float independently.
+Unlike traditional terminal graphics (like Sixel or Kitty image protocol) which try to hack images into the rigid character grid, τ-mux renders real DOM elements (`<img>`, `<svg>`, `<canvas>`) that float independently.
 
 This guide explains how these panels behave visually and how to interact with them.
 
@@ -99,6 +99,6 @@ Clicking this `×`:
 
 ## 5. Security and Limitations
 
-- **HTML/SVG Injection Risk:** When a script uses type `html` or `svg`, the UI injects that string directly into the DOM using `.innerHTML`. There is no sanitization applied. A malicious script could use this to execute arbitrary JavaScript (`<script>`) within the context of the Electrobun Webview. **Only run trusted scripts in HyperTerm Canvas.**
+- **HTML/SVG Injection Risk:** When a script uses type `html` or `svg`, the UI injects that string directly into the DOM using `.innerHTML`. There is no sanitization applied. A malicious script could use this to execute arbitrary JavaScript (`<script>`) within the context of the Electrobun Webview. **Only run trusted scripts in τ-mux.**
 - **Inline Panel Disappearance:** `xterm.js` only keeps a finite amount of lines in its scrollback history (default 10,000). If you print 10,001 lines, Line 1 is permanently deleted from memory. If you had an `inline` panel anchored to Line 1, the math calculating its position will fail, and the panel may suddenly disappear or misalign.
 - **Overlapping Z-Index:** By default, new panels spawn on top of older panels. If you have many floating panels, they can cover your text. You can drag them out of the way, but currently, clicking a panel does not automatically bring it to the absolute front unless the script explicitly updates its `zIndex`.

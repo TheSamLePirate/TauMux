@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — 3D Solid Renderer
+ * τ-mux — 3D Solid Renderer
  *
  * Real-time 3D objects with flat shading, Phong lighting, and painter's
  * algorithm sorting. Renders filled SVG polygons via the sideband protocol
@@ -31,8 +31,8 @@ const hasHyperTerm = META_FD !== null && DATA_FD !== null;
 
 if (!hasHyperTerm) {
   console.log(
-    "This script requires HyperTerm Canvas.\n" +
-      "Run it inside the HyperTerm terminal emulator.",
+    "This script requires τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator.",
   );
   process.exit(0);
 }
@@ -1241,7 +1241,7 @@ function cleanup(): void {
 // Startup
 // ---------------------------------------------------------------------------
 
-console.log("HyperTerm 3D Solid Renderer");
+console.log("τ-mux 3D Solid Renderer");
 console.log("Controls:");
 console.log("  1-5         Switch mesh (Torus, Sphere, Icosa, Knot, Diamond)");
 console.log("  Arrow keys  Rotate (left/right = Y, up/down = X)");

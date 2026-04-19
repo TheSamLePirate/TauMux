@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * HyperTerm Canvas — Webcam Demo
+ * τ-mux — Webcam Demo
  *
  * Streams the MacBook webcam as a floating image panel via the sideband protocol.
  * Uses ffmpeg with AVFoundation to capture JPEG frames.
@@ -14,9 +14,9 @@
  *   bun scripts/demo_webcam.ts --fps-out 15        — output framerate to panel (default: same as --fps)
  */
 
-import { HyperTerm } from "./hyperterm";
+import { TauMux } from "./hyperterm";
 
-const ht = new HyperTerm();
+const ht = new TauMux();
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing
@@ -69,7 +69,7 @@ Examples:
 }
 
 // ---------------------------------------------------------------------------
-// List devices mode (works without HyperTerm so users can discover cameras
+// List devices mode (works without τ-mux so users can discover cameras
 // from any shell).
 // ---------------------------------------------------------------------------
 
@@ -104,13 +104,13 @@ if (listDevices) {
 
 // ---------------------------------------------------------------------------
 // Availability check — must come before ffmpeg spawn so we don't burn a
-// camera activation + AVFoundation permission prompt outside HyperTerm.
+// camera activation + AVFoundation permission prompt outside τ-mux.
 // ---------------------------------------------------------------------------
 
 if (!ht.available) {
   console.log(
-    "This script requires HyperTerm Canvas.\n" +
-      "Run it inside the HyperTerm terminal emulator.\n" +
+    "This script requires τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator.\n" +
       "Use --list to see available cameras.",
   );
   process.exit(0);
@@ -221,7 +221,7 @@ let droppedCount = 0;
 const startTime = Date.now();
 
 // Timed sender: pushes the latest frame at the output framerate. Using the
-// HyperTerm class means meta + binary writes are sequenced by the lib's
+// τ-mux class means meta + binary writes are sequenced by the lib's
 // single `sendMeta` → `sendData` path; the old raw-fd version (pre-upgrade)
 // could interleave writes across frames at high FPS and produce visually
 // garbled frames.
@@ -408,7 +408,7 @@ if (capturedCount === 0) {
   console.error(fullTail.slice(-4000));
   console.error(
     "\nHints: run `bun scripts/demo_webcam.ts --list` to verify the camera " +
-      "index, and make sure the app running HyperTerm Canvas has been granted " +
+      "index, and make sure the app running τ-mux has been granted " +
       "Camera access in System Settings → Privacy & Security → Camera.\n" +
       "Or run this raw ffmpeg command in a plain shell to see the full log:\n" +
       `  ffmpeg -v verbose -f avfoundation -framerate ${fps} -video_size ${size} -i "${cameraIndex}:none" -f image2pipe -vcodec mjpeg -q:v 5 -an pipe:1 > /dev/null`,

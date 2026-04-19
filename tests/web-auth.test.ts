@@ -57,7 +57,7 @@ describe("web mirror auth", () => {
     const res = await fetch(`http://127.0.0.1:${TEST_PORT}/?t=s3cret`);
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("HyperTerm Remote");
+    expect(html).toContain("τ-mux Remote");
   });
 
   test("Authorization: Bearer header is accepted", async () => {
