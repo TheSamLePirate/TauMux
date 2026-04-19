@@ -1,0 +1,13 @@
+{
+  "_note": "Optional overrides for ht-bridge. Every field is optional — defaults live in src/index.ts. Environment variables (HT_CLAUDE_*) take precedence over this file.",
+  "enabled": true,
+  "labelKey": "Claude",
+  "labelColor": "#f5c2e7",
+  "tickerEnabled": true,
+  "tickerKey": "cc",
+  "tickerColor": "#89b4fa",
+  "idleColor": "#f9e2af",
+  "permissionColor": "#f38ba8",
+  "labelMaxChars": 40,
+  "notifySubtitle": "Claude Code"
+}

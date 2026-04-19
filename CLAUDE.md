@@ -76,6 +76,8 @@ Electrobun Webview (src/views/terminal/)
 - `tests/` — Bun test files (748 tests across 54 files). Parser tests (`ps` / `lsof` / sideband), PTY manager, RPC handlers, pane layout, web-client reducer + view modules, native sidebar notification lifecycle, agent-panel sub-modules, SurfaceManager smoke suite, shared sound helper. `bunfig.toml` scopes bare `bun test` to this directory so `tests-e2e/` Playwright specs are not picked up.
 - `scripts/` — Demo scripts + client libraries (Python, TS) for the sideband protocol. Also build hooks (`post-build.ts` for CLI injection into the .app, `build-cli.ts` for standalone binary).
 - `doc/` — Extensive subsystem docs (PTY, RPC, sideband, canvas panels, webview UI, process metadata).
+- `pi-extensions/` — Pi coding-agent extensions. `ht-notify-summary/` surfaces pi turns into the sidebar via `ht set-status` + `ht notify`.
+- `claude-integration/` — Claude Code shell-hook bridge. `ht-bridge/` mirrors the pi-extension pattern (active label pill + persistent ticker + completion notification) for Claude Code's `UserPromptSubmit` / `Stop` / `Notification` events. `install.sh` symlinks it into `~/.claude/scripts/ht-bridge`; `settings.snippet.jsonc` shows the drop-in hook blocks.
 
 ## Coding Style
 

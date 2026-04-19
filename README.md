@@ -523,8 +523,14 @@ doc/
   system-webview-ui.md
   system-process-metadata.md    # Full spec for the metadata pipeline
   system-browser-pane.md        # Browser pane: architecture, API, automation, settings
-tests/                          # 666 tests across 44 files (bun test)
+tests/                          # 748 tests across 54 files (bun test)
 tests-e2e/                      # 43 Playwright web-mirror specs (bun run test:e2e)
+pi-extensions/
+  ht-notify-summary/            # pi coding-agent extension: sidebar pill + ht notify
+claude-integration/
+  ht-bridge/                    # Claude Code shell hooks → ht set-status / ht notify
+  install.sh                    # Symlink into ~/.claude/scripts
+  settings.snippet.jsonc        # Drop-in hook blocks for ~/.claude/settings.json
 ```
 
 ## Development

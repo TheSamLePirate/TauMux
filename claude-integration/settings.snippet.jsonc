@@ -1,0 +1,65 @@
+// Drop-in hook blocks for ~/.claude/settings.json.
+//
+// This is JSONC (JSON with comments) for readability — strip the
+// comments before pasting into settings.json, or hand-merge the three
+// blocks below into the existing `hooks` object.
+//
+// What to do:
+//   * UserPromptSubmit  — ADD the bun entry next to your existing
+//                         superset-notify hook.
+//   * Stop              — REPLACE the `afplay finish.mp3` +
+//                         `cmux-notify.sh 'Session complete'` lines
+//                         with the bun entry. Keep the superset-notify
+//                         block.
+//   * Notification      — REPLACE all cmux-notify.sh + afplay
+//                         need-human.mp3 entries with exactly the two
+//                         bun entries below.
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts prompt"
+          }
+          // plus any existing superset-notify hook you already had.
+        ]
+      }
+    ],
+
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts stop"
+          }
+        ]
+      }
+      // plus any existing superset-notify Stop block.
+    ],
+
+    "Notification": [
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts notify-idle"
+          }
+        ]
+      },
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts notify-permission"
+          }
+        ]
+      }
+    ]
+  }
+}
