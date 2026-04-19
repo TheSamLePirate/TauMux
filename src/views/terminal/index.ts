@@ -178,6 +178,27 @@ const rpc = Electroview.defineRPC<HyperTermRPC>({
         // router refuses to handle anything until this flag is true.
         window.__htTestMode__ = payload.enabled === true;
       },
+      // ── Telegram surface lifecycle (bun → webview) ──
+      telegramSurfaceCreated: (payload) => {
+        if (payload.splitFrom && payload.direction) {
+          surfaceManager.addTelegramSurfaceAsSplit(
+            payload.surfaceId,
+            payload.splitFrom,
+            payload.direction,
+          );
+        } else {
+          surfaceManager.addTelegramSurface(payload.surfaceId);
+        }
+      },
+      telegramMessage: (payload) => {
+        surfaceManager.handleTelegramMessage(payload.message);
+      },
+      telegramHistory: (payload) => {
+        surfaceManager.handleTelegramHistory(payload);
+      },
+      telegramState: (payload) => {
+        surfaceManager.handleTelegramState(payload);
+      },
       // Note: browser navigation commands from socket API go through socketAction
       surfaceMetadata: (payload) => {
         surfaceManager.setSurfaceMetadata(payload.surfaceId, payload.metadata);
@@ -645,6 +666,28 @@ function buildPaletteCommands(): PaletteCommand[] {
       label: "Split Agent Down",
       description: "Split a pi coding agent below the current pane.",
       action: () => rpc.send("splitAgentSurface", { direction: "vertical" }),
+    },
+    {
+      id: "telegram-new",
+      category: "Telegram",
+      label: "New Telegram Pane",
+      description: "Open a Telegram chat pane in a new workspace.",
+      action: () => rpc.send("createTelegramSurface", {}),
+    },
+    {
+      id: "telegram-split-right",
+      category: "Telegram",
+      label: "Split Telegram Right",
+      description: "Open a Telegram chat pane next to the current pane.",
+      action: () =>
+        rpc.send("splitTelegramSurface", { direction: "horizontal" }),
+    },
+    {
+      id: "telegram-split-down",
+      category: "Telegram",
+      label: "Split Telegram Down",
+      description: "Open a Telegram chat pane below the current pane.",
+      action: () => rpc.send("splitTelegramSurface", { direction: "vertical" }),
     },
     {
       id: "show-pane-info",
@@ -1485,6 +1528,30 @@ window.addEventListener("ht-clear-notifications", () => {
 window.addEventListener("ht-dismiss-notification", (e: Event) => {
   const detail = (e as CustomEvent).detail as { id?: string } | undefined;
   if (detail?.id) rpc.send("dismissNotification", { id: detail.id });
+});
+
+// ── Telegram pane → bun ──
+window.addEventListener("ht-telegram-send", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    | { chatId?: string; text?: string }
+    | undefined;
+  if (!detail?.chatId || !detail.text) return;
+  rpc.send("telegramSend", { chatId: detail.chatId, text: detail.text });
+});
+
+window.addEventListener("ht-telegram-request-history", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    | { chatId?: string; before?: number }
+    | undefined;
+  if (!detail?.chatId) return;
+  rpc.send("telegramRequestHistory", {
+    chatId: detail.chatId,
+    before: detail.before,
+  });
+});
+
+window.addEventListener("ht-telegram-request-state", () => {
+  rpc.send("telegramRequestState");
 });
 
 window.addEventListener("ht-focus-notification-source", (e: Event) => {

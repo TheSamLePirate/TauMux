@@ -33,6 +33,11 @@ import {
 import { createSidebarView } from "./sidebar";
 import { createTransport } from "./transport";
 import { attachSidebarResize } from "../shared/sidebar-resize";
+import {
+  formatTelegramTimestamp,
+  telegramAuthorLabel,
+  telegramSendFailed,
+} from "../shared/telegram-view";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -158,12 +163,23 @@ function boot() {
   // entries when a surface appears in state, and dispose them when it
   // leaves.
   interface TermRef {
-    term: any;
-    fitAddon: any;
+    /** Pane kind. "telegram" panes have null `term`/`fitAddon` and own
+     *  a separate render path (no xterm). */
+    kind: "term" | "telegram";
+    term: any | null;
+    fitAddon: any | null;
     el: HTMLElement;
     termEl: HTMLElement;
     barTitle: HTMLElement;
     chipsEl: HTMLElement;
+    /** Telegram-only handle on the chat DOM and its update fn. */
+    telegram?: {
+      messagesEl: HTMLElement;
+      composerEl: HTMLTextAreaElement;
+      statusPillEl: HTMLElement;
+      chatSelectEl: HTMLSelectElement;
+      render: (state: AppState) => void;
+    };
   }
   const terms: Record<string, TermRef> = {};
   const panelsDom: Record<
@@ -301,6 +317,16 @@ function boot() {
     applyChips(state, prev);
     applyFullscreen(state, prev);
     applyGlow(state, prev);
+    if (state.telegram !== prev.telegram) renderTelegramPanes(state);
+  }
+
+  /** Re-render every Telegram pane on every store change. The pane's
+   *  internal `render` function is keyed so unchanged DOM survives. */
+  function renderTelegramPanes(state: AppState) {
+    for (const sid in terms) {
+      const ref = terms[sid]!;
+      if (ref.kind === "telegram") ref.telegram?.render(state);
+    }
   }
 
   // ------------------------------------------------------------------
@@ -322,10 +348,12 @@ function boot() {
     }
     // Resize to whatever the snapshot says.
     for (const sid in terms) {
+      const ref = terms[sid]!;
+      if (!ref.term) continue;
       const surf = state.surfaces[sid];
       if (surf && surf.cols && surf.rows) {
         try {
-          terms[sid]!.term.resize(surf.cols, surf.rows);
+          ref.term.resize(surf.cols, surf.rows);
         } catch {
           /* ignore */
         }
@@ -340,6 +368,10 @@ function boot() {
   }
 
   function createPane(surfaceId: string, state: AppState) {
+    if (surfaceId.startsWith("tg:")) {
+      createTelegramPane(surfaceId, state);
+      return;
+    }
     const surf = state.surfaces[surfaceId];
     const el = document.createElement("div");
     el.className = "pane";
@@ -418,7 +450,15 @@ function boot() {
     });
     ro.observe(termEl);
 
-    terms[surfaceId] = { term, fitAddon, el, termEl, barTitle, chipsEl };
+    terms[surfaceId] = {
+      kind: "term",
+      term,
+      fitAddon,
+      el,
+      termEl,
+      barTitle,
+      chipsEl,
+    };
 
     // Paint chips from existing metadata, if any.
     const meta = surf?.metadata;
@@ -428,13 +468,223 @@ function boot() {
   function disposePane(surfaceId: string) {
     const ref = terms[surfaceId];
     if (!ref) return;
-    try {
-      ref.term.dispose();
-    } catch {
-      /* ignore */
+    if (ref.term) {
+      try {
+        ref.term.dispose();
+      } catch {
+        /* ignore */
+      }
     }
     ref.el.remove();
     delete terms[surfaceId];
+  }
+
+  /** Build a Telegram pane DOM. Mirrors the structure of the native
+   *  webview's TelegramPaneView: chat picker + status pill + scrollable
+   *  message list + composer with Enter=send / Shift+Enter=newline.
+   *  Renders react-style on every store update via the `render` fn so
+   *  there's no per-event surgery. */
+  function createTelegramPane(surfaceId: string, _state: AppState) {
+    const el = document.createElement("div");
+    el.className = "pane pane-telegram";
+    el.setAttribute("data-surface", surfaceId);
+
+    const bar = document.createElement("div");
+    bar.className = "pane-bar";
+    const barTitle = document.createElement("span");
+    barTitle.className = "pane-bar-title";
+    barTitle.textContent = "Telegram";
+    bar.appendChild(barTitle);
+    const chipsEl = document.createElement("div");
+    chipsEl.className = "pane-bar-chips";
+    bar.appendChild(chipsEl);
+    el.appendChild(bar);
+
+    const toolbar = document.createElement("div");
+    toolbar.className = "telegram-toolbar";
+    const chatSelectEl = document.createElement("select");
+    chatSelectEl.className = "telegram-chat-select";
+    chatSelectEl.addEventListener("change", () => {
+      const next = chatSelectEl.value || null;
+      if (next) store.dispatch({ kind: "telegram/select-chat", chatId: next });
+    });
+    toolbar.appendChild(chatSelectEl);
+    const statusPillEl = document.createElement("span");
+    statusPillEl.className = "telegram-status-pill";
+    toolbar.appendChild(statusPillEl);
+    el.appendChild(toolbar);
+
+    const body = document.createElement("div");
+    body.className = "telegram-body";
+    const messagesEl = document.createElement("div");
+    messagesEl.className = "telegram-messages";
+    body.appendChild(messagesEl);
+    const composerWrap = document.createElement("div");
+    composerWrap.className = "telegram-composer";
+    const composerEl = document.createElement("textarea");
+    composerEl.rows = 2;
+    composerEl.placeholder = "Send a message…  (Enter = send · Shift+Enter)";
+    composerEl.className = "telegram-composer-input";
+    composerWrap.appendChild(composerEl);
+    const sendBtn = document.createElement("button");
+    sendBtn.className = "telegram-send-btn";
+    sendBtn.textContent = "Send";
+    composerWrap.appendChild(sendBtn);
+    body.appendChild(composerWrap);
+    el.appendChild(body);
+
+    container.appendChild(el);
+
+    const submit = () => {
+      const text = composerEl.value.trim();
+      const chatId = store.getState().telegram.activeChatId;
+      if (!text || !chatId) return;
+      sendMsg("telegramSend", { chatId, text });
+      composerEl.value = "";
+    };
+
+    composerEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        submit();
+      }
+      e.stopPropagation();
+    });
+    sendBtn.addEventListener("click", submit);
+
+    messagesEl.addEventListener("scroll", () => {
+      if (messagesEl.scrollTop > 4) return;
+      const s = store.getState();
+      const chatId = s.telegram.activeChatId;
+      if (!chatId) return;
+      const list = s.telegram.messagesByChat[chatId];
+      if (!list || list.length === 0) return;
+      sendMsg("telegramRequestHistory", { chatId, before: list[0].id });
+    });
+
+    el.addEventListener("click", () => {
+      if (store.getState().focusedSurfaceId === surfaceId) return;
+      store.dispatch({ kind: "focus/set", surfaceId });
+      sendMsg("focusSurface", { surfaceId });
+    });
+
+    function render(s: AppState) {
+      const tg = s.telegram;
+      // Status pill
+      statusPillEl.className = `tg-status-pill tg-status-${tg.status.state}`;
+      statusPillEl.textContent =
+        tg.status.state === "error" && tg.status.error
+          ? `error: ${tg.status.error}`
+          : tg.status.state;
+
+      // Chat picker
+      const wantedValues = tg.chats.map((c) => c.id).join("|");
+      if (chatSelectEl.dataset["v"] !== wantedValues) {
+        chatSelectEl.innerHTML = "";
+        if (tg.chats.length === 0) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = "No chats yet";
+          opt.disabled = true;
+          chatSelectEl.appendChild(opt);
+          chatSelectEl.disabled = true;
+        } else {
+          chatSelectEl.disabled = false;
+          for (const chat of tg.chats) {
+            const opt = document.createElement("option");
+            opt.value = chat.id;
+            opt.textContent = chat.name || chat.id;
+            chatSelectEl.appendChild(opt);
+          }
+        }
+        chatSelectEl.dataset["v"] = wantedValues;
+      }
+      if (tg.activeChatId && chatSelectEl.value !== tg.activeChatId) {
+        chatSelectEl.value = tg.activeChatId;
+      }
+
+      // Messages
+      const chatId = tg.activeChatId;
+      const list = chatId ? (tg.messagesByChat[chatId] ?? []) : [];
+      // Keyed render — only re-build when set of ids changes.
+      const idKey = list.map((m) => m.id).join(",");
+      if (messagesEl.dataset["k"] !== idKey) {
+        const wasNearBottom =
+          messagesEl.scrollHeight -
+            messagesEl.scrollTop -
+            messagesEl.clientHeight <
+          80;
+        messagesEl.innerHTML = "";
+        if (list.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "telegram-empty";
+          empty.textContent =
+            tg.status.state === "disabled"
+              ? "Telegram service is disabled."
+              : "No messages yet.";
+          messagesEl.appendChild(empty);
+        } else {
+          for (const m of list) {
+            const failed = telegramSendFailed(m);
+            const row = document.createElement("div");
+            row.className = `telegram-msg telegram-msg-${m.direction}${
+              failed ? " telegram-msg-failed" : ""
+            }`;
+            const meta = document.createElement("div");
+            meta.className = "telegram-msg-meta";
+            meta.textContent = `${telegramAuthorLabel(m)} · ${formatTelegramTimestamp(m.ts)}`;
+            row.appendChild(meta);
+            const text = document.createElement("div");
+            text.className = "telegram-msg-text";
+            text.textContent = m.text;
+            row.appendChild(text);
+            if (failed) {
+              const failBar = document.createElement("div");
+              failBar.className = "telegram-msg-fail-bar";
+              const badge = document.createElement("span");
+              badge.className = "telegram-msg-fail-badge";
+              badge.textContent = "failed";
+              failBar.appendChild(badge);
+              const retryBtn = document.createElement("button");
+              retryBtn.type = "button";
+              retryBtn.className = "telegram-msg-retry-btn";
+              retryBtn.textContent = "Retry";
+              retryBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                sendMsg("telegramSend", { chatId: m.chatId, text: m.text });
+              });
+              failBar.appendChild(retryBtn);
+              row.appendChild(failBar);
+            }
+            messagesEl.appendChild(row);
+          }
+        }
+        messagesEl.dataset["k"] = idKey;
+        if (wasNearBottom) {
+          requestAnimationFrame(() => {
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          });
+        }
+      }
+    }
+
+    terms[surfaceId] = {
+      kind: "telegram",
+      term: null,
+      fitAddon: null,
+      el,
+      termEl: messagesEl,
+      barTitle,
+      chipsEl,
+      telegram: { messagesEl, composerEl, statusPillEl, chatSelectEl, render },
+    };
+
+    // Initial paint + ensure we have history for whatever chat is active.
+    render(store.getState());
+    const active = store.getState().telegram.activeChatId;
+    if (active) {
+      sendMsg("telegramRequestHistory", { chatId: active });
+    }
   }
 
   // ------------------------------------------------------------------
@@ -788,6 +1038,17 @@ function boot() {
     if (e.key === "Escape" && store.getState().fullscreenSurfaceId) {
       store.dispatch({ kind: "fullscreen/exit" });
     }
+  });
+
+  // Pull the Telegram state once we're hooked up. Server replies with a
+  // `telegramState` envelope which fills in chats + status; subsequent
+  // updates arrive automatically via broadcast.
+  let lastConnStatus: AppState["connection"]["status"] = "connecting";
+  store.subscribe((s) => {
+    if (s.connection.status === "connected" && lastConnStatus !== "connected") {
+      sendMsg("telegramRequestState", {});
+    }
+    lastConnStatus = s.connection.status;
   });
 
   transport.connect();

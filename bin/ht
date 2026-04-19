@@ -5,9 +5,9 @@
  */
 
 import { connect } from "net";
+import { readFileSync } from "node:fs";
 
-const SOCKET_PATH =
-  process.env["HT_SOCKET_PATH"] || "/tmp/hyperterm.sock";
+const SOCKET_PATH = process.env["HT_SOCKET_PATH"] || "/tmp/hyperterm.sock";
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -652,6 +652,51 @@ function mapCommand(): RpcCall {
         },
       };
 
+    // ── Telegram bridge ──
+    // Read-side: list chats, dump recent history, show service status.
+    // Write-side: send a message to a chat. Default chat resolution:
+    //   1. --chat <id>
+    //   2. $HT_TELEGRAM_CHAT
+    // No implicit "most recent" lookup — keeping the CLI deterministic.
+    case "telegram": {
+      const sub = positional[0] || "status";
+      const chatId =
+        flags["chat"] ||
+        flags["chat_id"] ||
+        process.env["HT_TELEGRAM_CHAT"] ||
+        undefined;
+      switch (sub) {
+        case "status":
+          return { method: "telegram.status", params: {} };
+        case "chats":
+        case "list":
+          return { method: "telegram.chats", params: {} };
+        case "read":
+        case "history": {
+          // Read shares send's default-chat semantics — handled out-of-band
+          // in main() so we can prefetch the chat list when --chat is
+          // missing. Same throw pattern as `send` for consistency.
+          throw new Error(
+            "telegram read: handled by main() — should not reach mapCommand",
+          );
+        }
+        case "send": {
+          // Send is handled out-of-band in main() so we can prefetch
+          // the default chat list and read piped stdin. mapCommand only
+          // ever sees `send` here when something else routes through —
+          // throw a helpful error so the failure is loud.
+          throw new Error(
+            "telegram send: handled by main() — should not reach mapCommand",
+          );
+        }
+        default:
+          console.error(`Unknown telegram subcommand: ${sub}`);
+          console.error("Supported: status | chats | read | send");
+          process.exit(1);
+      }
+      break;
+    }
+
     // ── Agent panes ──
     case "agent": {
       const sub = positional[0] || "identify";
@@ -694,75 +739,198 @@ function mapCommand(): RpcCall {
   }
 }
 
-const rpcCall = mapCommand();
+/** One JSON-RPC round-trip over the unix socket. Resolves to the
+ *  decoded `result`, rejects on transport failure / server error /
+ *  5s timeout. Single-shot — opens, sends, closes on first response. */
+function runRpc(
+  method: string,
+  params: Record<string, unknown>,
+): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify({ id: "1", method, params }) + "\n";
+    const sock = connect(SOCKET_PATH);
+    let buf = "";
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      sock.end();
+      reject(
+        new Error(
+          `no response from HyperTerm within 5s (method=${method}). The app may be unresponsive. Socket: ${SOCKET_PATH}`,
+        ),
+      );
+    }, 5000);
 
-// Send to socket
-const payload = JSON.stringify({
-  id: "1",
-  method: rpcCall.method,
-  params: rpcCall.params,
-}) + "\n";
-
-const socket = connect(SOCKET_PATH);
-let response = "";
-let gotResponse = false;
-
-socket.on("connect", () => {
-  socket.write(payload);
-});
-
-socket.on("data", (chunk) => {
-  response += chunk.toString();
-  // Process complete lines
-  const lines = response.split("\n");
-  for (let i = 0; i < lines.length - 1; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    try {
-      const res = JSON.parse(line);
-      if (res.error) {
-        console.error(`Error: ${res.error}`);
-        process.exit(1);
+    sock.on("connect", () => sock.write(payload));
+    sock.on("data", (chunk) => {
+      buf += chunk.toString();
+      const lines = buf.split("\n");
+      for (let i = 0; i < lines.length - 1; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        try {
+          const res = JSON.parse(line);
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          sock.end();
+          if (res.error) reject(new Error(String(res.error)));
+          else resolve(res.result);
+          return;
+        } catch {
+          /* unparseable line — keep buffering */
+        }
       }
-      gotResponse = true;
-      formatOutput(res.result);
-      process.exit(0);
+      buf = lines[lines.length - 1];
+    });
+    sock.on("error", (err: Error & { code?: string }) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
+/** Resolve the message body for `ht telegram send`. Joins all
+ *  positional args after `send`; if empty and stdin is piped, slurps
+ *  the entire piped payload. Trailing newlines from typical pipelines
+ *  (`echo "x" | ht telegram send`) are trimmed so the chat doesn't
+ *  show a blank trailing line. */
+function resolveSendText(): string {
+  const inline = positional.slice(1).join(" ");
+  if (inline) return unescapeText(inline);
+  if (!process.stdin.isTTY) {
+    try {
+      const piped = readFileSync(0, "utf-8");
+      return piped.replace(/\n+$/, "");
     } catch {
-      console.log(line);
+      return "";
     }
   }
-  response = lines[lines.length - 1];
-});
+  return "";
+}
 
-// Timeout for async responses. Distinguish "no response at all" from
-// "response was processed and we're still alive for some reason" — the
-// former is a real error (server alive but command hung, or server just
-// died), the latter is effectively impossible (process.exit above).
-setTimeout(() => {
-  if (!gotResponse) {
+/** Default-chat fallback: when no --chat / HT_TELEGRAM_CHAT is set,
+ *  ask the running app for its chat list and use the most-recently-
+ *  active one. Returns null when no chats exist yet (caller errors out). */
+async function resolveDefaultChatId(): Promise<{
+  id: string;
+  name?: string;
+} | null> {
+  try {
+    const result = (await runRpc("telegram.chats", {})) as
+      | { chats?: Array<{ id: string; name?: string }> }
+      | undefined;
+    const first = result?.chats?.[0];
+    if (!first) return null;
+    return { id: first.id, name: first.name };
+  } catch {
+    return null;
+  }
+}
+
+async function runTelegramRead(): Promise<void> {
+  let chatId =
+    flags["chat"] ||
+    flags["chat_id"] ||
+    process.env["HT_TELEGRAM_CHAT"] ||
+    "";
+  if (!chatId) {
+    const fallback = await resolveDefaultChatId();
+    if (!fallback) {
+      console.error(
+        "telegram read: no chat id (use --chat <id>, set HT_TELEGRAM_CHAT, or open a chat with the bot first)",
+      );
+      process.exit(1);
+    }
+    chatId = fallback.id;
     console.error(
-      `Error: no response from HyperTerm within 5s (method=${rpcCall.method}).`,
+      `telegram read: defaulting to chat ${chatId}${
+        fallback.name ? ` (${fallback.name})` : ""
+      }`,
     );
-    console.error(
-      "  The app may be unresponsive, or the command is stuck. " +
-        `Socket: ${SOCKET_PATH}`,
-    );
-    socket.end();
+  }
+  const limitRaw = flags["limit"];
+  const limit = limitRaw ? parseInt(limitRaw, 10) : 20;
+  try {
+    const res = await runRpc("telegram.history", { chat_id: chatId, limit });
+    formatOutput(res);
+  } catch (err) {
+    console.error(`Error: ${(err as Error).message}`);
     process.exit(1);
   }
-  socket.end();
-  process.exit(0);
-}, 5000);
+}
 
-socket.on("error", (err: Error & { code?: string }) => {
-  if (err.code === "ENOENT" || err.code === "ECONNREFUSED") {
-    console.error("HyperTerm Canvas is not running.");
-    console.error(`Socket not found: ${SOCKET_PATH}`);
-  } else {
-    console.error(`Socket error: ${err.message}`);
+async function runTelegramSend(): Promise<void> {
+  let chatId =
+    flags["chat"] ||
+    flags["chat_id"] ||
+    process.env["HT_TELEGRAM_CHAT"] ||
+    "";
+  const text = resolveSendText();
+  if (!text) {
+    console.error("telegram send: missing text (positional, or piped stdin)");
+    process.exit(1);
   }
-  process.exit(1);
-});
+  if (!chatId) {
+    const fallback = await resolveDefaultChatId();
+    if (!fallback) {
+      console.error(
+        "telegram send: no chat id (use --chat <id>, set HT_TELEGRAM_CHAT, or open a chat with the bot first)",
+      );
+      process.exit(1);
+    }
+    chatId = fallback.id;
+    console.error(
+      `telegram send: defaulting to chat ${chatId}${
+        fallback.name ? ` (${fallback.name})` : ""
+      }`,
+    );
+  }
+  try {
+    const res = await runRpc("telegram.send", { chat_id: chatId, text });
+    formatOutput(res);
+  } catch (err) {
+    console.error(`Error: ${(err as Error).message}`);
+    process.exit(1);
+  }
+}
+
+async function main(): Promise<void> {
+  // Telegram send needs a multi-step flow (stdin / default-chat
+  // resolution) that the regular single-RPC pipeline can't model.
+  // Intercept it before mapCommand runs.
+  if (command === "telegram" && positional[0] === "send") {
+    await runTelegramSend();
+    return;
+  }
+  if (
+    command === "telegram" &&
+    (positional[0] === "read" || positional[0] === "history")
+  ) {
+    await runTelegramRead();
+    return;
+  }
+
+  const rpcCall = mapCommand();
+  try {
+    const result = await runRpc(rpcCall.method, rpcCall.params);
+    formatOutput(result);
+  } catch (err) {
+    const e = err as Error & { code?: string };
+    if (e.code === "ENOENT" || e.code === "ECONNREFUSED") {
+      console.error("HyperTerm Canvas is not running.");
+      console.error(`Socket not found: ${SOCKET_PATH}`);
+    } else {
+      console.error(`Error: ${e.message}`);
+    }
+    process.exit(1);
+  }
+}
+
+void main();
 
 function formatOutput(result: unknown): void {
   if (result === "PONG") {
@@ -802,6 +970,10 @@ function formatOutput(result: unknown): void {
       signal: string;
     };
     console.log(`Sent ${signal} to pid ${pid} (port :${port})`);
+    return;
+  }
+  if (command === "telegram" && result && typeof result === "object") {
+    formatTelegram(result);
     return;
   }
   if (command === "screenshot" && result && typeof result === "object") {
@@ -959,6 +1131,86 @@ function formatMetadata(
   console.log(`ports      ${meta.listeningPorts.length} listener(s)`);
 }
 
+function formatTelegram(result: object): void {
+  // `telegram.send` returns the bare wire message (id, direction, text, …).
+  // Other read methods wrap their payload in { messages | chats | status }.
+  const obj = result as Record<string, unknown>;
+
+  if (Array.isArray(obj["messages"])) {
+    const messages = obj["messages"] as Array<{
+      id: number;
+      direction: "in" | "out";
+      text: string;
+      ts: number;
+      fromName: string | null;
+    }>;
+    if (messages.length === 0) {
+      console.log("(no messages)");
+      return;
+    }
+    for (const m of messages) {
+      const d = new Date(m.ts);
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      const who = m.direction === "out" ? "You" : (m.fromName ?? "Them");
+      // Indent multi-line bodies under the meta line so `grep "^\["`
+      // still finds one row per message.
+      const [first, ...rest] = m.text.split("\n");
+      console.log(`[${hh}:${mm}] ${who}: ${first}`);
+      for (const line of rest) console.log(`         ${line}`);
+    }
+    return;
+  }
+
+  if (Array.isArray(obj["chats"])) {
+    const chats = obj["chats"] as Array<{
+      id: string;
+      name: string;
+      lastSeen: number;
+    }>;
+    if (chats.length === 0) {
+      console.log("(no chats yet)");
+      return;
+    }
+    for (const c of chats) {
+      console.log(
+        `${c.id}\t${c.name}\t(last seen ${formatRelative(c.lastSeen)})`,
+      );
+    }
+    return;
+  }
+
+  if (obj["status"] && typeof obj["status"] === "object") {
+    const s = obj["status"] as { state: string; error?: string };
+    if (s.error) {
+      console.log(`${s.state}: ${s.error}`);
+    } else {
+      console.log(s.state);
+    }
+    return;
+  }
+
+  // Outbound `telegram.send` reply — single wire message.
+  if (typeof obj["id"] === "number" && typeof obj["text"] === "string") {
+    const ts = (obj["ts"] as number) ?? Date.now();
+    const d = new Date(ts);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    console.log(`sent [${hh}:${mm}]  ${String(obj["text"])}`);
+    return;
+  }
+
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function formatRelative(ts: number): string {
+  const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86400)}d ago`;
+}
+
 function printHelp(): void {
   console.log(`ht — HyperTerm Canvas CLI
 
@@ -1089,6 +1341,20 @@ Agent panes:
   agent count                           Number of live agents
   agent close [id]                      Close an agent by agent/surface id
 
+Telegram:
+  telegram status                       Show bot service state (disabled / starting /
+                                        polling / error: <reason>)
+  telegram chats                        List known chats with last-seen times
+  telegram read [--chat ID] [--limit N] Print recent messages for a chat
+                                        (default limit 20). When --chat /
+                                        $HT_TELEGRAM_CHAT are absent, defaults to
+                                        the most recently active chat.
+  telegram send [--chat ID] [TEXT…]     Send TEXT (joined with spaces) to a chat.
+                                        When TEXT is omitted, body is read from
+                                        piped stdin. When --chat / $HT_TELEGRAM_CHAT
+                                        are absent, defaults to the most recently
+                                        active chat (e.g. echo "ok" | ht telegram send).
+
 System:
   shutdown                              Graceful exit (flushes settings,
                                         layout, cookies, history)
@@ -1097,9 +1363,10 @@ Aliases:
   capture-pane                          Alias for read-screen (tmux compat)
 
 Environment:
-  HT_SOCKET_PATH   Override socket path (default: /tmp/hyperterm.sock)
-  HT_WORKSPACE_ID  Auto-set in HyperTerm terminals
-  HT_SURFACE_ID    Auto-set in HyperTerm terminals
+  HT_SOCKET_PATH    Override socket path (default: /tmp/hyperterm.sock)
+  HT_WORKSPACE_ID   Auto-set in HyperTerm terminals
+  HT_SURFACE_ID     Auto-set in HyperTerm terminals
+  HT_TELEGRAM_CHAT  Default chat id for "ht telegram read | send"
 
 Add --json to any command for raw JSON output.`);
 }

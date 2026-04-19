@@ -16,7 +16,7 @@ export interface PaneLeaf {
   /** Surface kind. Omitted or "terminal" = terminal PTY pane.
    *  "browser" = embedded web browser pane.
    *  "agent" = pi coding agent pane. */
-  surfaceType?: "terminal" | "browser" | "agent";
+  surfaceType?: "terminal" | "browser" | "agent" | "telegram";
 }
 
 export type PaneNode = PaneSplit | PaneLeaf;
@@ -46,7 +46,7 @@ export interface PersistedWorkspace {
   /** Persisted URL per browser surface id for restore. */
   surfaceUrls?: Record<string, string>;
   /** Surface type per surface id (only stored for "browser" or "agent"; terminal is the default). */
-  surfaceTypes?: Record<string, "terminal" | "browser" | "agent">;
+  surfaceTypes?: Record<string, "terminal" | "browser" | "agent" | "telegram">;
 }
 
 export interface PersistedLayout {
@@ -375,7 +375,10 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
           /** Persisted URL per browser surface id for restore. */
           surfaceUrls?: Record<string, string>;
           /** Surface type per surface id (only stored for "browser" or "agent"). */
-          surfaceTypes?: Record<string, "terminal" | "browser" | "agent">;
+          surfaceTypes?: Record<
+            string,
+            "terminal" | "browser" | "agent" | "telegram"
+          >;
         }[];
         activeWorkspaceId: string | null;
       };
@@ -549,6 +552,25 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       agentFork: { agentId: string; entryId: string };
       /** Export session to HTML. */
       agentExportHtml: { agentId: string; outputPath?: string };
+
+      // ── Telegram (webview → bun) ──
+      /** Open a new Telegram pane in the active workspace. */
+      createTelegramSurface: { chatId?: string };
+      /** Split the focused pane and place a new Telegram pane there. */
+      splitTelegramSurface: {
+        direction: "horizontal" | "vertical";
+        chatId?: string;
+      };
+      /** Send a message via the bot. */
+      telegramSend: { chatId: string; text: string };
+      /** Request history for a chat (used on pane open + scroll-up). */
+      telegramRequestHistory: {
+        chatId: string;
+        limit?: number;
+        before?: number;
+      };
+      /** Request the current chat list + service status. */
+      telegramRequestState: void;
     };
   };
   webview: {
@@ -657,6 +679,58 @@ export interface HyperTermRPC extends ElectrobunRPCSchema {
       };
       /** Bun asks webview to close an agent surface. */
       agentSurfaceClosed: { surfaceId: string };
+
+      // ── Telegram (bun → webview) ──
+      /** Open the Telegram pane in the webview. The pane manages its
+       *  own active-chat selection; no chat binding at the layout
+       *  level (different from browser surfaces, which carry url). */
+      telegramSurfaceCreated: {
+        surfaceId: string;
+        splitFrom?: string;
+        direction?: "horizontal" | "vertical";
+      };
+      /** Push a single new message to whichever pane is showing this chat. */
+      telegramMessage: { surfaceId?: string; message: TelegramWireMessage };
+      /** Reply to a `telegramRequestHistory` call. */
+      telegramHistory: {
+        chatId: string;
+        messages: TelegramWireMessage[];
+        /** True when the returned page is the most recent one (no newer
+         *  rows exist). Drives the pane's "scroll-to-bottom" behavior. */
+        isLatest: boolean;
+      };
+      /** Service status + chat list snapshot. Sent on connect and on any
+       *  status change (token edit, restart, polling failure). */
+      telegramState: {
+        status: TelegramStatusWire;
+        chats: TelegramChatWire[];
+      };
     };
   };
+}
+
+/** Wire shape for a single Telegram message — flat, JSON-friendly. */
+export interface TelegramWireMessage {
+  id: number;
+  chatId: string;
+  direction: "in" | "out";
+  text: string;
+  ts: number;
+  fromName: string | null;
+  /** Telegram-side message id. Always present on inbound rows; null on
+   *  outbound rows whose API call failed (rate-limit, bad chat, network).
+   *  UI uses null to render a "failed" badge + retry handle. */
+  tgMessageId: number | null;
+}
+
+export interface TelegramChatWire {
+  id: string;
+  name: string;
+  lastSeen: number;
+}
+
+export interface TelegramStatusWire {
+  state: "disabled" | "starting" | "polling" | "error";
+  error?: string;
+  botUsername?: string;
 }

@@ -1,11 +1,11 @@
 ---
 name: hyperterm-canvas
-description: Operate HyperTerm Canvas through the `ht` CLI. Manage workspaces, terminal panes, browser panes, agent panes, sideband canvas panels, sidebar status, notifications, live process metadata, and full browser automation. Use when running long-lived processes in panes, automating browser interactions, orchestrating multi-pane workflows, inspecting live process state, or surfacing status to the user through the HyperTerm UI.
+description: Operate HyperTerm Canvas through the `ht` CLI. Manage workspaces, terminal panes, browser panes, agent panes, sideband canvas panels, sidebar status, notifications, live process metadata, full browser automation, and the Telegram bridge. Use when running long-lived processes in panes, automating browser interactions, orchestrating multi-pane workflows, inspecting live process state, surfacing status to the user through the HyperTerm UI, or sending/reading Telegram messages from a script.
 ---
 
 # HyperTerm Canvas — Complete `ht` CLI Skill
 
-This skill covers every capability of the `ht` command line interface — terminal panes, browser panes, agent panes, sideband canvas panels, workspace management, sidebar state, notifications, live process metadata, script-runner surfaces, and full browser automation.
+This skill covers every capability of the `ht` command line interface — terminal panes, browser panes, agent panes, sideband canvas panels, workspace management, sidebar state, notifications, live process metadata, script-runner surfaces, full browser automation, and the Telegram bridge.
 
 ## Prerequisites
 
@@ -438,7 +438,52 @@ Agents require the `pi` binary on PATH. If it's missing, `ht agent new` succeeds
 
 ---
 
-## Part 15 — Surface Targeting
+## Part 15 — Telegram Bridge
+
+A long-poll bot service inside the app mirrors a Telegram chat into a first-class pane. The CLI reads + writes the same chat history. Configure the bot in **Settings → Telegram** (token + allowed user IDs) — this skill assumes that's done.
+
+### Status & chats
+
+```bash
+ht telegram status                   # disabled / starting / polling / error: <reason>
+ht telegram chats                    # id, name, last seen
+```
+
+### Read recent messages
+
+```bash
+ht telegram read --chat 8446656662 --limit 20
+ht telegram read --limit 5           # defaults --chat to most-recently-active
+```
+
+When `--chat` is missing the CLI prints `defaulting to chat <id> (<name>)` to **stderr** and resolves to the most recent chat.
+
+### Send a message
+
+```bash
+ht telegram send --chat 8446656662 "build done"
+ht telegram send "build done"        # default chat
+echo "build done" | ht telegram send # body from piped stdin
+make 2>&1 | tail -20 | ht telegram send
+```
+
+The `chat_id` resolution order: `--chat` → `$HT_TELEGRAM_CHAT` → most-recent chat (one extra round-trip). Output: `sent [hh:mm] <text>`.
+
+### Default chat via env
+
+```bash
+export HT_TELEGRAM_CHAT=8446656662
+```
+
+### Notes
+
+- Outbound is rate-limited to 1 msg/sec per chat (3-burst). Failed sends still appear in history with a "failed" badge in the UI.
+- A 409 in `ht telegram status` means another `getUpdates` consumer is running — usually a stray app instance.
+- Setting **Forward Notifications** in Settings → Telegram makes every `ht notify` (and any sidebar notification) DM all allowed user IDs.
+
+---
+
+## Part 16 — Surface Targeting
 
 ### Terminal surfaces
 
@@ -583,6 +628,31 @@ while true; do
 done
 ```
 
+### Recipe: Notify Telegram from a long build
+
+```bash
+ht set-status build "compiling" --icon hammer
+START=$(date +%s)
+if make all; then
+  DUR=$(( $(date +%s) - START ))
+  ht set-status build "ok in ${DUR}s" --color "#a6e3a1"
+  ht telegram send "✅ build ok in ${DUR}s on $(hostname)"
+else
+  ht log --level error --source build "make failed"
+  ht set-status build "failed" --color "#f87171"
+  make all 2>&1 | tail -20 | ht telegram send
+fi
+```
+
+### Recipe: Pipe test output to Telegram on failure
+
+```bash
+OUTPUT=$(bun test 2>&1)
+if echo "$OUTPUT" | grep -q "fail"; then
+  printf "❌ tests failed:\n%s" "$(echo "$OUTPUT" | tail -30)" | ht telegram send
+fi
+```
+
 ### Recipe: Wait for a sideband panel to render
 
 ```bash
@@ -638,8 +708,10 @@ ht browser list --json
 - `\n` in `ht send` is a carriage return (Enter), not a newline.
 - `ht open` without a port errors if zero or multiple ports are detected — use explicit port.
 - For `new-split`, use `right` or `down` for predictable behavior.
-- Surface-id prefixes: terminals use `surface:N`, browsers use `browser:N`, agents use `agent-N` (hyphen, not colon).
+- Surface-id prefixes: terminals use `surface:N`, browsers use `browser:N`, agents use `agent-N` (hyphen, not colon), Telegram uses `tg:N:<rand>`.
 - `ht agent new` + `ht shutdown` require the bun main process and will not work against a web-mirror-only connection.
+- `ht telegram send` reads stdin when no positional text is given — `make 2>&1 | ht telegram send` works.
+- `HT_TELEGRAM_CHAT` overrides the most-recent-chat fallback for `ht telegram send` and `ht telegram read`.
 
 ---
 
@@ -680,3 +752,6 @@ ht browser list --json
 
 ### Browser cookies
 `browser-cookie-list`, `browser-cookie-get`, `browser-cookie-set`, `browser-cookie-delete`, `browser-cookie-clear`, `browser-cookie-import`, `browser-cookie-export`, `browser-cookie-capture`
+
+### Telegram
+`telegram status`, `telegram chats`, `telegram read`, `telegram send`

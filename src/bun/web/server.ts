@@ -70,6 +70,15 @@ export class WebServer {
   onSurfaceResizeRequest:
     | ((surfaceId: string, cols: number, rows: number) => void)
     | null = null;
+  /** Web client requests an outbound Telegram message. */
+  onTelegramSend: ((chatId: string, text: string) => void) | null = null;
+  /** Web client wants paginated history. Server replies with a
+   *  `telegramHistory` envelope to all clients. */
+  onTelegramRequestHistory:
+    | ((chatId: string, before: number | undefined) => void)
+    | null = null;
+  /** Web client (re)requests the chat list + service status. */
+  onTelegramRequestState: (() => void) | null = null;
 
   constructor(
     private port: number,
@@ -910,6 +919,29 @@ export class WebServer {
         if (history) {
           this.sendTo(ws, "history", { surfaceId, data: history });
         }
+        break;
+      }
+      case "telegramSend": {
+        const chatId = fields["chatId"];
+        const text = fields["text"];
+        if (typeof chatId === "string" && chatId && typeof text === "string") {
+          this.onTelegramSend?.(chatId, text);
+        }
+        break;
+      }
+      case "telegramRequestHistory": {
+        const chatId = fields["chatId"];
+        const before = fields["before"];
+        if (typeof chatId === "string" && chatId) {
+          this.onTelegramRequestHistory?.(
+            chatId,
+            typeof before === "number" ? before : undefined,
+          );
+        }
+        break;
+      }
+      case "telegramRequestState": {
+        this.onTelegramRequestState?.();
         break;
       }
       case "subscribeWorkspace": {

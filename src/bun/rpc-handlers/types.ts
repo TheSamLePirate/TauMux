@@ -5,6 +5,8 @@ import type { PanelRegistry } from "../panel-registry";
 import type { PiAgentManager } from "../pi-agent-manager";
 import type { SessionManager } from "../session-manager";
 import type { SurfaceMetadataPoller } from "../surface-metadata";
+import type { TelegramService } from "../telegram-service";
+import type { TelegramDatabase } from "../telegram-db";
 import type { PaneNode } from "../../shared/types";
 
 export interface AppState {
@@ -29,7 +31,7 @@ export interface WorkspaceSnapshot {
   /** Persisted URL per browser surface id for restore. */
   surfaceUrls?: Record<string, string>;
   /** Surface type per surface id (only stored for "browser" or "agent"). */
-  surfaceTypes?: Record<string, "terminal" | "browser" | "agent">;
+  surfaceTypes?: Record<string, "terminal" | "browser" | "agent" | "telegram">;
 }
 
 export type Handler = (
@@ -78,4 +80,14 @@ export interface HandlerDeps {
   piAgentManager?: PiAgentManager;
   /** Initiate a graceful shutdown. Wired to `system.shutdown`. */
   shutdown?: () => void;
+  /** Live accessor for the long-poll Telegram bot service. Returns the
+   *  current instance, or `undefined` when the user has not enabled
+   *  Telegram. Defined as a thunk because the underlying instance is
+   *  recreated on token / enabled changes — handlers must always read
+   *  the freshest reference. */
+  getTelegramService?: () => TelegramService | undefined;
+  /** SQLite log behind the Telegram service. Always defined when the
+   *  bot integration is wired in, used by the read-side RPC even when
+   *  the long-poll loop is off. */
+  telegramDb?: TelegramDatabase;
 }

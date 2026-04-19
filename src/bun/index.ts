@@ -23,7 +23,12 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import type { HyperTermRPC, PersistedLayout, PaneNode } from "../shared/types";
+import type {
+  HyperTermRPC,
+  PersistedLayout,
+  PaneNode,
+  TelegramWireMessage,
+} from "../shared/types";
 import { SessionManager } from "./session-manager";
 import { BrowserSurfaceManager } from "./browser-surface-manager";
 import { BrowserHistoryStore } from "./browser-history";
@@ -51,6 +56,12 @@ import { SettingsManager } from "./settings-manager";
 import { PiAgentManager } from "./pi-agent-manager";
 import { AppContext } from "./app-context";
 import { switchToAccessoryMode } from "./accessory-mode";
+import { TelegramDatabase } from "./telegram-db";
+import {
+  TelegramService,
+  planNotificationForwarding,
+} from "./telegram-service";
+import { wireMessage as wireTelegramMessage } from "./rpc-handlers/telegram";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -91,6 +102,15 @@ const browserHistory = new BrowserHistoryStore(configDir);
 const cookieStore = new CookieStore(configDir);
 const metadataPoller = new SurfaceMetadataPoller(sessions);
 const panelRegistry = new PanelRegistry();
+
+// ── Telegram bot integration ──
+// Database is always opened so the read-side `telegram.history` /
+// `telegram.chats` RPCs return persisted data even when the long-poll
+// loop is off. The service itself is started/stopped on demand by
+// `applyTelegramSettings`, gated on `telegramEnabled` + a non-empty
+// token.
+const telegramDb = new TelegramDatabase(join(configDir, "telegram.db"));
+let telegramService: TelegramService | null = null;
 
 // Env var HYPERTERM_WEB_PORT overrides the user setting so the dev/test
 // workflow (custom port via env) keeps working.
@@ -502,6 +522,13 @@ const bunMessageHandlers = {
     if (updated.webMirrorPort !== previous.webMirrorPort) {
       applyWebMirrorPort(updated.webMirrorPort);
     }
+    if (
+      updated.telegramEnabled !== previous.telegramEnabled ||
+      updated.telegramBotToken !== previous.telegramBotToken ||
+      updated.telegramAllowedUserIds !== previous.telegramAllowedUserIds
+    ) {
+      void applyTelegramSettings();
+    }
     rpc.send("settingsChanged", { settings: updated });
   },
   openExternal: (payload) => {
@@ -675,6 +702,33 @@ const bunMessageHandlers = {
   splitAgentSurface: (payload) => {
     splitAgentSurface(payload.direction, payload);
   },
+
+  // ── Telegram (webview → bun) ──
+  createTelegramSurface: () => {
+    createTelegramWorkspaceSurface();
+  },
+  splitTelegramSurface: (payload) => {
+    splitTelegramSurface(payload.direction);
+  },
+  telegramSend: (payload) => {
+    if (!payload.chatId || !payload.text) return;
+    void sendTelegramAndBroadcast(payload.chatId, payload.text);
+  },
+  telegramRequestHistory: (payload) => {
+    const limit = payload.limit ?? 50;
+    const before = payload.before;
+    const rows = telegramDb.getHistory(payload.chatId, limit, before);
+    const messages = rows.map(wireTelegramMessage);
+    rpc.send("telegramHistory", {
+      chatId: payload.chatId,
+      messages,
+      isLatest: !before,
+    });
+  },
+  telegramRequestState: () => {
+    sendTelegramStateToWebview();
+  },
+
   agentPrompt: (payload) => {
     const agent = piAgentManager.getAgent(payload.agentId);
     if (agent)
@@ -1012,6 +1066,11 @@ metadataPoller.onMetadata = (surfaceId, metadata) => {
 };
 metadataPoller.start();
 
+// Kick off the Telegram long-poll loop if the user has it enabled.
+// Errors land on `console.warn` via service `onLog` — booting the app
+// must not block on a flaky network or a bad token.
+void applyTelegramSettings();
+
 // ── Web Mirror ──
 
 function broadcastSurfaceCreated(surfaceId: string, title: string): void {
@@ -1105,6 +1164,119 @@ function splitBrowserSurface(
     surfaceId,
     url: resolvedUrl,
   });
+}
+
+// ── Telegram Surface Creation ──
+
+let telegramSurfaceCounter = 0;
+function nextTelegramSurfaceId(): string {
+  return `tg:${++telegramSurfaceCounter}:${Date.now().toString(36)}`;
+}
+
+function createTelegramWorkspaceSurface(): void {
+  const surfaceId = nextTelegramSurfaceId();
+  app.focusedSurfaceId = surfaceId;
+  rpc.send("telegramSurfaceCreated", { surfaceId });
+  app.webServer?.broadcast({ type: "telegramSurfaceCreated", surfaceId });
+  // Push the current state so the new pane renders chats + status without a
+  // round-trip — the pane requests state on mount as well, but this saves
+  // a frame.
+  sendTelegramStateToWebview();
+}
+
+function splitTelegramSurface(direction: "horizontal" | "vertical"): void {
+  const splitFrom = app.focusedSurfaceId;
+  const surfaceId = nextTelegramSurfaceId();
+  app.focusedSurfaceId = surfaceId;
+  rpc.send("telegramSurfaceCreated", {
+    surfaceId,
+    splitFrom: splitFrom ?? undefined,
+    direction,
+  });
+  app.webServer?.broadcast({ type: "telegramSurfaceCreated", surfaceId });
+  sendTelegramStateToWebview();
+}
+
+// ── Telegram service lifecycle ──
+
+function buildTelegramStatePayload() {
+  const chats = telegramDb.listChats();
+  const status = telegramService?.getStatus() ?? { state: "disabled" as const };
+  return { chats, status };
+}
+
+function sendTelegramStateToWebview(): void {
+  rpc.send("telegramState", buildTelegramStatePayload());
+}
+
+function broadcastTelegramState(): void {
+  const payload = buildTelegramStatePayload();
+  rpc.send("telegramState", payload);
+  app.webServer?.broadcast({ type: "telegramState", ...payload });
+}
+
+/** Broadcast a single Telegram message to every UI surface (native
+ *  webview + every connected web mirror). Centralized so the four
+ *  call sites — incoming poll, send-from-webview, send-from-web,
+ *  notification forwarder — stay in lockstep. Also re-broadcasts the
+ *  state snapshot so the chat list / lastSeen times update. */
+function broadcastTelegramMessage(wire: TelegramWireMessage): void {
+  rpc.send("telegramMessage", { message: wire });
+  app.webServer?.broadcast({ type: "telegramMessage", message: wire });
+  broadcastTelegramState();
+}
+
+/** Send a message via the live service and fan the result out to every
+ *  client. No-op (with warning) when the service isn't running. */
+async function sendTelegramAndBroadcast(
+  chatId: string,
+  text: string,
+): Promise<void> {
+  const svc = telegramService;
+  if (!svc) {
+    console.warn("[telegram] send dropped — service not running");
+    return;
+  }
+  try {
+    const persisted = await svc.sendMessage(chatId, text);
+    broadcastTelegramMessage(wireTelegramMessage(persisted));
+  } catch (err) {
+    console.warn("[telegram] send failed:", err);
+  }
+}
+
+async function applyTelegramSettings(): Promise<void> {
+  const s = settingsManager.get();
+  const shouldRun = s.telegramEnabled && s.telegramBotToken.length > 0;
+
+  if (telegramService) {
+    await telegramService.stop();
+    telegramService = null;
+  }
+
+  if (!shouldRun) {
+    broadcastTelegramState();
+    return;
+  }
+
+  telegramService = new TelegramService({
+    token: s.telegramBotToken,
+    allowedUserIds: s.telegramAllowedUserIds,
+    db: telegramDb,
+    onIncoming: (message) => {
+      broadcastTelegramMessage(wireTelegramMessage(message));
+    },
+    onStatus: () => {
+      broadcastTelegramState();
+    },
+    onLog: (level, msg) => {
+      if (level === "error" || level === "warn") {
+        console.warn(`[telegram] ${msg}`);
+      }
+    },
+  });
+  telegramService.start();
+  broadcastTelegramState();
 }
 
 // ── Agent Surface Creation ──
@@ -1531,6 +1703,29 @@ function dispatch(action: string, payload: Record<string, unknown>) {
         title: latest["title"] ?? "",
         body: latest["body"] ?? "",
       });
+      // Phase 2: forward to Telegram when the user opted in. The plan
+      // function is pure — it returns the {chatId, text} deliveries to
+      // perform; we just wire them through sendTelegramAndBroadcast so
+      // the live service handles rate limiting + persistence.
+      if (telegramService) {
+        const settings = settingsManager.get();
+        const surfaceId = (latest["surfaceId"] as string | null) ?? null;
+        const ws = surfaceId
+          ? (app.workspaceState.find((w) => w.surfaceIds.includes(surfaceId)) ??
+            null)
+          : null;
+        const deliveries = planNotificationForwarding({
+          enabled: settings.telegramNotificationsEnabled,
+          allowedUserIds: settings.telegramAllowedUserIds,
+          title: String(latest["title"] ?? ""),
+          body: String(latest["body"] ?? ""),
+          workspace: ws?.name ?? undefined,
+          pane: (ws?.surfaceTitles?.[surfaceId ?? ""] as string) ?? undefined,
+        });
+        for (const { chatId, text } of deliveries) {
+          void sendTelegramAndBroadcast(chatId, text);
+        }
+      }
     } else if (dismissed) {
       app.webServer?.broadcast({ type: "notificationDismiss", id: dismissed });
     } else if (notifications && notifications.length === 0) {
@@ -1629,6 +1824,8 @@ const socketHandler = createRpcHandler(
     piAgentManager,
     shutdown: () => gracefulShutdown(),
     testModeEnabled: HT_TEST_MODE,
+    telegramDb,
+    getTelegramService: () => telegramService ?? undefined,
   },
 );
 const socketPath = join(configDir, "hyperterm.sock");
@@ -1672,6 +1869,23 @@ function setupWebServerCallbacks(ws: WebServer) {
     // Same shape as clear — let the RPC handler own the splice + dispatch
     // so native webview + web clients stay in sync on the same id.
     socketHandler("notification.dismiss", { id });
+  };
+  ws.onTelegramSend = (chatId, text) => {
+    void sendTelegramAndBroadcast(chatId, text);
+  };
+  ws.onTelegramRequestHistory = (chatId, before) => {
+    const rows = telegramDb
+      .getHistory(chatId, 50, before)
+      .map(wireTelegramMessage);
+    ws.broadcast({
+      type: "telegramHistory",
+      chatId,
+      messages: rows,
+      isLatest: !before,
+    });
+  };
+  ws.onTelegramRequestState = () => {
+    ws.broadcast({ type: "telegramState", ...buildTelegramStatePayload() });
   };
 }
 
@@ -1825,6 +2039,17 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
           surfaceId: newId,
           url,
         });
+      } else if (surfType === "telegram") {
+        // Telegram panes have no PTY / no remote process — restoring just
+        // re-mounts the chat DOM. We mint a fresh surface id so the
+        // pane-tree mapping stays consistent with other types.
+        const newId = nextTelegramSurfaceId();
+        surfaceMapping[oldId] = newId;
+        rpc.send("telegramSurfaceCreated", { surfaceId: newId });
+        app.webServer?.broadcast({
+          type: "telegramSurfaceCreated",
+          surfaceId: newId,
+        });
       } else {
         // Re-spawn in the surface's last known cwd so shells resume where they
         // left off (the metadata poller picks this up within a tick; without
@@ -1962,6 +2187,16 @@ async function gracefulShutdown(): Promise<void> {
     sessions.destroy();
   } catch (err) {
     console.warn("[main] sessions.destroy failed:", err);
+  }
+  try {
+    await telegramService?.stop();
+  } catch (err) {
+    console.warn("[main] telegramService.stop failed:", err);
+  }
+  try {
+    telegramDb.close();
+  } catch (err) {
+    console.warn("[main] telegramDb.close failed:", err);
   }
   clearTimeout(hardExit);
   process.exit(0);

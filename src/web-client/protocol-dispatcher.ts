@@ -180,6 +180,40 @@ export function createProtocolDispatcher(
           height: p.height,
         });
         break;
+      case "telegramSurfaceCreated":
+        store.dispatch({
+          kind: "surface/created",
+          surfaceId: p.surfaceId,
+          title: "Telegram",
+        });
+        // No subscribeSurface — telegram panes don't stream stdout.
+        break;
+      case "telegramState":
+        store.dispatch({
+          kind: "telegram/state",
+          status: p.status ?? { state: "disabled" },
+          chats: Array.isArray(p.chats) ? p.chats : [],
+        });
+        break;
+      case "telegramHistory":
+        store.dispatch({
+          kind: "telegram/history",
+          chatId: p.chatId,
+          messages: Array.isArray(p.messages) ? p.messages : [],
+        });
+        break;
+      case "telegramMessage":
+        if (p.message) {
+          store.dispatch({ kind: "telegram/message", message: p.message });
+          // Inbound message → chime + pulse glow on every telegram
+          // surface that isn't currently focused. Outbound echoes don't
+          // chime (that's just our own send landing back).
+          if (p.message.direction === "in") {
+            playNotificationSound();
+            store.dispatch({ kind: "telegram/glow-incoming" });
+          }
+        }
+        break;
     }
   };
 }

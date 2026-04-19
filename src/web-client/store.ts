@@ -9,7 +9,14 @@
 // the xterm instance directly for stdout — the view subscribes to
 // structural changes only.
 
-import type { SurfaceMetadata, SidebandContentMessage } from "../shared/types";
+import type {
+  SurfaceMetadata,
+  SidebandContentMessage,
+  TelegramChatWire,
+  TelegramStatusWire,
+  TelegramWireMessage,
+} from "../shared/types";
+import { mergeTelegramMessages } from "../shared/telegram-view";
 import type {
   LogEntry,
   NotificationEntry,
@@ -52,6 +59,17 @@ export interface ConnectionState {
   lastSeenSeq: number;
 }
 
+export interface TelegramState {
+  status: TelegramStatusWire;
+  chats: TelegramChatWire[];
+  /** Newest-last list per chat. Capped at 200 in-memory; the SQLite log
+   *  on bun owns the real history. */
+  messagesByChat: Record<string, TelegramWireMessage[]>;
+  /** UI selection — defaults to the most recently active chat. Local
+   *  to the web client; not synced across mirrors. */
+  activeChatId: string | null;
+}
+
 export interface AppState {
   connection: ConnectionState;
   nativeViewport: { width: number; height: number } | null;
@@ -65,6 +83,7 @@ export interface AppState {
   sidebar: SidebarState;
   /** Per-surface "notify" glow pulses triggered by notification messages. */
   glowingSurfaceIds: string[];
+  telegram: TelegramState;
 }
 
 export function initialState(): AppState {
@@ -90,6 +109,12 @@ export function initialState(): AppState {
       progress: {},
     },
     glowingSurfaceIds: [],
+    telegram: {
+      status: { state: "disabled" },
+      chats: [],
+      messagesByChat: {},
+      activeChatId: null,
+    },
   };
 }
 
@@ -144,7 +169,20 @@ export type Action =
   | { kind: "panel/data-failed"; panelId: string }
   | { kind: "native-viewport"; width: number; height: number }
   | { kind: "fullscreen/enter"; surfaceId: string }
-  | { kind: "fullscreen/exit" };
+  | { kind: "fullscreen/exit" }
+  | {
+      kind: "telegram/state";
+      status: TelegramStatusWire;
+      chats: TelegramChatWire[];
+    }
+  | {
+      kind: "telegram/history";
+      chatId: string;
+      messages: TelegramWireMessage[];
+    }
+  | { kind: "telegram/message"; message: TelegramWireMessage }
+  | { kind: "telegram/select-chat"; chatId: string }
+  | { kind: "telegram/glow-incoming" };
 
 // ---------------------------------------------------------------------------
 // Reducer
@@ -567,6 +605,73 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case "fullscreen/exit":
       return { ...state, fullscreenSurfaceId: null };
+
+    case "telegram/state": {
+      const next: TelegramState = {
+        ...state.telegram,
+        status: action.status,
+        chats: action.chats,
+      };
+      if (!next.activeChatId && action.chats.length > 0) {
+        next.activeChatId = action.chats[0].id;
+      }
+      return { ...state, telegram: next };
+    }
+
+    case "telegram/history": {
+      const existing = state.telegram.messagesByChat[action.chatId] ?? [];
+      const merged = mergeTelegramMessages(existing, action.messages);
+      return {
+        ...state,
+        telegram: {
+          ...state.telegram,
+          messagesByChat: {
+            ...state.telegram.messagesByChat,
+            [action.chatId]: merged,
+          },
+        },
+      };
+    }
+
+    case "telegram/message": {
+      const m = action.message;
+      const list = state.telegram.messagesByChat[m.chatId] ?? [];
+      const merged = mergeTelegramMessages(list, [m]);
+      return {
+        ...state,
+        telegram: {
+          ...state.telegram,
+          messagesByChat: {
+            ...state.telegram.messagesByChat,
+            [m.chatId]: merged,
+          },
+        },
+      };
+    }
+
+    case "telegram/select-chat":
+      return {
+        ...state,
+        telegram: { ...state.telegram, activeChatId: action.chatId },
+      };
+
+    case "telegram/glow-incoming": {
+      // Glow every telegram surface that isn't currently focused. The
+      // store knows surfaces by id but not by kind — telegram surface
+      // ids are prefixed `tg:`, which is the cheapest test we have.
+      const next: string[] = state.glowingSurfaceIds.slice();
+      for (const sid in state.surfaces) {
+        if (
+          sid.startsWith("tg:") &&
+          sid !== state.focusedSurfaceId &&
+          !next.includes(sid)
+        ) {
+          next.push(sid);
+        }
+      }
+      if (next.length === state.glowingSurfaceIds.length) return state;
+      return { ...state, glowingSurfaceIds: next.slice(-MAX_GLOWING) };
+    }
 
     default:
       return state;

@@ -24,6 +24,9 @@ import { registerAgent } from "./rpc-handlers/agent";
 import { registerBrowserPage } from "./rpc-handlers/browser-page";
 import { registerBrowserCookies } from "./rpc-handlers/browser-cookies";
 import { registerBrowserDom } from "./rpc-handlers/browser-dom";
+import { registerTelegram } from "./rpc-handlers/telegram";
+import type { TelegramService } from "./telegram-service";
+import type { TelegramDatabase } from "./telegram-db";
 
 export type { AppState, WorkspaceSnapshot } from "./rpc-handlers/types";
 
@@ -49,6 +52,11 @@ export interface RpcHandlerOptions {
   /** Tier 2 gate. When true, `__test.*` handlers are registered; when false
    *  they are stripped from the dispatch map entirely. */
   testModeEnabled?: boolean;
+  /** Live accessor for the long-poll Telegram bot service. Thunk so the
+   *  registry sees the freshest instance after a settings change. */
+  getTelegramService?: () => TelegramService | undefined;
+  /** SQLite log used by `telegram.history` / `telegram.chats`. */
+  telegramDb?: TelegramDatabase;
 }
 
 export function createRpcHandler(
@@ -83,6 +91,8 @@ export function createRpcHandler(
     panelRegistry: options.panelRegistry,
     piAgentManager: options.piAgentManager,
     shutdown: options.shutdown,
+    getTelegramService: options.getTelegramService,
+    telegramDb: options.telegramDb,
   };
 
   // `system.capabilities` needs to know the full registered surface —
@@ -106,6 +116,7 @@ export function createRpcHandler(
     registerBrowserPage(deps),
     registerBrowserCookies(deps),
     registerBrowserDom(deps),
+    registerTelegram(deps),
   );
 
   return (method: string, params: Record<string, unknown>) => {

@@ -20,7 +20,7 @@ import { buildSidebarWorkspaces, samePortSet } from "./sidebar-state";
 import { PaneDragController } from "./pane-drag";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
 import { attachSidebarResize } from "../../shared/sidebar-resize";
-import { setNotificationSoundSettings } from "./sounds";
+import { playNotificationSound, setNotificationSoundSettings } from "./sounds";
 import {
   type AgentPaneView,
   createAgentPaneView,
@@ -47,6 +47,19 @@ import {
   browserPaneGetCookies,
   destroyBrowserPaneView,
 } from "./browser-pane";
+import {
+  type TelegramPaneView,
+  createTelegramPaneView,
+  telegramPaneApplyState,
+  telegramPaneApplyHistory,
+  telegramPaneAppendMessage,
+  destroyTelegramPaneView,
+} from "./telegram-pane";
+import type {
+  TelegramChatWire,
+  TelegramStatusWire,
+  TelegramWireMessage,
+} from "../../shared/types";
 
 const defaultGlassTheme = {
   background: "rgba(10, 10, 10, 0)",
@@ -75,7 +88,7 @@ const defaultGlassTheme = {
 
 interface SurfaceView {
   id: string;
-  surfaceType: "terminal" | "browser" | "agent";
+  surfaceType: "terminal" | "browser" | "agent" | "telegram";
   // Terminal-specific (null for browser panes)
   term: Terminal | null;
   fitAddon: FitAddon | null;
@@ -87,6 +100,8 @@ interface SurfaceView {
   browserView: BrowserPaneView | null;
   // Agent-specific (null for non-agent panes)
   agentView: AgentPaneView | null;
+  // Telegram-specific (null for non-telegram panes)
+  telegramView: TelegramPaneView | null;
   // Shared
   container: HTMLDivElement;
   titleEl: HTMLSpanElement;
@@ -366,6 +381,84 @@ export class SurfaceManager {
     this.removeSurface(surfaceId);
   }
 
+  /** Add a Telegram pane as a new workspace. */
+  addTelegramSurface(surfaceId: string): void {
+    const view = this.createTelegramSurfaceView(surfaceId);
+    this.addNewWorkspace(surfaceId, "Telegram", view, () =>
+      this.focusSurface(surfaceId),
+    );
+  }
+
+  /** Add a Telegram pane as a split within the active workspace. */
+  addTelegramSurfaceAsSplit(
+    surfaceId: string,
+    splitFrom: string,
+    direction: "horizontal" | "vertical",
+  ): void {
+    const view = this.createTelegramSurfaceView(surfaceId);
+    this.addSurfaceAsSplitImpl(surfaceId, view, splitFrom, direction);
+  }
+
+  /** Remove a Telegram pane (shared lifecycle path). */
+  removeTelegramSurface(surfaceId: string): void {
+    this.removeSurface(surfaceId);
+  }
+
+  /** Push a freshly-arrived Telegram message into every Telegram pane.
+   *  Multiple panes may show the same chat — broadcast keeps them in
+   *  sync without round-tripping through the server. Inbound messages
+   *  also pulse glow + play the notification chime if the user isn't
+   *  already focused on a Telegram pane (so a fresh DM doesn't get
+   *  silently lost when the user is in a terminal pane). */
+  handleTelegramMessage(message: TelegramWireMessage): void {
+    let landedInTelegramPane = false;
+    for (const view of this.surfaces.values()) {
+      if (view.telegramView) {
+        telegramPaneAppendMessage(view.telegramView, message);
+        landedInTelegramPane = true;
+        if (view.id !== this.focusedSurfaceId && message.direction === "in") {
+          this.notifyGlow(view.id);
+        }
+      }
+    }
+    if (
+      landedInTelegramPane &&
+      message.direction === "in" &&
+      this.focusedSurfaceId !== null
+    ) {
+      const focused = this.surfaces.get(this.focusedSurfaceId);
+      if (focused?.surfaceType !== "telegram") {
+        playNotificationSound();
+      }
+    }
+  }
+
+  /** Apply a paginated history payload to every Telegram pane that's
+   *  currently bound to the chat. */
+  handleTelegramHistory(payload: {
+    chatId: string;
+    messages: TelegramWireMessage[];
+    isLatest: boolean;
+  }): void {
+    for (const view of this.surfaces.values()) {
+      if (view.telegramView) {
+        telegramPaneApplyHistory(view.telegramView, payload);
+      }
+    }
+  }
+
+  /** Apply a service status + chat list snapshot to every Telegram pane. */
+  handleTelegramState(state: {
+    chats: TelegramChatWire[];
+    status: TelegramStatusWire;
+  }): void {
+    for (const view of this.surfaces.values()) {
+      if (view.telegramView) {
+        telegramPaneApplyState(view.telegramView, state);
+      }
+    }
+  }
+
   /** Handle a pi agent event for the corresponding agent surface. */
   handleAgentEvent(agentId: string, event: Record<string, unknown>): void {
     const view = this.surfaces.get(agentId);
@@ -508,6 +601,7 @@ export class SurfaceManager {
     // surfaceId + callbacks; detach them explicitly or they leak for
     // the lifetime of the electrobun <electrobun-webview> tag.
     if (view.browserView) destroyBrowserPaneView(view.browserView);
+    if (view.telegramView) destroyTelegramPaneView(view.telegramView);
     view.container.remove();
     this.surfaces.delete(surfaceId);
     this.metadata.delete(surfaceId);
@@ -526,8 +620,11 @@ export class SurfaceManager {
     // focusing the pane is an implicit "I've seen it" signal.
     this.sidebar.acknowledgeBySurface(surfaceId);
     const focusedView = this.surfaces.get(surfaceId);
-    if (focusedView?.surfaceType === "browser" && focusedView.browserView) {
-      // Browser panes don't have a terminal to focus
+    if (
+      focusedView?.surfaceType === "browser" ||
+      focusedView?.surfaceType === "telegram"
+    ) {
+      // Non-terminal panes don't have a terminal to focus
     } else {
       focusedView?.term?.focus();
     }
@@ -628,11 +725,16 @@ export class SurfaceManager {
   getActiveTerm(): Terminal | null {
     if (!this.focusedSurfaceId) return null;
     const view = this.surfaces.get(this.focusedSurfaceId);
-    if (!view || view.surfaceType === "browser") return null;
+    if (
+      !view ||
+      view.surfaceType === "browser" ||
+      view.surfaceType === "telegram"
+    )
+      return null;
     return view.term;
   }
 
-  getActiveSurfaceType(): "terminal" | "browser" | "agent" | null {
+  getActiveSurfaceType(): "terminal" | "browser" | "agent" | "telegram" | null {
     if (!this.focusedSurfaceId) return null;
     return this.surfaces.get(this.focusedSurfaceId)?.surfaceType ?? null;
   }
@@ -856,7 +958,8 @@ export class SurfaceManager {
     setPaneGap(s.paneGap);
 
     for (const view of this.surfaces.values()) {
-      if (view.surfaceType === "browser") continue;
+      if (view.surfaceType === "browser" || view.surfaceType === "telegram")
+        continue;
       const t = view.term;
       if (!t) continue;
       t.options.fontSize = s.fontSize;
@@ -925,7 +1028,12 @@ export class SurfaceManager {
   setFontSize(size: number): void {
     this.fontSize = size;
     for (const view of this.surfaces.values()) {
-      if (view.surfaceType === "browser" || !view.term) continue;
+      if (
+        view.surfaceType === "browser" ||
+        view.surfaceType === "telegram" ||
+        !view.term
+      )
+        continue;
       view.term.options.fontSize = size;
       fitSurfaceTerminal(view);
     }
@@ -1244,7 +1352,10 @@ export class SurfaceManager {
       surfaceCwds?: Record<string, string>;
       selectedCwd?: string;
       surfaceUrls?: Record<string, string>;
-      surfaceTypes?: Record<string, "terminal" | "browser" | "agent">;
+      surfaceTypes?: Record<
+        string,
+        "terminal" | "browser" | "agent" | "telegram"
+      >;
     }[];
     activeWorkspaceId: string | null;
   } {
@@ -1254,8 +1365,10 @@ export class SurfaceManager {
         const surfaceTitles: Record<string, string> = {};
         const surfaceCwds: Record<string, string> = {};
         const surfaceUrls: Record<string, string> = {};
-        const surfaceTypes: Record<string, "terminal" | "browser" | "agent"> =
-          {};
+        const surfaceTypes: Record<
+          string,
+          "terminal" | "browser" | "agent" | "telegram"
+        > = {};
         for (const sid of surfaceIds) {
           const view = this.surfaces.get(sid);
           const title = view?.title;
@@ -1267,6 +1380,8 @@ export class SurfaceManager {
             }
           } else if (view?.surfaceType === "agent") {
             surfaceTypes[sid] = "agent";
+          } else if (view?.surfaceType === "telegram") {
+            surfaceTypes[sid] = "telegram";
           } else {
             const cwd = this.metadata.get(sid)?.cwd;
             if (cwd) surfaceCwds[sid] = cwd;
@@ -1582,6 +1697,7 @@ export class SurfaceManager {
       panelsEl: null,
       browserView,
       agentView: null,
+      telegramView: null,
       container: browserView.container,
       titleEl: browserView.titleEl,
       chipsEl: browserView.chipsEl,
@@ -1670,6 +1786,7 @@ export class SurfaceManager {
       panelsEl: null,
       browserView: null,
       agentView,
+      telegramView: null,
       container: agentView.container,
       titleEl: agentView.titleEl,
       chipsEl: agentView.chipsEl,
@@ -1867,10 +1984,66 @@ export class SurfaceManager {
       panelsEl,
       browserView: null,
       agentView: null,
+      telegramView: null,
       container,
       titleEl: barTitle,
       chipsEl,
       title,
+    };
+  }
+
+  private createTelegramSurfaceView(surfaceId: string): SurfaceView {
+    const telegramView = createTelegramPaneView(surfaceId, {
+      onSend: (chatId, text) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-telegram-send", {
+            detail: { chatId, text },
+          }),
+        );
+      },
+      onRequestHistory: (chatId, before) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-telegram-request-history", {
+            detail: { chatId, before },
+          }),
+        );
+      },
+      onRequestState: () => {
+        window.dispatchEvent(new CustomEvent("ht-telegram-request-state"));
+      },
+      onClose: (sid) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-close-surface", { detail: { surfaceId: sid } }),
+        );
+      },
+      onSplit: (sid, direction) => {
+        window.dispatchEvent(
+          new CustomEvent("ht-split", {
+            detail: { surfaceId: sid, direction },
+          }),
+        );
+      },
+      onFocus: (sid) => this.focusSurface(sid),
+    });
+
+    this.terminalContainer.appendChild(telegramView.container);
+
+    return {
+      id: surfaceId,
+      surfaceType: "telegram",
+      term: null,
+      fitAddon: null,
+      searchAddon: null,
+      effects: null,
+      panelManager: null,
+      panelsEl: null,
+      browserView: null,
+      agentView: null,
+      telegramView,
+      container: telegramView.container,
+      titleEl: telegramView.titleEl,
+      chipsEl: telegramView.chipsEl,
+      title: telegramView.title,
     };
   }
 
@@ -1886,6 +2059,9 @@ export class SurfaceManager {
         if (view.browserView) {
           browserPaneSyncDimensions(view.browserView);
         }
+      } else if (view.surfaceType === "telegram") {
+        // Telegram panes are pure DOM — no terminal to fit, no OOPIF to
+        // size. The container was already positioned in applyPositions().
       } else {
         fitSurfaceTerminal(view);
         view.effects?.setFocused(view.id === this.focusedSurfaceId);

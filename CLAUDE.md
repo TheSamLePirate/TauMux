@@ -14,6 +14,7 @@ HyperTerm Canvas is a hybrid terminal emulator built on Electrobun + Bun:
 - **Sideband protocol** (fd 3/4/5) lets scripts render structured content (images, SVG, HTML, interactive widgets).
 - **Live process metadata** — a `SurfaceMetadataPoller` observes every descendant of every shell via `ps` + `lsof` and publishes cwd / fg command / listening ports / CPU / RSS at 1 Hz. Chips in the pane header, sidebar aggregates, the Process Manager overlay (⌘⌥P), `ht` CLI, and the web mirror all feed from this single pipeline.
 - **`ht` CLI** — JSON-RPC over a Unix socket. Ships as a standalone binary inside the .app, installable via an in-app menu item (no Bun required on other Macs).
+- **Telegram bridge** — long-poll bot service + first-class chat pane + optional notification forwarding. SQLite log at `~/Library/Application Support/hyperterm-canvas/telegram.db` with dedup + offset persistence. CLI access via `ht telegram {status|chats|read|send}`. See `doc/system-telegram.md`.
 
 This is an early-stage project. Performance and correctness are prioritized over feature breadth.
 
@@ -54,7 +55,8 @@ Electrobun Webview (src/views/terminal/)
   ├── ProcessManagerPanel — ⌘⌥P overlay with CPU/MEM/kill
   ├── PanelManager — floating canvas overlays (SVG, HTML, images, canvas2d)
   ├── TerminalEffects — WebGL bloom layer
-  ├── SettingsPanel — full settings UI (general, appearance, theme, effects, network, advanced)
+  ├── SettingsPanel — full settings UI (general, appearance, theme, effects, network, browser, telegram, advanced)
+  ├── TelegramPaneView — chat pane with picker + status pill + composer
   └── CommandPalette — ⌘⇧P fuzzy command search
 ```
 
@@ -65,7 +67,7 @@ Electrobun Webview (src/views/terminal/)
 - **Keyboard never goes to panels or chips.** All keystrokes go to xterm.js → stdin. Panels are visual output + mouse interaction; chips are mouse / keyboard-activation only.
 - **Each content block = its own DOM element.** Not a single shared canvas. Independent panels with CSS transforms.
 - **No sandboxing of fd4 content** for now. HTML/SVG from fd4 is rendered directly. Scripts are trusted.
-- **Electrobun RPC is the webview bridge.** Socket RPC is the CLI/external bridge. They share the handler registry aggregated in `src/bun/rpc-handler.ts` from per-domain modules under `src/bun/rpc-handlers/` (system / workspace / surface / sidebar / pane / notification / agent / browser-*). The Electrobun-facing handlers in `src/bun/index.ts` are gated by `satisfies BunMessageHandlers` so any new method in `HyperTermRPC["bun"]["messages"]` without a wired handler fails the typecheck.
+- **Electrobun RPC is the webview bridge.** Socket RPC is the CLI/external bridge. They share the handler registry aggregated in `src/bun/rpc-handler.ts` from per-domain modules under `src/bun/rpc-handlers/` (system / workspace / surface / sidebar / pane / notification / agent / browser-* / telegram). The Electrobun-facing handlers in `src/bun/index.ts` are gated by `satisfies BunMessageHandlers` so any new method in `HyperTermRPC["bun"]["messages"]` without a wired handler fails the typecheck.
 - **Metadata pipeline never touches the PTY.** `SurfaceMetadataPoller` reads pids we already own and runs `ps` / `lsof` — if it breaks, the terminal keeps working.
 
 ## Directory Roles
@@ -73,7 +75,7 @@ Electrobun Webview (src/views/terminal/)
 - `src/bun/` — Main process. PTY management, sideband parsing, metadata poller, settings, socket + RPC, web mirror. Runs in Bun.
 - `src/views/terminal/` — Webview code. xterm.js, chip rendering, pane layout, process manager, settings panel, sidebar. Runs in system WebView.
 - `src/shared/` — Types shared between bun and webview. RPC contracts, `SurfaceMetadata`, `AppSettings`, sideband protocol types.
-- `tests/` — Bun test files (756 tests across 54 files). Parser tests (`ps` / `lsof` / sideband), PTY manager, RPC handlers, pane layout, web-client reducer + view modules, native sidebar notification lifecycle, agent-panel sub-modules, SurfaceManager smoke suite, shared sound helper. `bunfig.toml` scopes bare `bun test` to this directory so `tests-e2e/` Playwright specs are not picked up.
+- `tests/` — Bun test files (801 tests across 58 files). Parser tests (`ps` / `lsof` / sideband), PTY manager, RPC handlers, pane layout, web-client reducer + view modules, native sidebar notification lifecycle, agent-panel sub-modules, SurfaceManager smoke suite, shared sound helper, Telegram db / service / settings / forwarder. `bunfig.toml` scopes bare `bun test` to this directory so `tests-e2e/` Playwright specs are not picked up.
 - `scripts/` — Demo scripts + client libraries (Python, TS) for the sideband protocol. Also build hooks (`post-build.ts` for CLI injection into the .app, `build-cli.ts` for standalone binary).
 - `doc/` — Extensive subsystem docs (PTY, RPC, sideband, canvas panels, webview UI, process metadata).
 - `pi-extensions/` — Pi coding-agent extensions. `ht-notify-summary/` surfaces pi turns into the sidebar via `ht set-status` + `ht notify`.
@@ -97,3 +99,4 @@ Electrobun Webview (src/views/terminal/)
 - **Adding a metadata field** — see `doc/system-process-metadata.md` § 7.
 - **Adding a pane-bar chip** — extend `renderSurfaceChips` in `surface-manager.ts`; matching CSS in `index.css`. Same class conventions (`surface-chip`, `chip-*` variants).
 - **Adding a bundled binary asset (audio/image/font)** — drop the file in `assets/<type>/`, add a copy rule in `electrobun.config.ts` (destination under `vendor/` for packaged builds), register it in `src/bun/web/asset-loader.ts` (`VENDOR_MAP` + `readBinaryAsset` export), and serve it from `src/bun/web/server.ts` if the web mirror needs it. `assets/audio/finish.mp3` is the reference case — webview plays via relative `audio/finish.mp3`, web mirror fetches from `/audio/finish.mp3`.
+- **Adding a non-PTY surface kind** (browser, agent, telegram) — extend `PaneLeaf.surfaceType` in `src/shared/types.ts` and the parallel `surfaceTypes` records in `WorkspaceSnapshot` / `PersistedWorkspace`; add `add<Kind>Surface` / `add<Kind>SurfaceAsSplit` / `remove<Kind>Surface` on `SurfaceManager`; teach `applyLayout` how to size it (skip terminal fit); add `surfType === "<kind>"` to the `tryRestoreLayout` branch in `src/bun/index.ts` so saved layouts re-mount instead of leaking PTY shells. Telegram is the smallest reference (`src/views/terminal/telegram-pane.ts` + `src/bun/telegram-service.ts`).

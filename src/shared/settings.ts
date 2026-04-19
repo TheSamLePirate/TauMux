@@ -78,6 +78,21 @@ export interface AppSettings {
   browserForceDarkMode: boolean;
   /** Open terminal URL clicks in the built-in browser instead of externally. */
   browserInterceptTerminalLinks: boolean;
+
+  // Telegram
+  /** Master switch — when off the long-poll loop is not started even if a
+   *  token is configured. */
+  telegramEnabled: boolean;
+  /** Bot API token from @BotFather. Stored unencrypted alongside other
+   *  secrets in settings.json (same trust model as `webMirrorAuthToken`). */
+  telegramBotToken: string;
+  /** Comma-separated list of Telegram numeric user IDs allowed to message
+   *  the bot. Empty = accept from anyone (not recommended). Whitespace
+   *  around entries is trimmed. */
+  telegramAllowedUserIds: string;
+  /** Forward sidebar notifications to Telegram when on. Independent of
+   *  `notificationSoundEnabled`. */
+  telegramNotificationsEnabled: boolean;
 }
 
 export interface ThemePreset {
@@ -504,10 +519,49 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   browserHomePage: "",
   browserForceDarkMode: false,
   browserInterceptTerminalLinks: false,
+
+  telegramEnabled: false,
+  telegramBotToken: "",
+  // Pre-fill the user's own ID so the bot ignores DMs from random
+  // accounts the moment it goes live. Trim/edit in Settings → Telegram.
+  telegramAllowedUserIds: "8446656662",
+  telegramNotificationsEnabled: false,
 };
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
+}
+
+/** Normalize a comma-separated list of Telegram user IDs: trim whitespace,
+ *  drop entries that aren't strings of digits, dedupe while preserving order.
+ *  Empty input → "" (allow-all). */
+function normalizeAllowedIds(input: string | undefined | null): string {
+  if (!input) return "";
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of input.split(",")) {
+    const trimmed = part.trim();
+    if (!/^\d+$/.test(trimmed)) continue;
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out.join(",");
+}
+
+/** Parse the persisted comma-list into a Set for fast lookup at message
+ *  arrival. Mirrors `normalizeAllowedIds` exactly — drops non-numeric
+ *  entries and dedupes — so the storage and runtime paths stay in
+ *  lockstep regardless of input source. Empty set means "allow all" —
+ *  callers should branch on `.size`. */
+export function parseAllowedTelegramIds(value: string): Set<string> {
+  const out = new Set<string>();
+  for (const part of value.split(",")) {
+    const trimmed = part.trim();
+    if (!/^\d+$/.test(trimmed)) continue;
+    out.add(trimmed);
+  }
+  return out;
 }
 
 export function validateSettings(s: AppSettings): AppSettings {
@@ -534,6 +588,10 @@ export function validateSettings(s: AppSettings): AppSettings {
     browserHomePage: (s.browserHomePage ?? "").trim(),
     browserForceDarkMode: !!s.browserForceDarkMode,
     browserInterceptTerminalLinks: !!s.browserInterceptTerminalLinks,
+    telegramEnabled: !!s.telegramEnabled,
+    telegramBotToken: (s.telegramBotToken ?? "").trim(),
+    telegramAllowedUserIds: normalizeAllowedIds(s.telegramAllowedUserIds),
+    telegramNotificationsEnabled: !!s.telegramNotificationsEnabled,
     cursorStyle:
       s.cursorStyle === "bar" || s.cursorStyle === "underline"
         ? s.cursorStyle

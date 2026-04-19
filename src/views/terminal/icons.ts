@@ -65,13 +65,15 @@ export const ICON_TEMPLATES = {
   chevronDown: '<path d="m7 9 5 5 5-5"/>',
   chevronLeft: '<path d="m15 7-5 5 5 5"/>',
   chevronRight: '<path d="m9 7 5 5-5 5"/>',
-  reload:
-    '<path d="M3.5 2v6h6"/><path d="M3.8 8A9 9 0 1 1 3 12"/>',
+  reload: '<path d="M3.5 2v6h6"/><path d="M3.8 8A9 9 0 1 1 3 12"/>',
   code: '<path d="m8 18-6-6 6-6"/><path d="m16 6 6 6-6 6"/>',
   wrench:
     '<path d="m14 7 3-3a3 3 0 0 1-4 4l-7 7a2 2 0 1 1-3-3l7-7a3 3 0 0 1 4 4Z"/>',
   workspace:
     '<path d="M4.5 7.5A2.5 2.5 0 0 1 7 5h10a2.5 2.5 0 0 1 2.5 2.5v9A2.5 2.5 0 0 1 17 19H7a2.5 2.5 0 0 1-2.5-2.5v-9Z"/><path d="M8 9h8M8 13h5"/>',
+  messageCircle:
+    '<path d="M21 11.5a8.4 8.4 0 0 1-1.1 4.2 8.5 8.5 0 0 1-7.4 4.3 8.4 8.4 0 0 1-4.2-1.1L3 20l1.1-5.3a8.4 8.4 0 0 1-1.1-4.2 8.5 8.5 0 0 1 4.3-7.4A8.4 8.4 0 0 1 11.5 2h.5a8.5 8.5 0 0 1 8 8v.5Z"/>',
+  send: '<path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4 20-7Z"/>',
 } as const;
 
 export type IconName = keyof typeof ICON_TEMPLATES;

@@ -71,6 +71,12 @@ export class SettingsPanel {
         render: (c, s) => this.renderBrowser(c, s),
       },
       {
+        id: "telegram",
+        label: "Telegram",
+        icon: "messageCircle",
+        render: (c, s) => this.renderTelegram(c, s),
+      },
+      {
         id: "advanced",
         label: "Advanced",
         icon: "wrench",
@@ -641,6 +647,88 @@ export class SettingsPanel {
     cookieActionsWrap.appendChild(noteEl);
 
     c.appendChild(cookieActionsWrap);
+  }
+
+  private renderTelegram(c: HTMLElement, s: AppSettings): void {
+    this.sectionTitle(c, "Telegram");
+    this.sectionDesc(
+      c,
+      "Bridge to a Telegram bot you control. Token is stored unencrypted in settings.json — use a dedicated bot.",
+    );
+
+    this.toggleField(
+      c,
+      "Enable Service",
+      s.telegramEnabled,
+      "telegramEnabled",
+      { note: "Start the long-poll loop on launch (token required)." },
+    );
+
+    this.passwordField(c, "Bot Token", s.telegramBotToken, "telegramBotToken", {
+      placeholder: "1234567890:AA…",
+      note: "From @BotFather. Service restarts on change.",
+    });
+
+    this.textField(
+      c,
+      "Allowed IDs",
+      s.telegramAllowedUserIds,
+      "telegramAllowedUserIds",
+      {
+        placeholder: "8446656662, 123456",
+        note: "Comma-separated numeric user IDs. Empty = accept from anyone.",
+      },
+    );
+
+    this.toggleField(
+      c,
+      "Forward Notifications",
+      s.telegramNotificationsEnabled,
+      "telegramNotificationsEnabled",
+      { note: "DM sidebar notifications to every allowed ID." },
+    );
+  }
+
+  /** Password-style input. Same wiring as `textField` but masked, with a
+   *  show/hide toggle. Used for secrets like the Telegram bot token. */
+  private passwordField(
+    c: HTMLElement,
+    label: string,
+    value: string,
+    key: keyof AppSettings,
+    opts: { placeholder?: string; note?: string } = {},
+  ): void {
+    const row = this.fieldRow(c, label, opts.note);
+    const wrap = document.createElement("div");
+    wrap.style.display = "flex";
+    wrap.style.gap = "6px";
+    wrap.style.alignItems = "center";
+    wrap.style.flex = "1";
+
+    const input = document.createElement("input");
+    input.type = "password";
+    input.className = "settings-input";
+    input.value = value;
+    input.style.flex = "1";
+    if (opts.placeholder) input.placeholder = opts.placeholder;
+    input.addEventListener("change", () => {
+      this.emit({ [key]: input.value });
+    });
+    wrap.appendChild(input);
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "settings-reset-btn";
+    toggleBtn.style.marginTop = "0";
+    toggleBtn.textContent = "Show";
+    toggleBtn.addEventListener("click", () => {
+      const masked = input.type === "password";
+      input.type = masked ? "text" : "password";
+      toggleBtn.textContent = masked ? "Hide" : "Show";
+    });
+    wrap.appendChild(toggleBtn);
+
+    row.appendChild(wrap);
   }
 
   private renderAdvanced(c: HTMLElement, s: AppSettings): void {

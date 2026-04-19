@@ -356,4 +356,141 @@ describe("web-client store / reducer", () => {
     store.dispatch({ kind: "connection/seq", seq: 3 });
     expect(fires).toBe(2);
   });
+
+  // ── Telegram slice ──
+
+  function telegramMessage(
+    overrides: Partial<{
+      id: number;
+      chatId: string;
+      direction: "in" | "out";
+      text: string;
+      ts: number;
+      fromName: string | null;
+      tgMessageId: number | null;
+    }> = {},
+  ) {
+    return {
+      id: 1,
+      chatId: "c1",
+      direction: "in" as const,
+      text: "hello",
+      ts: 1000,
+      fromName: "Alice",
+      tgMessageId: 1,
+      ...overrides,
+    };
+  }
+
+  test("telegram/state seeds chats, status, and picks first chat as active", () => {
+    const state = reducer(initialState(), {
+      kind: "telegram/state",
+      status: { state: "polling", botUsername: "MyBot" },
+      chats: [
+        { id: "c1", name: "Alice", lastSeen: 100 },
+        { id: "c2", name: "Bob", lastSeen: 200 },
+      ],
+    });
+    expect(state.telegram.status.state).toBe("polling");
+    expect(state.telegram.status.botUsername).toBe("MyBot");
+    expect(state.telegram.chats.map((c) => c.id)).toEqual(["c1", "c2"]);
+    expect(state.telegram.activeChatId).toBe("c1");
+  });
+
+  test("telegram/state preserves user-selected activeChatId", () => {
+    const state = dispatchAll([
+      {
+        kind: "telegram/state",
+        status: { state: "polling" },
+        chats: [
+          { id: "c1", name: "Alice", lastSeen: 100 },
+          { id: "c2", name: "Bob", lastSeen: 200 },
+        ],
+      },
+      { kind: "telegram/select-chat", chatId: "c2" },
+      {
+        kind: "telegram/state",
+        status: { state: "polling" },
+        chats: [
+          { id: "c1", name: "Alice", lastSeen: 300 },
+          { id: "c2", name: "Bob", lastSeen: 200 },
+        ],
+      },
+    ]);
+    expect(state.telegram.activeChatId).toBe("c2");
+  });
+
+  test("telegram/history merges + dedupes by id", () => {
+    const state = dispatchAll([
+      {
+        kind: "telegram/history",
+        chatId: "c1",
+        messages: [
+          telegramMessage({ id: 1, text: "a" }),
+          telegramMessage({ id: 2, text: "b" }),
+        ],
+      },
+      {
+        kind: "telegram/history",
+        chatId: "c1",
+        messages: [
+          telegramMessage({ id: 2, text: "b-replayed" }),
+          telegramMessage({ id: 3, text: "c" }),
+        ],
+      },
+    ]);
+    const list = state.telegram.messagesByChat["c1"];
+    expect(list.map((m) => m.id)).toEqual([1, 2, 3]);
+    // First merge wins on dup — replayed text is dropped.
+    expect(list[1].text).toBe("b");
+  });
+
+  test("telegram/message appends and stays chronological", () => {
+    const state = dispatchAll([
+      { kind: "telegram/message", message: telegramMessage({ id: 1, ts: 1 }) },
+      { kind: "telegram/message", message: telegramMessage({ id: 3, ts: 3 }) },
+      { kind: "telegram/message", message: telegramMessage({ id: 2, ts: 2 }) },
+    ]);
+    expect(state.telegram.messagesByChat["c1"].map((m) => m.id)).toEqual([
+      1, 2, 3,
+    ]);
+  });
+
+  test("telegram/select-chat updates only the active id", () => {
+    const seeded = dispatchAll([
+      {
+        kind: "telegram/state",
+        status: { state: "polling" },
+        chats: [
+          { id: "c1", name: "Alice", lastSeen: 100 },
+          { id: "c2", name: "Bob", lastSeen: 200 },
+        ],
+      },
+    ]);
+    const next = reducer(seeded, {
+      kind: "telegram/select-chat",
+      chatId: "c2",
+    });
+    expect(next.telegram.activeChatId).toBe("c2");
+    expect(next.telegram.chats).toBe(seeded.telegram.chats);
+  });
+
+  test("telegram/glow-incoming pulses unfocused tg: surfaces", () => {
+    const seeded = dispatchAll([
+      {
+        kind: "snapshot/apply",
+        snapshot: snapshotWith({
+          surfaces: [
+            { id: "tg:1", title: "Telegram", cols: 80, rows: 24 },
+            { id: "tg:2", title: "Telegram", cols: 80, rows: 24 },
+            { id: "surface:1", title: "zsh", cols: 80, rows: 24 },
+          ],
+        }),
+      },
+      { kind: "focus/set", surfaceId: "tg:1" },
+    ]);
+    const next = reducer(seeded, { kind: "telegram/glow-incoming" });
+    // The focused tg:1 + non-tg surface:1 are skipped; only tg:2 glows.
+    expect(next.glowingSurfaceIds).toEqual(["tg:2"]);
+  });
 });
