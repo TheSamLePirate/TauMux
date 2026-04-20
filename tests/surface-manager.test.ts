@@ -245,6 +245,22 @@ describe("SurfaceManager — workspace lifecycle", () => {
     expect(spy).toHaveBeenCalled();
     window.removeEventListener("ht-surface-focused", spy as EventListener);
   });
+
+  test("focusSurface falls back to term.focus when no helper textarea exists", async () => {
+    const { SurfaceManager } = await loadSurfaceManager();
+    const { terminalContainer, sidebarContainer } = mkContainers();
+    const sm = new SurfaceManager(
+      terminalContainer,
+      sidebarContainer,
+      () => {},
+      () => {},
+      () => {},
+    );
+    sm.addSurface("s1", "first");
+    termInstances[0]!.focus.mockClear();
+    sm.focusSurface("s1");
+    expect(termInstances[0]!.focus).toHaveBeenCalled();
+  });
 });
 
 describe("SurfaceManager — titles and metadata", () => {

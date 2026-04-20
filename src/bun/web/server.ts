@@ -54,6 +54,7 @@ export class WebServer {
   sessionTtlMs = SESSION_TTL_MS;
 
   onSidebarToggle: ((visible: boolean) => void) | null = null;
+  onSelectWorkspace: ((workspaceId: string) => void) | null = null;
   onFocusSurface: ((surfaceId: string) => void) | null = null;
   onClearNotifications: (() => void) | null = null;
   onDismissNotification: ((id: string) => void) | null = null;
@@ -872,6 +873,11 @@ export class WebServer {
       case "focusSurface": {
         const surfaceId = fields["surfaceId"] as string;
         if (surfaceId) this.onFocusSurface?.(surfaceId);
+        break;
+      }
+      case "selectWorkspace": {
+        const workspaceId = fields["workspaceId"] as string;
+        if (workspaceId) this.onSelectWorkspace?.(workspaceId);
         break;
       }
       case "clearNotifications": {

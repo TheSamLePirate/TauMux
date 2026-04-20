@@ -1,4 +1,4 @@
-import { describe, test, expect, afterEach } from "bun:test";
+import { describe, test, expect, afterEach, mock } from "bun:test";
 import { WebServer } from "../src/bun/web-server";
 import { SessionManager } from "../src/bun/session-manager";
 import { WEB_PROTOCOL_VERSION } from "../src/shared/web-protocol";
@@ -93,11 +93,15 @@ describe("WebServer", () => {
   });
 
   test("WebSocket receives history after hello when workspace is active", async () => {
-    sessions = new SessionManager();
+    sessions = new SessionManager("/bin/sh");
     const surfaceId = sessions.createSurface(80, 24);
 
     sessions.writeStdin(surfaceId, "echo hello\r");
-    await Bun.sleep(200);
+    for (let i = 0; i < 20; i++) {
+      const history = sessions.getOutputHistory(surfaceId);
+      if (history && history.length > 0) break;
+      await Bun.sleep(50);
+    }
 
     // Build a workspace so the server auto-subscribes the new client.
     const layout = { type: "leaf" as const, surfaceId };
@@ -174,6 +178,33 @@ describe("WebServer", () => {
     });
 
     expect(true).toBe(true);
+  });
+
+  test("selectWorkspace envelope routes to the host callback", async () => {
+    const srv = createServer();
+    const onSelectWorkspace = mock(() => {});
+    srv.onSelectWorkspace = onSelectWorkspace;
+
+    await new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${TEST_PORT}`);
+      ws.onopen = () => {
+        ws.send(
+          JSON.stringify({
+            v: WEB_PROTOCOL_VERSION,
+            type: "selectWorkspace",
+            payload: { workspaceId: "ws2" },
+          }),
+        );
+        setTimeout(() => {
+          ws.close();
+          resolve();
+        }, 100);
+      };
+      ws.onerror = () => reject(new Error("ws error"));
+      setTimeout(() => reject(new Error("timeout")), 3000);
+    });
+
+    expect(onSelectWorkspace).toHaveBeenCalledWith("ws2");
   });
 
   test("broadcast envelopes reach all connected clients with seq numbers", async () => {

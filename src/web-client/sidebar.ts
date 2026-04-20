@@ -86,6 +86,17 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
       sendMsg("clearNotifications", {});
       return;
     }
+    if (action === "select-workspace") {
+      const workspaceId = btn.getAttribute("data-workspace-id");
+      if (!workspaceId || workspaceId === store.getState().activeWorkspaceId) {
+        return;
+      }
+      store.dispatch({ kind: "workspace/active", workspaceId });
+      store.dispatch({ kind: "fullscreen/exit" });
+      sendMsg("selectWorkspace", { workspaceId });
+      sendMsg("subscribeWorkspace", { workspaceId });
+      return;
+    }
     if (action === "clear-logs") {
       // Client-side only — logs are local state pushed from the server;
       // clearing hides what's buffered and the next server log
@@ -311,7 +322,12 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
       workspaces.forEach((ws, i) => {
         const active = ws.id === activeWorkspaceId;
         const color = ws.color || "#89b4fa";
-        html += '<div class="sb-ws' + (active ? " active" : "") + '">';
+        html +=
+          '<div class="sb-ws' +
+          (active ? " active" : "") +
+          '" data-action="select-workspace" data-workspace-id="' +
+          escapeHtml(ws.id) +
+          '">';
         html +=
           '<div class="sb-ws-name"><span class="sb-ws-dot" style="background:' +
           color +

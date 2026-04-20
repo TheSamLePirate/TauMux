@@ -34,6 +34,7 @@ import { createSidebarView } from "./sidebar";
 import { createTransport } from "./transport";
 import { attachDictationInput, type DictationInput } from "./dictation-input";
 import { attachSidebarResize } from "../shared/sidebar-resize";
+import { focusXtermPreservingScroll } from "../shared/xterm-focus";
 import {
   formatTelegramTimestamp,
   telegramAuthorLabel,
@@ -310,10 +311,20 @@ function boot() {
     setDotFromState(state);
     if (state.sidebarVisible !== prev.sidebarVisible)
       sidebarView.applyVisibility(state);
-    if (state.workspaces !== prev.workspaces)
+    if (
+      state.workspaces !== prev.workspaces ||
+      state.activeWorkspaceId !== prev.activeWorkspaceId
+    ) {
       sidebarView.updateWorkspaceSelect(state);
-    if (state.sidebar !== prev.sidebar || state.workspaces !== prev.workspaces)
+    }
+    if (
+      state.sidebar !== prev.sidebar ||
+      state.workspaces !== prev.workspaces ||
+      state.activeWorkspaceId !== prev.activeWorkspaceId ||
+      state.focusedSurfaceId !== prev.focusedSurfaceId
+    ) {
       sidebarView.render(state);
+    }
     reconcilePanes(state);
     reconcilePanels(state);
     layoutView.applyLayout(state);
@@ -436,7 +447,7 @@ function boot() {
     el.addEventListener("click", () => {
       if (store.getState().focusedSurfaceId === surfaceId) return;
       store.dispatch({ kind: "focus/set", surfaceId });
-      term.focus();
+      focusXtermPreservingScroll(term, termEl);
       sendMsg("focusSurface", { surfaceId });
     });
 
@@ -859,7 +870,10 @@ function boot() {
     if (state.fullscreenSurfaceId && terms[state.fullscreenSurfaceId]) {
       terms[state.fullscreenSurfaceId]!.el.classList.add("fullscreen-active");
       try {
-        terms[state.fullscreenSurfaceId]!.term.focus();
+        focusXtermPreservingScroll(
+          terms[state.fullscreenSurfaceId]!.term,
+          terms[state.fullscreenSurfaceId]!.termEl,
+        );
       } catch {
         /* ignore */
       }
@@ -882,6 +896,7 @@ function boot() {
     if (wsId && wsId !== state.activeWorkspaceId) {
       store.dispatch({ kind: "workspace/active", workspaceId: wsId });
       store.dispatch({ kind: "fullscreen/exit" });
+      sendMsg("selectWorkspace", { workspaceId: wsId });
       sendMsg("subscribeWorkspace", { workspaceId: wsId });
     }
   });

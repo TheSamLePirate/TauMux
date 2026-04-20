@@ -1854,6 +1854,9 @@ function setupWebServerCallbacks(ws: WebServer) {
       payload: { visible },
     });
   };
+  ws.onSelectWorkspace = (workspaceId) => {
+    dispatch("selectWorkspace", { workspaceId });
+  };
   ws.onFocusSurface = (surfaceId) => {
     app.focusedSurfaceId = surfaceId;
     // Tell native webview to focus this surface

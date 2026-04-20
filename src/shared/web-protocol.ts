@@ -262,6 +262,10 @@ export interface SubscribeWorkspacePayload {
   workspaceId: string;
 }
 
+export interface SelectWorkspacePayload {
+  workspaceId: string;
+}
+
 export interface FocusSurfacePayload {
   surfaceId: string;
 }
@@ -295,6 +299,7 @@ export interface PanelMouseEventPayload {
 export type ClientMessage =
   | ClientEnvelope<"stdin", StdinPayload>
   | ClientEnvelope<"subscribeSurface", SubscribeSurfacePayload>
+  | ClientEnvelope<"selectWorkspace", SelectWorkspacePayload>
   | ClientEnvelope<"subscribeWorkspace", SubscribeWorkspacePayload>
   | ClientEnvelope<"focusSurface", FocusSurfacePayload>
   | ClientEnvelope<"sidebarToggle", SidebarTogglePayload>

@@ -106,6 +106,8 @@ The header shows `Notifications (N)` with a batch-clear button. The ring-buffer 
 ### 2. Workspace card
 A colored accent dot, the workspace name, and a close button. No more index/pane-count badges — the card now leans on the header, status lines, and package card for density.
 
+Clicking the card switches to that workspace. In the web mirror, the click drives both the host workspace selection and a per-browser `subscribeWorkspace` history replay so the newly-visible panes hydrate immediately instead of appearing blank until fresh output arrives.
+
 ### 3. Focused foreground command
 When the focused pane in that workspace is running something other than the shell, a monospace accent chip shows the full foreground argv (e.g. `bun run dev`, `vim src/foo.ts`). Falls back to the focused pane's title otherwise.
 

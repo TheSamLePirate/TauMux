@@ -20,6 +20,7 @@ import { buildSidebarWorkspaces, samePortSet } from "./sidebar-state";
 import { PaneDragController } from "./pane-drag";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
 import { attachSidebarResize } from "../../shared/sidebar-resize";
+import { focusXtermPreservingScroll } from "../../shared/xterm-focus";
 import { playNotificationSound, setNotificationSoundSettings } from "./sounds";
 import {
   type AgentPaneView,
@@ -182,7 +183,7 @@ export class SurfaceManager {
         const view = this.focusedSurfaceId
           ? this.surfaces.get(this.focusedSurfaceId)
           : null;
-        view?.term?.focus();
+        focusSurfaceTerminal(view);
       },
     });
     this.sidebar = new Sidebar(sidebarContainer, {
@@ -330,7 +331,7 @@ export class SurfaceManager {
   /** Add a surface as a new workspace. */
   addSurface(surfaceId: string, title: string): void {
     const view = this.createSurfaceView(surfaceId, title);
-    this.addNewWorkspace(surfaceId, title, view, () => view.term?.focus());
+    this.addNewWorkspace(surfaceId, title, view, () => focusSurfaceTerminal(view));
   }
 
   /** Add a browser surface as a new workspace. */
@@ -626,7 +627,7 @@ export class SurfaceManager {
     ) {
       // Non-terminal panes don't have a terminal to focus
     } else {
-      focusedView?.term?.focus();
+      focusSurfaceTerminal(focusedView);
     }
     const activeWorkspace = this.activeWorkspace();
     if (activeWorkspace?.surfaceIds.has(surfaceId)) {
@@ -2406,4 +2407,17 @@ function fitSurfaceTerminal(view: {
   if (term.cols === cols && term.rows === rows) return;
   core._renderService?.clear();
   term.resize(cols, rows);
+}
+
+function focusSurfaceTerminal(
+  view:
+    | {
+        term: Terminal | null;
+        container: ParentNode;
+      }
+    | null
+    | undefined,
+): void {
+  if (!view?.term) return;
+  focusXtermPreservingScroll(view.term, view.container);
 }

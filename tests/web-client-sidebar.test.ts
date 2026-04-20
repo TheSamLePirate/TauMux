@@ -288,6 +288,30 @@ describe("createSidebarView event wiring", () => {
     expect(sendMsg).toHaveBeenCalledWith("clearNotifications", {});
   });
 
+  test("workspace row switches workspace and requests selection + history", async () => {
+    const { store, sendMsg, sidebarEl, view } = await setup({
+      workspaces: [
+        { id: "ws1", name: "Alpha", surfaceIds: ["s1"] },
+        { id: "ws2", name: "Beta", surfaceIds: ["s2"] },
+      ],
+      activeWorkspaceId: "ws1",
+    });
+    view.render(store.getState());
+
+    const row = sidebarEl.querySelector(
+      "[data-action='select-workspace'][data-workspace-id='ws2']",
+    ) as HTMLElement;
+    row.dispatchEvent(new Event("click", { bubbles: true }));
+
+    expect(store.getState().activeWorkspaceId).toBe("ws2");
+    expect(sendMsg).toHaveBeenCalledWith("selectWorkspace", {
+      workspaceId: "ws2",
+    });
+    expect(sendMsg).toHaveBeenCalledWith("subscribeWorkspace", {
+      workspaceId: "ws2",
+    });
+  });
+
   test("clear-logs data-action is client-side only", async () => {
     const { sendMsg, sidebarEl, view, store } = await setup({
       logs: [{ level: "info", message: "hi" }],
