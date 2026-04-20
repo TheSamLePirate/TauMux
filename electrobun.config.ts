@@ -41,6 +41,9 @@ export default {
       // Notification sounds — served to the webview (relative path) and
       // to the web-mirror client via HTTP from the vendor copy.
       "assets/audio/finish.mp3": "views/terminal/audio/finish.mp3",
+      // App icon — rendered in the titlebar (rounded-square) and
+      // reused by the web mirror via the HTTP server.
+      "assets/images/icon.png": "views/terminal/icon.png",
       // Web-mirror client bundle (produced by scripts/build-web-client.ts)
       "assets/web-client/client.js": "vendor/web-client/client.js",
       "assets/web-client/client.css": "vendor/web-client/client.css",

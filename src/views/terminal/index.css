@@ -146,6 +146,28 @@ textarea {
   flex: 1 1 auto;
 }
 
+/* App icon — rounded-square glyph flush with the sidebar toggle button.
+ * Same 28×28 footprint as `.toolbar-icon-btn` in the titlebar so the
+ * leading cluster reads as a consistent strip. `background` is used
+ * instead of an <img> so we can round it without clip/mask overhead
+ * and so a single icon.png serves every density via `background-size`.
+ * Non-interactive for now; no click handler. */
+.titlebar-app-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background-image: url("icon.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  /* Subtle shadow + inner stroke so the icon sits in the titlebar
+   * rather than floating; matches macOS app-icon rendering. */
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+    0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
 #titlebar-center {
   justify-content: center;
   gap: 14px;
