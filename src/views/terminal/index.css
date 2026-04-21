@@ -1470,6 +1470,13 @@ body.sidebar-resizing {
   color: var(--accent-secondary);
 }
 
+/* Rust uses its signature orange so the eye can tell the cargo card
+ * from the npm card at a glance. Only the leading icon is tinted —
+ * everything else inherits the shared manifest-card styling. */
+.workspace-manifest-cargo .workspace-package-icon {
+  color: #f38020;
+}
+
 .workspace-package-name {
   color: var(--text-strong);
   font-weight: 500;

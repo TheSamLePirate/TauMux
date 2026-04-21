@@ -14,7 +14,11 @@
  * whose target cwd no longer exists in any pane.
  */
 
-import type { PackageInfo, SurfaceMetadata } from "../../shared/types";
+import type {
+  CargoInfo,
+  PackageInfo,
+  SurfaceMetadata,
+} from "../../shared/types";
 import type { WorkspaceInfo } from "./sidebar";
 import type { Workspace } from "./surface-manager";
 
@@ -107,17 +111,20 @@ function buildOneWorkspace(
   const effectivePin = selectedCwds.get(ws.id) ?? null;
   const selectedCwd = effectivePin ?? focusedMeta?.cwd ?? null;
 
-  // Resolve packageJson by locating the surface whose cwd matches the
-  // selected cwd — that surface's snapshot already has the right
-  // PackageInfo computed upstream by the poller.
+  // Resolve package.json / Cargo.toml by locating the surface whose
+  // cwd matches the selected cwd — that surface's snapshot already
+  // has both manifests computed upstream by the poller. The poller
+  // walks up from cwd, so a project with BOTH manifests (wasm-pack,
+  // Tauri, napi-rs) surfaces both cards.
   let packageJson: PackageInfo | null = null;
+  let cargoToml: CargoInfo | null = null;
   if (selectedCwd) {
     for (const sid of ws.surfaceIds) {
       const m = metadata.get(sid);
-      if (m?.cwd === selectedCwd && m.packageJson) {
-        packageJson = m.packageJson;
-        break;
-      }
+      if (m?.cwd !== selectedCwd) continue;
+      if (!packageJson && m.packageJson) packageJson = m.packageJson;
+      if (!cargoToml && m.cargoToml) cargoToml = m.cargoToml;
+      if (packageJson && cargoToml) break;
     }
   }
 
@@ -140,6 +147,35 @@ function buildOneWorkspace(
     }
   }
 
+  // Cargo subcommands aren't declared anywhere — we surface a fixed
+  // set of common ones at render time. Running detection looks at
+  // every command in the process tree and pulls the cargo subcommand
+  // word ("cargo build --release" → "build"); the sidebar renderer
+  // matches it against the same fixed list.
+  const runningCargoActions: string[] = [];
+  const erroredCargoActions: string[] = [];
+  if (cargoToml) {
+    const found = new Set<string>();
+    for (const sid of ws.surfaceIds) {
+      const m = metadata.get(sid);
+      if (!m) continue;
+      for (const node of m.tree) {
+        const sub = extractCargoSubcommand(node.command);
+        if (sub) found.add(sub);
+      }
+    }
+    for (const sub of found) runningCargoActions.push(sub);
+    // Errored-action set mirrors the npm path — it uses the shared
+    // scriptErrors map keyed "<workspaceId>:cargo:<subcommand>".
+    for (const [key] of scriptErrors) {
+      const prefix = `${ws.id}:cargo:`;
+      if (key.startsWith(prefix)) {
+        const sub = key.slice(prefix.length);
+        if (!found.has(sub)) erroredCargoActions.push(sub);
+      }
+    }
+  }
+
   return {
     id: ws.id,
     name: ws.name,
@@ -159,6 +195,9 @@ function buildOneWorkspace(
     packageJson,
     runningScripts,
     erroredScripts,
+    cargoToml,
+    runningCargoActions,
+    erroredCargoActions,
     cwds: cwdSet,
     selectedCwd,
   };
@@ -171,6 +210,16 @@ export function extractScriptName(command: string): string | null {
   const m = command.match(
     /^(?:bun|npm|pnpm|yarn)(?:\s+run(?:-script)?)?\s+(\S+)/,
   );
+  return m?.[1] ?? null;
+}
+
+/** Extract the cargo subcommand from a process command line. Matches
+ *  `cargo build`, `cargo build --release`, `cargo run --bin foo`,
+ *  `cargo test --workspace`, `cargo clippy --all-targets`, etc.
+ *  Returns the subcommand token (first non-flag argument after
+ *  `cargo`) or null when the command isn't a cargo invocation. */
+export function extractCargoSubcommand(command: string): string | null {
+  const m = command.match(/^(?:\S*\/)?cargo(?:\s+\+\S+)?\s+([a-z][a-z0-9-]*)/);
   return m?.[1] ?? null;
 }
 

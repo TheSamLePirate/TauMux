@@ -1,9 +1,15 @@
 import type {
+  CargoInfo,
   PackageInfo,
   TelegramStatusWire,
   WorkspaceContextMenuRequest,
 } from "../../shared/types";
 import { ICON_TEMPLATES, createIcon, type IconName } from "./icons";
+import {
+  renderManifestCard,
+  type ManifestAction,
+  type ManifestActionState,
+} from "./sidebar-manifest-card";
 
 export interface WorkspaceInfo {
   id: string;
@@ -25,6 +31,15 @@ export interface WorkspaceInfo {
   runningScripts: string[];
   /** Script names whose most recent run exited non-zero within the last ~10 s. */
   erroredScripts: string[];
+  /** Nearest Cargo.toml for this workspace's surfaces (or null). Shown
+   *  as a second manifest card; projects with both (wasm-pack, Tauri)
+   *  render both cards independently. */
+  cargoToml: CargoInfo | null;
+  /** Cargo subcommands currently running in the process tree
+   *  ("build", "test", "clippy"). */
+  runningCargoActions: string[];
+  /** Cargo subcommands whose most recent run exited non-zero. */
+  erroredCargoActions: string[];
   /** Distinct cwds across all surfaces in this workspace, in stable order. */
   cwds: string[];
   /** The cwd currently driving the package.json card — user-selectable when
@@ -66,7 +81,9 @@ export class Sidebar {
   private serverUrlEl: HTMLElement;
   private callbacks: SidebarCallbacks;
   private visible = true;
-  /** Workspaces whose package.json card is currently expanded. */
+  /** Manifest cards whose body is currently expanded. Keys are
+   *  `"<workspaceId>:<kind>"` so the npm and cargo cards of the same
+   *  workspace can expand / collapse independently. */
   private expandedPackages: Set<string> = new Set();
   /** Most recent workspace list; kept so client-only UI toggles
    *  (e.g. package-card expand) can rerender without a fresh feed. */
@@ -358,19 +375,15 @@ export class Sidebar {
         item.appendChild(cwdRow);
       }
 
-      // ── Row 2c: package.json card + script runners (collapsible) ──
+      // ── Row 2c: manifest cards + action runners (collapsible) ──
+      // A workspace can surface both a package.json and a Cargo.toml
+      // (wasm-pack, Tauri, napi-rs); we render them independently so
+      // the user can collapse either while keeping the other open.
       if (ws.packageJson) {
-        const expanded = this.expandedPackages.has(ws.id);
-        item.appendChild(
-          renderPackageCard(ws.id, ws.packageJson, ws, expanded, () => {
-            if (this.expandedPackages.has(ws.id)) {
-              this.expandedPackages.delete(ws.id);
-            } else {
-              this.expandedPackages.add(ws.id);
-            }
-            this.renderWorkspaces();
-          }),
-        );
+        item.appendChild(this.renderPackageManifestCard(ws, ws.packageJson));
+      }
+      if (ws.cargoToml) {
+        item.appendChild(this.renderCargoManifestCard(ws, ws.cargoToml));
       }
 
       // ── Row 3: status entries (icon+key on top line, value on line below) ──
@@ -745,6 +758,129 @@ export class Sidebar {
       );
     }
   }
+
+  /** Adapt a WorkspaceInfo + PackageInfo into ManifestCardProps and
+   *  render via the shared card. Toggle-state key is namespaced so
+   *  the npm and cargo cards of the same workspace don't collide. */
+  private renderPackageManifestCard(
+    ws: WorkspaceInfo,
+    pkg: PackageInfo,
+  ): HTMLElement {
+    const key = `${ws.id}:npm`;
+    const expanded = this.expandedPackages.has(key);
+    const scriptKeys = pkg.scripts ? Object.keys(pkg.scripts) : [];
+    const actions: ManifestAction[] = scriptKeys.map((name) => ({
+      key: `${ws.id}:${name}`,
+      label: name,
+      command: pkg.scripts![name] ?? name,
+      state: actionState(name, ws.runningScripts, ws.erroredScripts),
+    }));
+    return renderManifestCard({
+      kind: "npm",
+      workspaceId: ws.id,
+      directory: pkg.directory,
+      name: pkg.name,
+      version: pkg.version,
+      subLabel: pkg.type,
+      description: pkg.description,
+      binaries: pkgBinaryNames(pkg),
+      actions,
+      expanded,
+      onToggle: () => this.toggleExpanded(key),
+    });
+  }
+
+  /** Adapt a WorkspaceInfo + CargoInfo into ManifestCardProps. Cargo
+   *  has no declared scripts, so we surface a fixed set of common
+   *  subcommands. Per-binary `run` variants are added when the
+   *  manifest declares `[[bin]]` targets or an implicit default.
+   *  Each action's `scriptKey` is prefixed `cargo:` to match the
+   *  errored-actions bookkeeping in sidebar-state.ts. */
+  private renderCargoManifestCard(
+    ws: WorkspaceInfo,
+    cargo: CargoInfo,
+  ): HTMLElement {
+    const key = `${ws.id}:cargo`;
+    const expanded = this.expandedPackages.has(key);
+
+    const defaults: Array<[string, string]> = cargo.isWorkspace
+      ? [
+          ["build", "cargo build --workspace"],
+          ["test", "cargo test --workspace"],
+          ["check", "cargo check --workspace"],
+          ["clippy", "cargo clippy --workspace --all-targets"],
+          ["fmt", "cargo fmt --all"],
+        ]
+      : [
+          ["build", "cargo build"],
+          ["run", "cargo run"],
+          ["test", "cargo test"],
+          ["check", "cargo check"],
+          ["clippy", "cargo clippy --all-targets"],
+          ["fmt", "cargo fmt"],
+        ];
+
+    const actions: ManifestAction[] = defaults.map(([sub, command]) => ({
+      key: `${ws.id}:cargo:${sub}`,
+      label: sub,
+      command,
+      state: actionState(sub, ws.runningCargoActions, ws.erroredCargoActions),
+    }));
+
+    // Extra per-binary run actions for multi-bin crates. Skipped on a
+    // virtual workspace manifest (no [[bin]]).
+    if (!cargo.isWorkspace && cargo.binaries.length > 1) {
+      for (const bin of cargo.binaries) {
+        actions.push({
+          key: `${ws.id}:cargo:run-bin-${bin}`,
+          label: `run ${bin}`,
+          command: `cargo run --bin ${bin}`,
+          // Running-detection for per-bin variants is too noisy to
+          // match (process tree just shows `cargo run --bin X`, which
+          // our extractor collapses to `run`); leave as idle and let
+          // the generic "run" row flash green.
+          state: "idle",
+        });
+      }
+    }
+
+    return renderManifestCard({
+      kind: "cargo",
+      workspaceId: ws.id,
+      directory: cargo.directory,
+      name: cargo.name,
+      version: cargo.version,
+      subLabel: cargo.edition ? `edition ${cargo.edition}` : undefined,
+      description: cargo.description,
+      binaries: cargo.binaries,
+      actions,
+      expanded,
+      onToggle: () => this.toggleExpanded(key),
+    });
+  }
+
+  private toggleExpanded(key: string): void {
+    if (this.expandedPackages.has(key)) this.expandedPackages.delete(key);
+    else this.expandedPackages.add(key);
+    this.renderWorkspaces();
+  }
+}
+
+function actionState(
+  name: string,
+  running: string[],
+  errored: string[],
+): ManifestActionState {
+  if (running.includes(name)) return "running";
+  if (errored.includes(name)) return "error";
+  return "idle";
+}
+
+function pkgBinaryNames(pkg: PackageInfo): string[] | undefined {
+  if (!pkg.bin) return undefined;
+  if (typeof pkg.bin === "string") return pkg.name ? [pkg.name] : ["(bin)"];
+  const keys = Object.keys(pkg.bin);
+  return keys.length > 0 ? keys : undefined;
 }
 
 /** Last two path segments (or full path if short); used by the cwd chip. */
@@ -757,148 +893,6 @@ function shortCwd(cwd: string): string {
   return "\u2026/" + parts.slice(-2).join("/");
 }
 
-/**
- * Render the package.json card for a workspace: name + version + description
- * header, then a list of scripts with status dots and run buttons.
- *
- * The status dot on each script reflects derivation from the process tree
- * (green = running) and a short-lived error flag (red = last exit non-zero
- * within the last ~10 s). Grey otherwise.
- */
-function renderPackageCard(
-  workspaceId: string,
-  pkg: PackageInfo,
-  ws: WorkspaceInfo,
-  expanded: boolean,
-  onToggle: () => void,
-): HTMLElement {
-  const card = document.createElement("div");
-  card.className = `workspace-package${expanded ? " expanded" : ""}`;
 
-  const header = document.createElement("button");
-  header.type = "button";
-  header.className = "workspace-package-header";
-  header.setAttribute("aria-expanded", String(expanded));
-  header.title = expanded ? "Collapse package.json" : "Expand package.json";
-  header.addEventListener("click", (e) => {
-    e.stopPropagation();
-    onToggle();
-  });
-
-  const icon = document.createElement("span");
-  icon.className = "workspace-package-icon";
-  icon.append(createIcon("package", "", 10));
-  header.appendChild(icon);
-
-  const nameEl = document.createElement("span");
-  nameEl.className = "workspace-package-name";
-  nameEl.textContent = pkg.name || "package.json";
-  header.appendChild(nameEl);
-
-  if (pkg.version) {
-    const versionEl = document.createElement("span");
-    versionEl.className = "workspace-package-version";
-    versionEl.textContent = "v" + pkg.version;
-    header.appendChild(versionEl);
-  }
-
-  if (pkg.type) {
-    const typeEl = document.createElement("span");
-    typeEl.className = "workspace-package-type";
-    typeEl.textContent = pkg.type;
-    header.appendChild(typeEl);
-  }
-
-  const caret = document.createElement("span");
-  caret.className = "workspace-package-caret";
-  caret.textContent = expanded ? "\u25BE" : "\u25B8";
-  header.appendChild(caret);
-
-  card.appendChild(header);
-
-  if (!expanded) return card;
-
-  const body = document.createElement("div");
-  body.className = "workspace-package-body";
-  card.appendChild(body);
-
-  if (pkg.description) {
-    const descEl = document.createElement("div");
-    descEl.className = "workspace-package-desc";
-    descEl.textContent = pkg.description;
-    descEl.title = pkg.description;
-    body.appendChild(descEl);
-  }
-
-  if (pkg.bin) {
-    const binEl = document.createElement("div");
-    binEl.className = "workspace-package-bin";
-    const label = document.createElement("span");
-    label.className = "workspace-package-bin-label";
-    label.textContent = "bin";
-    binEl.appendChild(label);
-    const names =
-      typeof pkg.bin === "string"
-        ? [pkg.name ?? "(bin)"]
-        : Object.keys(pkg.bin);
-    for (const name of names) {
-      const chip = document.createElement("span");
-      chip.className = "workspace-package-bin-chip";
-      chip.textContent = name;
-      binEl.appendChild(chip);
-    }
-    body.appendChild(binEl);
-  }
-
-  const scriptKeys = pkg.scripts ? Object.keys(pkg.scripts) : [];
-  if (scriptKeys.length > 0) {
-    const scripts = document.createElement("div");
-    scripts.className = "workspace-package-scripts";
-
-    for (const key of scriptKeys) {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "workspace-script-btn";
-      row.title = pkg.scripts![key] + "\n\nClick to run";
-
-      let state: "running" | "error" | "idle" = "idle";
-      if (ws.runningScripts.includes(key)) state = "running";
-      else if (ws.erroredScripts.includes(key)) state = "error";
-      row.dataset["state"] = state;
-
-      const dot = document.createElement("span");
-      dot.className = `workspace-script-dot ${state}`;
-      row.appendChild(dot);
-
-      const nameEl = document.createElement("span");
-      nameEl.className = "workspace-script-name";
-      nameEl.textContent = key;
-      row.appendChild(nameEl);
-
-      const cmdEl = document.createElement("span");
-      cmdEl.className = "workspace-script-cmd";
-      cmdEl.textContent = pkg.scripts![key];
-      row.appendChild(cmdEl);
-
-      const run = document.createElement("span");
-      run.className = "workspace-script-run";
-      run.textContent = state === "running" ? "running" : "run \u25B6";
-      row.appendChild(run);
-
-      row.addEventListener("click", (e) => {
-        e.stopPropagation();
-        window.dispatchEvent(
-          new CustomEvent("ht-run-script", {
-            detail: { workspaceId, cwd: pkg.directory, scriptKey: key },
-          }),
-        );
-      });
-
-      scripts.appendChild(row);
-    }
-
-    body.appendChild(scripts);
-  }
-
-  return card;
-}
+// renderPackageCard removed — both npm and cargo cards now render via
+// `renderManifestCard` in ./sidebar-manifest-card.ts.

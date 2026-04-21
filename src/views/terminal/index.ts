@@ -1474,9 +1474,18 @@ window.addEventListener("ht-show-surface-info", (e: Event) => {
 window.addEventListener("ht-run-script", (e: Event) => {
   const detail = (e as CustomEvent).detail;
   if (!detail?.workspaceId || !detail?.cwd || !detail?.scriptKey) return;
-  const runner =
-    currentSettings?.packageRunner ?? DEFAULT_SETTINGS.packageRunner;
-  const command = `${runner} run ${detail.scriptKey}`;
+  // Manifest cards can ship a fully-formed command (cargo path:
+  // "cargo build --release", "cargo run --bin server"). When absent
+  // we're on the package.json path: synthesize from the configured
+  // runner + script name as before.
+  let command: string;
+  if (typeof detail.command === "string" && detail.command.trim() !== "") {
+    command = detail.command;
+  } else {
+    const runner =
+      currentSettings?.packageRunner ?? DEFAULT_SETTINGS.packageRunner;
+    command = `${runner} run ${detail.scriptKey}`;
+  }
   rpc.send("runScript", {
     workspaceId: detail.workspaceId,
     cwd: detail.cwd,

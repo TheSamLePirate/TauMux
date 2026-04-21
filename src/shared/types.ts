@@ -121,6 +121,32 @@ export interface PackageInfo {
   scripts?: Record<string, string>;
 }
 
+/** Subset of Cargo.toml we surface in the UI. Parallel to `PackageInfo`
+ *  but sourced from a Rust project's manifest. Scripts are synthesized
+ *  at render time from the fixed set of common cargo subcommands plus
+ *  one entry per declared binary target. */
+export interface CargoInfo {
+  /** Absolute path to the Cargo.toml file; unique key per workspace. */
+  path: string;
+  /** Absolute path to the directory containing Cargo.toml. */
+  directory: string;
+  name?: string;
+  version?: string;
+  /** Rust edition ("2015", "2018", "2021", "2024"). Always stringified. */
+  edition?: string;
+  description?: string;
+  /** Binary target names — union of declared `[[bin]]` entries and the
+   *  package's implicit default (package.name when no `[[bin]]` block
+   *  is present). Empty for a virtual workspace root manifest. */
+  binaries: string[];
+  /** Feature flag names declared under `[features]`. */
+  features: string[];
+  /** True when this Cargo.toml is a virtual workspace root (has
+   *  `[workspace]` but no `[package]`). The UI renders it without
+   *  per-binary actions. */
+  isWorkspace: boolean;
+}
+
 /** Live, polled view of what a surface's shell and its descendants are doing. */
 export interface SurfaceMetadata {
   /** Shell pid (same as pty.pid). */
@@ -142,6 +168,8 @@ export interface SurfaceMetadata {
   git: GitInfo | null;
   /** Nearest package.json walking up from cwd, or null when none found. */
   packageJson: PackageInfo | null;
+  /** Nearest Cargo.toml walking up from cwd, or null when none found. */
+  cargoToml: CargoInfo | null;
   /** Wall-clock ms when this snapshot was produced. */
   updatedAt: number;
 }
