@@ -119,9 +119,22 @@ ht telegram send [--chat ID] [TEXT…] # stdin if no positional; default chat = 
 
 No test makes a real Telegram API call — the `TelegramTransport` interface is always stubbed.
 
+## Troubleshooting: HTTP 409 (bot already in use)
+
+Telegram enforces a single active consumer per bot token: one long-polling `getUpdates` call OR one configured webhook — never both, and never two of either. A second consumer ejects the first with HTTP 409 and the loser gets stuck there until the competing client steps aside.
+
+**How τ-mux handles it:** when the poll loop sees a 409, the service enters a dedicated `conflict` state (distinct from generic `error`), logs a single warning line (no spam on retry), and backs off on a fixed 60 s cycle. The sidebar Telegram pill turns amber + pulses slowly, and the Telegram-pane status pill reads `conflict: another client is polling this bot — stop it or use a separate bot token per consumer`. As soon as the other consumer stops and our next poll succeeds, the service logs `telegram poll conflict cleared — resuming` and returns to `polling`.
+
+**How to resolve it:**
+
+1. **Stop the competing consumer.** Check for a second τ-mux instance, a running n8n / botkit / zapier flow, or a webhook configured via `setWebhook`. If a webhook is the culprit, clear it with `curl https://api.telegram.org/bot<TOKEN>/deleteWebhook`.
+2. **Use one bot per consumer** (structural fix). Telegram supports as many bots per account as you want — `@MyTauMuxBot` and `@MyN8NBot` are fully independent streams. Create a second bot in BotFather and paste its token into the other service.
+
+Webhook mode is not a workaround: a webhook URL is itself a single-consumer resource, and it requires a publicly-reachable HTTPS endpoint which isn't practical for a laptop-local app.
+
 ## Known limitations
 
-- One bot per app instance. Telegram allows only one `getUpdates` consumer per token; running two app instances on the same token causes 409 conflicts (visible in `ht telegram status`).
+- One bot per app instance — see Troubleshooting above for the full conflict story and UI treatment.
 - DM-only — no channel/group support. The update parser bails on non-message updates (`edited_message`, `channel_post`, `inline_query`).
 - No file/image/sticker payloads — text only.
 - No reply-to-specific-message threading.

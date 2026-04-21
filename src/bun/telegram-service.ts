@@ -40,7 +40,19 @@ export type TelegramServiceState =
   | "disabled"
   | "starting"
   | "polling"
+  | "conflict"
   | "error";
+
+/** Thrown by the transport when Telegram returns HTTP 409 on getUpdates.
+ *  The service catches this specifically to enter the `conflict` state
+ *  and apply a long fixed backoff (instead of the exponential we use
+ *  for transient errors like 5xx / network flakes). */
+export class TelegramConflictError extends Error {
+  constructor(detail: string = "getUpdates HTTP 409") {
+    super(detail);
+    this.name = "TelegramConflictError";
+  }
+}
 
 export interface TelegramServiceStatus {
   state: TelegramServiceState;
@@ -66,6 +78,12 @@ export interface TelegramServiceOptions {
 const POLL_TIMEOUT_SEC = 25;
 const ERROR_BACKOFF_MIN_MS = 2_000;
 const ERROR_BACKOFF_MAX_MS = 60_000;
+/** Backoff for HTTP 409 conflicts. Retrying faster is pointless —
+ *  Telegram enforces single-consumer on getUpdates and the other
+ *  consumer has to step aside before this bot can resume. 60 s lets
+ *  the user stop the competing client without keeping us stuck in
+ *  conflict for the full exponential-max window. */
+const CONFLICT_BACKOFF_MS = 60_000;
 const OFFSET_KV_KEY = "poll_offset";
 const BOT_USERNAME_KV_KEY = "bot_username";
 
@@ -239,6 +257,11 @@ export class TelegramService {
 
   private async runLoop(): Promise<void> {
     let backoff = ERROR_BACKOFF_MIN_MS;
+    // Tracks whether we've already logged the current conflict window
+    // so the user sees "another consumer owns this bot" exactly once,
+    // not every 60 s for hours. Cleared the moment we successfully
+    // poll again.
+    let conflictLogged = false;
     while (!this.stopped) {
       const signal = this.abortController?.signal;
       if (!signal) return;
@@ -249,9 +272,20 @@ export class TelegramService {
           signal,
         });
         if (this.status.state !== "polling") {
+          // Recovery from `conflict` / `error` / `starting`. When
+          // resuming specifically from a conflict, emit a one-line
+          // info log so the user sees the other consumer has stepped
+          // aside without having to tail the sidebar pill.
+          if (this.status.state === "conflict" && conflictLogged) {
+            this.opts.onLog?.(
+              "info",
+              "telegram poll conflict cleared — resuming",
+            );
+          }
           this.setStatus({ state: "polling" });
         }
         backoff = ERROR_BACKOFF_MIN_MS;
+        conflictLogged = false;
         for (const update of updates) {
           this.offset = Math.max(this.offset ?? 0, update.updateId + 1);
           this.handleUpdate(update);
@@ -270,6 +304,26 @@ export class TelegramService {
       } catch (err) {
         if (this.stopped || (err as { name?: string })?.name === "AbortError") {
           return;
+        }
+        if (err instanceof TelegramConflictError) {
+          // Another consumer owns this bot. Fixed long backoff +
+          // deduplicated logging. Structural fix (separate bot
+          // token per consumer) is documented in
+          // doc/system-telegram.md §Troubleshooting.
+          const detail =
+            "another client is polling this bot — stop it or use a separate bot token per consumer";
+          this.setStatus({ state: "conflict", error: detail });
+          if (!conflictLogged) {
+            this.opts.onLog?.(
+              "warn",
+              `telegram poll conflict (HTTP 409): ${detail}`,
+            );
+            conflictLogged = true;
+          }
+          await delay(CONFLICT_BACKOFF_MS, signal);
+          // Don't touch `backoff` — conflict is orthogonal to the
+          // exponential window used for transient errors.
+          continue;
         }
         const msg = err instanceof Error ? err.message : String(err);
         this.setStatus({ state: "error", error: msg });
@@ -347,6 +401,23 @@ function createFetchTransport(token: string): TelegramTransport {
         signal,
       });
       if (!res.ok) {
+        // 409 = Conflict. Telegram enforces single-consumer on
+        // getUpdates; this response means another getUpdates call or
+        // a configured webhook owns the bot. The service treats it
+        // distinctly from generic HTTP errors (long fixed backoff +
+        // deduplicated logging + dedicated UI state).
+        if (res.status === 409) {
+          let desc: string | undefined;
+          try {
+            const body = (await res.json()) as { description?: string };
+            desc = body.description;
+          } catch {
+            /* body unreadable — fall back to generic message */
+          }
+          throw new TelegramConflictError(
+            desc ? `getUpdates HTTP 409: ${desc}` : "getUpdates HTTP 409",
+          );
+        }
         throw new Error(`getUpdates HTTP ${res.status}`);
       }
       const body = (await res.json()) as {

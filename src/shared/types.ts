@@ -730,7 +730,13 @@ export interface TelegramChatWire {
 }
 
 export interface TelegramStatusWire {
-  state: "disabled" | "starting" | "polling" | "error";
+  /** `conflict` means Telegram returned HTTP 409 on getUpdates — another
+   *  consumer (a second τ-mux instance, a different bot framework, or a
+   *  configured webhook) owns the bot token. The poll loop stays
+   *  enabled but backs off long so it doesn't spam the log; the user
+   *  has to stop the other consumer (or switch to a separate bot
+   *  token) for this bot to resume. */
+  state: "disabled" | "starting" | "polling" | "conflict" | "error";
   error?: string;
   botUsername?: string;
 }

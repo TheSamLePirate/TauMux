@@ -667,13 +667,16 @@ export class Sidebar {
    *  (state + `@botname` when available + any error message). */
   setTelegramStatus(status: TelegramStatusWire): void {
     const dot = this.telegramDotEl;
-    dot.classList.remove("online", "offline", "starting", "error");
+    dot.classList.remove("online", "offline", "starting", "error", "conflict");
     switch (status.state) {
       case "polling":
         dot.classList.add("online");
         break;
       case "starting":
         dot.classList.add("starting");
+        break;
+      case "conflict":
+        dot.classList.add("conflict");
         break;
       case "error":
         dot.classList.add("error");

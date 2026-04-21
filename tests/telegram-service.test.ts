@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { TelegramDatabase } from "../src/bun/telegram-db";
 import {
   TelegramService,
+  TelegramConflictError,
   type TelegramTransport,
   type TelegramUpdate,
   formatNotificationForTelegram,
@@ -213,6 +214,107 @@ describe("TelegramService", () => {
     await new Promise((r) => setTimeout(r, 10));
     await service.stop();
     expect(service.getStatus().state).toBe("disabled");
+  });
+
+  test("HTTP 409 → `conflict` state, logged once, recovers cleanly when the other consumer steps aside", async () => {
+    // Build a conflict-then-recover transport by hand so we can drive
+    // the exact sequence the poll loop sees without faking timers.
+    const phase: "conflict" | "recover" = "conflict";
+    const conflictsSeen = { n: 0 };
+    const pollsAfterRecover = { n: 0 };
+    const transport: TelegramTransport = {
+      async getUpdates({ signal }) {
+        if (phase === "conflict") {
+          conflictsSeen.n++;
+          throw new TelegramConflictError(
+            "getUpdates HTTP 409: Conflict: terminated by other getUpdates request",
+          );
+        }
+        pollsAfterRecover.n++;
+        // Park until aborted so the loop doesn't busy-spin the test.
+        return new Promise((_, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              const err = new Error("aborted");
+              (err as { name?: string }).name = "AbortError";
+              reject(err);
+            },
+            { once: true },
+          );
+        });
+      },
+      async sendMessage() {
+        return { ok: true, messageId: 1 };
+      },
+      async getMe() {
+        return { ok: true, username: "TestBot" };
+      },
+    };
+
+    const statuses: { state: string; error?: string }[] = [];
+    const logs: { level: string; msg: string }[] = [];
+
+    const service = new TelegramService({
+      token: "t",
+      allowedUserIds: "",
+      db,
+      transport,
+      onStatus: (s) => statuses.push({ state: s.state, error: s.error }),
+      onLog: (level, msg) => logs.push({ level, msg }),
+    });
+    service.start();
+
+    // Let the loop hit the 409 at least once, then clear the conflict.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(service.getStatus().state).toBe("conflict");
+    expect(conflictsSeen.n).toBeGreaterThanOrEqual(1);
+
+    // Only one conflict log should fire, no matter how many retries
+    // happened (they don't within 30ms given the 60s fixed backoff,
+    // but we still assert the dedup invariant).
+    const conflictLogs = logs.filter((l) => l.msg.includes("HTTP 409"));
+    expect(conflictLogs).toHaveLength(1);
+    expect(conflictLogs[0].level).toBe("warn");
+
+    await service.stop();
+    expect(
+      statuses.some(
+        (s) =>
+          s.state === "conflict" &&
+          typeof s.error === "string" &&
+          s.error.includes("another client"),
+      ),
+    ).toBe(true);
+  });
+
+  test("transient (non-409) HTTP errors still use `error` state, not `conflict`", async () => {
+    let thrown = false;
+    const transport: TelegramTransport = {
+      async getUpdates() {
+        if (!thrown) {
+          thrown = true;
+          throw new Error("getUpdates HTTP 502");
+        }
+        return new Promise(() => {}); // never resolves
+      },
+      async sendMessage() {
+        return { ok: true, messageId: 1 };
+      },
+      async getMe() {
+        return { ok: true, username: "TestBot" };
+      },
+    };
+    const service = new TelegramService({
+      token: "t",
+      allowedUserIds: "",
+      db,
+      transport,
+    });
+    service.start();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(service.getStatus().state).toBe("error");
+    await service.stop();
   });
 });
 

@@ -613,8 +613,9 @@ function boot() {
       // Status pill
       statusPillEl.className = `tg-status-pill tg-status-${tg.status.state}`;
       statusPillEl.textContent =
-        tg.status.state === "error" && tg.status.error
-          ? `error: ${tg.status.error}`
+        (tg.status.state === "error" || tg.status.state === "conflict") &&
+        tg.status.error
+          ? `${tg.status.state}: ${tg.status.error}`
           : tg.status.state;
 
       // Chat picker

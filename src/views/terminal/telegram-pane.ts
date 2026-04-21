@@ -362,7 +362,9 @@ function applyStatusPill(view: TelegramPaneView): void {
   const { state, error } = view.status;
   view.statusPillEl.className = `telegram-status-pill telegram-status-${state}`;
   view.statusPillEl.textContent =
-    state === "error" && error ? `error: ${error}` : state;
+    (state === "error" || state === "conflict") && error
+      ? `${state}: ${error}`
+      : state;
 }
 
 function rebuildChatSelect(view: TelegramPaneView): void {
