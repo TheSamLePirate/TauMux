@@ -62,17 +62,29 @@ import {
   planNotificationForwarding,
 } from "./telegram-service";
 import { wireMessage as wireTelegramMessage } from "./rpc-handlers/telegram";
+import { setupLogging } from "./logger";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
 // (user's Library/Application Support) is unchanged.
 const configDir =
   process.env["HT_CONFIG_DIR"] ?? join(Utils.paths.config, "hyperterm-canvas");
+
+// Tee stdout + stderr to a daily-rotated log file. Must run before the
+// first `console.*` call so the bootstrap banner captures early output
+// (e.g. the HT_E2E / TEST_MODE markers below). Lands at
+// `~/Library/Logs/tau-mux/app-YYYY-MM-DD.log` in normal runs and under
+// `$HT_CONFIG_DIR/logs/` when e2e has relocated state.
+const loggerHandle = setupLogging(configDir);
+
 // `HT_E2E=1` marks this process as an e2e test run. Used to suppress the
 // install-ht-CLI nag, skip real-user-disrupting side effects, and tag logs.
 const HT_E2E = process.env["HT_E2E"] === "1";
 if (HT_E2E) {
   console.log(`[e2e] HT_E2E=1 configDir=${configDir}`);
+}
+if (loggerHandle.currentPath) {
+  console.log(`[logger] tee → ${loggerHandle.currentPath}`);
 }
 
 // Tier 2 test-mode gate (doc/native-e2e-plan.md §6.1). **Both facts must be
