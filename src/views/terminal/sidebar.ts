@@ -1,5 +1,6 @@
 import type {
   PackageInfo,
+  TelegramStatusWire,
   WorkspaceContextMenuRequest,
 } from "../../shared/types";
 import { ICON_TEMPLATES, createIcon, type IconName } from "./icons";
@@ -58,6 +59,8 @@ export class Sidebar {
   private notificationsEl: HTMLElement;
   private logsEl: HTMLElement;
   private footerEl: HTMLElement;
+  private telegramDotEl: HTMLElement;
+  private telegramLabelEl: HTMLElement;
   private serverDotEl: HTMLElement;
   private serverLabelEl: HTMLElement;
   private serverUrlEl: HTMLElement;
@@ -142,6 +145,26 @@ export class Sidebar {
 
     const serverRow = document.createElement("div");
     serverRow.className = "sidebar-server-row";
+
+    // Telegram status pill — sits left of the Web Mirror indicator.
+    // Populated by setTelegramStatus() whenever a `telegramState`
+    // message arrives from bun. Shows a colored dot + "Telegram"
+    // label and surfaces detailed status (state, bot username,
+    // error) via the `title` tooltip.
+    const telegramPill = document.createElement("div");
+    telegramPill.className = "sidebar-server-pill";
+
+    this.telegramDotEl = document.createElement("div");
+    this.telegramDotEl.className = "sidebar-server-dot offline";
+
+    this.telegramLabelEl = document.createElement("span");
+    this.telegramLabelEl.className = "sidebar-server-label";
+    this.telegramLabelEl.textContent = "Telegram";
+
+    telegramPill.appendChild(this.telegramDotEl);
+    telegramPill.appendChild(this.telegramLabelEl);
+    telegramPill.title = "Telegram — disabled";
+    serverRow.appendChild(telegramPill);
 
     this.serverDotEl = document.createElement("div");
     this.serverDotEl.className = "sidebar-server-dot offline";
@@ -634,6 +657,40 @@ export class Sidebar {
       this.serverUrlEl.textContent = "Offline";
       this.serverUrlEl.title = "";
     }
+  }
+
+  /** Paint the Telegram status pill in the sidebar footer. `polling`
+   *  reuses the shared `.online` green so the eye groups it with the
+   *  web-mirror dot; `starting` / `error` get dedicated tints so the
+   *  user can tell at a glance whether the bot is warming up or
+   *  something went wrong. The `title` tooltip carries the full detail
+   *  (state + `@botname` when available + any error message). */
+  setTelegramStatus(status: TelegramStatusWire): void {
+    const dot = this.telegramDotEl;
+    dot.classList.remove("online", "offline", "starting", "error");
+    switch (status.state) {
+      case "polling":
+        dot.classList.add("online");
+        break;
+      case "starting":
+        dot.classList.add("starting");
+        break;
+      case "error":
+        dot.classList.add("error");
+        break;
+      case "disabled":
+      default:
+        dot.classList.add("offline");
+        break;
+    }
+    const parts = [`Telegram — ${status.state}`];
+    if (status.botUsername) parts.push(`@${status.botUsername}`);
+    if (status.error) parts.push(status.error);
+    const title = parts.join(" · ");
+    dot.title = title;
+    this.telegramLabelEl.title = title;
+    const pill = dot.parentElement;
+    if (pill) pill.title = title;
   }
 
   setLogs(logs: LogEntry[]): void {

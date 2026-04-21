@@ -522,6 +522,33 @@ body.sidebar-resizing {
   opacity: 0.4;
 }
 
+.sidebar-server-dot.starting {
+  background: #f9e2af;
+  box-shadow: 0 0 6px rgba(249, 226, 175, 0.45);
+  animation: sidebar-server-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.sidebar-server-dot.error {
+  background: #f38ba8;
+  box-shadow: 0 0 6px rgba(243, 139, 168, 0.5);
+}
+
+@keyframes sidebar-server-dot-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1;    }
+}
+
+/* Compact grouping for the Telegram indicator so the dot + label
+ * read as one unit, left of the Web Mirror group on the same row. */
+.sidebar-server-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 10px;
+  margin-right: 2px;
+  border-right: 1px solid var(--border-soft);
+}
+
 .sidebar-server-label {
   font-size: 10px;
   font-weight: 500;

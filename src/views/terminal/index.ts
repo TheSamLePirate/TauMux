@@ -198,6 +198,7 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       },
       telegramState: (payload) => {
         surfaceManager.handleTelegramState(payload);
+        surfaceManager.getSidebar().setTelegramStatus(payload.status);
       },
       // Note: browser navigation commands from socket API go through socketAction
       surfaceMetadata: (payload) => {
