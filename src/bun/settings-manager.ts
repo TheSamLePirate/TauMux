@@ -82,8 +82,14 @@ export class SettingsManager {
       const merged = mergeSettings({ ...DEFAULT_SETTINGS }, parsed);
       const migrated = applyBloomMigration(merged);
       if (migrated !== merged) {
+        // Persist the migration stamp on the next tick. IMPORTANT: do
+        // NOT re-assign `this.settings` here — the constructor already
+        // stored the migrated value, and any `update()` call that
+        // lands between now and this timeout would otherwise be
+        // silently overwritten with the stale closure value. This
+        // previously caused toggles in the settings panel (Telegram
+        // enable, variant switches, …) to appear to save but revert.
         setTimeout(() => {
-          this.settings = migrated;
           this.writeToDisk();
         }, 0);
       }
