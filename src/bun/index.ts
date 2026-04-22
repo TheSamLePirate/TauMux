@@ -59,6 +59,7 @@ import { switchToAccessoryMode } from "./accessory-mode";
 import { TelegramDatabase } from "./telegram-db";
 import {
   TelegramService,
+  type TelegramServiceStatus,
   planNotificationForwarding,
 } from "./telegram-service";
 import { wireMessage as wireTelegramMessage } from "./rpc-handlers/telegram";
@@ -1213,7 +1214,13 @@ function splitTelegramSurface(direction: "horizontal" | "vertical"): void {
 
 function buildTelegramStatePayload() {
   const chats = telegramDb.listChats();
-  const status = telegramService?.getStatus() ?? { state: "disabled" as const };
+  // Precedence: live service state > explicit misconfigured marker >
+  // default disabled. The misconfigured marker is set by
+  // applyTelegramSettings when the user flipped the enable flag but
+  // left the token empty, so the sidebar + settings panel can surface
+  // an actionable error instead of a silent "disabled".
+  const status = telegramService?.getStatus() ??
+    telegramMisconfigured ?? { state: "disabled" as const };
   return { chats, status };
 }
 
@@ -1257,20 +1264,45 @@ async function sendTelegramAndBroadcast(
   }
 }
 
+/** Stash for the "enabled but no token" failure state so the sidebar
+ *  + settings panel can tell the user WHY the service isn't running
+ *  instead of silently reporting "disabled" (which looks the same as
+ *  "user switched it off"). Read by `buildTelegramStatePayload`. */
+let telegramMisconfigured: TelegramServiceStatus | null = null;
+
 async function applyTelegramSettings(): Promise<void> {
   const s = settingsManager.get();
-  const shouldRun = s.telegramEnabled && s.telegramBotToken.length > 0;
 
+  // Always tear down the existing service first so a token change or
+  // an enable→disable→enable cycle rebuilds cleanly.
   if (telegramService) {
     await telegramService.stop();
     telegramService = null;
   }
 
-  if (!shouldRun) {
+  if (!s.telegramEnabled) {
+    telegramMisconfigured = null;
     broadcastTelegramState();
     return;
   }
 
+  if (!s.telegramBotToken || s.telegramBotToken.length === 0) {
+    // User asked for the service to run but hasn't supplied a token.
+    // Previously we silently did nothing; the sidebar showed "Disabled"
+    // and there was no clue. Now we surface the misconfiguration so the
+    // UI can guide the user to paste a token.
+    telegramMisconfigured = {
+      state: "error",
+      error: "enabled but no bot token — add one in Settings → Telegram",
+    };
+    console.warn(
+      "[telegram] enabled but no bot token configured — see Settings → Telegram",
+    );
+    broadcastTelegramState();
+    return;
+  }
+
+  telegramMisconfigured = null;
   telegramService = new TelegramService({
     token: s.telegramBotToken,
     allowedUserIds: s.telegramAllowedUserIds,
