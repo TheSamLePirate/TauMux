@@ -496,6 +496,18 @@ window.addEventListener("pagehide", () => {
 mountTitlebarIcons();
 mountStatusBar();
 
+// The Atlas variant replaces the #tau-status-bar children with its
+// activity ticker; on exit it fires `tau-status-bar-reset` so the
+// standard StatusBar can be rebuilt from scratch. (If nothing fired
+// it, the cached statusBarHandle would still reference detached zone
+// nodes and subsequent refreshStatusBar() calls would silently no-op.)
+document
+  .getElementById("tau-status-bar")
+  ?.addEventListener("tau-status-bar-reset", () => {
+    mountStatusBar();
+    refreshStatusBar();
+  });
+
 setTimeout(() => {
   rpc.send("resize", { surfaceId: "__init__", cols: 80, rows: 24 });
   const rect = terminalContainerEl.getBoundingClientRect();

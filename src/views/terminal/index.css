@@ -10056,3 +10056,221 @@ body[data-tau-variant="cockpit"] .tau-hud {
  * mounted in the DOM but the pane-layout engine is the authority.
  * §9.2 "No bottom pane overflow" — the status bar reservation (26 px)
  * already guarantees that. */
+
+/* ── §9.3 Atlas — graph + ticker ───────────────────────────────── */
+
+/* Hide the standard sidebar content under Atlas; #tau-atlas-graph
+ * (220 px) takes over the column. The variant CSS already sets
+ * --sidebar-width: 220px, so this only needs to mask siblings. */
+body[data-tau-variant="atlas"] #sidebar > *:not(#tau-atlas-graph) {
+  display: none !important;
+}
+body[data-tau-variant="atlas"] #sidebar {
+  background: var(--tau-void) !important;
+  border-right: 0.5px solid var(--tau-edge);
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.tau-atlas-graph {
+  position: relative;
+  width: 220px;
+  height: 100%;
+  display: none;
+  background: var(--tau-void);
+  overflow: hidden;
+}
+body[data-tau-variant="atlas"] .tau-atlas-graph {
+  display: block;
+}
+
+/* Dashed-edge animation per §9.3: 3 3 pattern, stroke-dashoffset
+ * 0 → -6 at 0.6 s linear infinite. Only permitted animation beyond
+ * tauBlink/tauPulse/tauGlowPulse/tickerScroll per §10. */
+@keyframes tauDash {
+  to { stroke-dashoffset: -6; }
+}
+.tau-atlas-edge-active {
+  animation: tauDash 0.6s linear infinite;
+}
+
+/* Pulsing halo around running nodes. */
+@keyframes tauAtlasHalo {
+  0%, 100% { opacity: 0.16; r: 12; }
+  50%      { opacity: 0.32; r: 14; }
+}
+.tau-atlas-halo {
+  animation: tauAtlasHalo 1.6s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+.tau-atlas-info-card {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  right: 10px;
+  padding: 8px 10px;
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-pane);
+  background: var(--tau-panel);
+  color: var(--tau-text-dim);
+  font-size: 10.5px;
+  pointer-events: none;
+}
+.tau-atlas-info-name {
+  color: var(--tau-text);
+  font-weight: 700;
+  font-size: 11.5px;
+  margin-bottom: 2px;
+}
+.tau-atlas-info-meta {
+  color: var(--tau-text-mute);
+  font-size: 10px;
+}
+
+/* 36 px two-letter tab rail between sidebar and panes. */
+.tau-atlas-tab-rail {
+  display: none;
+  position: fixed;
+  top: var(--titlebar-height);
+  left: var(--sidebar-width);
+  width: 36px;
+  bottom: 32px;
+  padding: 8px 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--tau-void);
+  border-right: 0.5px solid var(--tau-edge);
+  z-index: 49;
+}
+body[data-tau-variant="atlas"] .tau-atlas-tab-rail {
+  display: flex;
+}
+/* When Atlas is active, shift the terminal container right past the
+ * 36 px rail so pane bodies don't sit under the chips. */
+body[data-tau-variant="atlas"] #terminal-container {
+  left: calc(var(--sidebar-width) + 36px);
+}
+.tau-atlas-chip {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-btn);
+  background: var(--tau-panel);
+  color: var(--tau-text-dim);
+  font-family: var(--tau-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+.tau-atlas-chip:hover {
+  background: var(--tau-panel-hi);
+  color: var(--tau-text);
+}
+.tau-atlas-chip.is-focused {
+  color: var(--tau-text);
+  background: var(--tau-panel-hi);
+}
+.tau-atlas-chip-human.is-focused {
+  border-color: var(--tau-cyan);
+  box-shadow: 0 0 0 0.5px var(--tau-cyan), 0 0 10px var(--tau-cyan-dim);
+}
+.tau-atlas-chip-agent.is-focused {
+  border-color: var(--tau-agent);
+  box-shadow: 0 0 0 0.5px var(--tau-agent), 0 0 10px var(--tau-agent-dim);
+}
+.tau-atlas-chip-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--tau-ok);
+}
+.tau-atlas-chip-agent .tau-atlas-chip-dot {
+  background: var(--tau-agent);
+  animation: tauPulse 1.4s ease-in-out infinite;
+}
+
+/* ── Activity ticker — replaces the standard status bar. ──
+ * 32 px per §9.3 (variant scope already bumped --tau-status-bar
+ * height to 32px). Three zones: brand · stream · right-meters. */
+.tau-atlas-ticker {
+  padding: 0 !important;
+  gap: 0 !important;
+}
+.tau-atlas-ticker-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 12px;
+  color: var(--tau-cyan);
+  background: var(--tau-void);
+  border-right: 0.5px solid var(--tau-edge);
+  filter: drop-shadow(0 0 4px var(--tau-cyan-glow));
+}
+.tau-atlas-ticker-brand svg rect {
+  fill: currentColor;
+}
+.tau-atlas-ticker-brand span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--tau-cyan);
+}
+.tau-atlas-ticker-stream {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  /* Two copies of the event list are rendered; -50% translate loops
+   * seamlessly. §10 permits a 60 s linear ticker scroll. */
+  animation: tauTickerScroll 60s linear infinite;
+  padding: 0 12px;
+  will-change: transform;
+}
+@keyframes tauTickerScroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.tau-atlas-event-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.tau-atlas-event-human { background: var(--tau-cyan); }
+.tau-atlas-event-agent { background: var(--tau-agent); }
+.tau-atlas-event-ok    { background: var(--tau-ok); }
+.tau-atlas-event-text {
+  color: var(--tau-text);
+  font-variant-numeric: tabular-nums;
+}
+.tau-atlas-ticker-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 12px;
+  font-size: 10.5px;
+  border-left: 0.5px solid var(--tau-edge);
+  background: var(--tau-void);
+}

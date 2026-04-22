@@ -106,14 +106,22 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (add note
 - [x] 858/858 tests pass · typecheck clean
 
 ## Phase 8 — Variant C: Atlas
-- [ ] `src/views/terminal/variants/atlas.ts` created
-- [ ] 220 px graph column with 20 px faint grid
-- [ ] Node rendering (repo / agent / tool / self colours) + active halo
-- [ ] Edge rendering with dashed cyan animation on active
-- [ ] Bottom-left info card (name / last action / model)
-- [ ] 36 px tab rail with 26×26 two-letter mnemonic chips
-- [ ] Activity ticker (32 px) with left-mark, event stream, right meters
-- [ ] Artboard diff ≤ ±4 px vs `atlas.png`
+- [x] `src/views/terminal/variants/atlas.ts` filled — graph + tab rail + ticker; each mounted on enter, removed on exit
+- [x] 220 px graph column (`#tau-atlas-graph` prepended inside `#sidebar`, sidebar siblings hidden under Atlas); 20 px faint grid pattern via SVG `<pattern>`
+- [x] Nodes: self (τ-mux, cyan), repo (workspace, text), agent (amber), tool (text-dim); 4.5 px default radius, 6 px + coloured fill when running, 12 px `tauAtlasHalo` pulse when running
+- [x] Edges: 0.6 px panel-edge at rest; active = 1 px dashed cyan (3 3, 0.55 opacity) with `tauDash` `stroke-dashoffset: 0 → -6` at 0.6 s linear infinite per §9.3
+- [x] Info card pinned bottom-left of graph column — name (700) + kind line
+- [x] Node click: repo → focusWorkspaceByIndex; tool/agent → synthesised click on `.surface-container[data-surface-id="…"]`
+- [x] 36 px tab rail (`#tau-atlas-tab-rail`) between sidebar and terminal-container; terminal-container `left` shifted by 36 px under Atlas
+- [x] 26×26 chips with two-letter mnemonics (via `makeMnemonic()` — first letter of first two words, or first two chars); active chip glows in identity colour
+- [x] Running amber dot top-right on any agent chip (tauPulse); static `ok` dot for focused human
+- [x] 32 px activity ticker replaces `#tau-status-bar`; `--tau-status-bar` height bumped to 32 px under Atlas; #terminal-container + #sidebar bottom reservations matched
+- [x] Ticker zones: left brand (τ logo + TICKER label on void, hairline divider), middle event stream (pipe-separated, colour-coded by actor), right condensed meters + $ (hairline left-divider)
+- [x] Ticker scroll: `tauTickerScroll` `translateX(0) → translateX(-50%)` at 60 s linear infinite (two copies of events rendered so seamless loop)
+- [x] Clean exit: graph + rail + ticker removed; `tau-status-bar-reset` event rebuilds the standard StatusBar via `mountStatusBar()` + `refreshStatusBar()` so cached handle doesn't leak into the next variant
+- [x] rAF-coalesced `schedule()` reruns graph / rail / ticker renderers on every `ht-workspaces-changed` or `ht-surface-focused` event
+- [ ] Artboard diff ≤ ±4 px vs `atlas.png` — deferred to Phase 13
+- [x] 858/858 tests pass · typecheck clean
 
 ## Phase 9 — Variant switcher + persistence
 - [ ] `layoutVariant` added to `AppSettings` / `DEFAULT_SETTINGS` / `validateSettings`
