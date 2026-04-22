@@ -535,8 +535,9 @@ textarea {
 .sidebar-resize-handle:hover::after,
 .sidebar-resize-handle:focus-visible::after,
 body.sidebar-resizing .sidebar-resize-handle::after {
-  background: var(--accent-primary);
-  box-shadow: 0 0 8px 1px var(--accent-primary-soft, rgba(255, 255, 255, 0.1));
+  /* τ-mux §4: only the focused pane glows. Resize handle highlights
+   * via colour, not a chromatic box-shadow. */
+  background: var(--tau-cyan);
 }
 
 .sidebar-resize-handle:focus-visible {
@@ -687,9 +688,12 @@ body.sidebar-resizing {
   transition: background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+/* τ-mux §4: sidebar status dots no longer carry a chromatic glow;
+ * state = colour + tauPulse (opacity/scale) per §10. Colours preserve
+ * the existing semantics (green ok / amber pending / red error /
+ * orange conflict). */
 .sidebar-server-dot.online {
-  background: #a6e3a1;
-  box-shadow: 0 0 6px rgba(166, 227, 161, 0.5);
+  background: var(--tau-ok);
 }
 
 .sidebar-server-dot.offline {
@@ -698,24 +702,21 @@ body.sidebar-resizing {
 }
 
 .sidebar-server-dot.starting {
-  background: #f9e2af;
-  box-shadow: 0 0 6px rgba(249, 226, 175, 0.45);
-  animation: sidebar-server-dot-pulse 1.2s ease-in-out infinite;
+  background: var(--tau-warn);
+  animation: tauPulse 1.4s ease-in-out infinite;
 }
 
 .sidebar-server-dot.error {
-  background: #f38ba8;
-  box-shadow: 0 0 6px rgba(243, 139, 168, 0.5);
+  background: var(--tau-err);
 }
 
 /* Conflict = Telegram 409 (another consumer owns the bot). Distinct
- * from .error so the user doesn't think something crashed — amber/
- * orange reads as "attention required", slow pulse signals the
- * polling loop is still alive and will retry. */
+ * from .error so the user doesn't think something crashed — amber
+ * reads as "attention required", slow pulse signals the polling loop
+ * is still alive and will retry. */
 .sidebar-server-dot.conflict {
-  background: #fab387;
-  box-shadow: 0 0 6px rgba(250, 179, 135, 0.5);
-  animation: sidebar-server-dot-pulse 2s ease-in-out infinite;
+  background: var(--tau-warn);
+  animation: tauPulse 1.8s ease-in-out infinite;
 }
 
 @keyframes sidebar-server-dot-pulse {
@@ -1808,15 +1809,15 @@ body.sidebar-resizing {
   flex-shrink: 0;
 }
 
+/* τ-mux §4 / §10: running dots pulse via tauPulse (opacity + scale),
+ * not box-shadow glow. State colours map to --tau-ok / --tau-err. */
 .workspace-script-dot.running {
-  background: #86efac;
-  box-shadow: 0 0 6px rgba(134, 239, 172, 0.6);
-  animation: script-pulse 1.6s ease-in-out infinite;
+  background: var(--tau-ok);
+  animation: tauPulse 1.4s ease-in-out infinite;
 }
 
 .workspace-script-dot.error {
-  background: #f87171;
-  box-shadow: 0 0 6px rgba(248, 113, 113, 0.6);
+  background: var(--tau-err);
 }
 
 @keyframes script-pulse {
@@ -2058,23 +2059,16 @@ body.sidebar-resizing {
   filter: saturate(0.68);
 }
 
+/* Legacy `.surface-container.focused` focus glow neutralised — the
+ * τ-mux §4 focus indicator is now driven by `.tau-pane.is-focused`
+ * rules with identity-specific colour (cyan for human, amber for
+ * agent). Keeping the old rule active produced a double glow that
+ * blended cyan + amber on every focused surface, violating §7's
+ * "the colour IS the identity" contract. surface-manager still sets
+ * the .focused class for other consumers (e.g. terminal-effects
+ * scope); we just stop painting from it. */
 .surface-container.focused {
-  border-color: rgba(111, 233, 255, 0.44);
-  box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.05),
-    0 0 0 1px rgba(111, 233, 255, 0.14),
-    0 0 28px rgba(111, 233, 255, 0.18),
-    0 0 72px rgba(255, 197, 107, 0.08),
-    0 28px 70px rgba(0, 0, 0, 0.48);
-}
-
-.surface-container.focused::before {
-  opacity: 0.72;
-}
-
-.surface-container.focused::after {
-  opacity: 0.7;
-  filter: blur(28px);
+  /* visuals handled by .tau-pane.is-focused */
 }
 
 .surface-container.drop-target {
@@ -2088,37 +2082,51 @@ body.sidebar-resizing {
 
 /* ── Notification glow ── */
 
+/* τ-mux §7: notifications carry a single identity colour. Notifications
+ * on a human pane glow cyan; on an agent pane they glow amber. Default
+ * is amber (notifications predominantly originate from agent actions).
+ * The pane-identity variant rule below routes the right colour when
+ * the container also carries .tau-pane-human. */
 @keyframes notify-glow-pulse {
   0% {
     border-color: rgba(255, 197, 107, 0);
-    box-shadow:
-      0 0 0 0 rgba(255, 197, 107, 0),
-      0 0 0 0 rgba(255, 197, 107, 0);
+    box-shadow: 0 0 0 0 rgba(255, 197, 107, 0);
   }
-  15% {
+  20% {
     border-color: rgba(255, 197, 107, 0.7);
-    box-shadow:
-      0 0 16px 2px rgba(255, 197, 107, 0.5),
-      0 0 48px 8px rgba(255, 197, 107, 0.15);
+    box-shadow: 0 0 20px 2px rgba(255, 197, 107, 0.45);
   }
-  40% {
-    border-color: rgba(103, 232, 249, 0.5);
-    box-shadow:
-      0 0 12px 1px rgba(103, 232, 249, 0.4),
-      0 0 36px 6px rgba(103, 232, 249, 0.1);
-  }
-  65% {
-    border-color: rgba(255, 197, 107, 0.4);
-    box-shadow:
-      0 0 10px 1px rgba(255, 197, 107, 0.3),
-      0 0 28px 4px rgba(255, 197, 107, 0.08);
+  70% {
+    border-color: rgba(255, 197, 107, 0.3);
+    box-shadow: 0 0 10px 1px rgba(255, 197, 107, 0.12);
   }
   100% {
-    border-color: rgba(39, 39, 42, 0.96);
-    box-shadow:
-      0 0 0 0 rgba(255, 197, 107, 0),
-      0 0 0 0 rgba(255, 197, 107, 0);
+    border-color: rgba(255, 197, 107, 0);
+    box-shadow: 0 0 0 0 rgba(255, 197, 107, 0);
   }
+}
+
+@keyframes notify-glow-pulse-human {
+  0% {
+    border-color: rgba(111, 233, 255, 0);
+    box-shadow: 0 0 0 0 rgba(111, 233, 255, 0);
+  }
+  20% {
+    border-color: rgba(111, 233, 255, 0.7);
+    box-shadow: 0 0 20px 2px rgba(111, 233, 255, 0.45);
+  }
+  70% {
+    border-color: rgba(111, 233, 255, 0.3);
+    box-shadow: 0 0 10px 1px rgba(111, 233, 255, 0.12);
+  }
+  100% {
+    border-color: rgba(111, 233, 255, 0);
+    box-shadow: 0 0 0 0 rgba(111, 233, 255, 0);
+  }
+}
+
+.surface-container.notify-glow.tau-pane-human {
+  animation-name: notify-glow-pulse-human;
 }
 
 .surface-container.notify-glow {

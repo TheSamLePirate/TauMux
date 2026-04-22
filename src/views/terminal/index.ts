@@ -13,6 +13,8 @@ import { SurfaceManager } from "./surface-manager";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
 import { createIcon } from "./icons";
 import { IconTau } from "./tau-icons";
+// Side-effect import: installs window.tauAuditFocus() for DevTools usage.
+import "./tau-focus-audit";
 import { showPromptDialog } from "./prompt-dialog";
 import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";

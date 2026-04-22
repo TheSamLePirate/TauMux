@@ -65,11 +65,17 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (add note
 - [x] 858/858 tests pass · typecheck clean
 
 ## Phase 5 — Focus indicator
-- [ ] `SurfaceManager.focusedPaneId` is the sole source of truth
-- [ ] `.tau-pane.is-focused-human` + `.tau-pane.is-focused-agent` rules live in `index.css`
-- [ ] Pane header bg shifts `panel → panelHi` on focus
-- [ ] Identity dot gains glow on focus
-- [ ] Dev helper confirms only one chrome `box-shadow` besides the outer window
+- [x] `SurfaceManager.focusedSurfaceId` is the sole source of truth (unchanged from pre-revamp; `focusSurface()` routes all state through it)
+- [x] `.tau-pane.tau-pane-human.is-focused` + `.tau-pane.tau-pane-agent.is-focused` (+ mixed) rules live in `index.css` (appended Phase 4, layout-neutral box-shadow-based in Phase 4 fixup)
+- [x] Pane header bg shifts `panel → panelHi` on focus — handled by `.tau-pane.is-focused > .tau-pane-header` and the `.surface-container.tau-pane.is-focused .surface-bar` retrofit
+- [x] Identity dot gains glow on focus (only) via `.tau-pane.is-focused > .tau-pane-header > .tau-identity-dot` rules
+- [x] Legacy `.surface-container.focused` cyan+amber double-glow neutralised — new tau-pane rules are the sole focus-indicator path
+- [x] `.sidebar-resize-handle` hover glow → flat cyan (no box-shadow glow)
+- [x] `.sidebar-server-dot.{online,starting,error,conflict}` chromatic glows removed; state colour + `tauPulse` (opacity/scale) per §10
+- [x] `.workspace-script-dot.running` glow removed; `tauPulse` replaces `script-pulse`
+- [x] `notify-glow-pulse` keyframes no longer blend cyan+amber; separate `-human` variant wired via `.surface-container.notify-glow.tau-pane-human`
+- [x] Dev helper: `src/views/terminal/tau-focus-audit.ts` installs `window.tauAuditFocus()` — walks every chrome element, flags any `box-shadow` layer with ≥ 4 px blur + non-black chromatic alpha that isn't on the focused pane
+- [x] 858/858 tests pass · typecheck clean
 
 ## Phase 6 — Variant A: Bridge (default)
 - [ ] `src/views/terminal/variants/bridge.ts` created
