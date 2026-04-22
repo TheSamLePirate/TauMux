@@ -78,13 +78,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (add note
 - [x] 858/858 tests pass · typecheck clean
 
 ## Phase 6 — Variant A: Bridge (default)
-- [ ] `src/views/terminal/variants/bridge.ts` created
-- [ ] 240 px non-collapsible sidebar
-- [ ] Top-right segmented workspace switcher (3 pills)
-- [ ] Split: utility top-left, big terminal top-right, wide bottom
-- [ ] Inner padding 6 px, gap 6 px
-- [ ] Status bar carries Codex meter + Week meter + $ cluster
-- [ ] Artboard diff ≤ ±4 px vs `bridge.png`
+- [x] Variant pipeline: `AppSettings.layoutVariant` + `validateSettings` + `VariantController` with enter/exit semantics (Option-2 scaffold ships ahead of per-variant bodies)
+- [x] `src/views/terminal/variants/bridge.ts` created; sets `body[data-tau-variant="bridge"]` on entry
+- [x] Command palette entries: "Layout: Bridge / Cockpit / Atlas" under Layout category
+- [x] 240 px non-collapsible sidebar via `body[data-tau-variant="bridge"] { --sidebar-width: 240px }` + `.sidebar-resize-handle { display: none !important }`
+- [x] Top-right segmented workspace switcher (3 pills, 0.5 px cyan-dim border on active) — `.tau-workspace-switcher` mounted in `index.html`, populated by `refreshBridgeSwitcher()` on every `syncToolbarState()`
+- [ ] Canonical split (utility top-left / terminal top-right / wide bottom) — this is a user-driven layout pattern, not chrome-enforced. PaneLayout engine remains the authority; the shell matches when the user follows the §9.1 split convention. Deferred to "default workspace template" work in Phase 10.
+- [x] Inner padding 6 px, gap 6 px via `body[data-tau-variant="bridge"] #terminal-container { padding: 6px !important }`
+- [x] Status bar carries Codex meter + Week meter + $ cluster — `StatusBar` primitive wired from `mountStatusBar()`; `refreshStatusBar()` rebuilds zones on every workspace change. Live telemetry values plumbed in Phase 11.
+- [ ] Artboard diff ≤ ±4 px vs `bridge.png` — requires `bun run report:design:web`; deferred to Phase 13 validation gate
+- [x] 858/858 tests pass · typecheck clean
 
 ## Phase 7 — Variant B: Cockpit
 - [ ] `src/views/terminal/variants/cockpit.ts` created

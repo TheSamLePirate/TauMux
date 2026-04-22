@@ -9827,3 +9827,59 @@ body[data-tau-variant="atlas"] #sidebar,
 body[data-tau-variant="atlas"] #terminal-container {
   bottom: 32px !important;
 }
+
+/* ── §9.1 Bridge segmented workspace switcher ──
+ * Three pills, active has a 0.5 px cyan-dim border. Hidden unless the
+ * Bridge variant is active. */
+.tau-workspace-switcher {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--tau-panel);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-btn);
+  margin-left: 8px;
+  height: 22px;
+}
+body[data-tau-variant="bridge"] .tau-workspace-switcher {
+  display: inline-flex;
+}
+.tau-workspace-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 18px;
+  padding: 0 8px;
+  border: 0.5px solid transparent;
+  border-radius: var(--tau-r-chip);
+  background: transparent;
+  color: var(--tau-text-dim);
+  font-family: var(--tau-font-sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.tau-workspace-pill:hover {
+  color: var(--tau-text);
+  background: rgba(255, 255, 255, 0.03);
+}
+.tau-workspace-pill.is-active {
+  color: var(--tau-text);
+  background: var(--tau-panel-hi);
+  border-color: var(--tau-cyan-dim);
+  font-weight: 600;
+}
+.tau-workspace-pill-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tau-text-faint);
+  flex-shrink: 0;
+}
+.tau-workspace-pill.is-active .tau-workspace-pill-dot {
+  background: var(--tau-cyan);
+}

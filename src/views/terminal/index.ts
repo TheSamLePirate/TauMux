@@ -13,6 +13,7 @@ import { SurfaceManager } from "./surface-manager";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
 import { createIcon } from "./icons";
 import { IconTau } from "./tau-icons";
+import { StatusBar, Meter } from "./tau-primitives";
 // Side-effect import: installs window.tauAuditFocus() for DevTools usage.
 import "./tau-focus-audit";
 import { VariantController } from "./variants/controller";
@@ -379,31 +380,81 @@ function mountTitlebarIcons() {
 }
 
 function mountStatusBar() {
-  // τ-mux §8.3 StatusBar seed. Zones (identity · meters · cost/model)
-  // are populated by SurfaceManager/SettingsPanel subscribers in later
-  // phases. For now we mount the structural skeleton so the bottom
-  // chrome is visible and screen-reader friendly.
-  const bar = document.getElementById("tau-status-bar");
-  if (!bar) return;
-  bar.replaceChildren();
-  const identity = document.createElement("div");
-  identity.className = "tau-status-zone";
-  identity.id = "tau-status-identity";
-  identity.innerHTML =
-    '<span class="tau-status-label">session</span>' +
-    '<span class="tau-status-value">τ-mux</span>';
-  const meters = document.createElement("div");
-  meters.className = "tau-status-zone";
-  meters.id = "tau-status-meters";
-  const spacer = document.createElement("div");
-  spacer.className = "tau-status-spacer";
-  const cost = document.createElement("div");
-  cost.className = "tau-status-zone";
-  cost.id = "tau-status-cost";
-  cost.innerHTML =
-    '<span class="tau-status-label">model</span>' +
-    '<span class="tau-status-value">—</span>';
-  bar.append(identity, meters, spacer, cost);
+  // τ-mux §8.3 StatusBar skeleton. The StatusBar primitive creates
+  // four zones (identity · meters · spacer · cost) and exposes setters
+  // so any subsystem can swap its content without rebuilding the bar.
+  const mount = document.getElementById(
+    "tau-status-bar",
+  ) as HTMLDivElement | null;
+  if (!mount) return;
+  statusBarHandle = StatusBar(mount);
+  // Initial identity zone — pane count populated by syncStatusBar().
+  refreshStatusBar();
+}
+
+// StatusBar primitive handle populated by mountStatusBar(); every
+// workspace / settings / surface change routes through refreshStatusBar.
+let statusBarHandle: ReturnType<typeof StatusBar> | null = null;
+
+function refreshStatusBar(): void {
+  if (!statusBarHandle) return;
+
+  // Identity zone — "τ-mux · <n> pane(s) / <m> workspace(s)". Uses Mono
+  // values per §2 so counts can be pasted.
+  const wsState = surfaceManager?.getWorkspaceState?.();
+  const workspaces = wsState?.workspaces ?? [];
+  const activeId = wsState?.activeWorkspaceId;
+  const active = workspaces.find((w) => w.id === activeId);
+  const paneCount = active?.surfaceIds.length ?? 0;
+
+  const identityLabel = document.createElement("span");
+  identityLabel.className = "tau-status-label";
+  identityLabel.textContent = "session";
+  const identityValue = document.createElement("span");
+  identityValue.className = "tau-status-value";
+  identityValue.textContent = `τ-mux · ${paneCount} pane${paneCount === 1 ? "" : "s"}`;
+  statusBarHandle.setIdentity([identityLabel, identityValue]);
+
+  // Meters zone — Bridge §9.1 wants Codex / Week meters. These are
+  // live token-spend indicators that Phase 11 will wire from the
+  // agent-accounting pipeline; for now we render the structural shells
+  // so the guideline layout is present and the Meter primitive is
+  // exercised. A zero-value meter still reads as "meter exists, no
+  // activity yet".
+  const codexMeter = Meter({
+    label: "codex",
+    value: 0,
+    max: 100,
+    semantic: "ok",
+    width: 50,
+    valueText: "0%",
+  });
+  const weekMeter = Meter({
+    label: "week",
+    value: 0,
+    max: 100,
+    semantic: "ok",
+    width: 50,
+    valueText: "0%",
+  });
+  statusBarHandle.setMeters([codexMeter, weekMeter]);
+
+  // Cost / model zone — right-aligned. Phase 11 populates the $ figure
+  // from telemetry; for now we render a stable "$0.00" placeholder so
+  // the column width stabilises.
+  const costLabel = document.createElement("span");
+  costLabel.className = "tau-status-label";
+  costLabel.textContent = "$";
+  const costValue = document.createElement("span");
+  costValue.className = "tau-status-value";
+  costValue.textContent = "0.00";
+  const modelLabel = document.createElement("span");
+  modelLabel.className = "tau-status-label";
+  modelLabel.textContent = "model";
+  const modelValue = document.createElement("span");
+  modelValue.className = "tau-status-value";
+  modelValue.textContent = currentSettings?.themePreset === "tau" ? "—" : "—";
+  statusBarHandle.setCost([costLabel, costValue, modelLabel, modelValue]);
 }
 
 function handleResize() {
@@ -838,6 +889,43 @@ function syncToolbarState() {
     const paneCount = activeWorkspace?.surfaceIds.length ?? 0;
     paneCountLabelEl.textContent = `${paneCount} pane${paneCount === 1 ? "" : "s"}`;
   }
+
+  refreshBridgeSwitcher(workspaces, activeWorkspace?.id);
+  refreshStatusBar();
+}
+
+// τ-mux §9.1 Bridge: segmented workspace switcher in the titlebar.
+// CSS hides it unless body[data-tau-variant="bridge"]; populating on
+// every workspace change keeps the pills in sync regardless of which
+// variant is active.
+function refreshBridgeSwitcher(
+  workspaces: { id: string; name: string }[],
+  activeId: string | undefined,
+): void {
+  const host = document.getElementById("tau-workspace-switcher");
+  if (!host) return;
+  host.replaceChildren();
+  workspaces.forEach((ws, i) => {
+    const pill = document.createElement("button");
+    pill.type = "button";
+    pill.className =
+      "tau-workspace-pill" + (ws.id === activeId ? " is-active" : "");
+    pill.setAttribute("role", "tab");
+    pill.setAttribute("aria-selected", ws.id === activeId ? "true" : "false");
+    pill.title = ws.name;
+    const dot = document.createElement("span");
+    dot.className = "tau-workspace-pill-dot";
+    pill.appendChild(dot);
+    const label = document.createElement("span");
+    // Label strategy: workspace index zero-padded to 2 digits, matching
+    // the reference artboard "Workspace 01 | 02 | 03" style.
+    label.textContent = String(i + 1).padStart(2, "0");
+    pill.appendChild(label);
+    pill.addEventListener("click", () =>
+      surfaceManager.focusWorkspaceByIndex(i),
+    );
+    host.appendChild(pill);
+  });
 }
 
 function toggleSidebar() {
