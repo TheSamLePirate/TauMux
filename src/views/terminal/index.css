@@ -9883,3 +9883,176 @@ body[data-tau-variant="bridge"] .tau-workspace-switcher {
 .tau-workspace-pill.is-active .tau-workspace-pill-dot {
   background: var(--tau-cyan);
 }
+
+/* ── §9.2 Cockpit — icon rail + HUD ────────────────────────────── */
+
+/* The 52 px rail replaces the sidebar content. We hide every child of
+ * #sidebar when Cockpit is active, then surface the Cockpit-owned
+ * rail. Sidebar still handles positioning/width via the variant
+ * scoped `--sidebar-width: 52px` rule added earlier. */
+.tau-cockpit-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  width: 52px;
+  background: var(--tau-void);
+  color: var(--tau-text);
+}
+body:not([data-tau-variant="cockpit"]) .tau-cockpit-rail {
+  display: none;
+}
+body[data-tau-variant="cockpit"] #sidebar > *:not(.tau-cockpit-rail) {
+  display: none !important;
+}
+body[data-tau-variant="cockpit"] #sidebar {
+  background: var(--tau-void) !important;
+  border-right: 0.5px solid var(--tau-edge);
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* 22 px τ-mark at top + hairline divider per §9.2. */
+.tau-cockpit-rail-mark {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: var(--tau-cyan);
+  filter:
+    drop-shadow(0 0 6px var(--tau-cyan-glow))
+    drop-shadow(0 0 2px var(--tau-cyan));
+}
+.tau-cockpit-rail-mark svg rect {
+  fill: currentColor;
+}
+.tau-cockpit-rail-divider {
+  width: 36px;
+  height: 0.5px;
+  background: var(--tau-edge);
+  margin: 2px 0 4px;
+}
+
+/* 36×36 workspace button. 8 px radius (pane radius per §3). Active
+ * has a 0.5 px cyan-dim border. */
+.tau-cockpit-rail-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0.5px solid transparent;
+  border-radius: 8px;
+  background: var(--tau-panel);
+  color: var(--tau-text-dim);
+  font-family: var(--tau-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+.tau-cockpit-rail-btn:hover {
+  color: var(--tau-text);
+  background: var(--tau-panel-hi);
+}
+.tau-cockpit-rail-btn.is-active {
+  color: var(--tau-text);
+  background: var(--tau-panel-hi);
+  border-color: var(--tau-cyan-dim);
+}
+/* Pulsing amber dot when the workspace hosts a running agent pane. */
+.tau-cockpit-rail-agent-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tau-agent);
+  animation: tauPulse 1.4s ease-in-out infinite;
+}
+
+/* Cockpit command bar: centred. */
+body[data-tau-variant="cockpit"] #titlebar-center {
+  justify-content: center;
+}
+
+/* ── Per-pane HUD strip (22 px, Mono 10.5) ── §9.2
+ * Hidden outside Cockpit; CSS-only unless the variant is active.
+ * Left: KIND (AGENT / HUMAN) in identity colour + 700 weight.
+ * Middle: model · state. Right: tok/s · $ · Δ. */
+.tau-hud {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  height: 22px;
+  padding: 0 10px;
+  background: var(--tau-void);
+  border-bottom: 0.5px solid var(--tau-edge);
+  font-family: var(--tau-font-mono);
+  font-size: 10.5px;
+  color: var(--tau-text-dim);
+  flex-shrink: 0;
+  user-select: none;
+  overflow: hidden;
+  white-space: nowrap;
+}
+body[data-tau-variant="cockpit"] .tau-hud {
+  display: flex;
+}
+.tau-hud-kind {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tau-hud-kind-human { color: var(--tau-cyan); }
+.tau-hud-kind-agent { color: var(--tau-agent); }
+.tau-hud-sep { color: var(--tau-text-faint); }
+.tau-hud-kv {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.tau-hud-label {
+  color: var(--tau-text-mute);
+  font-size: 10px;
+  font-weight: 500;
+}
+.tau-hud-value {
+  color: var(--tau-text);
+  font-variant-numeric: tabular-nums;
+}
+.tau-hud-spacer { flex: 1 1 auto; }
+.tau-hud-state {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tau-text-faint);
+}
+.tau-hud-state-running {
+  background: var(--tau-ok);
+  animation: tauPulse 1.4s ease-in-out infinite;
+}
+.tau-hud-state-waiting { background: var(--tau-warn); }
+.tau-hud-state-idle    { background: var(--tau-text-faint); }
+.tau-hud-state-streaming {
+  background: var(--tau-cyan);
+  animation: tauPulse 0.9s ease-in-out infinite;
+}
+.tau-hud-delta {
+  gap: 6px;
+}
+.tau-hud-delta-add { color: var(--tau-ok); font-variant-numeric: tabular-nums; }
+.tau-hud-delta-sub { color: var(--tau-err); font-variant-numeric: tabular-nums; }
+
+/* Cockpit: limit to 4 panes (2×2 or 2+2). Anything beyond stays
+ * mounted in the DOM but the pane-layout engine is the authority.
+ * §9.2 "No bottom pane overflow" — the status bar reservation (26 px)
+ * already guarantees that. */

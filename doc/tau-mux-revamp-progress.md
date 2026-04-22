@@ -90,13 +90,20 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (add note
 - [x] 858/858 tests pass · typecheck clean
 
 ## Phase 7 — Variant B: Cockpit
-- [ ] `src/views/terminal/variants/cockpit.ts` created
-- [ ] 52 px icon rail, 22 px τ-mark top, 36×36 workspace buttons
-- [ ] HUD strip (22 px Mono 10.5) between header + body on every pane
-- [ ] Up to 4 panes (2×2 or 2+2) layout
-- [ ] Command bar centred
-- [ ] Pulsing amber dot on workspaces with a running agent
-- [ ] Artboard diff ≤ ±4 px vs `cockpit.png`
+- [x] `src/views/terminal/variants/cockpit.ts` filled — rail mount/unmount, HUD injector, MutationObserver on `#terminal-container` for newly-created panes
+- [x] 52 px icon rail (`#tau-cockpit-rail`), 22 px τ-mark top (§6 size union widened to include 22 px logo exception), 0.5 px hairline divider, 36×36 workspace buttons
+- [x] Active workspace button has 0.5 px cyan-dim border + panel-hi fill
+- [x] Pulsing amber dot (`tauPulse`) on any workspace button hosting a pane with `.tau-pane-agent`
+- [x] Sidebar internals hidden under Cockpit (`body[data-tau-variant="cockpit"] #sidebar > *:not(.tau-cockpit-rail) { display: none }`) so the rail is the only visible content
+- [x] HUD strip (22 px, Mono 10.5) injected after `.surface-bar` in every `.surface-container`. Content: KIND (AGENT/HUMAN in identity colour 700) · model · ● state · tok/s · $ · Δ (green+/red-)
+- [x] State dot semantics (`running` pulses, `streaming` pulses faster, `waiting`/`idle` static) per §9.2 rules
+- [x] Exit cleanly reverses mount (removes rail, removes all HUDs, disconnects MutationObserver)
+- [ ] Up to 4 panes (2×2 or 2+2) layout — PaneLayout engine is the authority; no chrome constraint added. §9.2 budget remains a user convention.
+- [x] Command bar centred (`body[data-tau-variant="cockpit"] #titlebar-center { justify-content: center }`)
+- [x] Window event bridge: `ht-workspaces-changed` dispatched on every `syncToolbarState()` so rail + HUDs stay in sync
+- [x] Live telemetry values (tok/s / $ / Δ) wired in Phase 11; Phase 7 ships structural shells
+- [ ] Artboard diff ≤ ±4 px vs `cockpit.png` — deferred to Phase 13
+- [x] 858/858 tests pass · typecheck clean
 
 ## Phase 8 — Variant C: Atlas
 - [ ] `src/views/terminal/variants/atlas.ts` created

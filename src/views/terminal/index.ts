@@ -240,6 +240,14 @@ surfaceManager = new SurfaceManager(
 );
 surfaceManager.setTerminalEffectsEnabled(loadTerminalEffectsEnabled());
 
+// τ-mux variants (Cockpit / Atlas) need a reference to surfaceManager
+// to read workspace state and dispatch workspace switches without
+// taking a circular import on index.ts. Installing on window is the
+// same escape hatch index.ts already uses for panel registrations.
+(
+  window as unknown as { __tauSurfaceManager: SurfaceManager }
+).__tauSurfaceManager = surfaceManager;
+
 let currentSettings: AppSettings | null = null;
 let variantController: VariantController | null = null;
 
@@ -892,6 +900,10 @@ function syncToolbarState() {
 
   refreshBridgeSwitcher(workspaces, activeWorkspace?.id);
   refreshStatusBar();
+  // Notify variant chrome (Cockpit rail, Atlas graph) that the
+  // workspace set or active workspace changed. Variants that don't
+  // care ignore the event; ones that do re-render on the next tick.
+  window.dispatchEvent(new CustomEvent("ht-workspaces-changed"));
 }
 
 // τ-mux §9.1 Bridge: segmented workspace switcher in the titlebar.

@@ -23,7 +23,14 @@
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-export type TauIconSize = 10 | 11 | 14;
+/** Permitted icon sizes.
+ *
+ * §6 restricts the generic icon set (split, grid, agent, human, plus,
+ * git, spark) to 10 / 11 / 14 px. The τ logo has one §9.2-mandated
+ * exception — 22 px at the top of the Cockpit rail — so that size is
+ * part of the union too. Do not add further sizes without a guideline
+ * citation. */
+export type TauIconSize = 10 | 11 | 14 | 22;
 
 export interface TauIconOptions {
   size?: TauIconSize;
