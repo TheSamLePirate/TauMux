@@ -1,4 +1,5 @@
 import type { ChannelDescriptor, ChannelMap } from "../shared/types";
+import { resolve } from "node:path";
 
 interface BunTerminal {
   write(data: string | Uint8Array): void;
@@ -124,9 +125,18 @@ export class PtyManager {
     // Build channel map for HYPERTERM_CHANNELS env var
     const channelMap: ChannelMap = { version: 1, channels: allChannels };
 
+    const isBundled = process.execPath.includes("Contents/MacOS");
+    
+    // In dev: import.meta.dir is src/bun -> ../../shareBin is root/shareBin
+    // In packaged: import.meta.dir is Contents/Resources/app/bun -> ../shareBin is Contents/Resources/app/shareBin
+    const shareBinPath = isBundled
+      ? resolve(import.meta.dir, "../shareBin")
+      : resolve(import.meta.dir, "../../shareBin");
+
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
       ...opts.env,
+      PATH: `${shareBinPath}:${opts.env?.["PATH"] || process.env["PATH"] || ""}`,
       TERM: "xterm-256color",
       COLORTERM: "truecolor",
       LANG: process.env["LANG"] || "en_US.UTF-8",

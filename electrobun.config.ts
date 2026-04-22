@@ -25,6 +25,7 @@ export default {
       },
     },
     copy: {
+      "shareBin": "shareBin",
       "src/views/terminal/index.html": "views/terminal/index.html",
       "src/views/terminal/index.css": "views/terminal/index.css",
       "src/views/terminal/xterm.css": "views/terminal/xterm.css",
