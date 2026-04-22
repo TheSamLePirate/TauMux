@@ -282,13 +282,12 @@ textarea {
   height: var(--titlebar-height);
   z-index: 80;
   display: grid;
-  /* Four columns so the workspace switcher (between center and
-   * actions) has its own slot. Column 3 is `minmax(0, auto)` with a
-   * max width cap below — prevents the actions strip from being
-   * pushed off-screen when many workspace pills crowd the switcher.
-   * Column 4 is rigid `auto` so the toolbar buttons are always
-   * visible regardless of how many workspaces the user has open. */
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, auto) auto;
+  /* Three columns: leading (fills) · center · actions. The pill-style
+   * workspace switcher was removed — it pushed the action buttons
+   * off-screen whenever the user opened more than a couple of
+   * workspaces. Workspace switching still works via the sidebar,
+   * ⌘+digit shortcuts, and the command palette. */
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 18px;
   padding-left: 84px;
@@ -9952,73 +9951,10 @@ body[data-tau-variant="atlas"] #terminal-container {
   bottom: 32px !important;
 }
 
-/* ── §9.1 Bridge segmented workspace switcher ──
- * Three pills, active has a 0.5 px cyan-dim border. Hidden unless the
- * Bridge variant is active. */
-.tau-workspace-switcher {
-  /* Lives in grid column 3 of the titlebar (see `#titlebar` rule).
-   * max-width + overflow-x: auto keeps it from pushing the action
-   * buttons off-screen when a user has many workspaces. The scroll
-   * bar is hidden via `scrollbar-width: none` because a classic
-   * scrollbar in the titlebar is ugly — users scroll with a shift+
-   * wheel or drag-inertia trackpad gesture. */
-  display: none;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  background: var(--tau-panel);
-  border: 0.5px solid var(--tau-edge);
-  border-radius: var(--tau-r-btn);
-  margin-left: 8px;
-  height: 22px;
-  max-width: 40vw;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.tau-workspace-switcher::-webkit-scrollbar {
-  display: none;
-}
-body[data-tau-variant="bridge"] .tau-workspace-switcher {
-  display: inline-flex;
-}
-.tau-workspace-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 18px;
-  padding: 0 8px;
-  border: 0.5px solid transparent;
-  border-radius: var(--tau-r-chip);
-  background: transparent;
-  color: var(--tau-text-dim);
-  font-family: var(--tau-font-sans);
-  font-size: 10.5px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  user-select: none;
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
-}
-.tau-workspace-pill:hover {
-  color: var(--tau-text);
-  background: rgba(255, 255, 255, 0.03);
-}
-.tau-workspace-pill.is-active {
-  color: var(--tau-text);
-  background: var(--tau-panel-hi);
-  border-color: var(--tau-cyan-dim);
-  font-weight: 600;
-}
-.tau-workspace-pill-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--tau-text-faint);
-  flex-shrink: 0;
-}
-.tau-workspace-pill.is-active .tau-workspace-pill-dot {
-  background: var(--tau-cyan);
-}
+/* Bridge workspace pills removed — the 4-button action strip was
+ * getting pushed onto a second line whenever the user had more than
+ * a couple workspaces open. Workspace switching still works via the
+ * sidebar, ⌘+digit shortcuts, and the command palette. */
 
 /* ── §9.2 Cockpit — icon rail + HUD ────────────────────────────── */
 

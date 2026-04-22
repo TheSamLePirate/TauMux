@@ -997,7 +997,6 @@ function syncToolbarState() {
     paneCountLabelEl.textContent = `${paneCount} pane${paneCount === 1 ? "" : "s"}`;
   }
 
-  refreshBridgeSwitcher(workspaces, activeWorkspace?.id);
   refreshStatusBar();
   // Notify variant chrome (Cockpit rail, Atlas graph) that the
   // workspace set or active workspace changed. Variants that don't
@@ -1005,41 +1004,10 @@ function syncToolbarState() {
   window.dispatchEvent(new CustomEvent("ht-workspaces-changed"));
 }
 
-// τ-mux §9.1 Bridge: segmented workspace switcher in the titlebar.
-// CSS hides it unless body[data-tau-variant="bridge"]; populating on
-// every workspace change keeps the pills in sync regardless of which
-// variant is active.
-function refreshBridgeSwitcher(
-  workspaces: { id: string; name: string }[],
-  activeId: string | undefined,
-): void {
-  const host = document.getElementById("tau-workspace-switcher");
-  if (!host) return;
-  host.replaceChildren();
-  workspaces.forEach((ws, i) => {
-    const pill = document.createElement("button");
-    pill.type = "button";
-    pill.className =
-      "tau-workspace-pill" + (ws.id === activeId ? " is-active" : "");
-    pill.setAttribute("role", "tab");
-    pill.setAttribute("aria-selected", ws.id === activeId ? "true" : "false");
-    pill.title = ws.name;
-    const dot = document.createElement("span");
-    dot.className = "tau-workspace-pill-dot";
-    pill.appendChild(dot);
-    const label = document.createElement("span");
-    label.textContent = String(i + 1).padStart(2, "0");
-    pill.appendChild(label);
-    if (lastNotifyWorkspaces.has(ws.id)) {
-      pill.classList.add("tau-notify-dot");
-      if (isHumanWorkspace(ws.id)) pill.classList.add("tau-notify-human");
-    }
-    pill.addEventListener("click", () =>
-      surfaceManager.focusWorkspaceByIndex(i),
-    );
-    host.appendChild(pill);
-  });
-}
+// refreshBridgeSwitcher() + #tau-workspace-switcher removed — the
+// pill strip kept pushing the 4-button action group off-screen.
+// Workspace switching is still reachable via the sidebar, ⌘+digit
+// shortcuts, and the command palette ("Switch Workspace").
 
 // Notify state mirror — kept in sync by the `ht-notify-state-changed`
 // event dispatched from SurfaceManager.emitNotifyState(). Variants read
@@ -1056,21 +1024,6 @@ window.addEventListener("ht-notify-state-changed", (e) => {
   ).__tauNotifyWorkspaces = lastNotifyWorkspaces;
   syncToolbarState();
 });
-
-function isHumanWorkspace(wsId: string): boolean {
-  // Heuristic: workspace is agent-coloured iff any of its surfaces
-  // is an agent pane; otherwise human.
-  const pm = surfaceManager?.getProcessManagerData?.() ?? [];
-  const ws = pm.find((w) => w.id === wsId);
-  if (!ws) return true;
-  for (const s of ws.surfaces) {
-    const el = document.querySelector(
-      `.surface-container[data-surface-id="${s.id}"]`,
-    );
-    if (el?.classList.contains("tau-pane-agent")) return false;
-  }
-  return true;
-}
 
 function toggleSidebar() {
   surfaceManager.toggleSidebar();
