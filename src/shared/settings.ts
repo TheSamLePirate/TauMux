@@ -69,6 +69,14 @@ export interface AppSettings {
   paneGap: number;
   sidebarWidth: number;
 
+  /** τ-mux layout variant per design guideline §9.
+   *  - "bridge"  — refined default. 240 px sidebar, 1 large + 1 utility
+   *                + 1 wide pane split, status bar with Codex/Week/$.
+   *  - "cockpit" — 52 px icon rail + per-pane HUD strip; up to 4 panes.
+   *  - "atlas"   — workspace graph sidebar + activity ticker bottom bar.
+   *  Source: design_guidelines/Design Guidelines tau-mux.md §9. */
+  layoutVariant: "bridge" | "cockpit" | "atlas";
+
   // Browser
   /** Search engine for browser address bar non-URL queries. */
   browserSearchEngine: "google" | "duckduckgo" | "bing" | "kagi";
@@ -546,6 +554,9 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   paneGap: 2,
   sidebarWidth: 320,
 
+  // τ-mux §9 default variant.
+  layoutVariant: "bridge",
+
   browserSearchEngine: "google",
   browserHomePage: "",
   browserForceDarkMode: false,
@@ -633,6 +644,10 @@ export function validateSettings(s: AppSettings): AppSettings {
       s.packageRunner === "yarn"
         ? s.packageRunner
         : "bun",
+    layoutVariant:
+      s.layoutVariant === "cockpit" || s.layoutVariant === "atlas"
+        ? s.layoutVariant
+        : "bridge",
   };
 }
 

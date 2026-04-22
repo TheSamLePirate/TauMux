@@ -15,6 +15,8 @@ import { createIcon } from "./icons";
 import { IconTau } from "./tau-icons";
 // Side-effect import: installs window.tauAuditFocus() for DevTools usage.
 import "./tau-focus-audit";
+import { VariantController } from "./variants/controller";
+import type { VariantId } from "./variants/types";
 import { showPromptDialog } from "./prompt-dialog";
 import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";
@@ -238,6 +240,7 @@ surfaceManager = new SurfaceManager(
 surfaceManager.setTerminalEffectsEnabled(loadTerminalEffectsEnabled());
 
 let currentSettings: AppSettings | null = null;
+let variantController: VariantController | null = null;
 
 const settingsPanel = new SettingsPanel((partial) => {
   // Apply eagerly on the webview side — don't wait for bun roundtrip
@@ -252,7 +255,39 @@ function applySettings(settings: AppSettings): void {
   currentSettings = settings;
   surfaceManager.applySettings(settings);
   if (settingsPanel.isVisible()) settingsPanel.updateSettings(settings);
+  // τ-mux §9 — variant controller. Lazily constructed on first
+  // applySettings so #tau-status-bar (mounted by mountStatusBar()) is
+  // guaranteed to exist. Every subsequent call routes through
+  // `refresh()` which transitions variants only when the id changes.
+  if (!variantController) {
+    variantController = new VariantController({
+      settings,
+      updateSettings: (partial) => {
+        const base2 = currentSettings ?? DEFAULT_SETTINGS;
+        const merged2 = mergeSettings(base2, partial);
+        applySettings(merged2);
+        rpc.send("updateSettings", { settings: partial });
+      },
+    });
+  } else {
+    variantController.refresh(settings);
+  }
   syncPaletteCommands();
+}
+
+/** Switch to a specific τ-mux variant. Called from the command
+ *  palette and (in Phase 9) from the settings panel. */
+function setLayoutVariant(id: VariantId): void {
+  if (!variantController) {
+    // No controller yet → mutate the setting and let applySettings
+    // build the controller on the correct initial variant.
+    const base = currentSettings ?? DEFAULT_SETTINGS;
+    const merged = mergeSettings(base, { layoutVariant: id });
+    applySettings(merged);
+    rpc.send("updateSettings", { settings: { layoutVariant: id } });
+    return;
+  }
+  variantController.setVariant(id);
 }
 
 function openSettings(): void {
@@ -521,6 +556,33 @@ function buildPaletteCommands(): PaletteCommand[] {
       description: "Show or hide workspace navigation and activity.",
       shortcut: "\u2318B",
       action: () => toggleSidebar(),
+    },
+    // τ-mux §9 — three layout variants, switchable at runtime. The
+    // active variant is persisted via updateSettings so the choice
+    // survives restart and is observable from bun.
+    {
+      id: "layout-bridge",
+      category: "Layout",
+      label: "Layout: Bridge (default)",
+      description:
+        "Refined default. 240 px sidebar, 3-pane split, Codex / Week / $ status meters.",
+      action: () => setLayoutVariant("bridge"),
+    },
+    {
+      id: "layout-cockpit",
+      category: "Layout",
+      label: "Layout: Cockpit",
+      description:
+        "Dense. 52 px icon rail, per-pane HUD (model · state · tok/s · $ · Δ), up to 4 panes.",
+      action: () => setLayoutVariant("cockpit"),
+    },
+    {
+      id: "layout-atlas",
+      category: "Layout",
+      label: "Layout: Atlas",
+      description:
+        "Radical. Workspace graph sidebar, activity ticker bottom bar.",
+      action: () => setLayoutVariant("atlas"),
     },
     {
       id: "toggle-terminal-effects",

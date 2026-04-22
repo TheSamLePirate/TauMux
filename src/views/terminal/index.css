@@ -9764,3 +9764,66 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
 .tau-status-bar {
   z-index: 60;
 }
+
+/* ──────────────────────────────────────────────────────────────── *
+ * τ-mux Layout variants (§9)                                       *
+ *                                                                  *
+ * Each variant is keyed on `body[data-tau-variant="<id>"]` so the  *
+ * cascade stays scoped and the switch is a single attribute write. *
+ * Shared reset first, then per-variant rules.                      *
+ * ──────────────────────────────────────────────────────────────── */
+
+/* ── §9.1 Bridge — default ──
+ *   sidebar 240 px (non-collapsible in this variant),
+ *   inner pane padding 6 px, inter-pane gap 6 px,
+ *   top-right segmented workspace switcher (handled by the existing
+ *   titlebar-center wiring; no Bridge-specific CSS needed yet). */
+body[data-tau-variant="bridge"] {
+  --sidebar-width: 240px;
+}
+body[data-tau-variant="bridge"] #terminal-container {
+  /* 6 px inner padding per §9.1. The existing rule had 14 / 16 / 16
+   * px — override at the variant scope only. */
+  padding: 6px !important;
+}
+body[data-tau-variant="bridge"].sidebar-resizing {
+  /* Bridge disables the sidebar resize handle per "never collapsible"
+   * — but we keep the class functional and just skip the cursor. */
+  cursor: default;
+}
+body[data-tau-variant="bridge"] .sidebar-resize-handle {
+  display: none !important;
+}
+body[data-tau-variant="bridge"] #sidebar.collapsed {
+  /* Bridge: sidebar is never collapsed. Force width + visibility if
+   * a stale sidebarCollapsed flag is in localStorage. */
+  width: 240px !important;
+  padding: 10px 10px 8px !important;
+}
+
+/* ── §9.2 Cockpit — icon rail + HUD ── (Phase 7 fills the specifics)
+ *   sidebar 52 px icon rail, per-pane HUD strip, command bar centred. */
+body[data-tau-variant="cockpit"] {
+  --sidebar-width: 52px;
+}
+body[data-tau-variant="cockpit"] #sidebar {
+  padding: 8px 4px !important;
+}
+body[data-tau-variant="cockpit"] #titlebar-center {
+  justify-content: center;
+}
+
+/* ── §9.3 Atlas — graph + ticker ── (Phase 8 fills the specifics)
+ *   220 px graph column, activity ticker (32 px) replaces status bar. */
+body[data-tau-variant="atlas"] {
+  --sidebar-width: 220px;
+}
+body[data-tau-variant="atlas"] .tau-status-bar {
+  /* Placeholder: Phase 8 replaces the status bar with a 32 px ticker.
+   * Bumping height here so the reserved bottom space matches. */
+  height: 32px;
+}
+body[data-tau-variant="atlas"] #sidebar,
+body[data-tau-variant="atlas"] #terminal-container {
+  bottom: 32px !important;
+}
