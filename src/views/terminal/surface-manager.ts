@@ -1509,16 +1509,45 @@ export class SurfaceManager {
   /** Snapshot of `ht set-status` entries for a workspace. Returned
    *  in insertion order so the order the script set the keys in is
    *  preserved. Pass no id to read from the active workspace.
+   *
    *  Used by the status-key registry (src/views/terminal/status-keys.ts)
-   *  so bottom-bar chrome can surface per-workspace status pills. */
+   *  so bottom-bar chrome can surface per-workspace status pills. Same
+   *  data source as the sidebar pills (`ws.status`), so if the sidebar
+   *  shows an entry this must return it too.
+   *
+   *  `null` / empty passes through the `activeWorkspace()` fallback
+   *  intentionally: some callers (atlas graph, status-bar tick) pass
+   *  a potentially-null activeId and rely on the fallback. */
   getWorkspaceStatuses(
-    workspaceId?: string,
+    workspaceId?: string | null,
   ): { key: string; value: string; icon?: string; color?: string }[] {
     const ws = workspaceId
       ? this.workspaces.find((w) => w.id === workspaceId)
       : this.activeWorkspace();
     if (!ws) return [];
     return [...ws.status.entries()].map(([key, v]) => ({ key, ...v }));
+  }
+
+  /** Map<workspaceId, statuses[]> for every workspace. Used when the
+   *  status-key needs cross-workspace visibility (e.g. "aggregate all
+   *  warnings from every workspace"). Cheap — just reads the same
+   *  Map the sidebar renderer already walks. */
+  getAllStatuses(): Map<
+    string,
+    { key: string; value: string; icon?: string; color?: string }[]
+  > {
+    const out = new Map<
+      string,
+      { key: string; value: string; icon?: string; color?: string }[]
+    >();
+    for (const ws of this.workspaces) {
+      if (ws.status.size === 0) continue;
+      out.set(
+        ws.id,
+        [...ws.status.entries()].map(([key, v]) => ({ key, ...v })),
+      );
+    }
+    return out;
   }
 
   setStatus(

@@ -489,8 +489,23 @@ function buildStatusContext(): StatusContext {
     notifyWorkspaces: lastNotifyWorkspaces,
     // `ht set-status` entries for the active workspace. Surfaced by
     // the `ht-status` / `ht-title` / `ht-warning` / `ht-all` keys.
-    htStatuses:
-      surfaceManager?.getWorkspaceStatuses?.(activeId ?? undefined) ?? [],
+    // Fall back to all-workspaces aggregated entries when the active
+    // workspace has none — so a status set from any pane is visible
+    // regardless of which workspace the user is currently viewing.
+    htStatuses: (() => {
+      const active = surfaceManager?.getWorkspaceStatuses?.(activeId) ?? [];
+      if (active.length > 0) return active;
+      const all = surfaceManager?.getAllStatuses?.();
+      if (!all || all.size === 0) return [];
+      const merged: {
+        key: string;
+        value: string;
+        icon?: string;
+        color?: string;
+      }[] = [];
+      for (const entries of all.values()) merged.push(...entries);
+      return merged;
+    })(),
     now: Date.now(),
   };
 }
@@ -546,6 +561,25 @@ document
 window.addEventListener("ht-statuses-changed", () => {
   refreshStatusBar();
 });
+
+// DevTools helper: `window.tauDumpStatus()` prints the status-bar
+// context so users can verify what the bottom bar is reading.
+(window as unknown as { tauDumpStatus: () => void }).tauDumpStatus = () => {
+  const ctx = buildStatusContext();
+  console.groupCollapsed(
+    `%c[τ-mux] status-bar context (${ctx.htStatuses.length} ht entries)`,
+    "color: #6fe9ff",
+  );
+  console.log("activeWorkspaceId:", ctx.activeWorkspaceId);
+  console.log("active workspace:", ctx.activeWorkspace?.name ?? "(none)");
+  console.log("settings.statusBarKeys:", ctx.settings.statusBarKeys);
+  console.log("htStatuses:", ctx.htStatuses);
+  console.log(
+    "all workspace statuses:",
+    surfaceManager?.getAllStatuses?.() ?? "(getAllStatuses not available)",
+  );
+  console.groupEnd();
+};
 
 // 1 Hz tick so status-keys that depend on the wall clock (time /
 // uptime) and any live metadata snapshot the poll just produced stay
