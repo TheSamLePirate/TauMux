@@ -1540,6 +1540,7 @@ export class SurfaceManager {
         if (oldestKey !== undefined) ws.status.delete(oldestKey);
       }
       this.updateSidebar();
+      this.emitStatusesChanged(ws.id);
     }
   }
 
@@ -1550,7 +1551,19 @@ export class SurfaceManager {
     if (ws) {
       ws.status.delete(key);
       this.updateSidebar();
+      this.emitStatusesChanged(ws.id);
     }
+  }
+
+  /** Notify the bottom bar + anywhere else that cares that the ht
+   *  set-status set for `workspaceId` changed. Dispatched after every
+   *  setStatus / clearStatus call — index.ts subscribes and kicks
+   *  refreshStatusBar() so ht-status / ht-warning / ht-title / ht-all
+   *  keys repaint without waiting for the next workspace event. */
+  private emitStatusesChanged(workspaceId: string): void {
+    window.dispatchEvent(
+      new CustomEvent("ht-statuses-changed", { detail: { workspaceId } }),
+    );
   }
 
   setProgress(

@@ -538,6 +538,22 @@ document
     refreshStatusBar();
   });
 
+// Every `ht set-status <key> <value>` lands in SurfaceManager.setStatus
+// which dispatches `ht-statuses-changed`. Without this listener the
+// bottom-bar ht-status / ht-warning / ht-title / ht-all keys would
+// only repaint on the next workspace or focus event — scripts setting
+// a status then idling would leave the bar stale.
+window.addEventListener("ht-statuses-changed", () => {
+  refreshStatusBar();
+});
+
+// 1 Hz tick so status-keys that depend on the wall clock (time /
+// uptime) and any live metadata snapshot the poll just produced stay
+// fresh without waiting for a workspace / focus event.
+setInterval(() => {
+  refreshStatusBar();
+}, 1000);
+
 setTimeout(() => {
   rpc.send("resize", { surfaceId: "__init__", cols: 80, rows: 24 });
   const rect = terminalContainerEl.getBoundingClientRect();
