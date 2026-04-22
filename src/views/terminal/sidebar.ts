@@ -11,6 +11,34 @@ import {
   type ManifestActionState,
 } from "./sidebar-manifest-card";
 
+// ─────────────────────────────────────────────────────────────────────
+// Sidebar (V2 — hyper-dense, color-forward, zero border-radius)
+//
+// Layout philosophy
+//  • Every row uses a 3 px left color stripe drawn from the workspace's
+//    accent. That stripe is the identity marker — not a dot chip — and
+//    it flexes: brighter + wider on active, dim + narrow on inactive.
+//  • Every workspace shows a CPU bar, port chips and fg command inline,
+//    not just the active one. The user asked for dense info, so all
+//    workspaces surface their load/network at a glance.
+//  • Sharp corners everywhere (no border-radius). 1 px hairline rules
+//    divide sections. Xcode/Ableton/Panic Nova aesthetic.
+//  • Active workspace fans out below its header with pinned-cwd chips,
+//    pane list, npm/cargo manifest, status grid, progress bar.
+//
+// Public API (unchanged — SurfaceManager + tests rely on it):
+//    new Sidebar(container, callbacks)
+//    getResizeHandle()         setNotifications(list)
+//    setWorkspaces(list)       acknowledgeBySurface(surfaceId)
+//    toggle() / isVisible()    setWebServerStatus(running, port, url?)
+//    setLogs(list)             setTelegramStatus(status)
+//
+// DOM contracts tested elsewhere:
+//   .notification-item / .glow / .notification-title /
+//   .notification-body-btn / .notification-dismiss /
+//   .sidebar-section-header with text "Notifications (N)"
+// ─────────────────────────────────────────────────────────────────────
+
 export interface WorkspaceInfo {
   id: string;
   name: string;
@@ -76,19 +104,13 @@ type FilterMode = "all" | "active" | "pinned";
 
 interface SectionOpenState {
   notifications: boolean;
-  workspaces: boolean;
   logs: boolean;
 }
 
-/** Per-workspace UI state — what's expanded in each card, the sections
- *  within the active card, and where the card sits in the list. Kept
- *  purely client-side; the host can inspect `ht-pin-workspace` +
- *  `ht-reorder-workspaces` events to persist if it wants. */
 interface WorkspaceUiState {
   pinned: boolean;
   manifestsOpen: boolean;
   panesOpen: boolean;
-  portsOpen: boolean;
   statusOpen: boolean;
 }
 
@@ -118,23 +140,24 @@ function saveJson(key: string, value: unknown): void {
 
 const DEFAULT_SECTIONS: SectionOpenState = {
   notifications: true,
-  workspaces: true,
   logs: true,
 };
 
 const DEFAULT_WS_UI: WorkspaceUiState = {
   pinned: false,
-  manifestsOpen: false,
+  manifestsOpen: true,
   panesOpen: false,
-  portsOpen: false,
   statusOpen: true,
 };
+
+const DEFAULT_ACCENT = "#89b4fa";
 
 export class Sidebar {
   private container: HTMLElement;
   private headerEl: HTMLElement;
   private searchInputEl!: HTMLInputElement;
   private filterBarEl!: HTMLElement;
+  private globalStatsEl!: HTMLElement;
   private notificationsEl: HTMLElement;
   private listSectionEl!: HTMLElement;
   private listEl: HTMLElement;
@@ -170,10 +193,12 @@ export class Sidebar {
   private uiState: Map<string, WorkspaceUiState>;
   private highlightIndex = -1;
   private renamingId: string | null = null;
+  private expandedPackages: Set<string> = new Set();
 
   constructor(container: HTMLElement, callbacks: SidebarCallbacks) {
     this.container = container;
     this.callbacks = callbacks;
+    this.container.classList.add("sidebar-v2");
 
     // Hydrate persisted UI state.
     this.sectionOpen = {
@@ -189,113 +214,19 @@ export class Sidebar {
     );
     this.uiState = new Map(Object.entries(persistedUi));
 
-    // ── Header ─────────────────────────────────────────────────────
-    this.headerEl = document.createElement("div");
-    this.headerEl.className = "sidebar-header";
-
-    const titleWrap = document.createElement("div");
-    titleWrap.className = "sidebar-header-copy";
-
-    const title = document.createElement("span");
-    title.className = "sidebar-title";
-    title.append(createIcon("sidebar", "sidebar-title-icon", 13));
-    const titleText = document.createElement("span");
-    titleText.textContent = "Workspaces";
-    title.appendChild(titleText);
-    titleWrap.appendChild(title);
-
-    const subtitle = document.createElement("span");
-    subtitle.className = "sidebar-subtitle";
-    subtitle.textContent = "Navigation · context · live activity";
-    titleWrap.appendChild(subtitle);
-
-    this.headerEl.appendChild(titleWrap);
-
-    const headerActions = document.createElement("div");
-    headerActions.className = "sidebar-header-actions";
-
-    const newBtn = document.createElement("button");
-    newBtn.className = "sidebar-new-btn";
-    newBtn.title = "New workspace (⌘T)";
-    newBtn.setAttribute("aria-label", "New workspace");
-    newBtn.type = "button";
-    newBtn.append(createIcon("plus", "", 14));
-    newBtn.addEventListener("click", () => callbacks.onNewWorkspace());
-    headerActions.appendChild(newBtn);
-
-    this.headerEl.appendChild(headerActions);
+    // ── Header (rail): app glyph · title · count · new btn ─────────
+    this.headerEl = this.buildHeader();
     container.appendChild(this.headerEl);
 
-    // ── Search + segmented filter ──────────────────────────────────
-    const searchBar = document.createElement("div");
-    searchBar.className = "sidebar-search-bar";
+    // ── Search + segmented filter + aggregate stats ────────────────
+    container.appendChild(this.buildSearchBar());
 
-    const searchWrap = document.createElement("label");
-    searchWrap.className = "sidebar-search";
-    searchWrap.append(createIcon("search", "sidebar-search-icon", 12));
-
-    this.searchInputEl = document.createElement("input");
-    this.searchInputEl.type = "search";
-    this.searchInputEl.className = "sidebar-search-input";
-    this.searchInputEl.placeholder = "Filter workspaces…";
-    this.searchInputEl.setAttribute("aria-label", "Filter workspaces");
-    this.searchInputEl.spellcheck = false;
-    this.searchInputEl.autocomplete = "off";
-    this.searchInputEl.addEventListener("input", () => {
-      this.searchTerm = this.searchInputEl.value.trim();
-      this.highlightIndex = -1;
-      this.renderWorkspaces();
-    });
-    this.searchInputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        if (this.searchInputEl.value) {
-          this.searchInputEl.value = "";
-          this.searchTerm = "";
-          this.renderWorkspaces();
-          e.preventDefault();
-        } else {
-          this.searchInputEl.blur();
-        }
-      }
-    });
-    searchWrap.appendChild(this.searchInputEl);
-    searchBar.appendChild(searchWrap);
-
-    this.filterBarEl = document.createElement("div");
-    this.filterBarEl.className = "sidebar-filter-segment";
-    this.filterBarEl.setAttribute("role", "tablist");
-    this.filterBarEl.setAttribute("aria-label", "Workspace filter");
-    for (const mode of ["all", "active", "pinned"] as FilterMode[]) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "sidebar-filter-btn";
-      btn.dataset["mode"] = mode;
-      btn.setAttribute("role", "tab");
-      btn.setAttribute(
-        "aria-selected",
-        mode === this.filterMode ? "true" : "false",
-      );
-      btn.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
-      btn.title = `Show ${mode} workspaces`;
-      btn.addEventListener("click", () => this.setFilterMode(mode));
-      this.filterBarEl.appendChild(btn);
-    }
-    searchBar.appendChild(this.filterBarEl);
-
-    container.appendChild(searchBar);
-
-    // ── Notifications section (collapsible) ────────────────────────
+    // ── Notifications (inline, dense) ──────────────────────────────
     this.notificationsEl = document.createElement("div");
     this.notificationsEl.className = "sidebar-notifications";
     container.appendChild(this.notificationsEl);
 
-    // ── Workspaces count (inside the title row) ────────────────────
-    this.listCountEl = document.createElement("span");
-    this.listCountEl.className = "sidebar-title-count";
-    title.appendChild(this.listCountEl);
-
-    // ── Workspaces list (no explicit section header — this is the
-    // sidebar's primary content, so a header would be noise). ──────
+    // ── Workspaces list ────────────────────────────────────────────
     this.listSectionEl = document.createElement("div");
     this.listSectionEl.className = "sidebar-list-section";
 
@@ -304,12 +235,12 @@ export class Sidebar {
     this.listSectionEl.appendChild(this.listEl);
     container.appendChild(this.listSectionEl);
 
-    // ── Logs section (collapsible) ─────────────────────────────────
+    // ── Logs (collapsible) ─────────────────────────────────────────
     this.logsEl = document.createElement("div");
     this.logsEl.className = "sidebar-logs";
     container.appendChild(this.logsEl);
 
-    // ── Footer (Telegram + Web Mirror) ─────────────────────────────
+    // ── Footer (Telegram + Web Mirror, full-width flush strip) ─────
     this.footerEl = document.createElement("div");
     this.footerEl.className = "sidebar-footer";
     this.footerEl.appendChild(this.buildFooter());
@@ -325,15 +256,16 @@ export class Sidebar {
     this.resizeHandleEl.title = "Drag to resize · double-click to reset";
     container.appendChild(this.resizeHandleEl);
 
-    // ── Global key bindings ────────────────────────────────────────
     this.wireKeyboard();
-
-    // Initial apply of section-open classes.
     this.applySectionOpenClasses();
+
+    // Re-render notification relative times every 30 s — Sidebar lives
+    // for the lifetime of the app so we never clear the interval.
+    setInterval(() => this.refreshNotificationTimes(), 30_000);
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Public API (stable contract — tests + SurfaceManager depend on it)
+  // Public API (stable contract)
   // ──────────────────────────────────────────────────────────────────
 
   getResizeHandle(): HTMLElement {
@@ -345,6 +277,7 @@ export class Sidebar {
     this.reconcileManualOrder();
     this.reconcileUiState();
     this.renderWorkspaces();
+    this.renderGlobalStats();
   }
 
   toggle(): void {
@@ -442,7 +375,182 @@ export class Sidebar {
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Rendering
+  // Header / search / filters
+  // ──────────────────────────────────────────────────────────────────
+
+  private buildHeader(): HTMLElement {
+    const header = document.createElement("div");
+    header.className = "sidebar-header";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "sidebar-header-copy";
+
+    const title = document.createElement("span");
+    title.className = "sidebar-title";
+    title.append(createIcon("sidebar", "sidebar-title-icon", 13));
+    const titleText = document.createElement("span");
+    titleText.textContent = "Workspaces";
+    title.appendChild(titleText);
+
+    this.listCountEl = document.createElement("span");
+    this.listCountEl.className = "sidebar-title-count";
+    title.appendChild(this.listCountEl);
+    titleWrap.appendChild(title);
+
+    const subtitle = document.createElement("span");
+    subtitle.className = "sidebar-subtitle";
+    subtitle.textContent = "Navigate · monitor · run";
+    titleWrap.appendChild(subtitle);
+
+    header.appendChild(titleWrap);
+
+    const headerActions = document.createElement("div");
+    headerActions.className = "sidebar-header-actions";
+
+    const collapseAllBtn = document.createElement("button");
+    collapseAllBtn.className = "sidebar-icon-btn";
+    collapseAllBtn.type = "button";
+    collapseAllBtn.title = "Collapse all sections";
+    collapseAllBtn.setAttribute("aria-label", "Collapse all sections");
+    collapseAllBtn.append(createIcon("chevronUp", "", 12));
+    collapseAllBtn.addEventListener("click", () =>
+      this.toggleAllSections(false),
+    );
+    headerActions.appendChild(collapseAllBtn);
+
+    const newBtn = document.createElement("button");
+    newBtn.className = "sidebar-new-btn";
+    newBtn.title = "New workspace (⌘T)";
+    newBtn.setAttribute("aria-label", "New workspace");
+    newBtn.type = "button";
+    newBtn.append(createIcon("plus", "", 14));
+    newBtn.addEventListener("click", () => this.callbacks.onNewWorkspace());
+    headerActions.appendChild(newBtn);
+
+    header.appendChild(headerActions);
+    return header;
+  }
+
+  private buildSearchBar(): HTMLElement {
+    const bar = document.createElement("div");
+    bar.className = "sidebar-search-bar";
+
+    const searchWrap = document.createElement("label");
+    searchWrap.className = "sidebar-search";
+    searchWrap.append(createIcon("search", "sidebar-search-icon", 12));
+
+    this.searchInputEl = document.createElement("input");
+    this.searchInputEl.type = "search";
+    this.searchInputEl.className = "sidebar-search-input";
+    this.searchInputEl.placeholder = "Filter · /";
+    this.searchInputEl.setAttribute("aria-label", "Filter workspaces");
+    this.searchInputEl.spellcheck = false;
+    this.searchInputEl.autocomplete = "off";
+    this.searchInputEl.addEventListener("input", () => {
+      this.searchTerm = this.searchInputEl.value.trim();
+      this.highlightIndex = -1;
+      this.renderWorkspaces();
+    });
+    this.searchInputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (this.searchInputEl.value) {
+          this.searchInputEl.value = "";
+          this.searchTerm = "";
+          this.renderWorkspaces();
+          e.preventDefault();
+        } else {
+          this.searchInputEl.blur();
+        }
+      } else if (e.key === "ArrowDown") {
+        // Arrow-down from search jumps into the workspace list so the
+        // user can /foo → arrow down → Enter without touching the mouse.
+        e.preventDefault();
+        this.searchInputEl.blur();
+        this.moveHighlight(1);
+      }
+    });
+    searchWrap.appendChild(this.searchInputEl);
+    bar.appendChild(searchWrap);
+
+    this.filterBarEl = document.createElement("div");
+    this.filterBarEl.className = "sidebar-filter-segment";
+    this.filterBarEl.setAttribute("role", "tablist");
+    this.filterBarEl.setAttribute("aria-label", "Workspace filter");
+    for (const mode of ["all", "active", "pinned"] as FilterMode[]) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "sidebar-filter-btn";
+      btn.dataset["mode"] = mode;
+      btn.setAttribute("role", "tab");
+      btn.setAttribute(
+        "aria-selected",
+        mode === this.filterMode ? "true" : "false",
+      );
+      btn.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+      btn.title = `Show ${mode} workspaces`;
+      btn.addEventListener("click", () => this.setFilterMode(mode));
+      this.filterBarEl.appendChild(btn);
+    }
+    bar.appendChild(this.filterBarEl);
+
+    this.globalStatsEl = document.createElement("div");
+    this.globalStatsEl.className = "sidebar-global-stats";
+    bar.appendChild(this.globalStatsEl);
+
+    return bar;
+  }
+
+  private renderGlobalStats(): void {
+    const totalCpu = this.workspaces.reduce((s, w) => s + w.cpuPercent, 0);
+    const totalMem = this.workspaces.reduce((s, w) => s + w.memRssKb, 0);
+    const totalProc = this.workspaces.reduce((s, w) => s + w.processCount, 0);
+    const totalPorts = new Set<number>();
+    for (const w of this.workspaces)
+      for (const p of w.listeningPorts) totalPorts.add(p);
+
+    this.globalStatsEl.innerHTML = "";
+    const cpu = document.createElement("span");
+    cpu.className = "sidebar-global-stat stat-cpu";
+    cpu.title = `Total CPU across ${totalProc} process${totalProc === 1 ? "" : "es"}`;
+    cpu.append(createIcon("cpu", "", 10));
+    const cpuVal = document.createElement("span");
+    cpuVal.textContent = `${Math.round(totalCpu)}%`;
+    cpu.appendChild(cpuVal);
+
+    const mem = document.createElement("span");
+    mem.className = "sidebar-global-stat stat-mem";
+    mem.title = `Total resident memory`;
+    mem.append(createIcon("memory", "", 10));
+    const memVal = document.createElement("span");
+    memVal.textContent = humanRss(totalMem);
+    mem.appendChild(memVal);
+
+    const proc = document.createElement("span");
+    proc.className = "sidebar-global-stat stat-proc";
+    proc.title = `Total processes under τ-mux`;
+    proc.append(createIcon("activity", "", 10));
+    const procVal = document.createElement("span");
+    procVal.textContent = String(totalProc);
+    proc.appendChild(procVal);
+
+    if (totalPorts.size > 0) {
+      const portEl = document.createElement("span");
+      portEl.className = "sidebar-global-stat stat-port";
+      portEl.title = `Listening ports across all workspaces`;
+      portEl.append(createIcon("network", "", 10));
+      const v = document.createElement("span");
+      v.textContent = String(totalPorts.size);
+      portEl.appendChild(v);
+      this.globalStatsEl.appendChild(portEl);
+    }
+
+    this.globalStatsEl.appendChild(cpu);
+    this.globalStatsEl.appendChild(mem);
+    this.globalStatsEl.appendChild(proc);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Workspaces list
   // ──────────────────────────────────────────────────────────────────
 
   private renderWorkspaces(): void {
@@ -459,11 +567,11 @@ export class Sidebar {
       const empty = document.createElement("div");
       empty.className = "sidebar-empty";
       if (ordered.length === 0) {
-        empty.textContent = "No workspaces yet";
+        empty.textContent = "No workspaces yet — ⌘T to create one";
       } else {
         empty.textContent =
           this.searchTerm.length > 0
-            ? `No workspaces match "${this.searchTerm}"`
+            ? `No match for "${this.searchTerm}"`
             : this.filterMode === "pinned"
               ? "No pinned workspaces"
               : "No matching workspaces";
@@ -472,25 +580,18 @@ export class Sidebar {
       return;
     }
 
-    // Group: pinned first, then rest — a subtle separator between the
-    // two groups when both exist keeps the pinned band easy to scan.
+    // Pinned first, with a flat "PINNED" rule between groups.
     const pinned = filtered.filter((w) => this.pinnedIds.has(w.id));
     const rest = filtered.filter((w) => !this.pinnedIds.has(w.id));
 
     if (pinned.length > 0) {
-      const pinHeader = document.createElement("div");
-      pinHeader.className = "sidebar-inline-divider";
-      pinHeader.innerHTML = `<span>Pinned</span>`;
-      this.listEl.appendChild(pinHeader);
+      this.listEl.appendChild(this.buildGroupRule("PINNED", pinned.length));
       for (const ws of pinned)
         this.listEl.appendChild(this.buildWorkspaceCard(ws));
     }
     if (rest.length > 0) {
       if (pinned.length > 0) {
-        const restHeader = document.createElement("div");
-        restHeader.className = "sidebar-inline-divider";
-        restHeader.innerHTML = `<span>All</span>`;
-        this.listEl.appendChild(restHeader);
+        this.listEl.appendChild(this.buildGroupRule("ALL", rest.length));
       }
       for (const ws of rest)
         this.listEl.appendChild(this.buildWorkspaceCard(ws));
@@ -499,9 +600,23 @@ export class Sidebar {
     this.applyHighlight();
   }
 
-  /** Return the workspaces in display order: pinned-then-rest is
-   *  applied at render time, but within each group we honor the
-   *  user's manual order (if any). */
+  private buildGroupRule(label: string, count: number): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "sidebar-group-rule";
+    const tag = document.createElement("span");
+    tag.className = "sidebar-group-rule-label";
+    tag.textContent = label;
+    row.appendChild(tag);
+    const rule = document.createElement("span");
+    rule.className = "sidebar-group-rule-line";
+    row.appendChild(rule);
+    const c = document.createElement("span");
+    c.className = "sidebar-group-rule-count";
+    c.textContent = String(count);
+    row.appendChild(c);
+    return row;
+  }
+
   private orderedWorkspaces(): WorkspaceInfo[] {
     if (this.manualOrder.length === 0) return this.workspaces.slice();
     const byId = new Map(this.workspaces.map((w) => [w.id, w]));
@@ -538,283 +653,90 @@ export class Sidebar {
     });
   }
 
+  // ── Workspace card ─────────────────────────────────────────────────
+
   private buildWorkspaceCard(ws: WorkspaceInfo): HTMLElement {
-    // Ensure the workspace has persisted UI state before the
-    // sub-sections ask for it — they call `ensureUiState` on demand.
     this.ensureUiState(ws.id);
+    const accent = ws.color || DEFAULT_ACCENT;
+
     const item = document.createElement("div");
     item.className = `workspace-item${ws.active ? " active" : ""}${
       this.pinnedIds.has(ws.id) ? " pinned" : ""
     }`;
     item.dataset["workspaceId"] = ws.id;
-    item.style.setProperty("--workspace-accent", ws.color || "#89b4fa");
+    item.style.setProperty("--workspace-accent", accent);
     item.setAttribute("role", "button");
     item.setAttribute("tabindex", "-1");
     item.setAttribute("aria-current", ws.active ? "true" : "false");
     item.draggable = true;
 
-    // ── Header row ──
-    const header = document.createElement("div");
-    header.className = "workspace-card-header";
+    // Stripe on the left — thick, always tinted with the workspace color.
+    const stripe = document.createElement("span");
+    stripe.className = "workspace-stripe";
+    stripe.setAttribute("aria-hidden", "true");
+    item.appendChild(stripe);
 
-    const grip = document.createElement("span");
-    grip.className = "workspace-grip";
-    grip.title = "Drag to reorder";
-    grip.setAttribute("aria-hidden", "true");
-    grip.append(createIcon("grip", "", 10));
-    header.appendChild(grip);
-
-    const dot = document.createElement("div");
-    dot.className = "workspace-dot";
-    dot.style.background = ws.color || "#89b4fa";
-    header.appendChild(dot);
-
-    const name = document.createElement("span");
-    name.className = "workspace-name";
-    name.textContent = ws.name;
-    name.title = `${ws.name} · double-click to rename`;
-    name.addEventListener("dblclick", (e) => {
-      e.stopPropagation();
-      this.beginRename(ws);
-    });
-    header.appendChild(name);
-
-    if (this.renamingId === ws.id) {
-      name.style.display = "none";
-      header.appendChild(this.buildRenameInput(ws));
-    }
-
-    const headerRight = document.createElement("div");
-    headerRight.className = "workspace-header-right";
-
-    if (ws.active && ws.processCount > 0) {
-      headerRight.appendChild(this.buildSparkline(ws));
-      headerRight.appendChild(this.buildMetricsChip(ws));
-    }
-
-    const pinBtn = document.createElement("button");
-    pinBtn.className = `workspace-pin${this.pinnedIds.has(ws.id) ? " active" : ""}`;
-    pinBtn.type = "button";
-    pinBtn.title = this.pinnedIds.has(ws.id)
-      ? "Unpin workspace"
-      : "Pin workspace";
-    pinBtn.setAttribute(
-      "aria-pressed",
-      this.pinnedIds.has(ws.id) ? "true" : "false",
-    );
-    pinBtn.append(createIcon("pin", "", 11));
-    pinBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.togglePin(ws.id);
-    });
-    headerRight.appendChild(pinBtn);
-
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "workspace-close";
-    closeBtn.type = "button";
-    closeBtn.title = "Close workspace";
-    closeBtn.setAttribute("aria-label", "Close workspace");
-    closeBtn.append(createIcon("close", "", 11));
-    closeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.callbacks.onCloseWorkspace(ws.id);
-    });
-    headerRight.appendChild(closeBtn);
-
-    header.appendChild(headerRight);
+    // ── Compact header row ──
+    const header = this.buildCardHeader(ws);
     item.appendChild(header);
 
-    // ── Meta row: focused fg command ──
-    if (ws.focusedSurfaceCommand) {
-      const meta = document.createElement("div");
-      meta.className = "workspace-meta-row";
-      const fg = document.createElement("span");
-      fg.className = "workspace-meta workspace-meta-fg";
-      fg.textContent = ws.focusedSurfaceCommand;
-      fg.title = ws.focusedSurfaceCommand;
-      meta.appendChild(fg);
-      item.appendChild(meta);
-    } else if (ws.focusedSurfaceTitle && ws.focusedSurfaceTitle !== ws.name) {
-      const meta = document.createElement("div");
-      meta.className = "workspace-meta-row";
-      const focused = document.createElement("span");
-      focused.className = "workspace-meta";
-      focused.textContent = ws.focusedSurfaceTitle;
-      meta.appendChild(focused);
-      item.appendChild(meta);
-    }
+    // ── Meta row: focused fg command + inline port chips ──
+    const meta = this.buildCardMetaRow(ws);
+    if (meta) item.appendChild(meta);
 
-    // Only render sub-sections for ACTIVE cards — inactive cards stay
-    // compact so the list is easy to scan. The user still sees fg
-    // command, name, and metrics for every workspace.
+    // ── Stat row: CPU bar + numeric chips (always, every workspace) ──
+    item.appendChild(this.buildCardStatRow(ws, accent));
+
+    // ── Active-only: expanded sub-sections ──
     if (ws.active) {
-      // ── Collapsible: Panes ──
-      if (ws.surfaceTitles.length > 1) {
-        const sec = this.buildWorkspaceSection({
-          wsId: ws.id,
-          key: "panesOpen",
-          title: "Panes",
-          count: ws.surfaceTitles.length,
-          build: () => {
-            const wrap = document.createElement("div");
-            wrap.className = "workspace-surfaces";
-            for (const t of ws.surfaceTitles.slice(0, 8)) {
-              const line = document.createElement("span");
-              line.className = "workspace-surface-line";
-              line.textContent = t;
-              line.title = t;
-              wrap.appendChild(line);
-            }
-            if (ws.surfaceTitles.length > 8) {
-              const more = document.createElement("span");
-              more.className = "workspace-surface-line workspace-surface-more";
-              more.textContent = `+${ws.surfaceTitles.length - 8} more`;
-              wrap.appendChild(more);
-            }
-            return wrap;
-          },
-        });
-        item.appendChild(sec);
-      }
-
-      // ── Collapsible: Ports ──
-      if (ws.listeningPorts.length > 0) {
-        const sec = this.buildWorkspaceSection({
-          wsId: ws.id,
-          key: "portsOpen",
-          title: "Ports",
-          count: ws.listeningPorts.length,
-          build: () => {
-            const wrap = document.createElement("div");
-            wrap.className = "workspace-ports";
-            for (const port of ws.listeningPorts) {
-              const chip = document.createElement("button");
-              chip.type = "button";
-              chip.className = "workspace-port-chip";
-              chip.textContent = `:${port}`;
-              chip.title = `Open http://localhost:${port}`;
-              chip.addEventListener("click", (e) => {
-                e.stopPropagation();
-                window.dispatchEvent(
-                  new CustomEvent("ht-open-external", {
-                    detail: { url: `http://localhost:${port}` },
-                  }),
-                );
-              });
-              wrap.appendChild(chip);
-            }
-            return wrap;
-          },
-        });
-        item.appendChild(sec);
-      }
-
-      // ── CWD selector (inline, only when >1 distinct cwd) ──
+      // CWD selector (inline) when >1 distinct cwd.
       if (ws.cwds.length > 1) {
-        const cwdRow = document.createElement("div");
-        cwdRow.className = "workspace-cwds";
-        const label = document.createElement("span");
-        label.className = "workspace-cwds-label";
-        label.textContent = "cwd";
-        cwdRow.appendChild(label);
-        for (const cwd of ws.cwds) {
-          const chip = document.createElement("button");
-          chip.type = "button";
-          chip.className = `workspace-cwd-chip${cwd === ws.selectedCwd ? " active" : ""}`;
-          chip.textContent = shortCwd(cwd);
-          chip.title = cwd;
-          chip.addEventListener("click", (e) => {
-            e.stopPropagation();
-            window.dispatchEvent(
-              new CustomEvent("ht-select-workspace-cwd", {
-                detail: { workspaceId: ws.id, cwd },
-              }),
-            );
-          });
-          cwdRow.appendChild(chip);
-        }
-        item.appendChild(cwdRow);
+        item.appendChild(this.buildCwdRow(ws));
       }
 
-      // ── Manifest cards (collapsible section wrapping both npm + cargo) ──
+      // Panes list — collapsible, compact.
+      if (ws.surfaceTitles.length > 1) {
+        item.appendChild(
+          this.buildCollapseSection({
+            wsId: ws.id,
+            key: "panesOpen",
+            title: "Panes",
+            count: ws.surfaceTitles.length,
+            build: () => this.buildPanesList(ws),
+          }),
+        );
+      }
+
+      // Manifests (npm + cargo).
       if (ws.packageJson || ws.cargoToml) {
         const count = (ws.packageJson ? 1 : 0) + (ws.cargoToml ? 1 : 0);
-        const sec = this.buildWorkspaceSection({
-          wsId: ws.id,
-          key: "manifestsOpen",
-          title: "Manifests",
-          count,
-          build: () => {
-            const wrap = document.createElement("div");
-            wrap.className = "workspace-manifests";
-            if (ws.packageJson) {
-              wrap.appendChild(
-                this.renderPackageManifestCard(ws, ws.packageJson),
-              );
-            }
-            if (ws.cargoToml) {
-              wrap.appendChild(this.renderCargoManifestCard(ws, ws.cargoToml));
-            }
-            return wrap;
-          },
-        });
-        item.appendChild(sec);
+        item.appendChild(
+          this.buildCollapseSection({
+            wsId: ws.id,
+            key: "manifestsOpen",
+            title: "Manifests",
+            count,
+            build: () => this.buildManifestsBlock(ws),
+          }),
+        );
       }
 
-      // ── Status pills ──
+      // Status pills.
       if (ws.statusPills.length > 0) {
-        const sec = this.buildWorkspaceSection({
-          wsId: ws.id,
-          key: "statusOpen",
-          title: "Status",
-          count: ws.statusPills.length,
-          build: () => {
-            const wrap = document.createElement("div");
-            wrap.className = "workspace-status";
-            for (const pill of ws.statusPills) {
-              const entry = document.createElement("div");
-              entry.className = "status-entry";
-
-              const keyLine = document.createElement("div");
-              keyLine.className = "status-entry-key";
-              if (pill.icon && pill.icon in ICON_TEMPLATES) {
-                keyLine.append(createIcon(pill.icon as IconName, "", 10));
-              }
-              const keyText = document.createElement("span");
-              keyText.textContent = pill.key;
-              keyLine.appendChild(keyText);
-              entry.appendChild(keyLine);
-
-              const valueLine = document.createElement("div");
-              valueLine.className = "status-entry-value";
-              valueLine.textContent = pill.value;
-              valueLine.title = pill.value;
-              if (pill.color) valueLine.style.color = pill.color;
-              entry.appendChild(valueLine);
-
-              wrap.appendChild(entry);
-            }
-            return wrap;
-          },
-        });
-        item.appendChild(sec);
+        item.appendChild(
+          this.buildCollapseSection({
+            wsId: ws.id,
+            key: "statusOpen",
+            title: "Status",
+            count: ws.statusPills.length,
+            build: () => this.buildStatusGrid(ws),
+          }),
+        );
       }
 
-      // ── Progress bar (always visible when present) ──
+      // Progress.
       if (ws.progress) {
-        const progressWrap = document.createElement("div");
-        progressWrap.className = "workspace-progress";
-        const fill = document.createElement("div");
-        fill.className = "progress-fill";
-        fill.style.width = `${Math.round(ws.progress.value * 100)}%`;
-        progressWrap.appendChild(fill);
-
-        const progressLabel = document.createElement("span");
-        progressLabel.className = "progress-inline-label";
-        progressLabel.textContent = `${ws.progress.label || "Progress"} ${Math.round(ws.progress.value * 100)}%`;
-        progressWrap.appendChild(progressLabel);
-
-        item.appendChild(progressWrap);
+        item.appendChild(this.buildProgressBar(ws));
       }
     }
 
@@ -836,20 +758,232 @@ export class Sidebar {
     return item;
   }
 
-  private buildSparkline(ws: WorkspaceInfo): HTMLElement {
+  private buildCardHeader(ws: WorkspaceInfo): HTMLElement {
+    const header = document.createElement("div");
+    header.className = "workspace-card-header";
+
+    const grip = document.createElement("span");
+    grip.className = "workspace-grip";
+    grip.title = "Drag to reorder";
+    grip.setAttribute("aria-hidden", "true");
+    grip.append(createIcon("grip", "", 10));
+    header.appendChild(grip);
+
+    const name = document.createElement("span");
+    name.className = "workspace-name";
+    name.textContent = ws.name;
+    name.title = `${ws.name} · double-click to rename`;
+    name.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      this.beginRename(ws);
+    });
+    header.appendChild(name);
+
+    if (this.renamingId === ws.id) {
+      name.style.display = "none";
+      header.appendChild(this.buildRenameInput(ws));
+    }
+
+    // Pane count badge (only when > 1, keeps 1-pane rows quieter).
+    if (ws.surfaceTitles.length > 1) {
+      const badge = document.createElement("span");
+      badge.className = "workspace-pane-badge";
+      badge.title = `${ws.surfaceTitles.length} panes`;
+      badge.append(createIcon("pane", "", 10));
+      const n = document.createElement("span");
+      n.textContent = String(ws.surfaceTitles.length);
+      badge.appendChild(n);
+      header.appendChild(badge);
+    }
+
+    // Actions: pin + close (hover-reveal for idle rows; sticky for active/pinned)
+    const actions = document.createElement("div");
+    actions.className = "workspace-actions";
+
+    const pinBtn = document.createElement("button");
+    pinBtn.className = `workspace-pin${this.pinnedIds.has(ws.id) ? " active" : ""}`;
+    pinBtn.type = "button";
+    pinBtn.title = this.pinnedIds.has(ws.id) ? "Unpin" : "Pin";
+    pinBtn.setAttribute(
+      "aria-pressed",
+      this.pinnedIds.has(ws.id) ? "true" : "false",
+    );
+    pinBtn.append(createIcon("pin", "", 11));
+    pinBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.togglePin(ws.id);
+    });
+    actions.appendChild(pinBtn);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "workspace-close";
+    closeBtn.type = "button";
+    closeBtn.title = "Close workspace";
+    closeBtn.setAttribute("aria-label", "Close workspace");
+    closeBtn.append(createIcon("close", "", 11));
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.callbacks.onCloseWorkspace(ws.id);
+    });
+    actions.appendChild(closeBtn);
+
+    header.appendChild(actions);
+    return header;
+  }
+
+  private buildCardMetaRow(ws: WorkspaceInfo): HTMLElement | null {
+    const hasCmd = Boolean(ws.focusedSurfaceCommand);
+    const hasFallbackTitle =
+      !hasCmd && ws.focusedSurfaceTitle && ws.focusedSurfaceTitle !== ws.name;
+    const hasPorts = ws.listeningPorts.length > 0;
+    if (!hasCmd && !hasFallbackTitle && !hasPorts) return null;
+
+    const row = document.createElement("div");
+    row.className = "workspace-meta-row";
+
+    if (hasCmd) {
+      const fg = document.createElement("span");
+      fg.className = "workspace-meta workspace-meta-fg";
+      fg.textContent = ws.focusedSurfaceCommand!;
+      fg.title = ws.focusedSurfaceCommand!;
+      row.appendChild(fg);
+    } else if (hasFallbackTitle) {
+      const focused = document.createElement("span");
+      focused.className = "workspace-meta";
+      focused.textContent = ws.focusedSurfaceTitle!;
+      row.appendChild(focused);
+    }
+
+    if (hasPorts) {
+      const ports = document.createElement("div");
+      ports.className = "workspace-ports";
+      // Show up to 4 port chips inline; remaining get a "+N" counter.
+      const shown = ws.listeningPorts.slice(0, 4);
+      for (const port of shown) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "workspace-port-chip";
+        chip.textContent = `:${port}`;
+        chip.title = `Open http://localhost:${port}`;
+        chip.addEventListener("click", (e) => {
+          e.stopPropagation();
+          window.dispatchEvent(
+            new CustomEvent("ht-open-external", {
+              detail: { url: `http://localhost:${port}` },
+            }),
+          );
+        });
+        ports.appendChild(chip);
+      }
+      if (ws.listeningPorts.length > shown.length) {
+        const more = document.createElement("span");
+        more.className = "workspace-port-more";
+        more.textContent = `+${ws.listeningPorts.length - shown.length}`;
+        more.title = `${ws.listeningPorts.length - shown.length} more port${
+          ws.listeningPorts.length - shown.length === 1 ? "" : "s"
+        }: ${ws.listeningPorts.slice(shown.length).join(", ")}`;
+        ports.appendChild(more);
+      }
+      row.appendChild(ports);
+    }
+
+    return row;
+  }
+
+  private buildCardStatRow(ws: WorkspaceInfo, accent: string): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "workspace-stat-row";
+
+    // CPU bar — always rendered, tinted with the workspace accent.
+    const barWrap = document.createElement("button");
+    barWrap.type = "button";
+    barWrap.className = "workspace-cpu-bar";
+    barWrap.title =
+      ws.processCount > 0
+        ? `CPU ${ws.cpuPercent.toFixed(1)}% · click for process manager`
+        : "No processes";
+    barWrap.addEventListener("click", (e) => {
+      e.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent("ht-open-process-manager", {
+          detail: { workspaceId: ws.id },
+        }),
+      );
+    });
+    // Fill width = cpu% clamped to 400% (4 cores)
+    const capped = Math.min(ws.cpuPercent, 400);
+    const pct = Math.min(100, (capped / 100) * 25 + (capped > 100 ? 0 : 0)); // simple mapping
+    // Actually: map 0..400 → 0..100% width, but emphasize low values.
+    const widthPct = Math.min(100, Math.max(0, (capped / 400) * 100));
+    const fill = document.createElement("span");
+    fill.className = "workspace-cpu-bar-fill";
+    fill.style.width = `${widthPct.toFixed(1)}%`;
+    fill.style.background = accent;
+    barWrap.appendChild(fill);
+
+    // Sparkline overlay on active card, using accent color.
+    if (ws.active && ws.cpuHistory.length > 1) {
+      barWrap.appendChild(this.buildSparkline(ws));
+      barWrap.classList.add("with-sparkline");
+    }
+
+    // Hidden % text that shows on hover.
+    const pctText = document.createElement("span");
+    pctText.className = "workspace-cpu-bar-label";
+    pctText.textContent = `${Math.round(ws.cpuPercent)}%`;
+    pctText.setAttribute("aria-hidden", "true");
+    barWrap.appendChild(pctText);
+    void pct;
+    row.appendChild(barWrap);
+
+    // Numeric chips: CPU%, MEM, procs.
+    const metrics = document.createElement("div");
+    metrics.className = "workspace-metrics";
+
+    const cpu = document.createElement("span");
+    cpu.className = "workspace-metric workspace-metric-cpu";
+    cpu.textContent = `${Math.round(ws.cpuPercent)}%`;
+    cpu.title = `CPU ${ws.cpuPercent.toFixed(1)}%`;
+    metrics.appendChild(cpu);
+
+    const sep1 = document.createElement("span");
+    sep1.className = "workspace-metric-sep";
+    sep1.textContent = "·";
+    metrics.appendChild(sep1);
+
+    const mem = document.createElement("span");
+    mem.className = "workspace-metric workspace-metric-mem";
+    mem.textContent = humanRss(ws.memRssKb);
+    mem.title = `Resident ${humanRss(ws.memRssKb)}`;
+    metrics.appendChild(mem);
+
+    const sep2 = document.createElement("span");
+    sep2.className = "workspace-metric-sep";
+    sep2.textContent = "·";
+    metrics.appendChild(sep2);
+
+    const procs = document.createElement("span");
+    procs.className = "workspace-metric workspace-metric-proc";
+    procs.textContent = `${ws.processCount}p`;
+    procs.title = `${ws.processCount} process${ws.processCount === 1 ? "" : "es"}`;
+    metrics.appendChild(procs);
+
+    row.appendChild(metrics);
+    return row;
+  }
+
+  private buildSparkline(ws: WorkspaceInfo): SVGSVGElement {
     const NS = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(NS, "svg");
     svg.classList.add("workspace-sparkline");
-    svg.setAttribute("viewBox", "0 0 32 12");
+    svg.setAttribute("viewBox", "0 0 60 10");
     svg.setAttribute("aria-hidden", "true");
     svg.setAttribute("preserveAspectRatio", "none");
 
     const hist = ws.cpuHistory.length > 0 ? ws.cpuHistory : [0];
-    // Normalize per-workspace: cap at 100% OR the max seen, whichever is
-    // greater, so a burst to 400% (multi-core) still reads visually.
     const max = Math.max(100, ...hist);
-    const w = 32;
-    const h = 12;
+    const w = 60;
+    const h = 10;
     const stride = hist.length > 1 ? w / (hist.length - 1) : w;
     const pts = hist
       .map((v, i) => {
@@ -859,46 +993,135 @@ export class Sidebar {
       })
       .join(" ");
 
+    const fill = document.createElementNS(NS, "polygon");
+    fill.setAttribute("points", `0,${h} ${pts} ${w},${h}`);
+    fill.setAttribute("fill", "currentColor");
+    fill.setAttribute("opacity", "0.28");
+    svg.appendChild(fill);
+
     const poly = document.createElementNS(NS, "polyline");
     poly.setAttribute("points", pts);
     poly.setAttribute("fill", "none");
     poly.setAttribute("stroke", "currentColor");
-    poly.setAttribute("stroke-width", "1.2");
+    poly.setAttribute("stroke-width", "1");
     poly.setAttribute("stroke-linejoin", "round");
     poly.setAttribute("stroke-linecap", "round");
     svg.appendChild(poly);
-
-    // Area fill underneath for subtle depth.
-    const fill = document.createElementNS(NS, "polygon");
-    fill.setAttribute("points", `0,${h} ${pts} ${w},${h}`);
-    fill.setAttribute("fill", "currentColor");
-    fill.setAttribute("opacity", "0.14");
-    svg.insertBefore(fill, poly);
 
     svg.setAttribute(
       "aria-label",
       `CPU ${Math.round(ws.cpuPercent)}% across ${ws.processCount} process${ws.processCount === 1 ? "" : "es"}`,
     );
-    return svg as unknown as HTMLElement;
+    return svg;
   }
 
-  private buildMetricsChip(ws: WorkspaceInfo): HTMLElement {
-    const chip = document.createElement("span");
-    chip.className = "workspace-metrics";
-    const cpu = document.createElement("span");
-    cpu.className = "workspace-metric workspace-metric-cpu";
-    cpu.textContent = `${Math.round(ws.cpuPercent)}%`;
-    cpu.title = `CPU ${ws.cpuPercent.toFixed(1)}%`;
-    const mem = document.createElement("span");
-    mem.className = "workspace-metric workspace-metric-mem";
-    mem.textContent = humanRss(ws.memRssKb);
-    mem.title = `Resident ${humanRss(ws.memRssKb)} · ${ws.processCount} process${ws.processCount === 1 ? "" : "es"}`;
-    chip.appendChild(cpu);
-    chip.appendChild(mem);
-    return chip;
+  private buildCwdRow(ws: WorkspaceInfo): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "workspace-cwds";
+    const label = document.createElement("span");
+    label.className = "workspace-cwds-label";
+    label.textContent = "CWD";
+    row.appendChild(label);
+    for (const cwd of ws.cwds) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = `workspace-cwd-chip${cwd === ws.selectedCwd ? " active" : ""}`;
+      chip.textContent = shortCwd(cwd);
+      chip.title = cwd;
+      chip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.dispatchEvent(
+          new CustomEvent("ht-select-workspace-cwd", {
+            detail: { workspaceId: ws.id, cwd },
+          }),
+        );
+      });
+      row.appendChild(chip);
+    }
+    return row;
   }
 
-  private buildWorkspaceSection(opts: {
+  private buildPanesList(ws: WorkspaceInfo): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "workspace-surfaces";
+    const MAX = 10;
+    for (const t of ws.surfaceTitles.slice(0, MAX)) {
+      const line = document.createElement("span");
+      line.className = "workspace-surface-line";
+      line.textContent = t;
+      line.title = t;
+      wrap.appendChild(line);
+    }
+    if (ws.surfaceTitles.length > MAX) {
+      const more = document.createElement("span");
+      more.className = "workspace-surface-line workspace-surface-more";
+      more.textContent = `+${ws.surfaceTitles.length - MAX} more`;
+      wrap.appendChild(more);
+    }
+    return wrap;
+  }
+
+  private buildManifestsBlock(ws: WorkspaceInfo): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "workspace-manifests";
+    if (ws.packageJson) {
+      wrap.appendChild(this.renderPackageManifestCard(ws, ws.packageJson));
+    }
+    if (ws.cargoToml) {
+      wrap.appendChild(this.renderCargoManifestCard(ws, ws.cargoToml));
+    }
+    return wrap;
+  }
+
+  private buildStatusGrid(ws: WorkspaceInfo): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "workspace-status";
+    for (const pill of ws.statusPills) {
+      const entry = document.createElement("div");
+      entry.className = "status-entry";
+
+      const keyLine = document.createElement("div");
+      keyLine.className = "status-entry-key";
+      if (pill.icon && pill.icon in ICON_TEMPLATES) {
+        keyLine.append(createIcon(pill.icon as IconName, "", 10));
+      }
+      const keyText = document.createElement("span");
+      keyText.textContent = pill.key;
+      keyLine.appendChild(keyText);
+      entry.appendChild(keyLine);
+
+      const valueLine = document.createElement("div");
+      valueLine.className = "status-entry-value";
+      valueLine.textContent = pill.value;
+      valueLine.title = pill.value;
+      if (pill.color) valueLine.style.color = pill.color;
+      entry.appendChild(valueLine);
+
+      wrap.appendChild(entry);
+    }
+    return wrap;
+  }
+
+  private buildProgressBar(ws: WorkspaceInfo): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "workspace-progress";
+    const fill = document.createElement("div");
+    fill.className = "progress-fill";
+    fill.style.width = `${Math.round((ws.progress?.value ?? 0) * 100)}%`;
+    wrap.appendChild(fill);
+
+    const label = document.createElement("span");
+    label.className = "progress-inline-label";
+    const labelText = ws.progress?.label || "Progress";
+    label.textContent = `${labelText} ${Math.round((ws.progress?.value ?? 0) * 100)}%`;
+    wrap.appendChild(label);
+
+    return wrap;
+  }
+
+  // ── Collapsible sub-section ────────────────────────────────────────
+
+  private buildCollapseSection(opts: {
     wsId: string;
     key: keyof WorkspaceUiState;
     title: string;
@@ -949,6 +1172,8 @@ export class Sidebar {
     return sec;
   }
 
+  // ── Rename ─────────────────────────────────────────────────────────
+
   private buildRenameInput(ws: WorkspaceInfo): HTMLElement {
     const input = document.createElement("input");
     input.type = "text";
@@ -969,7 +1194,6 @@ export class Sidebar {
     input.addEventListener("blur", () => {
       if (this.renamingId === ws.id) this.commitRename(ws.id, input.value);
     });
-    // Select-all after the item is in the DOM.
     queueMicrotask(() => {
       input.focus();
       input.select();
@@ -994,9 +1218,6 @@ export class Sidebar {
         detail: { workspaceId: id, name: trimmed },
       }),
     );
-    // Re-render immediately with the new name so the input blink is
-    // tight; the host will broadcast the authoritative name on next
-    // updateSidebar tick.
     const ws = this.workspaces.find((w) => w.id === id);
     if (ws) ws.name = trimmed;
     this.renderWorkspaces();
@@ -1006,6 +1227,8 @@ export class Sidebar {
     this.renamingId = null;
     this.renderWorkspaces();
   }
+
+  // ── Pin / filter / reorder ─────────────────────────────────────────
 
   private togglePin(id: string): void {
     if (this.pinnedIds.has(id)) this.pinnedIds.delete(id);
@@ -1032,7 +1255,6 @@ export class Sidebar {
   private reconcileManualOrder(): void {
     const alive = new Set(this.workspaces.map((w) => w.id));
     const next = this.manualOrder.filter((id) => alive.has(id));
-    // Append any new ids we haven't seen before to the end.
     for (const w of this.workspaces) {
       if (!next.includes(w.id)) next.push(w.id);
     }
@@ -1148,72 +1370,22 @@ export class Sidebar {
     this.renderWorkspaces();
   }
 
-  // ── Collapsible section header ────────────────────────────────────
-  private buildCollapsibleSectionHeader(opts: {
-    sectionId: keyof SectionOpenState;
-    icon: IconName;
-    title: string;
-    countEl?: (el: HTMLElement) => void;
-    trailing?: HTMLElement;
-  }): HTMLElement {
-    const header = document.createElement("div");
-    header.className = "sidebar-section-header";
+  // ── Section open/close ─────────────────────────────────────────────
 
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "sidebar-section-toggle";
-    toggle.setAttribute(
-      "aria-expanded",
-      this.sectionOpen[opts.sectionId] ? "true" : "false",
-    );
-
-    const caret = document.createElement("span");
-    caret.className = "sidebar-section-caret";
-    caret.append(
-      createIcon(
-        this.sectionOpen[opts.sectionId] ? "chevronDown" : "chevronRight",
-        "",
-        10,
-      ),
-    );
-    toggle.appendChild(caret);
-
-    const titleEl = document.createElement("span");
-    titleEl.className = "sidebar-section-title";
-    titleEl.append(createIcon(opts.icon, "", 12));
-    const titleText = document.createElement("span");
-    titleText.textContent = opts.title;
-    titleEl.appendChild(titleText);
-
-    const count = document.createElement("span");
-    count.className = "sidebar-section-count";
-    titleEl.appendChild(count);
-    opts.countEl?.(count);
-
-    toggle.appendChild(titleEl);
-    toggle.addEventListener("click", () => {
-      this.sectionOpen[opts.sectionId] = !this.sectionOpen[opts.sectionId];
-      saveJson(LS_SECTIONS, this.sectionOpen);
-      this.applySectionOpenClasses();
-      if (opts.sectionId === "notifications") this.renderNotifications();
-      else if (opts.sectionId === "logs") this.renderLogs();
-      caret.innerHTML = "";
-      caret.append(
-        createIcon(
-          this.sectionOpen[opts.sectionId] ? "chevronDown" : "chevronRight",
-          "",
-          10,
-        ),
-      );
-      toggle.setAttribute(
-        "aria-expanded",
-        this.sectionOpen[opts.sectionId] ? "true" : "false",
-      );
-    });
-
-    header.appendChild(toggle);
-    if (opts.trailing) header.appendChild(opts.trailing);
-    return header;
+  private toggleAllSections(open: boolean): void {
+    for (const st of this.uiState.values()) {
+      st.manifestsOpen = open;
+      st.panesOpen = open;
+      st.statusOpen = open;
+    }
+    this.sectionOpen.notifications = open;
+    this.sectionOpen.logs = open;
+    saveJson(LS_SECTIONS, this.sectionOpen);
+    this.persistUiState();
+    this.applySectionOpenClasses();
+    this.renderWorkspaces();
+    this.renderNotifications();
+    this.renderLogs();
   }
 
   private applySectionOpenClasses(): void {
@@ -1225,7 +1397,7 @@ export class Sidebar {
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Notifications (incremental DOM — preserves glow animation frames)
+  // Notifications (incremental DOM preserved — tests depend on it)
   // ──────────────────────────────────────────────────────────────────
 
   private renderNotifications(): void {
@@ -1249,7 +1421,7 @@ export class Sidebar {
       this.notificationCountEl = countEl;
     }
 
-    // Tests rely on the legacy "Notifications (N)" text — keep it.
+    // Contract: tests match the regex /Notifications \(N\)/.
     this.notificationCountEl.textContent = `Notifications (${notifications.length})`;
 
     const unreadBadge = this.notificationsEl.querySelector(
@@ -1264,14 +1436,13 @@ export class Sidebar {
       }
     }
 
-    // When the section is collapsed, we don't render the list DOM.
     if (!this.sectionOpen.notifications) {
       this.notificationListEl.innerHTML = "";
       this.notificationItemEls.clear();
       return;
     }
 
-    const visible = notifications.slice(-5).reverse();
+    const visible = notifications.slice(-6).reverse();
     const visibleIds = new Set(visible.map((n) => n.id));
 
     for (const [id, el] of [...this.notificationItemEls]) {
@@ -1323,7 +1494,7 @@ export class Sidebar {
 
     const title = document.createElement("span");
     title.className = "sidebar-section-title";
-    title.append(createIcon("bell", "", 12));
+    title.append(createIcon("bell", "", 11));
     const countEl = document.createElement("span");
     title.append(countEl);
     toggle.appendChild(title);
@@ -1348,7 +1519,6 @@ export class Sidebar {
         "aria-expanded",
         this.sectionOpen.notifications ? "true" : "false",
       );
-      // Re-render — rebuilds the list DOM if we just opened.
       this.notificationItemEls.clear();
       if (this.notificationListEl) this.notificationListEl.innerHTML = "";
       this.renderNotifications();
@@ -1360,7 +1530,7 @@ export class Sidebar {
     clearBtn.className = "sidebar-section-clear";
     clearBtn.title = "Clear notifications";
     clearBtn.setAttribute("aria-label", "Clear notifications");
-    clearBtn.append(createIcon("close", "", 12));
+    clearBtn.append(createIcon("close", "", 11));
     clearBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       window.dispatchEvent(new CustomEvent("ht-clear-notifications"));
@@ -1445,6 +1615,21 @@ export class Sidebar {
     if (time) time.textContent = relativeTime(n.time);
   }
 
+  private refreshNotificationTimes(): void {
+    for (const [, el] of this.notificationItemEls) {
+      const t = el.querySelector(".notification-time");
+      if (!t) continue;
+      // We stamped title with the absolute time; relative is derived from the
+      // DOM we built earlier so re-read from notifications array.
+      // The expected cost is minor; just re-run relativeTime on each.
+      const titleAttr = (t as HTMLElement).title;
+      const d = titleAttr ? new Date(titleAttr) : null;
+      if (d && !isNaN(d.getTime())) {
+        t.textContent = relativeTime(d.getTime());
+      }
+    }
+  }
+
   // ──────────────────────────────────────────────────────────────────
   // Logs
   // ──────────────────────────────────────────────────────────────────
@@ -1457,37 +1642,58 @@ export class Sidebar {
     const unread = logs.filter(
       (l) => l.level === "error" || l.level === "warning",
     ).length;
-    const trailing = document.createElement("div");
-    trailing.style.display = "flex";
-    trailing.style.gap = "4px";
+
+    const header = document.createElement("div");
+    header.className = "sidebar-section-header";
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "sidebar-section-toggle";
+    toggle.setAttribute(
+      "aria-expanded",
+      this.sectionOpen.logs ? "true" : "false",
+    );
+
+    const caret = document.createElement("span");
+    caret.className = "sidebar-section-caret";
+    caret.append(
+      createIcon(
+        this.sectionOpen.logs ? "chevronDown" : "chevronRight",
+        "",
+        10,
+      ),
+    );
+    toggle.appendChild(caret);
+
+    const title = document.createElement("span");
+    title.className = "sidebar-section-title";
+    title.append(createIcon("logs", "", 11));
+    const countEl = document.createElement("span");
+    countEl.textContent = `Logs (${logs.length}${unread ? ` · ${unread}!` : ""})`;
+    title.append(countEl);
+    toggle.appendChild(title);
+    header.appendChild(toggle);
+
     const clearBtn = document.createElement("button");
     clearBtn.className = "sidebar-section-clear";
     clearBtn.title = "Clear logs";
     clearBtn.type = "button";
     clearBtn.setAttribute("aria-label", "Clear logs");
-    clearBtn.append(createIcon("close", "", 12));
+    clearBtn.append(createIcon("close", "", 11));
     clearBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       window.dispatchEvent(new CustomEvent("ht-clear-logs"));
     });
-    trailing.appendChild(clearBtn);
+    header.appendChild(clearBtn);
 
-    let countRef: HTMLElement | null = null;
-    const header = this.buildCollapsibleSectionHeader({
-      sectionId: "logs",
-      icon: "logs",
-      title: "Logs",
-      countEl: (el) => {
-        countRef = el;
-      },
-      trailing,
+    toggle.addEventListener("click", () => {
+      this.sectionOpen.logs = !this.sectionOpen.logs;
+      saveJson(LS_SECTIONS, this.sectionOpen);
+      this.applySectionOpenClasses();
+      this.renderLogs();
     });
-    this.logsEl.appendChild(header);
 
-    if (countRef) {
-      (countRef as HTMLElement).textContent =
-        unread > 0 ? `${logs.length} · ${unread}!` : String(logs.length);
-    }
+    this.logsEl.appendChild(header);
 
     if (!this.sectionOpen.logs) return;
 
@@ -1500,11 +1706,23 @@ export class Sidebar {
       scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
 
     let lastItem: HTMLDivElement | null = null;
-    for (const log of logs.slice(-10)) {
+    for (const log of logs.slice(-12)) {
       const el = document.createElement("div");
       el.className = `log-item ${log.level}`;
-      const prefix = log.source ? `[${log.source}] ` : "";
-      el.textContent = `${prefix}${log.message}`;
+      const levelTag = document.createElement("span");
+      levelTag.className = "log-level";
+      levelTag.textContent = log.level.toUpperCase().slice(0, 4);
+      el.appendChild(levelTag);
+      if (log.source) {
+        const srcTag = document.createElement("span");
+        srcTag.className = "log-source";
+        srcTag.textContent = log.source;
+        el.appendChild(srcTag);
+      }
+      const msg = document.createElement("span");
+      msg.className = "log-message";
+      msg.textContent = log.message;
+      el.appendChild(msg);
       list.appendChild(el);
       lastItem = el;
     }
@@ -1523,38 +1741,32 @@ export class Sidebar {
     const row = document.createElement("div");
     row.className = "sidebar-server-row";
 
-    // Telegram (stacked row)
     const tgRow = document.createElement("div");
     tgRow.className = "sidebar-server-pill";
-
     this.telegramDotEl = document.createElement("div");
     this.telegramDotEl.className = "sidebar-server-dot offline";
     tgRow.appendChild(this.telegramDotEl);
-
+    tgRow.append(createIcon("messageCircle", "sidebar-server-icon", 11));
     this.telegramLabelEl = document.createElement("span");
     this.telegramLabelEl.className = "sidebar-server-label";
     this.telegramLabelEl.textContent = "Telegram";
     tgRow.appendChild(this.telegramLabelEl);
-
     this.telegramValueEl = document.createElement("span");
     this.telegramValueEl.className = "sidebar-server-url";
     this.telegramValueEl.textContent = "Disabled";
     tgRow.appendChild(this.telegramValueEl);
     tgRow.title = "Telegram — disabled";
 
-    // Web mirror (same layout)
     const wmRow = document.createElement("div");
     wmRow.className = "sidebar-server-pill";
-
     this.serverDotEl = document.createElement("div");
     this.serverDotEl.className = "sidebar-server-dot offline";
     wmRow.appendChild(this.serverDotEl);
-
+    wmRow.append(createIcon("globe", "sidebar-server-icon", 11));
     this.serverLabelEl = document.createElement("span");
     this.serverLabelEl.className = "sidebar-server-label";
     this.serverLabelEl.textContent = "Web Mirror";
     wmRow.appendChild(this.serverLabelEl);
-
     this.serverUrlEl = document.createElement("span");
     this.serverUrlEl.className = "sidebar-server-url";
     this.serverUrlEl.textContent = "Offline";
@@ -1571,7 +1783,6 @@ export class Sidebar {
 
   private wireKeyboard(): void {
     this.container.addEventListener("keydown", (e) => {
-      // `/` focuses search (when not typing in an input already).
       if (
         e.key === "/" &&
         !(e.target instanceof HTMLInputElement) &&
@@ -1582,9 +1793,12 @@ export class Sidebar {
         this.searchInputEl.select();
         return;
       }
-      // Navigation within workspace list.
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        if (e.target instanceof HTMLInputElement) return;
+        if (
+          e.target instanceof HTMLInputElement &&
+          e.target !== this.searchInputEl
+        )
+          return;
         e.preventDefault();
         this.moveHighlight(e.key === "ArrowDown" ? 1 : -1);
       } else if (e.key === "Enter") {
@@ -1643,10 +1857,8 @@ export class Sidebar {
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Manifest card adapters (unchanged contract with sidebar-manifest-card)
+  // Manifest card adapters
   // ──────────────────────────────────────────────────────────────────
-
-  private expandedPackages: Set<string> = new Set();
 
   private renderPackageManifestCard(
     ws: WorkspaceInfo,
@@ -1768,11 +1980,11 @@ function shortCwd(cwd: string): string {
 }
 
 function humanRss(kb: number): string {
-  if (kb < 1024) return `${Math.round(kb)} KB`;
+  if (kb < 1024) return `${Math.round(kb)}K`;
   const mb = kb / 1024;
-  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)}M`;
   const gb = mb / 1024;
-  return `${gb < 10 ? gb.toFixed(1) : Math.round(gb)} GB`;
+  return `${gb < 10 ? gb.toFixed(1) : Math.round(gb)}G`;
 }
 
 function relativeTime(epochMs: number): string {
