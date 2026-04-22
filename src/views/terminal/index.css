@@ -9360,37 +9360,59 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
 }
 
 /* ── Pane (§8.1, §4 focus indicator) ──
- * 0.5 px hairline; focused state is the only loud element in chrome.
- * Pane body bg is `void` black, header sits above on `panel` / `panel-hi`. */
+ * The base `.tau-pane` rule is LAYOUT-NEUTRAL: border + focus glow are
+ * drawn via `box-shadow` so the class can be added to existing DOM
+ * (e.g. .surface-container, which already has `position: absolute`
+ * from the pane-layout engine) without reflowing the grid. Standalone
+ * factory-produced panes opt into the structural stack via
+ * `.tau-pane--standalone`.
+ *
+ * Per §3: 0.5 px hairline. Per §4: focused is the only loud state. */
 .tau-pane {
+  box-shadow: 0 0 0 0.5px var(--tau-edge);
+  border-radius: var(--tau-r-pane);
+  transition: box-shadow var(--transition-fast);
+}
+.tau-pane--standalone {
   position: relative;
   display: flex;
   flex-direction: column;
-  border: 0.5px solid var(--tau-edge);
-  border-radius: var(--tau-r-pane);
   background: var(--tau-void);
   overflow: hidden;
-  transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
 }
 .tau-pane.tau-pane-human.is-focused {
-  border-color: var(--tau-cyan);
   box-shadow:
     0 0 0 0.5px var(--tau-cyan),
     0 0 24px var(--tau-cyan-dim);
 }
 .tau-pane.tau-pane-agent.is-focused {
-  border-color: var(--tau-agent);
   box-shadow:
     0 0 0 0.5px var(--tau-agent),
     0 0 24px var(--tau-agent-dim);
 }
 .tau-pane.tau-pane-mixed.is-focused {
-  border-color: var(--tau-text);
   box-shadow:
     0 0 0 0.5px var(--tau-text),
     0 0 20px rgba(214, 226, 232, 0.18);
+}
+
+/* Retrofit: when `.tau-pane` is applied to `.surface-container`, the
+ * container's own 1 px border and inset inner-stroke conflict with the
+ * guideline's 0.5 px hairline. Neutralise them so the box-shadow above
+ * is the only border the user sees. Focus also drops the old
+ * amber/purple glow that surface-container used to paint. */
+.surface-container.tau-pane {
+  border-color: transparent;
+  border-width: 0;
+  /* Base box-shadow is the 0.5 px hairline from the .tau-pane rule;
+   * keep surface-container's outer drop shadow so panes still lift off
+   * the background. */
+}
+.surface-container.tau-pane.is-focused {
+  /* is-focused box-shadow (cyan/amber ring + 24 px dim glow) is set by
+   * the identity-specific rules above; clear the pre-revamp surface-
+   * container border-color override. */
+  border-color: transparent;
 }
 
 .tau-pane-header {
@@ -9711,4 +9733,26 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
 .surface-container.tau-pane.tau-pane-agent .surface-bar-icon,
 .surface-container.tau-pane.tau-pane-agent .surface-bar-title {
   color: var(--tau-text);
+}
+
+/* ── τ-mux status-bar z-index guards ──
+ * Any pre-revamp rule that sets #sidebar { bottom: 0 } (or via a theme
+ * variable like --window-frame-width) bypasses the 26 px reservation
+ * in the primary #sidebar rule, letting the status bar sit on top of
+ * the sidebar's footer (telegram tile, web-mirror chip, …). Raise the
+ * sidebar's bottom past the status bar at the end of the cascade. */
+#sidebar {
+  bottom: 26px !important;
+}
+#sidebar.collapsed {
+  bottom: 26px !important;
+}
+#terminal-container {
+  bottom: 26px !important;
+}
+/* The status bar sits on top of the sidebar's right edge — it spans
+ * the full width per the §5 diagram — but it must stay UNDER floating
+ * overlays (command palette, settings, toasts). */
+.tau-status-bar {
+  z-index: 60;
 }

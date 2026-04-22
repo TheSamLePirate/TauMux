@@ -237,7 +237,9 @@ export interface PaneHandle {
 }
 export function Pane(opts: PaneOptions): PaneHandle {
   const root = document.createElement("div");
-  root.className = `tau-pane tau-pane-${opts.identity}${opts.focused ? " is-focused" : ""}`;
+  // Factory panes opt into structural CSS (position/display/overflow).
+  // Retrofit panes (via applyTauPaneClasses) keep layout-neutral styling.
+  root.className = `tau-pane tau-pane--standalone tau-pane-${opts.identity}${opts.focused ? " is-focused" : ""}`;
   const header = document.createElement("div");
   header.className = "tau-pane-header";
   const dot = IdentityDot({ kind: opts.identity, running: opts.running });
