@@ -2134,33 +2134,52 @@ body.sidebar-resizing {
  * colour and must be immediately visible in every variant. Intensity
  * bumped from the Phase-5 pass so the halo reads at a glance; duration
  * kept at 2 s so it doesn't feel like a constant disco. */
-/* Inset-style notification glow — same symmetry reasoning as the focus
- * indicator: outer box-shadow can clip at the terminal-container edge
- * and look uneven. Inset keeps the entire effect inside the pane. */
+/* Notification glow is painted on the `::after` overlay for the same
+ * reason as the focus indicator: an inset box-shadow on the pane
+ * itself sits under the xterm canvas. The keyframes animate
+ * `border-color` + `box-shadow` on the overlay, which always draws
+ * above the terminal content. */
 @keyframes notify-glow-pulse {
   0%, 100% {
-    box-shadow:
-      inset 0 0 0 1px rgba(255, 197, 107, 0.3),
-      inset 0 0 8px rgba(255, 197, 107, 0.1);
+    border-color: rgba(255, 197, 107, 0.35);
+    box-shadow: inset 0 0 6px rgba(255, 197, 107, 0.1);
   }
   50% {
-    box-shadow:
-      inset 0 0 0 1px rgba(255, 197, 107, 1),
-      inset 0 0 24px rgba(255, 197, 107, 0.5);
+    border-color: rgba(255, 197, 107, 1);
+    box-shadow: inset 0 0 22px rgba(255, 197, 107, 0.45);
   }
 }
 
 @keyframes notify-glow-pulse-human {
   0%, 100% {
-    box-shadow:
-      inset 0 0 0 1px rgba(111, 233, 255, 0.3),
-      inset 0 0 8px rgba(111, 233, 255, 0.1);
+    border-color: rgba(111, 233, 255, 0.35);
+    box-shadow: inset 0 0 6px rgba(111, 233, 255, 0.1);
   }
   50% {
-    box-shadow:
-      inset 0 0 0 1px rgba(111, 233, 255, 1),
-      inset 0 0 24px rgba(111, 233, 255, 0.5);
+    border-color: rgba(111, 233, 255, 1);
+    box-shadow: inset 0 0 22px rgba(111, 233, 255, 0.45);
   }
+}
+
+/* Apply the animation to the overlay instead of the pane itself so
+ * the ring colour and inset halo paint over xterm. */
+.surface-container.notify-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 10;
+  animation: notify-glow-pulse 2s ease-in-out infinite;
+}
+.surface-container.notify-glow.tau-pane-human::after {
+  animation-name: notify-glow-pulse-human;
+}
+/* Kill the legacy animation on the container itself — it targeted
+ * the wrong element and rendered under the xterm. */
+.surface-container.notify-glow {
+  animation: none !important;
 }
 
 .surface-container.notify-glow.tau-pane-human {
@@ -9456,26 +9475,47 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
   background: var(--tau-void);
   overflow: hidden;
 }
-/* τ-mux focus indicator — the border ring is INSET so it stays inside
- * the pane regardless of where the pane sits in the layout. Outer glow
- * is smaller (16 px) and also inset-only so it can't clip asymmetrically
- * against the terminal-container edge or the sidebar. Using integer
- * px values (1 instead of 0.5) avoids subpixel-rounding asymmetry
- * that was making the ring look thicker on two sides than the others. */
-.tau-pane.tau-pane-human.is-focused {
-  box-shadow:
-    inset 0 0 0 1px var(--tau-cyan),
-    inset 0 0 14px var(--tau-cyan-dim);
+/* τ-mux focus indicator — drawn as a `::after` overlay so the ring
+ * is guaranteed to paint ON TOP of the xterm canvas + all other pane
+ * children. An inset `box-shadow` on the container would sit beneath
+ * the child backgrounds (xterm's opaque black fills the pane) and
+ * disappear; an overlay with `position: absolute; inset: 0` always
+ * renders above.
+ *
+ * Symmetric by construction — `inset: 0` + `border: 1px solid` gives
+ * exactly 1 px on all four sides regardless of the pane's position.
+ * `pointer-events: none` keeps the click targets on the actual
+ * terminal below. */
+.tau-pane::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 10;
+  transition: border-color var(--transition-fast);
 }
+.tau-pane.tau-pane-human.is-focused::after {
+  border-color: var(--tau-cyan);
+  box-shadow: inset 0 0 12px var(--tau-cyan-dim);
+}
+.tau-pane.tau-pane-agent.is-focused::after {
+  border-color: var(--tau-agent);
+  box-shadow: inset 0 0 12px var(--tau-agent-dim);
+}
+/* Clear the earlier box-shadow ring on the pane itself so the two
+ * don't compete when both rules match. */
+.tau-pane.tau-pane-human.is-focused,
 .tau-pane.tau-pane-agent.is-focused {
-  box-shadow:
-    inset 0 0 0 1px var(--tau-agent),
-    inset 0 0 14px var(--tau-agent-dim);
+  box-shadow: none;
 }
 .tau-pane.tau-pane-mixed.is-focused {
-  box-shadow:
-    inset 0 0 0 1px var(--tau-text),
-    inset 0 0 14px rgba(214, 226, 232, 0.18);
+  box-shadow: none;
+}
+.tau-pane.tau-pane-mixed.is-focused::after {
+  border-color: var(--tau-text);
+  box-shadow: inset 0 0 12px rgba(214, 226, 232, 0.18);
 }
 /* Legacy outer-glow variants (kept only so subsequent CSS in this
  * file can be over-ridden cleanly; do not target them). */
