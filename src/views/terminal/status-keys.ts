@@ -390,9 +390,12 @@ function renderHtEntry(entry: HtStatusEntry): HTMLSpanElement {
   const l = document.createElement("span");
   l.className = "tau-status-label";
   l.textContent = entry.key;
+  wrap.appendChild(l);
+  wrap.appendChild(document.createTextNode(" "));
   const v = document.createElement("span");
   v.className = "tau-status-value";
   v.textContent = entry.value;
+  wrap.appendChild(v);
   if (entry.color) {
     // Identity token resolution: cyan / amber / ok / warn / err
     // keywords collapse to --tau-* vars so the entry respects the

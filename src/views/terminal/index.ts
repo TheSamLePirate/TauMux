@@ -421,13 +421,21 @@ let statusBarHandle: ReturnType<typeof StatusBar> | null = null;
 function refreshStatusBar(): void {
   if (!statusBarHandle) return;
   const ctx = buildStatusContext();
-
-  const mount = statusBarHandle.root;
-  mount.replaceChildren();
-
   const settings = currentSettings ?? DEFAULT_SETTINGS;
   const ids = settings.statusBarKeys ?? [];
+
+  // Atlas owns #tau-status-bar's children (τ-brand + right-cap). If
+  // we wipe them here the bar renders the keys directly into the bar
+  // root, Atlas's CSS can't see them, and the brand cap disappears.
+  // Route to the Atlas-specific mount when it exists; fall back to
+  // the bar root otherwise (Bridge / Cockpit). This is the single
+  // source of truth for which element receives status-key children.
+  const atlasRight = document.getElementById("tau-atlas-ticker-right");
+  const mount: HTMLElement = atlasRight ?? statusBarHandle.root;
+  mount.replaceChildren();
+
   let first = true;
+  let rendered = 0;
   for (const id of ids) {
     const el = renderStatusKey(id, ctx);
     if (!el) continue;
@@ -439,27 +447,19 @@ function refreshStatusBar(): void {
     }
     mount.appendChild(el);
     first = false;
+    rendered++;
   }
 
-  // Atlas ticker right-cap: the ticker shell is separate DOM but
-  // reuses the same renderer so the user sees the same status keys
-  // on every variant. No scrolling — item 8 of the user feedback.
-  const atlasRight = document.getElementById("tau-atlas-ticker-right");
-  if (atlasRight) {
-    atlasRight.replaceChildren();
-    let cap = true;
-    for (const id of ids) {
-      const el = renderStatusKey(id, ctx);
-      if (!el) continue;
-      if (!cap) {
-        const s = document.createElement("span");
-        s.className = "tau-hud-sep";
-        s.textContent = "·";
-        atlasRight.appendChild(s);
-      }
-      atlasRight.appendChild(el);
-      cap = false;
-    }
+  // If nothing rendered — either no keys enabled or none had data —
+  // drop a neutral hint so the bar isn't silently empty.
+  if (rendered === 0) {
+    const hint = document.createElement("span");
+    hint.className = "tau-status-label";
+    hint.textContent =
+      ids.length === 0
+        ? "no status keys — enable some in Settings → Layout"
+        : "no live status data yet";
+    mount.appendChild(hint);
   }
 }
 
