@@ -1506,6 +1506,21 @@ export class SurfaceManager {
    *  reasonable status dashboard; overflow evicts the oldest. */
   private static MAX_STATUS_PILLS = 32;
 
+  /** Snapshot of `ht set-status` entries for a workspace. Returned
+   *  in insertion order so the order the script set the keys in is
+   *  preserved. Pass no id to read from the active workspace.
+   *  Used by the status-key registry (src/views/terminal/status-keys.ts)
+   *  so bottom-bar chrome can surface per-workspace status pills. */
+  getWorkspaceStatuses(
+    workspaceId?: string,
+  ): { key: string; value: string; icon?: string; color?: string }[] {
+    const ws = workspaceId
+      ? this.workspaces.find((w) => w.id === workspaceId)
+      : this.activeWorkspace();
+    if (!ws) return [];
+    return [...ws.status.entries()].map(([key, v]) => ({ key, ...v }));
+  }
+
   setStatus(
     workspaceId: string | undefined,
     key: string,

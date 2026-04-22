@@ -10530,3 +10530,25 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   opacity: 0.3;
   cursor: not-allowed;
 }
+
+/* ── `ht set-status` surfaces in the bottom bar ──
+ * `tau-ht-status` is a KV span; `tau-ht-status-strip` wraps the
+ * `ht-all` key's concatenation of every entry with middle-dot
+ * separators. Compact so a dozen keys still fit on one line. */
+.tau-ht-status {
+  font-family: var(--tau-font-mono);
+  font-size: 10.5px;
+}
+.tau-ht-status .tau-status-label {
+  color: var(--tau-text-mute);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.tau-ht-status-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}

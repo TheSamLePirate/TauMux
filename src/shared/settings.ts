@@ -577,9 +577,11 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
 
   // τ-mux §9 default variant.
   layoutVariant: "bridge",
-  // Sensible default status-key set — covers identity, load, and the
-  // focused-surface detail columns everyone wants to see. Users can
-  // edit the list in Settings → Layout.
+  // Sensible default status-key set — covers identity, load, the
+  // focused-surface detail columns, plus the `ht set-status`
+  // catch-all so scripts that publish workspace status via
+  // `ht set-status <key> <value>` are immediately visible. Users
+  // can edit this list in Settings → Layout.
   statusBarKeys: [
     "workspace",
     "panes",
@@ -589,6 +591,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
     "fg",
     "cwd",
     "branch",
+    "ht-all",
     "ports",
     "time",
   ],

@@ -39,6 +39,13 @@ export interface StatusPmWorkspace {
   surfaces: StatusPmSurface[];
 }
 
+export interface HtStatusEntry {
+  key: string;
+  value: string;
+  icon?: string;
+  color?: string;
+}
+
 export interface StatusContext {
   settings: AppSettings;
   workspaces: StatusWorkspaceInfo[];
@@ -49,6 +56,9 @@ export interface StatusContext {
   focusedSurfaceId: string | null | undefined;
   focusedSurface: StatusPmSurface | undefined;
   notifyWorkspaces: Set<string>;
+  /** `ht set-status` entries for the active workspace, in insertion
+   *  order. Empty when no scripts have set any. */
+  htStatuses: HtStatusEntry[];
   now: number;
 }
 
@@ -350,6 +360,107 @@ const timeKey: StatusKeyRenderer = {
   },
 };
 
+// ── ht set-status bridge keys ────────────────────────────────
+// Scripts call `ht set-status <key> <value> [--icon I] [--color #hex]`
+// to surface workspace-scoped status pills. The design system treats
+// a handful of keys as "well-known" (status / title / warning) so they
+// can render as first-class status-bar entries; `ht-all` shows every
+// current entry as compact chips; `ht:<name>` is a dynamic form the
+// UI registry exposes via its id convention.
+
+function renderHtEntry(entry: HtStatusEntry): HTMLSpanElement {
+  const wrap = document.createElement("span");
+  wrap.className = "tau-status-kv tau-ht-status";
+  wrap.title = `ht ${entry.key}: ${entry.value}`;
+  const l = document.createElement("span");
+  l.className = "tau-status-label";
+  l.textContent = entry.key;
+  const v = document.createElement("span");
+  v.className = "tau-status-value";
+  v.textContent = entry.value;
+  if (entry.color) {
+    // Identity token resolution: cyan / amber / ok / warn / err
+    // keywords collapse to --tau-* vars so the entry respects the
+    // design palette; raw hex passes through unchanged.
+    const c = entry.color.toLowerCase();
+    const mapped =
+      c === "cyan" || c === "human"
+        ? "var(--tau-cyan)"
+        : c === "amber" || c === "agent"
+          ? "var(--tau-agent)"
+          : c === "ok" || c === "green"
+            ? "var(--tau-ok)"
+            : c === "warn" || c === "warning" || c === "yellow"
+              ? "var(--tau-warn)"
+              : c === "err" || c === "error" || c === "red"
+                ? "var(--tau-err)"
+                : entry.color;
+    v.style.color = mapped;
+    v.style.fontWeight = "600";
+  }
+  return wrap;
+}
+
+/** Factory for the three well-known ht keys. Returns the entry's
+ *  renderer-wrapped span, or null when no script has set that key on
+ *  the active workspace. */
+function makeHtKey(
+  name: string,
+  label: string,
+  description: string,
+): StatusKeyRenderer {
+  return {
+    id: `ht-${name}`,
+    label,
+    description,
+    group: "system",
+    render: ({ htStatuses }) => {
+      const entry = htStatuses.find((e) => e.key === name);
+      if (!entry) return null;
+      return renderHtEntry({ ...entry, key: name });
+    },
+  };
+}
+
+const htStatusKey = makeHtKey(
+  "status",
+  "ht: status",
+  "`ht set-status status <value>` on the active workspace.",
+);
+const htTitleKey = makeHtKey(
+  "title",
+  "ht: title",
+  "`ht set-status title <value>` on the active workspace.",
+);
+const htWarningKey = makeHtKey(
+  "warning",
+  "ht: warning",
+  "`ht set-status warning <value>` — rendered in the warn colour.",
+);
+
+const htAllKey: StatusKeyRenderer = {
+  id: "ht-all",
+  label: "ht: all statuses",
+  description:
+    "Every current `ht set-status` pill on the active workspace, in the order they were set.",
+  group: "system",
+  render: ({ htStatuses }) => {
+    if (htStatuses.length === 0) return null;
+    const wrap = document.createElement("span");
+    wrap.className = "tau-ht-status-strip";
+    htStatuses.forEach((e, i) => {
+      if (i > 0) {
+        const dim = document.createElement("span");
+        dim.className = "tau-hud-sep";
+        dim.textContent = "·";
+        wrap.appendChild(dim);
+      }
+      wrap.appendChild(renderHtEntry(e));
+    });
+    return wrap;
+  },
+};
+
 const uptimeKey: StatusKeyRenderer = {
   id: "uptime",
   label: "Uptime",
@@ -411,6 +522,11 @@ const REGISTRY: Record<string, StatusKeyRenderer> = {
   kind: surfaceKindKey,
   time: timeKey,
   uptime: uptimeKey,
+  // ht set-status bridge: three well-known keys + a catch-all.
+  "ht-status": htStatusKey,
+  "ht-title": htTitleKey,
+  "ht-warning": htWarningKey,
+  "ht-all": htAllKey,
 };
 
 export const STATUS_KEY_IDS = Object.keys(REGISTRY);

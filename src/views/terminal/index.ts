@@ -487,6 +487,10 @@ function buildStatusContext(): StatusContext {
     focusedSurfaceId: focusedId,
     focusedSurface,
     notifyWorkspaces: lastNotifyWorkspaces,
+    // `ht set-status` entries for the active workspace. Surfaced by
+    // the `ht-status` / `ht-title` / `ht-warning` / `ht-all` keys.
+    htStatuses:
+      surfaceManager?.getWorkspaceStatuses?.(activeId ?? undefined) ?? [],
     now: Date.now(),
   };
 }
