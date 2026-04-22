@@ -329,12 +329,20 @@ textarea {
   width: var(--sidebar-width);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px 10px 8px;
+  /* macOS Sonoma/Tahoe vibrancy: a cool graphite tint over a high-blur,
+   * slightly saturated backdrop. The gradient adds a soft top highlight
+   * that echoes the titlebar material without a hard seam. */
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 92px),
-    var(--bg-sidebar);
-  border-right: 1px solid var(--border-soft);
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.045) 0,
+      rgba(255, 255, 255, 0.014) 60px,
+      transparent 160px
+    ),
+    rgba(22, 24, 30, 0.72);
+  border-right: 0.5px solid rgba(255, 255, 255, 0.07);
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 50;
@@ -343,8 +351,18 @@ textarea {
     padding var(--transition-medium),
     background var(--transition-medium),
     border-color var(--transition-medium);
-  backdrop-filter: blur(28px) saturate(165%);
+  backdrop-filter: blur(36px) saturate(180%);
+  -webkit-backdrop-filter: blur(36px) saturate(180%);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.02);
   scrollbar-width: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  #sidebar {
+    background: #151720;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 #sidebar::-webkit-scrollbar,
@@ -428,16 +446,24 @@ body.sidebar-resizing {
 .sidebar-header,
 .sidebar-notifications,
 .sidebar-logs,
-.sidebar-footer {
-  width: calc(var(--sidebar-width) - 24px);
+.sidebar-footer,
+.sidebar-search-bar,
+.sidebar-list-section {
+  width: calc(var(--sidebar-width) - 20px);
 }
 
 .sidebar-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 0 0 4px;
+  padding: 4px 2px 2px;
+}
+
+.sidebar-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .sidebar-header-copy,
@@ -463,45 +489,77 @@ body.sidebar-resizing {
 .sidebar-title {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
+  color: rgba(243, 246, 253, 0.98);
+  font-size: 13px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+
+.sidebar-title-icon {
   color: var(--accent-primary);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  opacity: 0.95;
+}
+
+.sidebar-title-count {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  font-size: 10.5px;
+  font-weight: 580;
+  letter-spacing: 0;
+  color: rgba(229, 231, 237, 0.68);
+  font-variant-numeric: tabular-nums;
 }
 
 .sidebar-subtitle {
-  color: var(--text-dim);
-  font-size: 10px;
+  color: rgba(229, 231, 237, 0.48);
+  font-size: 10.5px;
   line-height: 1.45;
+  letter-spacing: 0.01em;
 }
 
 .sidebar-new-btn {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
-  color: var(--accent-primary);
-  opacity: 0.88;
+  border-radius: 7px;
+  color: rgba(243, 246, 253, 0.82);
+  background: rgba(255, 255, 255, 0.055);
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 0 rgba(0, 0, 0, 0.18);
 }
 
 .sidebar-new-btn:hover {
-  opacity: 1;
-  color: var(--text-strong);
+  color: rgba(255, 255, 255, 0.98);
+  background: color-mix(
+    in srgb,
+    var(--accent-primary) 16%,
+    rgba(255, 255, 255, 0.07)
+  );
+  border-color: color-mix(in srgb, var(--accent-primary) 40%, transparent);
+}
+
+.sidebar-new-btn:active {
+  transform: translateY(0.5px);
 }
 
 .sidebar-footer {
   margin-top: auto;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-soft);
+  padding-top: 8px;
+  border-top: 0.5px solid rgba(255, 255, 255, 0.07);
 }
 
 .sidebar-server-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
 }
 
 .sidebar-server-dot {
@@ -548,63 +606,68 @@ body.sidebar-resizing {
   50%      { opacity: 1;    }
 }
 
-/* Compact grouping for the Telegram indicator so the dot + label
- * read as one unit, left of the Web Mirror group on the same row. */
+/* Each service shown on its own row — dot · label · value. Stacking
+ * them gives each one room to breathe and lets the value stay legible
+ * when the bot username / URL is long. */
 .sidebar-server-pill {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding-right: 10px;
-  margin-right: 2px;
-  border-right: 1px solid var(--border-soft);
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  transition: background var(--transition-fast);
+}
+
+.sidebar-server-pill:hover {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .sidebar-server-label {
   font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+  font-weight: 560;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: rgba(229, 231, 237, 0.66);
 }
 
 .sidebar-server-url {
   margin-left: auto;
   font-size: 10px;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  color: var(--text-dim);
-  opacity: 0.7;
+  color: rgba(229, 231, 237, 0.48);
+  font-variant-numeric: tabular-nums;
 }
 
 .sidebar-server-dot.online ~ .sidebar-server-url {
   color: #a6e3a1;
-  opacity: 0.8;
 }
 
 .sidebar-workspaces,
 .sidebar-section-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .sidebar-empty {
-  padding: 14px 14px 0 4px;
-  color: var(--text-dim);
+  padding: 16px 12px;
+  color: rgba(229, 231, 237, 0.42);
   font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-align: center;
+  font-weight: 500;
 }
 
 .workspace-item {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  width: calc(var(--sidebar-width) - 24px);
-  padding: 6px 8px;
-  border-radius: 10px;
-  border: 1px solid rgba(39, 39, 42, 0.72);
-  background: rgba(255, 255, 255, 0.02);
+  gap: 3px;
+  width: calc(var(--sidebar-width) - 20px);
+  padding: 7px 8px 7px 10px;
+  border-radius: 9px;
+  border: 0.5px solid rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.022);
   cursor: pointer;
   transition:
     transform var(--transition-fast),
@@ -614,39 +677,78 @@ body.sidebar-resizing {
     gap var(--transition-fast),
     padding var(--transition-fast);
   overflow: hidden;
+  /* Subtle top inset highlight echoes macOS HIG sidebar rows. */
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.028);
 }
 
 .workspace-item::before {
   content: "";
   position: absolute;
-  top: 6px;
-  bottom: 6px;
+  top: 7px;
+  bottom: 7px;
   left: 0;
-  width: 2px;
+  width: 2.5px;
+  border-radius: 0 2px 2px 0;
   background: var(--workspace-accent);
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
 
-.workspace-item.active::before {
-  opacity: 0.8;
+.workspace-item.active::before,
+.workspace-item.keyboard-focus::before {
+  opacity: 0.85;
 }
 
 .workspace-item:hover {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.workspace-item.keyboard-focus {
+  border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--accent-primary) 8%,
+    rgba(255, 255, 255, 0.04)
+  );
 }
 
 .workspace-item.active {
-  gap: 5px;
-  padding: 8px 8px;
-  border-color: var(--accent-primary-soft);
+  gap: 6px;
+  padding: 9px 9px 10px 11px;
+  border-color: color-mix(in srgb, var(--accent-primary) 38%, transparent);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 50%),
-    rgba(255, 255, 255, 0.02);
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent-primary) 6%, transparent) 0,
+      rgba(255, 255, 255, 0.014) 40%,
+      rgba(255, 255, 255, 0.025)
+    );
   box-shadow:
-    0 0 0 1px var(--accent-primary-soft),
-    0 8px 24px rgba(0, 0, 0, 0.2);
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px color-mix(in srgb, var(--accent-primary) 22%, transparent),
+    0 8px 20px rgba(0, 0, 0, 0.26);
+}
+
+.workspace-item.pinned {
+  border-color: color-mix(in srgb, var(--workspace-accent) 28%, transparent);
+}
+
+.workspace-item.dragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+}
+
+.workspace-item.drop-before {
+  box-shadow:
+    inset 0 2px 0 var(--accent-primary),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.028);
+}
+
+.workspace-item.drop-after {
+  box-shadow:
+    inset 0 -2px 0 var(--accent-primary),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.028);
 }
 
 /* ── Card header ── */
@@ -654,8 +756,8 @@ body.sidebar-resizing {
 .workspace-card-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 22px;
+  gap: 7px;
+  min-height: 20px;
 }
 
 .workspace-card-header,
@@ -673,21 +775,25 @@ body.sidebar-resizing {
 }
 
 .workspace-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: var(--workspace-accent);
   flex-shrink: 0;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2);
 }
 
 .workspace-item.active .workspace-dot {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--workspace-accent) 22%, transparent);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.2),
+    0 0 0 3px color-mix(in srgb, var(--workspace-accent) 26%, transparent);
 }
 
 .workspace-name {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 500;
+  color: rgba(229, 231, 237, 0.78);
+  font-size: 12px;
+  font-weight: 560;
+  letter-spacing: -0.005em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -696,7 +802,8 @@ body.sidebar-resizing {
 }
 
 .workspace-item.active .workspace-name {
-  color: var(--text-strong);
+  color: rgba(255, 255, 255, 0.98);
+  font-weight: 620;
 }
 
 .workspace-header-right {
@@ -2900,29 +3007,109 @@ body.terminal-typing .panel {
 }
 
 .sidebar-section-header {
-  padding: 14px 2px 6px;
-  color: var(--text-dim);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  border-top: 1px solid rgba(39, 39, 42, 0.8);
+  padding: 6px 2px 4px;
+  color: rgba(229, 231, 237, 0.58);
+  font-size: 10.5px;
+  font-weight: 560;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  border-top: 0.5px solid rgba(255, 255, 255, 0.05);
+  gap: 4px;
+}
+
+.sidebar-section-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.sidebar-section-toggle:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(229, 231, 237, 0.9);
+}
+
+.sidebar-section-caret {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(229, 231, 237, 0.5);
+  transition: color var(--transition-fast);
+}
+
+.sidebar-section-toggle:hover .sidebar-section-caret {
+  color: rgba(229, 231, 237, 0.85);
 }
 
 .sidebar-section-title {
-  gap: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-section-title > span:last-child {
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-section-count {
+  font-size: 9.5px;
+  font-weight: 580;
+  letter-spacing: 0.01em;
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: rgba(229, 231, 237, 0.56);
+  background: rgba(255, 255, 255, 0.055);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-section-badge {
+  display: none;
+  margin-left: auto;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 620;
+  line-height: 16px;
+  text-align: center;
+  color: #fff;
+  background: var(--accent-primary);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar-section-badge.visible {
+  display: inline-block;
 }
 
 .sidebar-section-clear {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   display: grid;
   place-items: center;
-  color: var(--text-dim);
+  border-radius: 5px;
+  color: rgba(229, 231, 237, 0.45);
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 
 .sidebar-section-clear:hover {
-  color: var(--accent-primary);
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+}
+
+/* Collapsed section just hides the body; the header stays visible. */
+.sidebar-notifications.closed .sidebar-section-list,
+.sidebar-list-section.closed .sidebar-workspaces,
+.sidebar-logs.closed .sidebar-section-list {
+  display: none;
 }
 
 .notification-item,
@@ -3061,6 +3248,362 @@ body.terminal-typing .panel {
 
 .log-item.progress {
   color: #d8b4fe;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * Sidebar revamp — new elements (search, filter segment, grip, pin,
+ * metrics, sparkline, workspace sections, rename input, inline
+ * dividers, dnd drop zones, reduced-motion). Appended so existing
+ * theme overrides targeting the same classes still apply where
+ * they explicitly override these.
+ * ══════════════════════════════════════════════════════════════════ */
+
+.sidebar-search-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 2px 4px;
+}
+
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 0.5px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.04);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.sidebar-search:focus-within {
+  border-color: color-mix(in srgb, var(--accent-primary) 48%, transparent);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.sidebar-search-icon {
+  color: rgba(229, 231, 237, 0.48);
+  flex-shrink: 0;
+}
+
+.sidebar-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+  caret-color: var(--accent-primary);
+  padding: 0;
+}
+
+.sidebar-search-input::placeholder {
+  color: rgba(229, 231, 237, 0.38);
+  font-weight: 450;
+}
+
+.sidebar-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Segmented control — classic macOS HIG pattern. */
+.sidebar-filter-segment {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 0.5px solid rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.03);
+  gap: 1px;
+}
+
+.sidebar-filter-btn {
+  flex: 1;
+  padding: 3px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 560;
+  letter-spacing: 0.005em;
+  color: rgba(229, 231, 237, 0.56);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.sidebar-filter-btn:hover {
+  color: rgba(229, 231, 237, 0.82);
+}
+
+.sidebar-filter-btn[aria-selected="true"] {
+  color: rgba(255, 255, 255, 0.96);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.1),
+    rgba(255, 255, 255, 0.06)
+  );
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 0 0 0.5px rgba(255, 255, 255, 0.06);
+}
+
+/* Inline divider used to label Pinned / All groups inside the list. */
+.sidebar-inline-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px 2px;
+  font-size: 9.5px;
+  font-weight: 580;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(229, 231, 237, 0.4);
+}
+
+.sidebar-inline-divider::after {
+  content: "";
+  flex: 1;
+  height: 0.5px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Drag handle on each workspace card. */
+.workspace-grip {
+  display: inline-flex;
+  align-items: center;
+  width: 10px;
+  color: rgba(229, 231, 237, 0.26);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.workspace-item:hover .workspace-grip {
+  opacity: 1;
+}
+
+.workspace-grip:active {
+  cursor: grabbing;
+  color: rgba(229, 231, 237, 0.56);
+}
+
+/* Pin toggle — lives in the header right cluster. */
+.workspace-pin {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: rgba(229, 231, 237, 0.42);
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.workspace-item:hover .workspace-pin,
+.workspace-item.pinned .workspace-pin,
+.workspace-item.active .workspace-pin {
+  opacity: 1;
+}
+
+.workspace-pin:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(229, 231, 237, 0.86);
+}
+
+.workspace-pin.active {
+  color: var(--accent-primary);
+  opacity: 1;
+  transform: rotate(-30deg);
+}
+
+.workspace-pin.active:hover {
+  background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+}
+
+/* Live process metrics — CPU% + RSS chip on active card. */
+.workspace-metrics {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 0.5px solid rgba(255, 255, 255, 0.055);
+  font-variant-numeric: tabular-nums;
+  font-size: 9.5px;
+  font-weight: 560;
+  color: rgba(229, 231, 237, 0.82);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.workspace-metric-cpu {
+  color: #86efac;
+}
+
+.workspace-metric-mem {
+  color: rgba(229, 231, 237, 0.62);
+  padding-left: 5px;
+  border-left: 0.5px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Mini CPU sparkline. */
+.workspace-sparkline {
+  width: 36px;
+  height: 14px;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+/* Collapsible sub-sections inside a workspace card. */
+.workspace-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 0;
+}
+
+.workspace-section-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 4px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+  color: rgba(229, 231, 237, 0.54);
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.workspace-section-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(229, 231, 237, 0.9);
+}
+
+.workspace-section-caret {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(229, 231, 237, 0.45);
+}
+
+.workspace-section-header:hover .workspace-section-caret {
+  color: rgba(229, 231, 237, 0.82);
+}
+
+.workspace-section-title {
+  font-size: 10px;
+  font-weight: 580;
+  letter-spacing: 0.02em;
+}
+
+.workspace-section-count {
+  margin-left: auto;
+  font-size: 9.5px;
+  font-weight: 580;
+  color: rgba(229, 231, 237, 0.42);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  font-variant-numeric: tabular-nums;
+}
+
+.workspace-section-body {
+  padding-left: 6px;
+  animation: section-body-in 160ms var(--ease-default, ease-out);
+}
+
+@keyframes section-body-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-1px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Inline rename input — replaces the .workspace-name span while active. */
+.workspace-rename-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 0.5px solid color-mix(
+    in srgb,
+    var(--accent-primary) 45%,
+    transparent
+  );
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(
+    in srgb,
+    var(--accent-primary) 22%,
+    transparent
+  );
+  border-radius: 5px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 560;
+  color: rgba(255, 255, 255, 0.98);
+  caret-color: var(--accent-primary);
+}
+
+.workspace-rename-input:focus {
+  border-color: var(--accent-primary);
+}
+
+/* ── Reduced motion — honour user preference ───────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .notification-item.glow,
+  .workspace-script-dot.running,
+  .sidebar-server-dot.starting,
+  .sidebar-server-dot.conflict {
+    animation: none;
+  }
+  .workspace-section-body {
+    animation: none;
+  }
+  #sidebar,
+  .workspace-item,
+  .workspace-item::before,
+  .sidebar-new-btn,
+  .sidebar-section-toggle,
+  .workspace-section-header,
+  .workspace-pin,
+  .workspace-grip,
+  .sidebar-filter-btn {
+    transition-duration: 0ms !important;
+  }
+}
+
+/* Keep the new button from inheriting heavy drop-shadow filters on
+ * icon hover (they're for the titlebar buttons, not for the sidebar). */
+.sidebar-new-btn:hover .ht-icon {
+  transform: none;
+  filter: none;
 }
 
 ::selection {

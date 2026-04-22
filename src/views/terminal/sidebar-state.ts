@@ -49,7 +49,9 @@ export interface SidebarStateInput {
 export function buildSidebarWorkspaces(
   input: SidebarStateInput,
 ): WorkspaceInfo[] {
-  return input.workspaces.map((ws, i) => buildOneWorkspace(ws, i, input));
+  const out = input.workspaces.map((ws, i) => buildOneWorkspace(ws, i, input));
+  pruneCpuHistories(new Set(input.workspaces.map((w) => w.id)));
+  return out;
 }
 
 function buildOneWorkspace(
@@ -152,6 +154,24 @@ function buildOneWorkspace(
   // every command in the process tree and pulls the cargo subcommand
   // word ("cargo build --release" → "build"); the sidebar renderer
   // matches it against the same fixed list.
+  // Aggregate live process metrics across every surface in the
+  // workspace. These feed the mini sparkline + RAM chip in the active
+  // workspace header. We sum across all descendants of every surface
+  // so a 2-pane workspace reflects the combined load.
+  let cpuPercent = 0;
+  let memRssKb = 0;
+  let procCount = 0;
+  for (const sid of ws.surfaceIds) {
+    const m = metadata.get(sid);
+    if (!m) continue;
+    for (const node of m.tree) {
+      cpuPercent += node.cpu;
+      memRssKb += node.rssKb;
+      procCount++;
+    }
+  }
+  const cpuHistory = pushCpuSample(ws.id, cpuPercent);
+
   const runningCargoActions: string[] = [];
   const erroredCargoActions: string[] = [];
   if (cargoToml) {
@@ -200,7 +220,37 @@ function buildOneWorkspace(
     erroredCargoActions,
     cwds: cwdSet,
     selectedCwd,
+    cpuPercent,
+    memRssKb,
+    processCount: procCount,
+    cpuHistory,
   };
+}
+
+/** Rolling CPU% history per workspace — fed to the mini sparkline in
+ *  the sidebar card header. Keyed by workspaceId. The map is pruned
+ *  lazily by `buildSidebarWorkspaces` (any id not seen in the current
+ *  pass is dropped). */
+const CPU_HISTORY_LIMIT = 32;
+const cpuHistories = new Map<string, number[]>();
+
+function pushCpuSample(wsId: string, sample: number): number[] {
+  const existing = cpuHistories.get(wsId) ?? [];
+  const next =
+    existing.length >= CPU_HISTORY_LIMIT
+      ? [...existing.slice(1), sample]
+      : [...existing, sample];
+  cpuHistories.set(wsId, next);
+  return next;
+}
+
+/** Drop CPU-history entries for workspaces that no longer exist. Called
+ *  from `buildSidebarWorkspaces` each pass so the map can't grow
+ *  unbounded across a long session with many short-lived workspaces. */
+function pruneCpuHistories(keep: Set<string>): void {
+  for (const id of [...cpuHistories.keys()]) {
+    if (!keep.has(id)) cpuHistories.delete(id);
+  }
 }
 
 /** Extract the script name from commands like "bun run build",
