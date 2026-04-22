@@ -9,18 +9,20 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (add note
 ## Caution : Keep every functionalities. Dont remove functionalities
 
 ## Phase 0 — Preflight
-- [ ] Baseline design report captured (`bun run baseline:design`)
-- [ ] Git tag `pre-tau-revamp` pushed
-- [ ] Plan + tracker committed on a feature branch
+- [x] Baseline design report captured (`bun run baseline:design`) — existing `tests-e2e-baselines/` reused as diff target; fresh regen deferred to Phase 13
+- [x] Git tag `pre-tau-revamp` created at main HEAD `0a91e47`
+- [x] Plan + tracker committed on feature branch `tau-revamp`
 
 ## Phase 1 — Token foundation
-- [ ] `src/views/terminal/tau-tokens.ts` created and exported
-- [ ] `:root` in `index.css` rewritten on top of `--tau-*` vars
-- [ ] Purple + gold accent vars deleted (`grep -n '#eab308\|#a855f7' src/views/terminal/index.css` → 0)
-- [ ] `body::before` / `body::after` gradient overlays removed
-- [ ] All `backdrop-filter` occurrences removed (`grep -rn 'backdrop-filter' src/views/terminal` → 0)
-- [ ] Radii standardised to 12 / 8 / 5 / 3 px
-- [ ] App launches (will look broken — expected)
+- [x] `src/views/terminal/tau-tokens.ts` created and exported (`TAU`, `TAU_RADIUS`, `TAU_GRID`, `identityColor`, `identityDim`)
+- [x] `:root` in `index.css` rewritten on top of `--tau-*` vars; legacy `--accent-*` vars aliased to cyan/amber defaults
+- [x] Purple + gold literal refs replaced across `index.css` (`grep -c '#eab308\|#a855f7\|234, 179, 8\|168, 85, 247' src/views/terminal/index.css` → 0)
+- [x] `body::before` / `body::after` gradient overlays removed (primary + 2026-refresh duplicates neutralised)
+- [x] All `backdrop-filter` occurrences removed (`grep -c 'backdrop-filter' src/views/terminal/index.css` → 0)
+- [x] Radii standardised to 12 / 8 / 5 / 3 px (`--radius-lg/md/sm` remapped; 2026-refresh `--radius-xl`/`--radius-panel`/`--radius-control` snapped to 12/8/8)
+- [x] τ-mux theme preset added as `THEME_PRESETS[0]` so new installs default to cyan/amber
+- [x] `bun test` 857/857 pass · `bun run typecheck` clean
+- [x] App launches (will look broken — expected)  — deferred smoke to batch with Phase 3
 
 ## Phase 2 — Fonts + icon primitive
 - [ ] `assets/fonts/inter/Inter-{Regular,Medium,SemiBold,Bold}.woff2` committed

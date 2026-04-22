@@ -156,6 +156,37 @@ export function createAnsiPalette(colors: AnsiTuple): AnsiColors {
 
 export const THEME_PRESETS: readonly ThemePreset[] = [
   {
+    id: "tau",
+    name: "τ-mux",
+    // Cyan = humans + focus + system identity. Amber = agents.
+    // Sealed by the τ-mux design guideline §7; other themes can exist
+    // but this is the default.
+    accentColor: "#6fe9ff",
+    secondaryColor: "#ffc56b",
+    foregroundColor: "#d6e2e8",
+    // Pure black terminal body on --tau-bg #07090b window (see §1).
+    bgBase: "0, 0, 0",
+    terminalBgOpacity: 1,
+    ansiColors: createAnsiPalette([
+      "#0b1013",
+      "#ff8a8a",
+      "#8ce99a",
+      "#ffc56b",
+      "#6fe9ff",
+      "#d6bfff",
+      "#8ce9ff",
+      "#d6e2e8",
+      "#38434a",
+      "#ff8a8a",
+      "#8ce99a",
+      "#ffc56b",
+      "#6fe9ff",
+      "#d6bfff",
+      "#8ce9ff",
+      "#f4f9fb",
+    ]),
+  },
+  {
     id: "graphite",
     name: "Graphite",
     accentColor: "#eab308",
