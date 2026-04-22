@@ -156,10 +156,14 @@ Compliance per overlay scope (post-sweep audit):
 - [x] 858/858 tests pass · typecheck clean · emoji audit clean
 
 ## Phase 11 — Bloom gate
-- [ ] Settings migration writes `bloomMigratedToTau: true` and stores `legacyBloomIntensity`
-- [ ] Default bloom intensity = 0 on fresh install
-- [ ] Setting description updated to reflect "optional, off by design"
-- [ ] Shader target restricted to terminal body layer only (not chrome)
+- [x] `AppSettings.bloomMigratedToTau: boolean` + `legacyBloomIntensity: number` added to the schema + validator
+- [x] `applyBloomMigration(settings)` — non-destructive one-shot. Snapshots pre-revamp `bloomIntensity` into `legacyBloomIntensity` + stamps flag. NEVER flips `terminalBloom` off (that would remove a feature the user chose).
+- [x] `SettingsManager.load()` runs the migration on first post-revamp load; writes the stamp to disk on the next tick so the migration doesn't re-run on every launch.
+- [x] Default bloom intensity = 0 on fresh install (`DEFAULT_SETTINGS.bloomIntensity: 1.0 → 0`). Terminal bloom toggle already defaulted to `false`.
+- [x] Setting description rewritten in `settings-panel.ts` to cite §4 ("only the focused pane glows") and §11 design rationale.
+- [x] Users with `legacyBloomIntensity > 0` see an info note under the slider telling them what value restores their previous look.
+- [x] Shader scope verified: `TerminalEffects` constructor receives `.surface-terminal` (xterm body only); pane header, HUD strip, sidebar, status bar, overlays all untouched. No change needed.
+- [x] 858/858 tests pass · typecheck clean
 
 ## Phase 12 — Emoji / icon / animation / hover audit
 - [ ] Emoji audit green across `src/**`

@@ -10338,3 +10338,16 @@ body.tau-rail-collapsed[data-tau-variant="atlas"] .tau-atlas-tab-rail,
 body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   left: 0;
 }
+
+/* ── τ-mux §11 migration info note ── */
+.settings-info-note {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-pane);
+  background: var(--tau-panel);
+  color: var(--tau-text-dim);
+  font-family: var(--tau-font-sans);
+  font-size: 11px;
+  line-height: 1.4;
+}

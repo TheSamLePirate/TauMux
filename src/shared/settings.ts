@@ -42,6 +42,14 @@ export interface AppSettings {
   terminalBloom: boolean;
   bloomIntensity: number;
 
+  /** τ-mux §11 bloom gate. Stamped by SettingsManager the first time
+   *  a pre-τ-mux settings file is loaded; we also snapshot the user's
+   *  pre-migration bloomIntensity into `legacyBloomIntensity` so
+   *  "Restore previous bloom" stays one click away. Never surfaced in
+   *  the UI — purely a migration stamp. */
+  bloomMigratedToTau: boolean;
+  legacyBloomIntensity: number;
+
   // Network
   webMirrorPort: number;
   autoStartWebMirror: boolean;
@@ -533,13 +541,18 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   bgBase: THEME_PRESETS[0].bgBase,
   ansiColors: { ...THEME_PRESETS[0].ansiColors },
 
-  // Bloom defaults to OFF — it's a WebGL glow layer on top of xterm
-  // glyphs, beautiful but CPU/GPU-expensive and not deterministic for
-  // visual regression tests. Users can enable it from the Effects tab
-  // of Settings; `bloomIntensity` stays at a sensible starting value so
-  // re-enabling the toggle gives immediate visible effect.
+  // τ-mux §4 + §11: bloom is OFF by design. The design system uses
+  // only the focused-pane glow; a chrome-wide WebGL bloom pass
+  // competes with that signal and also costs CPU/GPU while being
+  // non-deterministic for visual-regression tests. Users can still
+  // opt in from Settings → Effects — when they do, SettingsManager
+  // bumps bloomIntensity to 1 so the toggle gives immediate visible
+  // effect. Fresh installs start at 0 so enabling the toggle without
+  // adjusting the slider is a no-op (prevents surprise glow).
   terminalBloom: false,
-  bloomIntensity: 1.0,
+  bloomIntensity: 0,
+  bloomMigratedToTau: false,
+  legacyBloomIntensity: 0,
 
   webMirrorPort: 3000,
   autoStartWebMirror: false,
@@ -648,6 +661,27 @@ export function validateSettings(s: AppSettings): AppSettings {
       s.layoutVariant === "cockpit" || s.layoutVariant === "atlas"
         ? s.layoutVariant
         : "bridge",
+    bloomMigratedToTau: !!s.bloomMigratedToTau,
+    legacyBloomIntensity: clamp(
+      typeof s.legacyBloomIntensity === "number" ? s.legacyBloomIntensity : 0,
+      0,
+      2,
+    ),
+  };
+}
+
+/** τ-mux §11 bloom gate — run once per install on the first load of a
+ *  pre-revamp settings file. Snapshots the user's bloom intensity into
+ *  `legacyBloomIntensity` so it can be restored from a future UI; does
+ *  NOT flip `terminalBloom` off (that would remove a feature the user
+ *  chose). The only side effect is the stamp + snapshot. */
+export function applyBloomMigration(settings: AppSettings): AppSettings {
+  if (settings.bloomMigratedToTau) return settings;
+  const legacy = settings.bloomIntensity > 0 ? settings.bloomIntensity : 0;
+  return {
+    ...settings,
+    bloomMigratedToTau: true,
+    legacyBloomIntensity: legacy,
   };
 }
 

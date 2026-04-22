@@ -8,6 +8,7 @@ import {
 import {
   type AppSettings,
   DEFAULT_SETTINGS,
+  applyBloomMigration,
   mergeSettings,
 } from "../shared/settings";
 
@@ -72,7 +73,21 @@ export class SettingsManager {
       if (!existsSync(this.filePath)) return { ...DEFAULT_SETTINGS };
       const raw = readFileSync(this.filePath, "utf-8");
       const parsed = JSON.parse(raw) as Partial<AppSettings>;
-      return mergeSettings({ ...DEFAULT_SETTINGS }, parsed);
+      // τ-mux §11 bloom gate: stamp the migration flag + snapshot the
+      // user's pre-revamp bloomIntensity into legacyBloomIntensity on
+      // the first load after upgrading. Deliberately non-destructive —
+      // we keep the user's terminalBloom toggle exactly as-is so nobody
+      // loses a setting they chose. Persist the stamp next tick so the
+      // migration doesn't re-run on every launch.
+      const merged = mergeSettings({ ...DEFAULT_SETTINGS }, parsed);
+      const migrated = applyBloomMigration(merged);
+      if (migrated !== merged) {
+        setTimeout(() => {
+          this.settings = migrated;
+          this.writeToDisk();
+        }, 0);
+      }
+      return migrated;
     } catch (err) {
       // Corrupt settings.json used to silently reset the user to
       // defaults — they'd lose their theme, shell path, etc. with no

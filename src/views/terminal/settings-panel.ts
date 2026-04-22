@@ -554,11 +554,16 @@ export class SettingsPanel {
     this.sectionTitle(c, "Effects");
     this.sectionDesc(
       c,
-      "GPU-accelerated visual effects layered over the terminal.",
+      "Optional GPU effect layered over terminal text. The τ-mux design " +
+        "system uses only the focused-pane glow — enable bloom only if " +
+        "you specifically want the xterm glyphs themselves to bloom.",
     );
 
     this.toggleField(c, "Terminal Bloom", s.terminalBloom, "terminalBloom", {
-      note: "Adds blur, glow, and bloom post-processing via WebGL.",
+      note:
+        "Off by design (τ-mux §4: only the focused pane glows). Turning " +
+        "this on renders a WebGL bloom pass scoped to the terminal body " +
+        "— never to pane chrome or overlays.",
     });
 
     this.sliderField(
@@ -569,6 +574,16 @@ export class SettingsPanel {
       { min: 0, max: 2, step: 0.05 },
       (v) => v.toFixed(2),
     );
+
+    if (s.bloomMigratedToTau && s.legacyBloomIntensity > 0) {
+      this.infoNote(
+        c,
+        `Your pre-τ-mux bloom intensity (${s.legacyBloomIntensity.toFixed(2)}) ` +
+          `was snapshotted during migration. Slider above starts at 0 on ` +
+          `fresh installs; set it to ${s.legacyBloomIntensity.toFixed(2)} ` +
+          `to restore your previous look.`,
+      );
+    }
   }
 
   private renderNetwork(c: HTMLElement, s: AppSettings): void {
@@ -848,6 +863,15 @@ export class SettingsPanel {
   private sectionDesc(c: HTMLElement, text: string): void {
     const el = document.createElement("p");
     el.className = "settings-section-desc";
+    el.textContent = text;
+    c.appendChild(el);
+  }
+
+  /** Inline informational note — dimmer than sectionDesc, used for
+   *  one-shot migration messages (e.g. τ-mux §11 bloom snapshot). */
+  private infoNote(c: HTMLElement, text: string): void {
+    const el = document.createElement("p");
+    el.className = "settings-info-note";
     el.textContent = text;
     c.appendChild(el);
   }
