@@ -50,6 +50,10 @@
  * drawn in textFaint. Emphatic 1 px top edge per §3 (the one exception
  * to the 0.5 px hairline rule). */
 .tau-status-bar {
+  /* Flex parent — but every direct child MUST be flex: 0 0 auto so
+   * nothing shrinks. The earlier bug was children inheriting the
+   * default flex: 0 1 auto which let them collapse to 0 when the
+   * bar overflowed. Gap handles the separation. */
   position: fixed;
   left: 0;
   right: 0;
@@ -58,7 +62,7 @@
   z-index: 78;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 0 12px;
   background: var(--tau-panel);
   color: var(--tau-text-dim);
@@ -68,7 +72,12 @@
   border-top: 1px solid var(--tau-edge);
   user-select: none;
   white-space: nowrap;
-  overflow: hidden;
+  overflow-x: hidden;
+}
+/* Non-shrinking flex children — Atlas-specific children override with
+ * their own flex value (the ticker-right fills remaining space). */
+.tau-status-bar > * {
+  flex: 0 0 auto;
 }
 .tau-status-bar .tau-status-zone {
   display: flex;
@@ -103,30 +112,29 @@
   box-shadow: 0 0 4px currentColor;
 }
 .tau-status-kv {
-  /* Each status key is a label + value pair. Flex-none so the bar's
-   * `display: flex` doesn't shrink them to zero width — that's what
-   * made a six-key bar render as "· · · · · ·" with invisible
-   * content between the separators. max-width relaxed to a higher
-   * cap so long cwd / branch values still fit. */
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  flex: 0 0 auto;
-  max-width: 40ch;
+  /* Plain inline — NOT a flex container. Content is just
+   * <span>LABEL</span> " " <span>VALUE</span>. Flex-none on the
+   * parent (the status bar) so these don't shrink, and no
+   * overflow: hidden here so text always renders even if sum of
+   * widths exceeds the bar. */
+  display: inline;
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 .tau-status-kv .tau-status-label {
   color: var(--tau-text-mute);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  margin-right: 4px;
 }
 .tau-status-kv .tau-status-value {
   color: var(--tau-text);
   font-variant-numeric: tabular-nums;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+}
+/* Colour dot ride alongside the value on dot-label keys. */
+.tau-status-kv .tau-status-dot {
+  margin-right: 4px;
 }
 /* Warn-state highlight for keys conveying attention-worthy state
  * (dirty git tree, non-zero notifications, etc.). Amber matches
@@ -10313,9 +10321,11 @@ body[data-tau-variant="atlas"] #terminal-container {
 /* Scrolling ticker stream + tauTickerScroll keyframes removed —
  * Atlas bottom bar is now a static status-key strip. The animation
  * was removed from the §10 allowlist. */
-.tau-atlas-ticker-right {
+.tau-status-bar > .tau-atlas-ticker-right {
   /* Atlas bottom-bar body. Fills the strip to the right of the τ
-   * brand cap; status-keys render here with middle-dot separators. */
+   * brand cap; status-keys render here with middle-dot separators.
+   * Higher selector specificity than `.tau-status-bar > *` so this
+   * keeps its flex: 1 1 auto override. */
   flex: 1 1 auto;
   display: flex;
   align-items: center;

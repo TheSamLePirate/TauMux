@@ -73,31 +73,46 @@ export interface StatusKeyRenderer {
 }
 
 // ── small helpers ─────────────────────────────────────────────
+//
+// Helpers moved from inline-flex spans to plain inline spans with
+// textContent — no nested flex, no overflow: hidden, no max-width.
+// The earlier flex-collapse bug (6 keys → 6 invisible blanks because
+// children shrank to 0 inside an overflow:hidden flex row) is
+// structurally impossible with this layout.
 
 function kv(label: string, value: string, title?: string): HTMLSpanElement {
   const wrap = document.createElement("span");
   wrap.className = "tau-status-kv";
+  wrap.dataset["key"] = label;
+  wrap.dataset["value"] = value;
   if (title) wrap.title = title;
   const l = document.createElement("span");
   l.className = "tau-status-label";
   l.textContent = label;
+  wrap.appendChild(l);
+  // Intentional literal space between label and value so even if all
+  // per-span margins fail the user still gets readable text.
+  wrap.appendChild(document.createTextNode(" "));
   const v = document.createElement("span");
   v.className = "tau-status-value";
   v.textContent = value;
-  wrap.append(l, v);
+  wrap.appendChild(v);
   return wrap;
 }
 
 function dotLabel(label: string, colour: string): HTMLSpanElement {
   const wrap = document.createElement("span");
   wrap.className = "tau-status-kv";
+  wrap.dataset["dotlabel"] = label;
   const dot = document.createElement("span");
   dot.className = "tau-status-dot";
   dot.style.background = colour;
+  wrap.appendChild(dot);
+  wrap.appendChild(document.createTextNode(" "));
   const v = document.createElement("span");
   v.className = "tau-status-value";
   v.textContent = label;
-  wrap.append(dot, v);
+  wrap.appendChild(v);
   return wrap;
 }
 

@@ -563,22 +563,29 @@ window.addEventListener("ht-statuses-changed", () => {
 });
 
 // DevTools helper: `window.tauDumpStatus()` prints the status-bar
-// context so users can verify what the bottom bar is reading.
-(window as unknown as { tauDumpStatus: () => void }).tauDumpStatus = () => {
+// context so users can verify what the bottom bar is reading. Uses
+// plain console.log + a single object payload instead of groups so
+// the output lands in one line every DevTools shows, and returns
+// the payload so the REPL prints it inline even if console is muted.
+(
+  window as unknown as { tauDumpStatus: () => Record<string, unknown> }
+).tauDumpStatus = () => {
   const ctx = buildStatusContext();
-  console.groupCollapsed(
-    `%c[τ-mux] status-bar context (${ctx.htStatuses.length} ht entries)`,
-    "color: #6fe9ff",
-  );
-  console.log("activeWorkspaceId:", ctx.activeWorkspaceId);
-  console.log("active workspace:", ctx.activeWorkspace?.name ?? "(none)");
-  console.log("settings.statusBarKeys:", ctx.settings.statusBarKeys);
-  console.log("htStatuses:", ctx.htStatuses);
-  console.log(
-    "all workspace statuses:",
-    surfaceManager?.getAllStatuses?.() ?? "(getAllStatuses not available)",
-  );
-  console.groupEnd();
+  const allStatuses = surfaceManager?.getAllStatuses?.();
+  const dumped = {
+    activeWorkspaceId: ctx.activeWorkspaceId,
+    activeWorkspaceName: ctx.activeWorkspace?.name ?? null,
+    statusBarKeys: ctx.settings.statusBarKeys,
+    htStatuses: ctx.htStatuses,
+    allWorkspaceStatuses: allStatuses
+      ? Object.fromEntries(allStatuses.entries())
+      : "(not available)",
+    statusBarHtml:
+      document.getElementById("tau-status-bar")?.outerHTML.slice(0, 800) ??
+      "(no #tau-status-bar)",
+  };
+  console.log("[τ-mux status dump]", dumped);
+  return dumped;
 };
 
 // 1 Hz tick so status-keys that depend on the wall clock (time /
