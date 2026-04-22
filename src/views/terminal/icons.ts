@@ -74,6 +74,12 @@ export const ICON_TEMPLATES = {
   messageCircle:
     '<path d="M21 11.5a8.4 8.4 0 0 1-1.1 4.2 8.5 8.5 0 0 1-7.4 4.3 8.4 8.4 0 0 1-4.2-1.1L3 20l1.1-5.3a8.4 8.4 0 0 1-1.1-4.2 8.5 8.5 0 0 1 4.3-7.4A8.4 8.4 0 0 1 11.5 2h.5a8.5 8.5 0 0 1 8 8v.5Z"/>',
   send: '<path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4 20-7Z"/>',
+  pin: '<path d="M12 2v7"/><path d="M7.5 9h9l-1.5 4h-6L7.5 9Z"/><path d="M12 13v9"/>',
+  pinOff:
+    '<path d="M3 3l18 18"/><path d="M12 2v3"/><path d="M8 9h8l-1 3.5"/><path d="M11 18v4"/>',
+  grip: '<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
+  filter: '<path d="M4 5h16"/><path d="M7 12h10"/><path d="M10 19h4"/>',
+  edit: '<path d="M4 20h4l10-10-4-4L4 16v4Z"/><path d="m14 6 4 4"/>',
 } as const;
 
 export type IconName = keyof typeof ICON_TEMPLATES;

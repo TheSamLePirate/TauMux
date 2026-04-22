@@ -1500,6 +1500,12 @@ window.addEventListener("ht-select-workspace-cwd", (e: Event) => {
   surfaceManager.setWorkspaceCwd(detail.workspaceId, detail.cwd);
 });
 
+window.addEventListener("ht-rename-workspace", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (!detail?.workspaceId || typeof detail.name !== "string") return;
+  surfaceManager.renameWorkspace(detail.workspaceId, detail.name);
+});
+
 // Metadata poll rate follows window visibility: full rate visible, slow hidden.
 function reportVisibility(): void {
   rpc.send("windowVisibility", { visible: !document.hidden });

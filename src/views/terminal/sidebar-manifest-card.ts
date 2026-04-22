@@ -84,7 +84,12 @@ function buildHeader(props: ManifestCardProps): HTMLElement {
 
   const icon = document.createElement("span");
   icon.className = "workspace-package-icon";
-  icon.append(createIcon("package", "", 10));
+  // Distinct glyph per manifest family so the eye can tell the cargo
+  // card from the npm card instantly. Colour is still driven by CSS
+  // (`.workspace-manifest-cargo .workspace-package-icon`).
+  icon.append(
+    createIcon(props.kind === "cargo" ? "rocket" : "package", "", 11),
+  );
   header.appendChild(icon);
 
   const nameEl = document.createElement("span");
@@ -108,7 +113,9 @@ function buildHeader(props: ManifestCardProps): HTMLElement {
 
   const caret = document.createElement("span");
   caret.className = "workspace-package-caret";
-  caret.textContent = props.expanded ? "▾" : "▸";
+  caret.append(
+    createIcon(props.expanded ? "chevronDown" : "chevronRight", "", 10),
+  );
   header.appendChild(caret);
 
   return header;
@@ -166,7 +173,14 @@ function buildActions(props: ManifestCardProps): HTMLElement {
 
     const run = document.createElement("span");
     run.className = "workspace-script-run";
-    run.textContent = action.state === "running" ? "running" : "run ▶";
+    if (action.state === "running") {
+      run.textContent = "running";
+    } else if (action.state === "error") {
+      run.textContent = "retry";
+    } else {
+      run.textContent = "run";
+      run.append(createIcon("chevronRight", "", 9));
+    }
     row.appendChild(run);
 
     row.addEventListener("click", (e) => {
