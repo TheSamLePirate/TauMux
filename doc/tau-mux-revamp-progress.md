@@ -166,10 +166,14 @@ Compliance per overlay scope (post-sweep audit):
 - [x] 858/858 tests pass · typecheck clean
 
 ## Phase 12 — Emoji / icon / animation / hover audit
-- [ ] Emoji audit green across `src/**`
-- [ ] Unicode symbols on button faces replaced with Phase-2 icons (tree glyphs kept)
-- [ ] `@keyframes` in `index.css` limited to the approved set
-- [ ] Hover effects restricted per §10
+- [x] Emoji audit green across `src/views/terminal/**`, `src/bun/**`, `src/shared/**` (wired into bun test + CI since Phase 2)
+- [x] Animation audit (`scripts/audit-animations.ts` + `tests/audit-animations.test.ts`) — enumerates every `@keyframes` in `index.css`, classifies as §10 canonical (tauBlink / tauPulse / tauGlowPulse / tauDash / tauTickerScroll + `tauAtlasHalo` §9.3 extension) or documented state exception (23 pre-revamp spinners / entrance transitions / functional pulses, each with a one-line rationale). Fails CI on any unlisted keyframe.
+- [x] 2 unused keyframes (`script-pulse`, `sidebar-server-dot-pulse`) deleted from `index.css`
+- [x] `tauBlink` keyframe + `.tau-cursor` primitive class added so the §10 canonical set is fully defined in `index.css` (was only in `design_guidelines/src/tokens.jsx`)
+- [x] Hover audit: `.pane-divider:hover` chromatic glow stripped in both cascade instances (two separate `:hover` blocks from pre-revamp + 2026-refresh layers); flat cyan highlight now
+- [x] Unicode symbols on button faces — audited; no violations (tree glyphs permitted in `.tau-workspace-sessions` + sidebar hierarchy per §11 "Do")
+- [x] CI pipeline runs audit:emoji + audit:animations on every push
+- [x] 859/859 tests pass · typecheck clean
 
 ## Phase 13 — Validation gates
 - [ ] `bun test` green

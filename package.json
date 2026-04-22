@@ -24,6 +24,7 @@
     "test:native:design-review": "playwright test --config=playwright-native.config.ts --grep @design-review",
     "audit:test-hooks": "bun scripts/audit-test-hooks.ts",
     "audit:emoji": "bun scripts/audit-emoji.ts",
+    "audit:animations": "bun scripts/audit-animations.ts",
     "build:design-review": "bun scripts/build-design-review.ts",
     "review:agent": "bun scripts/run-code-review-agent.ts",
     "review:agent:watch": "bun scripts/run-code-review-watch.ts",

@@ -128,6 +128,13 @@ jobs:
         # opt out with `// emoji-audit-ignore-line`.
         run: bun run audit:emoji
 
+      - name: Audit animations (τ-mux design guideline §10)
+        # Fails if index.css defines a keyframe that is neither a §10
+        # canonical animation (tauBlink / tauPulse / tauGlowPulse /
+        # tauDash / tauTickerScroll + documented τ-mux extensions)
+        # nor on the state-exception allowlist inside the script.
+        run: bun run audit:animations
+
       - name: Run native Playwright tests
         env:
           CI: "1"

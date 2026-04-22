@@ -719,11 +719,6 @@ body.sidebar-resizing {
   animation: tauPulse 1.8s ease-in-out infinite;
 }
 
-@keyframes sidebar-server-dot-pulse {
-  0%, 100% { opacity: 0.55; }
-  50%      { opacity: 1;    }
-}
-
 /* Each service shown on its own row — dot · label · value. Stacking
  * them gives each one room to breathe and lets the value stay legible
  * when the bot username / URL is long. */
@@ -1820,11 +1815,6 @@ body.sidebar-resizing {
   background: var(--tau-err);
 }
 
-@keyframes script-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
-}
-
 .workspace-script-name {
   color: var(--text-strong);
   font-weight: 500;
@@ -2476,10 +2466,10 @@ body.sidebar-resizing {
 }
 
 .pane-divider:hover {
-  background: rgba(111, 233, 255, 0.56);
-  box-shadow:
-    0 0 22px rgba(111, 233, 255, 0.22),
-    0 0 40px rgba(255, 197, 107, 0.08);
+  /* τ-mux §4/§10: no chromatic glow on chrome hover. Pane divider is
+   * interactive (it's the resize handle between panes); use a flat
+   * cyan highlight. */
+  background: var(--tau-cyan);
 }
 
 .xterm-helper-textarea {
@@ -5033,8 +5023,8 @@ body::before, body::after { content: none; }
 }
 
 .pane-divider:hover {
-  background: color-mix(in srgb, var(--accent-primary) 48%, rgba(255, 255, 255, 0.12));
-  box-shadow: 0 0 18px color-mix(in srgb, var(--accent-primary) 18%, transparent);
+  /* τ-mux §4: no chromatic glow on chrome hover. */
+  background: var(--tau-cyan);
 }
 
 .panel,
@@ -9353,6 +9343,24 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
 @keyframes tauPulse {
   0%, 100% { opacity: 0.45; transform: scale(1); }
   50%      { opacity: 0.9;  transform: scale(1.2); }
+}
+
+/* τ-mux §10: 1.1 s steps(2) cursor blink. `.tau-cursor` is the shared
+ * primitive for any rendered cursor that isn't driven by xterm itself
+ * (agent input composer, prompt dialogs, etc.). xterm renders the
+ * terminal cursor via its own settings — this is chrome-only. */
+@keyframes tauBlink {
+  0%, 49%    { opacity: 1; }
+  50%, 100%  { opacity: 0; }
+}
+.tau-cursor {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  background: var(--tau-cyan);
+  vertical-align: -2px;
+  animation: tauBlink 1.1s steps(2, end) infinite;
+  box-shadow: 0 0 8px var(--tau-cyan-glow);
 }
 
 /* ── Pane (§8.1, §4 focus indicator) ──
