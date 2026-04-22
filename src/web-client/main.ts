@@ -79,7 +79,7 @@ const TERM_OPTS = {
   fontFamily:
     "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Fira Code', monospace",
   fontSize: 13,
-  lineHeight: 1.2,
+  lineHeight: 1.0,
   cursorBlink: true,
   cursorStyle: "bar",
   scrollback: 10000,

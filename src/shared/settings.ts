@@ -537,7 +537,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
 
   fontFamily: DEFAULT_FONT_FAMILY,
   fontSize: 13,
-  lineHeight: 1.2,
+  lineHeight: 1.0,
   cursorStyle: "block",
   cursorBlink: true,
 

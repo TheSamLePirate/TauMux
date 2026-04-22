@@ -2034,7 +2034,7 @@ export class SurfaceManager {
       fontFamily:
         "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Berkeley Mono', 'SF Mono', 'Menlo', monospace",
       fontSize: this.fontSize,
-      lineHeight: 1.2,
+      lineHeight: 1.0,
       cursorBlink: true,
       cursorStyle: "block",
       allowTransparency: true,
