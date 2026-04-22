@@ -1384,6 +1384,46 @@ const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
     match: keyMatch({ key: "b", meta: true, shift: false }),
     action: () => toggleSidebar(),
   },
+
+  // τ-mux §10 variant shortcuts.
+  // - ⌘\ collapses the sidebar / icon rail / graph column in Cockpit +
+  //   Atlas (acts like toggleSidebar() for those variants, and like a
+  //   plain sidebar toggle in Bridge so Bridge users still get a useful
+  //   binding; Bridge's sidebar is "never collapsible" per §9.1, so we
+  //   wire the behaviour to toggle a body attribute the variant CSS
+  //   can respect).
+  {
+    id: "layout.toggle-rail",
+    description: "Collapse sidebar / icon rail / graph",
+    category: "Layout",
+    match: keyMatch({ key: "\\", meta: true }),
+    action: () => {
+      const variant = currentSettings?.layoutVariant ?? "bridge";
+      if (variant === "bridge") {
+        // §9.1 says Bridge is never collapsible — keep that contract
+        // but still let ⌘\ do something sensible (toggle sidebar).
+        toggleSidebar();
+        return;
+      }
+      document.body.classList.toggle("tau-rail-collapsed");
+      // Ask the terminal to resize after the transition so xterm
+      // reflows to the new available width.
+      setTimeout(() => surfaceManager.resizeAll(), 220);
+    },
+  },
+  // - ⌘G toggles graph visibility (Atlas only). In other variants it
+  //   is a no-op so the binding is discoverable but harmless.
+  {
+    id: "layout.toggle-graph",
+    description: "Toggle graph view (Atlas)",
+    category: "Layout",
+    when: () => (currentSettings?.layoutVariant ?? "bridge") === "atlas",
+    match: keyMatch({ key: "g", meta: true, shift: false }),
+    action: () => {
+      document.body.classList.toggle("tau-atlas-graph-hidden");
+      setTimeout(() => surfaceManager.resizeAll(), 220);
+    },
+  },
   {
     id: "surface.new",
     description: "New terminal pane",

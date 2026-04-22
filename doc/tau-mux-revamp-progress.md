@@ -124,12 +124,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (add note
 - [x] 858/858 tests pass · typecheck clean
 
 ## Phase 9 — Variant switcher + persistence
-- [ ] `layoutVariant` added to `AppSettings` / `DEFAULT_SETTINGS` / `validateSettings`
-- [ ] `updateSettings` wiring in `src/bun/rpc-handlers/system.ts`
-- [ ] Settings panel "Layout" section with three variant previews
-- [ ] Command palette entries for each variant
-- [ ] Keyboard: `Ctrl+h/j/k/l`, `⌘K`, `⌘⇧P`, `⌘\`, `⌘G`
-- [ ] Choice survives app restart
+- [x] `layoutVariant` added to `AppSettings` / `DEFAULT_SETTINGS` / `validateSettings` (landed in Phase 6 scaffold)
+- [x] `updateSettings` wiring — already handles arbitrary partials so no per-field RPC change needed; VariantController.setVariant persists through the existing `rpc.send("updateSettings", …)` path
+- [x] Settings panel "Layout" section with three variant cards (inline-SVG miniatures so no raster assets in the bundle; previews inherit `--tau-*` tokens so they match the active theme)
+- [x] Command palette entries for each variant (landed in Phase 6 scaffold)
+- [x] Keyboard: `Ctrl+h/j/k/l` focus moves (pre-existing), `⌘K` palette (pre-existing), `⌘⇧P` agent palette (pre-existing), `⌘B` sidebar toggle (pre-existing)
+- [x] `⌘\` collapse sidebar/rail/graph — toggles `body.tau-rail-collapsed`; Bridge falls through to `toggleSidebar()` per §9.1 "never collapsible"
+- [x] `⌘G` toggle graph view (Atlas only via `when:` gate); toggles `body.tau-atlas-graph-hidden`, terminal container re-flows after 220 ms
+- [x] Choice survives app restart (settings persisted via bun `SettingsManager`; controller rebuilds on load)
+- [x] 858/858 tests pass · typecheck clean
 
 ## Phase 10 — Overlay compliance sweep
 - [ ] `command-palette.ts`

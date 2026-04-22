@@ -47,6 +47,12 @@ export class SettingsPanel {
         render: (c, s) => this.renderAppearance(c, s),
       },
       {
+        id: "layout",
+        label: "Layout",
+        icon: "splitHorizontal",
+        render: (c, s) => this.renderLayout(c, s),
+      },
+      {
         id: "theme",
         label: "Theme",
         icon: "sparkles",
@@ -303,6 +309,74 @@ export class SettingsPanel {
     ]);
 
     this.toggleField(c, "Cursor Blink", s.cursorBlink, "cursorBlink");
+  }
+
+  /**
+   * τ-mux §9 Layout picker — three variant cards with inline SVG
+   * miniatures of the layouts. Selection is persisted via the same
+   * onChange callback every other setting flows through, so the
+   * active variant survives a restart and is visible to bun.
+   */
+  private renderLayout(c: HTMLElement, s: AppSettings): void {
+    this.sectionTitle(c, "Layout");
+    this.sectionDesc(
+      c,
+      "Pick a layout variant. The choice persists across sessions.",
+    );
+
+    const variants: {
+      id: AppSettings["layoutVariant"];
+      name: string;
+      blurb: string;
+      preview: () => SVGSVGElement;
+    }[] = [
+      {
+        id: "bridge",
+        name: "Bridge",
+        blurb:
+          "Refined default. 240 px sidebar, 3-pane split, Codex/Week/$ status meters.",
+        preview: renderBridgeMiniature,
+      },
+      {
+        id: "cockpit",
+        name: "Cockpit",
+        blurb:
+          "Dense. 52 px icon rail, per-pane HUD (model · state · tok/s · $), up to 4 panes.",
+        preview: renderCockpitMiniature,
+      },
+      {
+        id: "atlas",
+        name: "Atlas",
+        blurb: "Radical. Workspace graph sidebar, activity ticker bottom bar.",
+        preview: renderAtlasMiniature,
+      },
+    ];
+
+    const wrap = document.createElement("div");
+    wrap.className = "layout-cards";
+    for (const v of variants) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = `layout-card${v.id === s.layoutVariant ? " active" : ""}`;
+      const preview = document.createElement("div");
+      preview.className = "layout-card-preview";
+      preview.appendChild(v.preview());
+      card.appendChild(preview);
+      const label = document.createElement("div");
+      label.className = "layout-card-label";
+      label.textContent = v.name;
+      card.appendChild(label);
+      const blurb = document.createElement("div");
+      blurb.className = "layout-card-blurb";
+      blurb.textContent = v.blurb;
+      card.appendChild(blurb);
+      card.addEventListener("click", () => {
+        this.emit({ layoutVariant: v.id });
+        setTimeout(() => this.renderActiveSection(), 20);
+      });
+      wrap.appendChild(card);
+    }
+    c.appendChild(wrap);
   }
 
   private renderTheme(c: HTMLElement, s: AppSettings): void {
@@ -1012,4 +1086,140 @@ export class SettingsPanel {
     }
     this.onChange(partial);
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// τ-mux §9 layout miniatures — inline SVG thumbnails for the
+// Settings > Layout picker. Keeps the bundle free of raster
+// assets and lets the previews inherit the --tau-* tokens so
+// they automatically match the active theme.
+// ─────────────────────────────────────────────────────────────
+const NS_SVG_LAYOUT = "http://www.w3.org/2000/svg";
+
+function mkRect(
+  svg: SVGSVGElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  fill: string,
+  stroke?: string,
+): SVGRectElement {
+  const r = document.createElementNS(NS_SVG_LAYOUT, "rect");
+  r.setAttribute("x", String(x));
+  r.setAttribute("y", String(y));
+  r.setAttribute("width", String(w));
+  r.setAttribute("height", String(h));
+  r.setAttribute("fill", fill);
+  if (stroke) {
+    r.setAttribute("stroke", stroke);
+    r.setAttribute("stroke-width", "0.5");
+  }
+  svg.appendChild(r);
+  return r;
+}
+
+function baseSvg(): SVGSVGElement {
+  const svg = document.createElementNS(NS_SVG_LAYOUT, "svg");
+  svg.setAttribute("viewBox", "0 0 160 96");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "auto");
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  // Outer window (12 px radius mirrored at 160×96 scale).
+  const outer = document.createElementNS(NS_SVG_LAYOUT, "rect");
+  outer.setAttribute("x", "1");
+  outer.setAttribute("y", "1");
+  outer.setAttribute("width", "158");
+  outer.setAttribute("height", "94");
+  outer.setAttribute("rx", "4");
+  outer.setAttribute("fill", "var(--tau-bg)");
+  outer.setAttribute("stroke", "var(--tau-edge)");
+  outer.setAttribute("stroke-width", "0.5");
+  svg.appendChild(outer);
+  // Titlebar strip.
+  mkRect(svg, 1, 1, 158, 8, "var(--tau-panel)");
+  const tau = document.createElementNS(NS_SVG_LAYOUT, "circle");
+  tau.setAttribute("cx", "6");
+  tau.setAttribute("cy", "5");
+  tau.setAttribute("r", "1.2");
+  tau.setAttribute("fill", "var(--tau-cyan)");
+  svg.appendChild(tau);
+  return svg;
+}
+
+function renderBridgeMiniature(): SVGSVGElement {
+  const svg = baseSvg();
+  // 240 px sidebar ≈ 28 px slot here.
+  mkRect(svg, 1, 9, 28, 80, "var(--tau-panel)");
+  // Three pane split: top-left utility, top-right terminal, wide bottom.
+  mkRect(svg, 30, 11, 60, 40, "var(--tau-void)", "var(--tau-edge)");
+  mkRect(svg, 92, 11, 66, 40, "var(--tau-void)", "var(--tau-cyan)");
+  mkRect(svg, 30, 53, 128, 34, "var(--tau-void)", "var(--tau-edge)");
+  // Status bar.
+  mkRect(svg, 1, 90, 158, 5, "var(--tau-panel)");
+  return svg;
+}
+
+function renderCockpitMiniature(): SVGSVGElement {
+  const svg = baseSvg();
+  // 52 px icon rail ≈ 10 px slot.
+  mkRect(svg, 1, 9, 10, 80, "var(--tau-void)", "var(--tau-edge)");
+  // 2x2 pane grid with HUD strip (2 px band inside each).
+  const panes: [number, number][] = [
+    [12, 11],
+    [86, 11],
+    [12, 50],
+    [86, 50],
+  ];
+  for (const [px, py] of panes) {
+    mkRect(svg, px, py, 72, 37, "var(--tau-void)", "var(--tau-edge)");
+    // Header
+    mkRect(svg, px, py, 72, 4, "var(--tau-panel)");
+    // HUD (22 px / 96 ≈ 2 px here)
+    mkRect(svg, px, py + 4, 72, 2, "var(--tau-panel-hi)");
+  }
+  // Status bar.
+  mkRect(svg, 1, 90, 158, 5, "var(--tau-panel)");
+  return svg;
+}
+
+function renderAtlasMiniature(): SVGSVGElement {
+  const svg = baseSvg();
+  // 220 px graph column ≈ 26 px slot + 4 px tab rail.
+  mkRect(svg, 1, 9, 26, 74, "var(--tau-void)", "var(--tau-edge)");
+  mkRect(svg, 27, 9, 5, 74, "var(--tau-void)", "var(--tau-edge)");
+  // Graph nodes.
+  const nodes: [number, number, string][] = [
+    [10, 18, "var(--tau-cyan)"],
+    [10, 34, "var(--tau-text)"],
+    [10, 48, "var(--tau-agent)"],
+    [10, 62, "var(--tau-text-dim)"],
+  ];
+  for (const [cx, cy, fill] of nodes) {
+    const c = document.createElementNS(NS_SVG_LAYOUT, "circle");
+    c.setAttribute("cx", String(cx));
+    c.setAttribute("cy", String(cy));
+    c.setAttribute("r", "1.5");
+    c.setAttribute("fill", fill);
+    svg.appendChild(c);
+  }
+  // Dashed active edge to the agent node.
+  const edge = document.createElementNS(NS_SVG_LAYOUT, "path");
+  edge.setAttribute("d", "M 10 18 L 10 48");
+  edge.setAttribute("stroke", "var(--tau-cyan)");
+  edge.setAttribute("stroke-width", "0.6");
+  edge.setAttribute("stroke-dasharray", "1.5 1.5");
+  edge.setAttribute("fill", "none");
+  svg.appendChild(edge);
+  // Pane area.
+  mkRect(svg, 33, 11, 125, 72, "var(--tau-void)", "var(--tau-edge)");
+  // Ticker strip (32 px instead of 26; ≈ 6 px here).
+  mkRect(svg, 1, 89, 158, 6, "var(--tau-void)", "var(--tau-edge)");
+  const brand = document.createElementNS(NS_SVG_LAYOUT, "circle");
+  brand.setAttribute("cx", "6");
+  brand.setAttribute("cy", "92");
+  brand.setAttribute("r", "1.2");
+  brand.setAttribute("fill", "var(--tau-cyan)");
+  svg.appendChild(brand);
+  return svg;
 }

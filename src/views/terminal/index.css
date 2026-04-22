@@ -10274,3 +10274,79 @@ body[data-tau-variant="atlas"] #terminal-container {
   border-left: 0.5px solid var(--tau-edge);
   background: var(--tau-void);
 }
+
+/* ── §9 Settings > Layout picker ──
+ * Three variant cards with inline-SVG miniatures. Styled like the
+ * theme-card grid but wider so the blurb line fits. */
+.layout-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.layout-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--tau-panel);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-pane);
+  color: var(--tau-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+.layout-card:hover {
+  border-color: var(--tau-cyan-dim);
+  background: var(--tau-panel-hi);
+}
+.layout-card.active {
+  border-color: var(--tau-cyan);
+  box-shadow: 0 0 0 0.5px var(--tau-cyan);
+}
+.layout-card-preview {
+  border: 0.5px solid var(--tau-edge);
+  border-radius: 4px;
+  background: var(--tau-bg);
+  overflow: hidden;
+  aspect-ratio: 160 / 96;
+}
+.layout-card-preview svg { display: block; width: 100%; height: auto; }
+.layout-card-label {
+  font-family: var(--tau-font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--tau-text);
+}
+.layout-card-blurb {
+  font-family: var(--tau-font-sans);
+  font-size: 11px;
+  color: var(--tau-text-dim);
+  line-height: 1.3;
+}
+
+/* ── §10 collapse shortcuts ──
+ * ⌘\ collapses the sidebar/icon-rail/graph column in Cockpit + Atlas.
+ * ⌘G toggles the graph column under Atlas specifically. Bridge is
+ * "never collapsible" per §9.1; its ⌘\ falls back to the plain sidebar
+ * toggle driven by the existing #sidebar.collapsed class. */
+body.tau-rail-collapsed[data-tau-variant="cockpit"] #sidebar,
+body.tau-rail-collapsed[data-tau-variant="atlas"] #sidebar,
+body.tau-atlas-graph-hidden[data-tau-variant="atlas"] #sidebar {
+  width: 0 !important;
+  padding: 0 !important;
+  border-right: none !important;
+  overflow: hidden;
+}
+body.tau-rail-collapsed[data-tau-variant="cockpit"] #terminal-container,
+body.tau-rail-collapsed[data-tau-variant="atlas"] #terminal-container,
+body.tau-atlas-graph-hidden[data-tau-variant="atlas"] #terminal-container {
+  left: 0 !important;
+}
+body.tau-rail-collapsed[data-tau-variant="atlas"] .tau-atlas-tab-rail,
+body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
+  left: 0;
+}
