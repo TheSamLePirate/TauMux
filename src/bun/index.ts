@@ -420,6 +420,15 @@ const bunMessageHandlers = {
       });
     } else if (browserSurfaces.isBrowserSurface(payload.surfaceId)) {
       browserSurfaces.closeSurface(payload.surfaceId);
+    } else if (payload.surfaceId.startsWith("tg:")) {
+      // Telegram panes have no bun-side resource (no PTY, no browser
+      // process, no agent); echo the close back so the webview layout
+      // removes the pane. Without this the × does nothing.
+      rpc.send("surfaceClosed", { surfaceId: payload.surfaceId });
+      app.webServer?.broadcast({
+        type: "surfaceClosed",
+        surfaceId: payload.surfaceId,
+      });
     } else {
       sessions.closeSurface(payload.surfaceId);
     }
