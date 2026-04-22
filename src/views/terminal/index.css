@@ -103,19 +103,30 @@
   box-shadow: 0 0 4px currentColor;
 }
 .tau-status-kv {
+  /* Each status key is a label + value pair. Flex-none so the bar's
+   * `display: flex` doesn't shrink them to zero width — that's what
+   * made a six-key bar render as "· · · · · ·" with invisible
+   * content between the separators. max-width relaxed to a higher
+   * cap so long cwd / branch values still fit. */
   display: inline-flex;
   align-items: baseline;
   gap: 4px;
-  min-width: 0;
-  max-width: 28ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
+  max-width: 40ch;
   white-space: nowrap;
 }
 .tau-status-kv .tau-status-label {
+  color: var(--tau-text-mute);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+.tau-status-kv .tau-status-value {
+  color: var(--tau-text);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 /* Warn-state highlight for keys conveying attention-worthy state
  * (dirty git tree, non-zero notifications, etc.). Amber matches
@@ -9607,6 +9618,7 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex: 0 0 auto;
   font-family: var(--tau-font-mono);
   font-size: 10.5px;
   color: var(--tau-text-dim);
@@ -10057,7 +10069,7 @@ body[data-tau-variant="cockpit"] .tau-hud {
 }
 .tau-hud-kind-human { color: var(--tau-cyan); }
 .tau-hud-kind-agent { color: var(--tau-agent); }
-.tau-hud-sep { color: var(--tau-text-faint); }
+.tau-hud-sep { color: var(--tau-text-faint); flex: 0 0 auto; }
 .tau-hud-kv {
   display: inline-flex;
   align-items: baseline;
@@ -10548,7 +10560,6 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-width: 0;
-  overflow: hidden;
+  flex: 0 0 auto;
   white-space: nowrap;
 }
