@@ -230,6 +230,20 @@ export function parsePackageJson(
     }
     if (Object.keys(coerced).length > 0) info.scripts = coerced;
   }
+  // Refuse to surface a "shell" manifest whose only fields are the
+  // file path itself — without a name, version, description, scripts
+  // or bin entry there's nothing to put in the sidebar card and we'd
+  // otherwise render an empty "package.json" header. Mirrors
+  // parseCargoToml which already requires `[package]` or `[workspace]`.
+  if (
+    !info.name &&
+    !info.version &&
+    !info.description &&
+    !info.scripts &&
+    !info.bin
+  ) {
+    return null;
+  }
   return info;
 }
 

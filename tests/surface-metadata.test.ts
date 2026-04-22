@@ -468,6 +468,22 @@ describe("parsePackageJson", () => {
     expect(parsePackageJson('"just a string"', "/p/package.json")).toBeNull();
     expect(parsePackageJson("[]", "/p/package.json")).toBeNull();
   });
+
+  test("returns null for an empty manifest with no useful fields", () => {
+    // Avoid surfacing an empty card in the sidebar when an ancestor
+    // dir holds a placeholder `{}` package.json (common in monorepos
+    // and tooling-only roots).
+    expect(parsePackageJson("{}", "/p/package.json")).toBeNull();
+    expect(
+      parsePackageJson(JSON.stringify({ type: "module" }), "/p/package.json"),
+    ).toBeNull();
+  });
+
+  test("a manifest with just a name is still surfaced (it has identity)", () => {
+    const info = parsePackageJson('{"name":"tiny"}', "/p/package.json");
+    expect(info).not.toBeNull();
+    expect(info?.name).toBe("tiny");
+  });
 });
 
 describe("parseShortstat", () => {
