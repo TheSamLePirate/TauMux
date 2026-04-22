@@ -85,6 +85,14 @@ export interface AppSettings {
    *  Source: design_guidelines/Design Guidelines tau-mux.md §9. */
   layoutVariant: "bridge" | "cockpit" | "atlas";
 
+  /** Ordered list of status-key ids displayed in the bottom status
+   *  bar across every variant. The full registry lives in
+   *  `src/views/terminal/status-keys.ts`; user picks which to show
+   *  and in what order from Settings → Layout. Unknown ids are
+   *  dropped by validateSettings so stale configs don't crash the
+   *  renderer. Empty array = empty bar (allowed). */
+  statusBarKeys: string[];
+
   // Browser
   /** Search engine for browser address bar non-URL queries. */
   browserSearchEngine: "google" | "duckduckgo" | "bing" | "kagi";
@@ -569,6 +577,21 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
 
   // τ-mux §9 default variant.
   layoutVariant: "bridge",
+  // Sensible default status-key set — covers identity, load, and the
+  // focused-surface detail columns everyone wants to see. Users can
+  // edit the list in Settings → Layout.
+  statusBarKeys: [
+    "workspace",
+    "panes",
+    "cpu",
+    "mem",
+    "procs",
+    "fg",
+    "cwd",
+    "branch",
+    "ports",
+    "time",
+  ],
 
   browserSearchEngine: "google",
   browserHomePage: "",
@@ -661,6 +684,11 @@ export function validateSettings(s: AppSettings): AppSettings {
       s.layoutVariant === "cockpit" || s.layoutVariant === "atlas"
         ? s.layoutVariant
         : "bridge",
+    statusBarKeys: Array.isArray(s.statusBarKeys)
+      ? (s.statusBarKeys.filter(
+          (k): k is string => typeof k === "string" && k.length > 0,
+        ) as string[])
+      : ["workspace", "panes", "cpu", "mem", "fg", "cwd", "branch", "time"],
     bloomMigratedToTau: !!s.bloomMigratedToTau,
     legacyBloomIntensity: clamp(
       typeof s.legacyBloomIntensity === "number" ? s.legacyBloomIntensity : 0,

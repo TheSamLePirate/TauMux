@@ -5,6 +5,7 @@ import {
   presetToPartial,
 } from "../../shared/settings";
 import { createIcon } from "./icons";
+import { STATUS_KEY_META, STATUS_KEY_GROUPS } from "./status-keys";
 
 type SettingChangeHandler = (partial: Partial<AppSettings>) => void;
 
@@ -347,7 +348,8 @@ export class SettingsPanel {
       {
         id: "atlas",
         name: "Atlas",
-        blurb: "Radical. Workspace graph sidebar, activity ticker bottom bar.",
+        blurb:
+          "Radical. Workspace graph sidebar with per-node CPU, configurable status keys.",
         preview: renderAtlasMiniature,
       },
     ];
@@ -377,6 +379,111 @@ export class SettingsPanel {
       wrap.appendChild(card);
     }
     c.appendChild(wrap);
+
+    // ── Status bar keys picker ──
+    // The bottom status bar is key-driven (src/views/terminal/status-keys.ts).
+    // Users pick which keys show and in what order. Current order is
+    // preserved when toggling; disabled keys are appended at the
+    // bottom of the pool so enabling them re-adds them at the end.
+    this.sectionTitle(c, "Status bar keys");
+    this.sectionDesc(
+      c,
+      "Pick which status keys appear in the bottom bar. Reorder by toggling; active keys render left-to-right in the order below. Keys that have no data to show at the moment are silently skipped.",
+    );
+
+    const activeKeys = s.statusBarKeys ?? [];
+    const grouped: Record<string, typeof STATUS_KEY_META> = {};
+    for (const g of STATUS_KEY_GROUPS) grouped[g] = [];
+    for (const meta of STATUS_KEY_META) grouped[meta.group]!.push(meta);
+
+    const grid = document.createElement("div");
+    grid.className = "status-key-grid";
+    for (const group of STATUS_KEY_GROUPS) {
+      const header = document.createElement("div");
+      header.className = "status-key-group";
+      header.textContent = group;
+      grid.appendChild(header);
+      const groupWrap = document.createElement("div");
+      groupWrap.className = "status-key-group-items";
+      for (const meta of grouped[group]!) {
+        const row = document.createElement("button");
+        row.type = "button";
+        const active = activeKeys.includes(meta.id);
+        row.className = `status-key-row${active ? " active" : ""}`;
+        row.title = meta.description;
+        const check = document.createElement("span");
+        check.className = "status-key-check";
+        check.textContent = active ? "●" : "○";
+        row.appendChild(check);
+        const label = document.createElement("span");
+        label.className = "status-key-label";
+        label.textContent = meta.label;
+        row.appendChild(label);
+        const id = document.createElement("span");
+        id.className = "status-key-id tau-mono";
+        id.textContent = meta.id;
+        row.appendChild(id);
+        row.addEventListener("click", () => {
+          const next = active
+            ? activeKeys.filter((k) => k !== meta.id)
+            : [...activeKeys, meta.id];
+          this.emit({ statusBarKeys: next });
+          setTimeout(() => this.renderActiveSection(), 20);
+        });
+        groupWrap.appendChild(row);
+      }
+      grid.appendChild(groupWrap);
+    }
+    c.appendChild(grid);
+
+    // Reorder controls — per-key ↑/↓ shuffle the active list.
+    if (activeKeys.length > 1) {
+      this.sectionDesc(
+        c,
+        `Order (${activeKeys.length} active). The leftmost entry renders nearest the workspace-colour dot.`,
+      );
+      const orderList = document.createElement("div");
+      orderList.className = "status-key-order";
+      activeKeys.forEach((id, i) => {
+        const meta = STATUS_KEY_META.find((m) => m.id === id);
+        if (!meta) return;
+        const row = document.createElement("div");
+        row.className = "status-key-order-row";
+        const label = document.createElement("span");
+        label.className = "status-key-order-label";
+        label.textContent = meta.label;
+        const idSpan = document.createElement("span");
+        idSpan.className = "status-key-id tau-mono";
+        idSpan.textContent = meta.id;
+        const up = document.createElement("button");
+        up.type = "button";
+        up.className = "status-key-order-btn";
+        up.textContent = "↑";
+        up.disabled = i === 0;
+        up.addEventListener("click", () => {
+          if (i === 0) return;
+          const next = activeKeys.slice();
+          [next[i - 1], next[i]] = [next[i]!, next[i - 1]!];
+          this.emit({ statusBarKeys: next });
+          setTimeout(() => this.renderActiveSection(), 20);
+        });
+        const down = document.createElement("button");
+        down.type = "button";
+        down.className = "status-key-order-btn";
+        down.textContent = "↓";
+        down.disabled = i === activeKeys.length - 1;
+        down.addEventListener("click", () => {
+          if (i === activeKeys.length - 1) return;
+          const next = activeKeys.slice();
+          [next[i], next[i + 1]] = [next[i + 1]!, next[i]!];
+          this.emit({ statusBarKeys: next });
+          setTimeout(() => this.renderActiveSection(), 20);
+        });
+        row.append(label, idSpan, up, down);
+        orderList.appendChild(row);
+      });
+      c.appendChild(orderList);
+    }
   }
 
   private renderTheme(c: HTMLElement, s: AppSettings): void {

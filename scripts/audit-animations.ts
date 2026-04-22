@@ -42,7 +42,8 @@ const CANONICAL = new Set([
   "tauPulse", // §10: 1.4 s running-session dot pulse
   "tauGlowPulse", // §10: τ logo processing pulse
   "tauDash", // §9.3: active graph edge stroke-dashoffset
-  "tauTickerScroll", // §9.3: Atlas activity ticker, 60 s linear
+  // tauTickerScroll removed — Atlas bottom bar is now a static
+  // status-key strip. Re-adding would need a guideline citation.
   "tauAtlasHalo", // §9.3: active-node pulsing halo (r + opacity)
   "tauAtlasNotifyPulse", // §9.3: workspace-level notification ring
   "tauNotifyPulse", // §7: identity-aware workspace notification dot

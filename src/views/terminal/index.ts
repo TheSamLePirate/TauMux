@@ -13,7 +13,8 @@ import { SurfaceManager } from "./surface-manager";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
 import { createIcon } from "./icons";
 import { IconTau } from "./tau-icons";
-import { StatusBar, Meter } from "./tau-primitives";
+import { StatusBar } from "./tau-primitives";
+import { renderStatusKey, type StatusContext } from "./status-keys";
 // Side-effect import: installs window.tauAuditFocus() for DevTools usage.
 import "./tau-focus-audit";
 import { VariantController } from "./variants/controller";
@@ -411,163 +412,83 @@ let statusBarHandle: ReturnType<typeof StatusBar> | null = null;
  *   meters   — aggregated CPU + MEM across the active workspace
  *   cost     — focused surface's fg command + cwd (Mono, paste-safe)
  */
+/**
+ * Key-driven status bar: iterates the user's `statusBarKeys` setting
+ * and renders each key via the registry. Shared by Bridge, Cockpit,
+ * and Atlas (Atlas passes the result through its own brand-cap
+ * wrapper but builds the key list the same way).
+ */
 function refreshStatusBar(): void {
   if (!statusBarHandle) return;
+  const ctx = buildStatusContext();
 
-  const wsState = surfaceManager?.getWorkspaceState?.();
-  const workspaces = wsState?.workspaces ?? [];
-  const activeId = wsState?.activeWorkspaceId;
-  const active = workspaces.find((w) => w.id === activeId);
-  const paneCount = active?.surfaceIds.length ?? 0;
-  const wsCount = workspaces.length;
+  const mount = statusBarHandle.root;
+  mount.replaceChildren();
 
-  // Gather per-surface metadata for CPU/MEM aggregation + focused-
-  // surface detail. getProcessManagerData returns workspaces with each
-  // surface's metadata attached — we only look at the active workspace.
-  const pmData = surfaceManager?.getProcessManagerData?.() ?? [];
-  const pmActive = pmData.find((w) => w.id === activeId);
-  let totalCpu = 0;
-  let totalRss = 0;
-  let procCount = 0;
-  if (pmActive) {
-    for (const surf of pmActive.surfaces) {
-      if (!surf.metadata) continue;
-      for (const proc of surf.metadata.tree) {
-        totalCpu += proc.cpu ?? 0;
-        totalRss += proc.rssKb ?? 0;
-        procCount++;
-      }
+  const settings = currentSettings ?? DEFAULT_SETTINGS;
+  const ids = settings.statusBarKeys ?? [];
+  let first = true;
+  for (const id of ids) {
+    const el = renderStatusKey(id, ctx);
+    if (!el) continue;
+    if (!first) {
+      const s = document.createElement("span");
+      s.className = "tau-hud-sep";
+      s.textContent = "·";
+      mount.appendChild(s);
     }
+    mount.appendChild(el);
+    first = false;
   }
-  const cpuPct = Math.min(100, Math.round(totalCpu));
-  const memMb = Math.round(totalRss / 1024);
 
-  // ── identity zone ──
-  const identity: Node[] = [];
-  if (active) {
-    const dot = document.createElement("span");
-    dot.className = "tau-status-dot";
-    dot.style.background = active.color || "var(--tau-cyan)";
-    identity.push(dot);
-    const wsName = document.createElement("span");
-    wsName.className = "tau-status-value";
-    wsName.textContent = active.name;
-    identity.push(wsName);
-  } else {
-    const empty = document.createElement("span");
-    empty.className = "tau-status-label";
-    empty.textContent = "no workspace";
-    identity.push(empty);
-  }
-  identity.push(sep());
-  identity.push(kvNode("panes", String(paneCount)));
-  identity.push(sep());
-  identity.push(kvNode("workspaces", String(wsCount)));
-  statusBarHandle.setIdentity(identity);
-
-  // ── meters zone ── CPU + MEM for the active workspace.
-  const meters: Node[] = [];
-  meters.push(
-    Meter({
-      label: "cpu",
-      value: cpuPct,
-      max: 100,
-      semantic: cpuPct > 80 ? "err" : cpuPct > 50 ? "warn" : "ok",
-      width: 60,
-      valueText: `${cpuPct}%`,
-    }),
-  );
-  meters.push(
-    Meter({
-      label: "mem",
-      value: memMb,
-      max: 8192,
-      semantic: memMb > 4096 ? "warn" : "ok",
-      width: 60,
-      valueText: memMb >= 1024 ? `${(memMb / 1024).toFixed(1)}G` : `${memMb}M`,
-    }),
-  );
-  meters.push(sep());
-  meters.push(kvNode("procs", String(procCount)));
-  statusBarHandle.setMeters(meters);
-
-  // ── cost/detail zone — focused surface summary ──
-  const focusedId = surfaceManager?.getActiveSurfaceId?.();
-  const focusedPm = pmActive?.surfaces.find((s) => s.id === focusedId);
-  const cost: Node[] = [];
-  if (focusedPm?.metadata) {
-    const meta = focusedPm.metadata;
-    const fgNode = meta.tree.find((n) => n.pid === meta.foregroundPid);
-    const fgCmd = (fgNode?.command ?? "").split("/").pop() || "shell";
-    cost.push(kvNode("fg", fgCmd));
-    cost.push(sep());
-    const cwdShort = shortenCwd(meta.cwd);
-    cost.push(kvNode("cwd", cwdShort));
-    if (meta.git?.branch) {
-      cost.push(sep());
-      cost.push(kvNode("branch", meta.git.branch));
-    }
-  } else if (focusedPm) {
-    cost.push(kvNode("surface", focusedPm.title));
-  } else {
-    const dim = document.createElement("span");
-    dim.className = "tau-status-label";
-    dim.textContent = "no focus";
-    cost.push(dim);
-  }
-  statusBarHandle.setCost(cost);
-
-  // Also populate the Atlas ticker right-cap if that variant is
-  // active — it shares the same data but is a separate DOM tree.
+  // Atlas ticker right-cap: the ticker shell is separate DOM but
+  // reuses the same renderer so the user sees the same status keys
+  // on every variant. No scrolling — item 8 of the user feedback.
   const atlasRight = document.getElementById("tau-atlas-ticker-right");
   if (atlasRight) {
     atlasRight.replaceChildren();
-    atlasRight.appendChild(kvNode("cpu", `${cpuPct}%`));
-    atlasRight.appendChild(sep());
-    atlasRight.appendChild(
-      kvNode(
-        "mem",
-        memMb >= 1024 ? `${(memMb / 1024).toFixed(1)}G` : `${memMb}M`,
-      ),
-    );
-    atlasRight.appendChild(sep());
-    atlasRight.appendChild(kvNode("procs", String(procCount)));
+    let cap = true;
+    for (const id of ids) {
+      const el = renderStatusKey(id, ctx);
+      if (!el) continue;
+      if (!cap) {
+        const s = document.createElement("span");
+        s.className = "tau-hud-sep";
+        s.textContent = "·";
+        atlasRight.appendChild(s);
+      }
+      atlasRight.appendChild(el);
+      cap = false;
+    }
   }
 }
 
-function kvNode(label: string, value: string): HTMLSpanElement {
-  const wrap = document.createElement("span");
-  wrap.className = "tau-status-kv";
-  const l = document.createElement("span");
-  l.className = "tau-status-label";
-  l.textContent = label;
-  const v = document.createElement("span");
-  v.className = "tau-status-value";
-  v.textContent = value;
-  wrap.append(l, v);
-  return wrap;
-}
-function sep(): HTMLSpanElement {
-  const s = document.createElement("span");
-  s.className = "tau-hud-sep";
-  s.textContent = "·";
-  return s;
-}
-function shortenCwd(cwd: string): string {
-  if (!cwd) return "—";
-  // Webview has no process.env — the best home-directory heuristic is
-  // "/Users/<something>" on macOS. First segment past /Users/ gets
-  // folded to ~.
-  let short = cwd;
-  const homeMatch = cwd.match(/^(\/Users\/[^/]+)(.*)$/);
-  if (homeMatch) short = "~" + homeMatch[2];
-  if (short.length > 38) {
-    const parts = short.split("/");
-    if (parts.length > 3) {
-      short = `${parts[0]}/…/${parts.slice(-2).join("/")}`;
-    }
-  }
-  return short;
+function buildStatusContext(): StatusContext {
+  const wsState = surfaceManager?.getWorkspaceState?.();
+  const workspaces = (wsState?.workspaces ?? []).map((w) => ({
+    id: w.id,
+    name: w.name,
+    color: w.color,
+    surfaceIds: w.surfaceIds,
+  }));
+  const activeId = wsState?.activeWorkspaceId;
+  const activeWorkspace = workspaces.find((w) => w.id === activeId);
+  const pmData = surfaceManager?.getProcessManagerData?.() ?? [];
+  const pmActive = pmData.find((w) => w.id === activeId);
+  const focusedId = surfaceManager?.getActiveSurfaceId?.() ?? null;
+  const focusedSurface = pmActive?.surfaces.find((s) => s.id === focusedId);
+  return {
+    settings: currentSettings ?? DEFAULT_SETTINGS,
+    workspaces,
+    activeWorkspaceId: activeId,
+    activeWorkspace,
+    pmData,
+    pmActive,
+    focusedSurfaceId: focusedId,
+    focusedSurface,
+    notifyWorkspaces: lastNotifyWorkspaces,
+    now: Date.now(),
+  };
 }
 
 function handleResize() {

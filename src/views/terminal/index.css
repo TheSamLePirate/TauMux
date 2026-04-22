@@ -117,6 +117,13 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+/* Warn-state highlight for keys conveying attention-worthy state
+ * (dirty git tree, non-zero notifications, etc.). Amber matches
+ * --tau-warn so the semantic reads consistently with the meters. */
+.tau-status-kv.tau-status-warn .tau-status-value {
+  color: var(--tau-warn);
+  font-weight: 600;
+}
 
 :root {
   /* ── τ-mux design tokens (source: design_guidelines/Design Guidelines tau-mux.md §1) ── */
@@ -10291,48 +10298,23 @@ body[data-tau-variant="atlas"] #terminal-container {
 .tau-atlas-ticker-brand svg rect {
   fill: currentColor;
 }
-.tau-atlas-ticker-stream {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 100%;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  /* Two copies of the event list are rendered; -50% translate loops
-   * seamlessly. §10 permits a 60 s linear ticker scroll. */
-  animation: tauTickerScroll 60s linear infinite;
-  padding: 0 12px;
-  will-change: transform;
-}
-@keyframes tauTickerScroll {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-50%); }
-}
-.tau-atlas-event-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.tau-atlas-event-human { background: var(--tau-cyan); }
-.tau-atlas-event-agent { background: var(--tau-agent); }
-.tau-atlas-event-ok    { background: var(--tau-ok); }
-.tau-atlas-event-text {
-  color: var(--tau-text);
-  font-variant-numeric: tabular-nums;
-}
+/* Scrolling ticker stream + tauTickerScroll keyframes removed —
+ * Atlas bottom bar is now a static status-key strip. The animation
+ * was removed from the §10 allowlist. */
 .tau-atlas-ticker-right {
+  /* Atlas bottom-bar body. Fills the strip to the right of the τ
+   * brand cap; status-keys render here with middle-dot separators. */
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   height: 100%;
+  min-width: 0;
   padding: 0 12px;
-  font-size: 10.5px;
-  border-left: 0.5px solid var(--tau-edge);
-  background: var(--tau-void);
+  font-size: 11px;
+  background: var(--tau-panel);
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 /* ── §9 Settings > Layout picker ──
@@ -10434,4 +10416,117 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 .tau-atlas-notify-ring {
   transform-box: fill-box;
   animation: tauAtlasNotifyPulse 1.2s ease-in-out infinite;
+}
+
+/* ── Settings → Layout · Status bar keys picker ── */
+.status-key-grid {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 6px 12px;
+  align-items: start;
+  margin-top: 8px;
+}
+.status-key-group {
+  color: var(--tau-text-mute);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding-top: 6px;
+  border-top: 0.5px solid var(--tau-edge);
+}
+.status-key-group:first-child { border-top: none; padding-top: 0; }
+.status-key-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.status-key-row {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 0.5px solid transparent;
+  border-radius: var(--tau-r-btn);
+  background: transparent;
+  color: var(--tau-text-dim);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.status-key-row:hover {
+  background: var(--tau-panel);
+  color: var(--tau-text);
+}
+.status-key-row.active {
+  background: var(--tau-panel-hi);
+  border-color: var(--tau-cyan-dim);
+  color: var(--tau-text);
+}
+.status-key-check {
+  color: var(--tau-text-mute);
+  font-size: 10px;
+  line-height: 1;
+}
+.status-key-row.active .status-key-check {
+  color: var(--tau-cyan);
+  filter: drop-shadow(0 0 3px var(--tau-cyan));
+}
+.status-key-label {
+  font-family: var(--tau-font-sans);
+  font-size: 12px;
+  font-weight: 500;
+}
+.status-key-id {
+  font-size: 10px;
+  color: var(--tau-text-mute);
+  letter-spacing: 0.04em;
+}
+
+.status-key-order {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 8px;
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-pane);
+  background: var(--tau-panel);
+}
+.status-key-order-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 6px;
+  font-family: var(--tau-font-sans);
+  font-size: 12px;
+  color: var(--tau-text);
+}
+.status-key-order-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-key-order-btn {
+  width: 22px;
+  height: 22px;
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-btn);
+  background: var(--tau-panel-hi);
+  color: var(--tau-text);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.status-key-order-btn:hover:not(:disabled) {
+  background: var(--tau-cyan-dim);
+  color: var(--tau-cyan);
+}
+.status-key-order-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }

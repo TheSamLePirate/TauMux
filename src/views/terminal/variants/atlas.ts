@@ -496,24 +496,18 @@ function makeMnemonic(title: string): string {
 // ─────────────────────────────────────────────────────────────
 
 function mountTicker(ctx: VariantContext): void {
+  // Per the user feedback: no more animating banner. Atlas bottom bar
+  // becomes a static status-key strip identical to Bridge / Cockpit —
+  // the only difference is the 32 px τ brand cap on the left so
+  // Atlas still reads as Atlas.
   ctx.statusBar.classList.add("tau-atlas-ticker");
   ctx.statusBar.replaceChildren();
-  // Left cap: just the pixel-τ mark (no "TICKER" wordmark — that was
-  // getting overlapped by the scrolling stream). The mark is 14 px so
-  // it reads across the 32 px bar without cropping.
   const left = document.createElement("div");
   left.className = "tau-atlas-ticker-brand";
   left.appendChild(IconTau({ size: 14 }));
   ctx.statusBar.appendChild(left);
-
-  const stream = document.createElement("div");
-  stream.className = "tau-atlas-ticker-stream tau-mono";
-  stream.id = "tau-atlas-ticker-stream";
-  ctx.statusBar.appendChild(stream);
-  renderTickerStream(stream);
-
-  // Right cap is populated by refreshStatusBar() so it carries the
-  // same structured data as Bridge / Cockpit status bars.
+  // Static status-keys strip. index.ts#refreshStatusBar populates it
+  // on every metadata tick via #tau-atlas-ticker-right.
   const right = document.createElement("div");
   right.className = "tau-atlas-ticker-right tau-mono";
   right.id = "tau-atlas-ticker-right";
@@ -530,49 +524,9 @@ function unmountTicker(ctx: VariantContext): void {
   ctx.statusBar.dispatchEvent(new CustomEvent("tau-status-bar-reset"));
 }
 
-function renderTickerStream(stream: HTMLElement): void {
-  const sm = (
-    window as unknown as { __tauSurfaceManager?: AtlasSurfaceManagerLike }
-  ).__tauSurfaceManager;
-  const state = sm?.getWorkspaceState?.();
-  const events: { kind: "human" | "agent" | "ok"; text: string }[] = [];
-  const active = state?.workspaces.find(
-    (w) => w.id === state.activeWorkspaceId,
-  );
-  if (active) {
-    for (const sid of active.surfaceIds) {
-      const el = document.querySelector<HTMLElement>(
-        `.surface-container[data-surface-id="${sid}"]`,
-      );
-      if (!el) continue;
-      const title =
-        el.querySelector<HTMLElement>(".surface-bar-title")?.textContent ?? sid;
-      const isAgent = el.classList.contains("tau-pane-agent");
-      events.push({
-        kind: isAgent ? "agent" : "human",
-        text: `${title} active`,
-      });
-    }
-  }
-  if (events.length === 0) {
-    events.push({ kind: "ok", text: "τ-mux ready" });
-  }
-  stream.replaceChildren();
-  // Two copies so the -50% translate animation loops seamlessly.
-  for (let i = 0; i < 2; i++) {
-    for (const e of events) {
-      const dot = document.createElement("span");
-      dot.className = `tau-atlas-event-dot tau-atlas-event-${e.kind}`;
-      const t = document.createElement("span");
-      t.className = "tau-atlas-event-text";
-      t.textContent = e.text;
-      const sep = document.createElement("span");
-      sep.className = "tau-hud-sep";
-      sep.textContent = "│";
-      stream.append(dot, t, sep);
-    }
-  }
-}
+// renderTickerStream() removed — Atlas bottom bar is now a static
+// status-keys strip driven by the shared refreshStatusBar pipeline.
+// The old scrolling event ticker was harder to read than useful.
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
@@ -630,8 +584,8 @@ function schedule(): void {
     if (graph) renderGraph(graph);
     const rail = document.getElementById(TAB_RAIL_ID);
     if (rail) renderTabRail(rail);
-    const stream = document.getElementById("tau-atlas-ticker-stream");
-    if (stream) renderTickerStream(stream);
+    // Bottom bar is updated by index.ts#refreshStatusBar; nothing
+    // Atlas-specific to tick here.
   });
 }
 function cancelSchedule(): void {
