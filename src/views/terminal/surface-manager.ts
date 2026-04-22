@@ -1442,6 +1442,7 @@ export class SurfaceManager {
       const view = this.surfaces.get(surfaceId);
       if (view) {
         view.container.classList.add("notify-glow");
+        this.emitNotifyState();
         return;
       }
     }
@@ -1449,6 +1450,7 @@ export class SurfaceManager {
     for (const view of this.surfaces.values()) {
       view.container.classList.add("notify-glow");
     }
+    this.emitNotifyState();
   }
 
   /** Clear notification glow from a specific surface or all surfaces. */
@@ -1460,6 +1462,36 @@ export class SurfaceManager {
         view.container.classList.remove("notify-glow");
       }
     }
+    this.emitNotifyState();
+  }
+
+  /** Dispatch a window event so variant chrome (Bridge pills, Cockpit
+   *  rail, Atlas graph, sidebar cards) can mirror the notify-glow
+   *  state without polling the DOM. */
+  private emitNotifyState(): void {
+    const surfacesWithNotify = new Set<string>();
+    const workspacesWithNotify = new Set<string>();
+    for (const [id, view] of this.surfaces) {
+      if (view.container.classList.contains("notify-glow")) {
+        surfacesWithNotify.add(id);
+      }
+    }
+    for (const ws of this.workspaces) {
+      for (const sid of ws.surfaceIds) {
+        if (surfacesWithNotify.has(sid)) {
+          workspacesWithNotify.add(ws.id);
+          break;
+        }
+      }
+    }
+    window.dispatchEvent(
+      new CustomEvent("ht-notify-state-changed", {
+        detail: {
+          surfaces: [...surfacesWithNotify],
+          workspaces: [...workspacesWithNotify],
+        },
+      }),
+    );
   }
 
   private notifyWorkspaceChanged(): void {

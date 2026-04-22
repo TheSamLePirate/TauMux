@@ -93,6 +93,30 @@
   color: var(--tau-text);
   font-variant-numeric: tabular-nums;
 }
+.tau-status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tau-cyan);
+  flex-shrink: 0;
+  box-shadow: 0 0 4px currentColor;
+}
+.tau-status-kv {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tau-status-kv .tau-status-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
 :root {
   /* ── τ-mux design tokens (source: design_guidelines/Design Guidelines tau-mux.md §1) ── */
@@ -490,10 +514,13 @@ textarea {
 }
 
 #sidebar.collapsed {
+  /* Hard collapse: zero width, no padding, no border, clip children so
+   * the Cockpit rail / Atlas graph / sidebar-v2 background don't leak
+   * past the shrunk column. */
   width: 0 !important;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
+  padding: 0 !important;
   border-right: none !important;
+  overflow: hidden !important;
 }
 
 #sidebar.collapsed * {
@@ -2071,51 +2098,98 @@ body.sidebar-resizing {
 
 /* ── Notification glow ── */
 
-/* τ-mux §7: notifications carry a single identity colour. Notifications
- * on a human pane glow cyan; on an agent pane they glow amber. Default
- * is amber (notifications predominantly originate from agent actions).
- * The pane-identity variant rule below routes the right colour when
- * the container also carries .tau-pane-human. */
+/* τ-mux §7 + user feedback: notifications carry a single identity
+ * colour and must be immediately visible in every variant. Intensity
+ * bumped from the Phase-5 pass so the halo reads at a glance; duration
+ * kept at 2 s so it doesn't feel like a constant disco. */
 @keyframes notify-glow-pulse {
-  0% {
-    border-color: rgba(255, 197, 107, 0);
-    box-shadow: 0 0 0 0 rgba(255, 197, 107, 0);
-  }
-  20% {
-    border-color: rgba(255, 197, 107, 0.7);
-    box-shadow: 0 0 20px 2px rgba(255, 197, 107, 0.45);
-  }
-  70% {
+  0%, 100% {
     border-color: rgba(255, 197, 107, 0.3);
-    box-shadow: 0 0 10px 1px rgba(255, 197, 107, 0.12);
+    box-shadow:
+      0 0 0 0.5px rgba(255, 197, 107, 0.3),
+      0 0 8px rgba(255, 197, 107, 0.1);
   }
-  100% {
-    border-color: rgba(255, 197, 107, 0);
-    box-shadow: 0 0 0 0 rgba(255, 197, 107, 0);
+  50% {
+    border-color: rgba(255, 197, 107, 1);
+    box-shadow:
+      0 0 0 1px rgba(255, 197, 107, 0.8),
+      0 0 28px 4px rgba(255, 197, 107, 0.5),
+      0 0 64px 8px rgba(255, 197, 107, 0.15);
   }
 }
 
 @keyframes notify-glow-pulse-human {
-  0% {
-    border-color: rgba(111, 233, 255, 0);
-    box-shadow: 0 0 0 0 rgba(111, 233, 255, 0);
-  }
-  20% {
-    border-color: rgba(111, 233, 255, 0.7);
-    box-shadow: 0 0 20px 2px rgba(111, 233, 255, 0.45);
-  }
-  70% {
+  0%, 100% {
     border-color: rgba(111, 233, 255, 0.3);
-    box-shadow: 0 0 10px 1px rgba(111, 233, 255, 0.12);
+    box-shadow:
+      0 0 0 0.5px rgba(111, 233, 255, 0.3),
+      0 0 8px rgba(111, 233, 255, 0.1);
   }
-  100% {
-    border-color: rgba(111, 233, 255, 0);
-    box-shadow: 0 0 0 0 rgba(111, 233, 255, 0);
+  50% {
+    border-color: rgba(111, 233, 255, 1);
+    box-shadow:
+      0 0 0 1px rgba(111, 233, 255, 0.8),
+      0 0 28px 4px rgba(111, 233, 255, 0.5),
+      0 0 64px 8px rgba(111, 233, 255, 0.15);
   }
 }
 
 .surface-container.notify-glow.tau-pane-human {
   animation-name: notify-glow-pulse-human;
+}
+
+/* Notification dot on the pane header — cyan on human panes, amber
+ * on agent panes. Reads in every variant because the surface-bar is
+ * always present inside the .surface-container regardless of which
+ * variant is active. Dispatched when .surface-container.notify-glow
+ * is set by surface-manager. */
+.surface-container.notify-glow .surface-bar::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tau-agent);
+  box-shadow: 0 0 10px var(--tau-agent);
+  animation: tauPulse 1.2s ease-in-out infinite;
+  z-index: 5;
+  pointer-events: none;
+}
+.surface-container.notify-glow.tau-pane-human .surface-bar::before {
+  background: var(--tau-cyan);
+  box-shadow: 0 0 10px var(--tau-cyan);
+}
+.surface-container .surface-bar {
+  position: relative;
+}
+
+/* Workspace-level notification indicator — when any surface in a
+ * workspace has .notify-glow, the workspace's representation in the
+ * active variant chrome (Bridge pill, Cockpit rail button, Atlas
+ * graph node, sidebar card) gets .tau-notify-dot applied and pulses
+ * amber (default) / cyan (human workspace). */
+@keyframes tauNotifyPulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.18); }
+}
+.tau-notify-dot::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tau-agent);
+  box-shadow: 0 0 8px var(--tau-agent);
+  animation: tauNotifyPulse 1.1s ease-in-out infinite;
+  pointer-events: none;
+}
+.tau-notify-dot.tau-notify-human::after {
+  background: var(--tau-cyan);
+  box-shadow: 0 0 8px var(--tau-cyan);
 }
 
 .surface-container.notify-glow {
@@ -9739,31 +9813,15 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
  * ──────────────────────────────────────────────────────────────── */
 
 /* ── §9.1 Bridge — default ──
- *   sidebar 240 px (non-collapsible in this variant),
- *   inner pane padding 6 px, inter-pane gap 6 px,
- *   top-right segmented workspace switcher (handled by the existing
- *   titlebar-center wiring; no Bridge-specific CSS needed yet). */
+ *   sidebar 240 px default (resizable + collapsible via ⌘B / resize
+ *   handle per user preference), inner pane padding 6 px, inter-pane
+ *   gap 6 px. Guideline §9.1 says "never collapsible" but the app
+ *   treats that as UX friction, so we keep the handle active. */
 body[data-tau-variant="bridge"] {
   --sidebar-width: 240px;
 }
 body[data-tau-variant="bridge"] #terminal-container {
-  /* 6 px inner padding per §9.1. The existing rule had 14 / 16 / 16
-   * px — override at the variant scope only. */
   padding: 6px !important;
-}
-body[data-tau-variant="bridge"].sidebar-resizing {
-  /* Bridge disables the sidebar resize handle per "never collapsible"
-   * — but we keep the class functional and just skip the cursor. */
-  cursor: default;
-}
-body[data-tau-variant="bridge"] .sidebar-resize-handle {
-  display: none !important;
-}
-body[data-tau-variant="bridge"] #sidebar.collapsed {
-  /* Bridge: sidebar is never collapsed. Force width + visibility if
-   * a stale sidebarCollapsed flag is in localStorage. */
-  width: 240px !important;
-  padding: 10px 10px 8px !important;
 }
 
 /* ── §9.2 Cockpit — icon rail + HUD ── (Phase 7 fills the specifics)
@@ -9900,7 +9958,9 @@ body[data-tau-variant="cockpit"] #sidebar {
 }
 
 /* 36×36 workspace button. 8 px radius (pane radius per §3). Active
- * has a 0.5 px cyan-dim border. */
+ * has a 0.5 px cyan-dim border. Glyph is the first letter of the
+ * workspace name, coloured by the workspace accent, with a subtle
+ * drop-shadow glow so identity reads at a glance in dense layouts. */
 .tau-cockpit-rail-btn {
   position: relative;
   width: 36px;
@@ -9910,9 +9970,6 @@ body[data-tau-variant="cockpit"] #sidebar {
   border-radius: 8px;
   background: var(--tau-panel);
   color: var(--tau-text-dim);
-  font-family: var(--tau-font-mono);
-  font-size: 11px;
-  font-weight: 600;
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -9922,13 +9979,29 @@ body[data-tau-variant="cockpit"] #sidebar {
     border-color var(--transition-fast);
 }
 .tau-cockpit-rail-btn:hover {
-  color: var(--tau-text);
   background: var(--tau-panel-hi);
 }
+.tau-cockpit-rail-btn:hover .tau-cockpit-rail-glyph,
+.tau-cockpit-rail-btn.is-active .tau-cockpit-rail-glyph {
+  filter:
+    drop-shadow(0 0 4px currentColor)
+    drop-shadow(0 0 1px currentColor);
+}
 .tau-cockpit-rail-btn.is-active {
-  color: var(--tau-text);
   background: var(--tau-panel-hi);
   border-color: var(--tau-cyan-dim);
+}
+
+.tau-cockpit-rail-glyph {
+  font-family: var(--tau-font-sans);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--tau-cyan);
+  line-height: 1;
+  filter:
+    drop-shadow(0 0 2px currentColor);
+  transition: filter var(--transition-fast);
 }
 /* Pulsing amber dot when the workspace hosts a running agent pane. */
 .tau-cockpit-rail-agent-dot {
@@ -10077,21 +10150,46 @@ body[data-tau-variant="atlas"] .tau-atlas-graph {
   right: 10px;
   padding: 8px 10px;
   border: 0.5px solid var(--tau-edge);
+  border-left: 2px solid var(--info-accent, var(--tau-cyan));
   border-radius: var(--tau-r-pane);
   background: var(--tau-panel);
   color: var(--tau-text-dim);
   font-size: 10.5px;
   pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
 }
 .tau-atlas-info-name {
   color: var(--tau-text);
   font-weight: 700;
   font-size: 11.5px;
-  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tau-atlas-info-meta {
   color: var(--tau-text-mute);
   font-size: 10px;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.tau-atlas-info-fg {
+  color: var(--tau-text);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tau-atlas-info-cwd {
+  color: var(--tau-text-dim);
+  font-size: 9.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
 }
 
 /* 36 px two-letter tab rail between sidebar and panes. */
@@ -10177,24 +10275,21 @@ body[data-tau-variant="atlas"] #terminal-container {
   gap: 0 !important;
 }
 .tau-atlas-ticker-brand {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: grid;
+  place-items: center;
   height: 100%;
-  padding: 0 12px;
+  width: 32px;
+  flex-shrink: 0;
   color: var(--tau-cyan);
   background: var(--tau-void);
   border-right: 0.5px solid var(--tau-edge);
-  filter: drop-shadow(0 0 4px var(--tau-cyan-glow));
+  filter:
+    drop-shadow(0 0 6px var(--tau-cyan-glow))
+    drop-shadow(0 0 2px var(--tau-cyan));
+  z-index: 2;
 }
 .tau-atlas-ticker-brand svg rect {
   fill: currentColor;
-}
-.tau-atlas-ticker-brand span {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: var(--tau-cyan);
 }
 .tau-atlas-ticker-stream {
   flex: 1 1 auto;
@@ -10327,4 +10422,16 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   font-family: var(--tau-font-sans);
   font-size: 11px;
   line-height: 1.4;
+}
+
+/* Atlas graph notification ring — pulse around nodes whose workspace
+ * has an unread notification. Identity colour is set inline by the
+ * atlas renderer (cyan for human, amber for agent). */
+@keyframes tauAtlasNotifyPulse {
+  0%, 100% { opacity: 0.35; r: 9; }
+  50%      { opacity: 1;    r: 12; }
+}
+.tau-atlas-notify-ring {
+  transform-box: fill-box;
+  animation: tauAtlasNotifyPulse 1.2s ease-in-out infinite;
 }

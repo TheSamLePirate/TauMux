@@ -116,12 +116,33 @@ function renderRail(rail: HTMLElement, _ctx: VariantContext): void {
     btn.className =
       "tau-cockpit-rail-btn" + (ws.id === activeId ? " is-active" : "");
     btn.title = ws.name;
-    btn.textContent = String(i + 1).padStart(2, "0");
+    // First letter of the workspace name (uppercase). "crazyShell" →
+    // C, "tau-mux" → T. Fallback to the workspace index if the name
+    // is empty (unusual, but defensive).
+    const glyph = document.createElement("span");
+    glyph.className = "tau-cockpit-rail-glyph";
+    const first = (ws.name ?? "").trim().match(/[A-Za-z0-9]/);
+    glyph.textContent = first ? first[0]!.toUpperCase() : String(i + 1);
+    // Colour-code the glow: agents amber, humans cyan. Colour comes
+    // from the workspace's assigned accent when available so "crazy-
+    // Shell" glows cyan, "codex-agent" glows amber, etc.
+    const workspaceColor = (ws as { color?: string }).color;
+    if (workspaceColor) glyph.style.color = workspaceColor;
+    btn.appendChild(glyph);
     btn.addEventListener("click", () => sm?.focusWorkspaceByIndex?.(i));
     if (hasRunningAgent(ws)) {
       const dot = document.createElement("span");
       dot.className = "tau-cockpit-rail-agent-dot";
       btn.appendChild(dot);
+    }
+    // Workspace-level notification dot — driven by the same state
+    // event as Bridge pills so the signal is identical everywhere.
+    const notifySet: Set<string> | undefined = (
+      window as unknown as { __tauNotifyWorkspaces?: Set<string> }
+    ).__tauNotifyWorkspaces;
+    if (notifySet?.has(ws.id)) {
+      btn.classList.add("tau-notify-dot");
+      if (!hasRunningAgent(ws)) btn.classList.add("tau-notify-human");
     }
     rail.appendChild(btn);
   });
@@ -129,7 +150,12 @@ function renderRail(rail: HTMLElement, _ctx: VariantContext): void {
 
 interface SurfaceManagerLike {
   getWorkspaceState?: () => {
-    workspaces: { id: string; name: string; surfaceIds: string[] }[];
+    workspaces: {
+      id: string;
+      name: string;
+      color?: string;
+      surfaceIds: string[];
+    }[];
     activeWorkspaceId: string | undefined;
   };
   focusWorkspaceByIndex?: (i: number) => void;

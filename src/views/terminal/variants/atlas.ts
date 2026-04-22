@@ -86,6 +86,15 @@ function unmountGraph(): void {
   document.getElementById(GRAPH_ID)?.remove();
 }
 
+interface GraphNodeWithMeta extends GraphNode {
+  colour?: string;
+  cpu?: number;
+  fg?: string;
+  cwd?: string;
+  pid?: number;
+  parentWsId?: string;
+}
+
 function renderGraph(host: HTMLElement): void {
   host.replaceChildren();
   const width = 220;
@@ -98,9 +107,11 @@ function renderGraph(host: HTMLElement): void {
   const state = sm?.getWorkspaceState?.();
   const workspaces = state?.workspaces ?? [];
   const activeId = state?.activeWorkspaceId;
+  const pmData = sm?.getProcessManagerData?.() ?? [];
+  const focusedId = (window as unknown as { __tauFocusedSurfaceId?: string })
+    .__tauFocusedSurfaceId;
 
-  // Self node top (14 px from top); workspaces stacked below at 48 px pitch.
-  const nodes: GraphNode[] = [];
+  const nodes: GraphNodeWithMeta[] = [];
   const edges: GraphEdge[] = [];
   const selfX = 42,
     selfY = 28;
@@ -111,10 +122,12 @@ function renderGraph(host: HTMLElement): void {
     x: selfX,
     y: selfY,
     running: true,
+    colour: "var(--tau-cyan)",
   });
 
   workspaces.forEach((ws, i) => {
-    const y = selfY + 48 + i * 42;
+    const y = selfY + 48 + i * 54;
+    const wsColour = ws.color || "var(--tau-text)";
     nodes.push({
       id: ws.id,
       label: ws.name,
@@ -122,29 +135,44 @@ function renderGraph(host: HTMLElement): void {
       x: selfX,
       y,
       running: ws.id === activeId,
+      colour: wsColour,
     });
     edges.push({ from: "__self__", to: ws.id, active: ws.id === activeId });
 
-    // Surfaces belonging to the active workspace are branched to the
-    // right as children. Keeps the density readable — only one column
-    // of children at a time.
+    // Only active workspace's surfaces branch out — inactive stay
+    // collapsed to a repo node so the column reads.
     if (ws.id === activeId) {
+      const pmWs = pmData.find((w) => w.id === ws.id);
       ws.surfaceIds.forEach((sid, j) => {
         const el = document.querySelector<HTMLElement>(
           `.surface-container[data-surface-id="${sid}"]`,
         );
         const isAgent = !!el && el.classList.contains("tau-pane-agent");
+        const title =
+          el?.querySelector<HTMLElement>(".surface-bar-title")?.textContent ??
+          sid;
+        const surfMeta = pmWs?.surfaces.find((s) => s.id === sid)?.metadata;
+        const cpuSum =
+          surfMeta?.tree.reduce((a, p) => a + (p.cpu ?? 0), 0) ?? 0;
+        const fgNode = surfMeta?.tree.find(
+          (n) => n.pid === surfMeta.foregroundPid,
+        );
+        const fgCmd = fgNode?.command.split("/").pop() || "";
         nodes.push({
           id: sid,
-          label:
-            el?.querySelector<HTMLElement>(".surface-bar-title")?.textContent ??
-            sid,
+          label: title,
           kind: isAgent ? "agent" : "tool",
-          x: selfX + 72,
-          y: y + 10 + j * 18,
-          running: isAgent,
+          x: selfX + 82,
+          y: y + 14 + j * 22,
+          running: sid === focusedId || isAgent,
+          colour: isAgent ? "var(--tau-agent)" : wsColour,
+          cpu: cpuSum,
+          fg: fgCmd,
+          cwd: surfMeta?.cwd,
+          pid: surfMeta?.pid,
+          parentWsId: ws.id,
         });
-        edges.push({ from: ws.id, to: sid, active: true });
+        edges.push({ from: ws.id, to: sid, active: sid === focusedId });
       });
     }
   });
@@ -201,25 +229,94 @@ function renderGraph(host: HTMLElement): void {
   }
 
   // Nodes.
+  // Track the hovered node so the info-card can swap between focus
+  // and hover preview without re-rendering the whole graph.
+  let hoverNodeId: string | null = null;
+  const renderInfoCard = () => {
+    const prev = host.querySelector(".tau-atlas-info-card");
+    if (prev) prev.remove();
+    const n =
+      (hoverNodeId && nodes.find((x) => x.id === hoverNodeId)) ||
+      nodes.find((x) => x.id === focusedId) ||
+      null;
+    const card = document.createElement("div");
+    card.className = "tau-atlas-info-card tau-mono";
+    if (n) {
+      card.style.setProperty("--info-accent", n.colour ?? "var(--tau-cyan)");
+      card.innerHTML =
+        `<div class="tau-atlas-info-name">${escapeHtml(n.label)}</div>` +
+        `<div class="tau-atlas-info-meta">${escapeHtml(n.kind)}` +
+        (n.pid !== undefined ? ` · pid ${n.pid}` : "") +
+        (typeof n.cpu === "number" ? ` · ${n.cpu.toFixed(0)}% cpu` : "") +
+        `</div>` +
+        (n.fg
+          ? `<div class="tau-atlas-info-fg">${escapeHtml(n.fg)}</div>`
+          : "") +
+        (n.cwd
+          ? `<div class="tau-atlas-info-cwd">${escapeHtml(n.cwd)}</div>`
+          : "");
+    } else {
+      card.innerHTML = `<div class="tau-atlas-info-name">τ-mux</div><div class="tau-atlas-info-meta">idle</div>`;
+    }
+    host.appendChild(card);
+  };
+
   for (const n of nodes) {
-    const colour =
-      n.kind === "self"
-        ? "var(--tau-cyan)"
-        : n.kind === "agent"
-          ? "var(--tau-agent)"
-          : n.kind === "tool"
-            ? "var(--tau-text-dim)"
-            : "var(--tau-text)";
+    const colour = n.colour ?? "var(--tau-text)";
     if (n.running) {
       const halo = document.createElementNS(NS_SVG, "circle");
       halo.setAttribute("cx", String(n.x));
       halo.setAttribute("cy", String(n.y));
       halo.setAttribute("r", "12");
       halo.setAttribute("fill", colour);
-      halo.setAttribute("opacity", "0.16");
+      halo.setAttribute("opacity", "0.18");
       halo.setAttribute("class", "tau-atlas-halo");
       svg.appendChild(halo);
     }
+
+    // CPU ring: thin arc around the node whose length reflects CPU%.
+    // Only for tool/agent surface nodes with live metadata.
+    if (typeof n.cpu === "number" && n.cpu > 0) {
+      const r = 8;
+      const pct = Math.min(100, n.cpu) / 100;
+      const circumference = 2 * Math.PI * r;
+      const ring = document.createElementNS(NS_SVG, "circle");
+      ring.setAttribute("cx", String(n.x));
+      ring.setAttribute("cy", String(n.y));
+      ring.setAttribute("r", String(r));
+      ring.setAttribute("fill", "none");
+      ring.setAttribute("stroke", colour);
+      ring.setAttribute("stroke-width", "1");
+      ring.setAttribute(
+        "stroke-dasharray",
+        `${(circumference * pct).toFixed(2)} ${circumference.toFixed(2)}`,
+      );
+      ring.setAttribute("stroke-opacity", "0.7");
+      ring.setAttribute("transform", `rotate(-90 ${n.x} ${n.y})`);
+      svg.appendChild(ring);
+    }
+
+    // Workspace-level notification mirror — if this node's id is in
+    // the shared notify-workspace set, render a pulsing amber ring
+    // around it. Agent identity on the pane flips the ring to cyan.
+    const notifySet: Set<string> | undefined = (
+      window as unknown as { __tauNotifyWorkspaces?: Set<string> }
+    ).__tauNotifyWorkspaces;
+    if (n.parentWsId && notifySet?.has(n.parentWsId)) {
+      const notifyRing = document.createElementNS(NS_SVG, "circle");
+      notifyRing.setAttribute("cx", String(n.x));
+      notifyRing.setAttribute("cy", String(n.y));
+      notifyRing.setAttribute("r", "10");
+      notifyRing.setAttribute("fill", "none");
+      notifyRing.setAttribute(
+        "stroke",
+        n.kind === "agent" ? "var(--tau-agent)" : "var(--tau-cyan)",
+      );
+      notifyRing.setAttribute("stroke-width", "0.8");
+      notifyRing.setAttribute("class", "tau-atlas-notify-ring");
+      svg.appendChild(notifyRing);
+    }
+
     const circle = document.createElementNS(NS_SVG, "circle");
     circle.setAttribute("cx", String(n.x));
     circle.setAttribute("cy", String(n.y));
@@ -227,26 +324,40 @@ function renderGraph(host: HTMLElement): void {
     circle.setAttribute("fill", n.running ? colour : "transparent");
     circle.setAttribute("stroke", colour);
     circle.setAttribute("stroke-width", "0.8");
+    // Native SVG tooltip so the data is also accessible when the node
+    // hasn't been hovered long enough to swap the info card.
+    const title = document.createElementNS(NS_SVG, "title");
+    title.textContent =
+      `${n.label} (${n.kind})` +
+      (n.pid !== undefined ? ` pid=${n.pid}` : "") +
+      (typeof n.cpu === "number" ? ` cpu=${n.cpu.toFixed(1)}%` : "");
+    circle.appendChild(title);
+
     if (n.id !== "__self__") {
       circle.style.cursor = "pointer";
       circle.addEventListener("click", () => {
+        const sm2 = (
+          window as unknown as {
+            __tauSurfaceManager?: AtlasSurfaceManagerLike;
+          }
+        ).__tauSurfaceManager;
         if (n.kind === "repo") {
-          // workspace id — focus its first surface via index
-          const sm2 = (
-            window as unknown as {
-              __tauSurfaceManager?: AtlasSurfaceManagerLike;
-            }
-          ).__tauSurfaceManager;
           const ws = sm2?.getWorkspaceState?.();
           const idx = ws?.workspaces.findIndex((w) => w.id === n.id) ?? -1;
           if (idx >= 0) sm2?.focusWorkspaceByIndex?.(idx);
-        } else {
-          // surface id — dispatch focus via synthetic click on its container
-          const el = document.querySelector<HTMLElement>(
-            `.surface-container[data-surface-id="${n.id}"]`,
-          );
-          el?.click();
+        } else if (n.id) {
+          // Surface node — route through SurfaceManager.focusSurface so
+          // keyboard focus, xterm focus, and the sidebar all update.
+          sm2?.focusSurface?.(n.id);
         }
+      });
+      circle.addEventListener("mouseenter", () => {
+        hoverNodeId = n.id;
+        renderInfoCard();
+      });
+      circle.addEventListener("mouseleave", () => {
+        if (hoverNodeId === n.id) hoverNodeId = null;
+        renderInfoCard();
       });
     }
     svg.appendChild(circle);
@@ -254,37 +365,56 @@ function renderGraph(host: HTMLElement): void {
     const label = document.createElementNS(NS_SVG, "text");
     label.setAttribute("x", String(n.x + 10));
     label.setAttribute("y", String(n.y + 3));
-    label.setAttribute("fill", "var(--tau-text)");
+    label.setAttribute(
+      "fill",
+      n.id === focusedId ? "var(--tau-text)" : "var(--tau-text-dim)",
+    );
     label.setAttribute("font-family", "var(--tau-font-mono)");
     label.setAttribute("font-size", "10");
+    label.setAttribute("font-weight", n.id === focusedId ? "600" : "400");
     label.textContent = n.label;
     svg.appendChild(label);
+
+    // CPU percentage label next to the workspace/surface label for
+    // quick scanning. Only shown when there is real data.
+    if (typeof n.cpu === "number" && n.cpu > 0) {
+      const cpuLabel = document.createElementNS(NS_SVG, "text");
+      cpuLabel.setAttribute("x", String(n.x + 10 + n.label.length * 5.8));
+      cpuLabel.setAttribute("y", String(n.y + 3));
+      cpuLabel.setAttribute("fill", "var(--tau-text-mute)");
+      cpuLabel.setAttribute("font-family", "var(--tau-font-mono)");
+      cpuLabel.setAttribute("font-size", "9");
+      cpuLabel.textContent = ` ${n.cpu.toFixed(0)}%`;
+      svg.appendChild(cpuLabel);
+    }
   }
 
   host.appendChild(svg);
-
-  // Info card pinned bottom-left per §9.3.
-  const focusedId = (window as unknown as { __tauFocusedSurfaceId?: string })
-    .__tauFocusedSurfaceId;
-  const focusedNode = nodes.find((n) => n.id === focusedId);
-  const card = document.createElement("div");
-  card.className = "tau-atlas-info-card tau-mono";
-  if (focusedNode) {
-    card.innerHTML =
-      `<div class="tau-atlas-info-name">${escapeHtml(focusedNode.label)}</div>` +
-      `<div class="tau-atlas-info-meta">${focusedNode.kind}</div>`;
-  } else {
-    card.innerHTML = `<div class="tau-atlas-info-name">τ-mux</div><div class="tau-atlas-info-meta">idle</div>`;
-  }
-  host.appendChild(card);
+  renderInfoCard();
 }
 
 interface AtlasSurfaceManagerLike {
   getWorkspaceState?: () => {
-    workspaces: { id: string; name: string; surfaceIds: string[] }[];
+    workspaces: {
+      id: string;
+      name: string;
+      color?: string;
+      surfaceIds: string[];
+    }[];
     activeWorkspaceId: string | undefined;
   };
+  getProcessManagerData?: () => {
+    id: string;
+    name: string;
+    color?: string;
+    surfaces: {
+      id: string;
+      title: string;
+      metadata: import("../../../shared/types").SurfaceMetadata | null;
+    }[];
+  }[];
   focusWorkspaceByIndex?: (i: number) => void;
+  focusSurface?: (id: string) => void;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -368,13 +498,12 @@ function makeMnemonic(title: string): string {
 function mountTicker(ctx: VariantContext): void {
   ctx.statusBar.classList.add("tau-atlas-ticker");
   ctx.statusBar.replaceChildren();
+  // Left cap: just the pixel-τ mark (no "TICKER" wordmark — that was
+  // getting overlapped by the scrolling stream). The mark is 14 px so
+  // it reads across the 32 px bar without cropping.
   const left = document.createElement("div");
   left.className = "tau-atlas-ticker-brand";
-  left.appendChild(IconTau({ size: 10 }));
-  const brandLabel = document.createElement("span");
-  brandLabel.className = "tau-mono";
-  brandLabel.textContent = "TICKER";
-  left.appendChild(brandLabel);
+  left.appendChild(IconTau({ size: 14 }));
   ctx.statusBar.appendChild(left);
 
   const stream = document.createElement("div");
@@ -383,14 +512,11 @@ function mountTicker(ctx: VariantContext): void {
   ctx.statusBar.appendChild(stream);
   renderTickerStream(stream);
 
+  // Right cap is populated by refreshStatusBar() so it carries the
+  // same structured data as Bridge / Cockpit status bars.
   const right = document.createElement("div");
   right.className = "tau-atlas-ticker-right tau-mono";
-  right.innerHTML =
-    '<span class="tau-status-label">codex</span><span class="tau-status-value">—</span>' +
-    '<span class="tau-hud-sep">·</span>' +
-    '<span class="tau-status-label">week</span><span class="tau-status-value">—</span>' +
-    '<span class="tau-hud-sep">·</span>' +
-    '<span class="tau-status-label">$</span><span class="tau-status-value">0.00</span>';
+  right.id = "tau-atlas-ticker-right";
   ctx.statusBar.appendChild(right);
 }
 

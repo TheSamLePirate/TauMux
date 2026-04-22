@@ -44,6 +44,8 @@ const CANONICAL = new Set([
   "tauDash", // §9.3: active graph edge stroke-dashoffset
   "tauTickerScroll", // §9.3: Atlas activity ticker, 60 s linear
   "tauAtlasHalo", // §9.3: active-node pulsing halo (r + opacity)
+  "tauAtlasNotifyPulse", // §9.3: workspace-level notification ring
+  "tauNotifyPulse", // §7: identity-aware workspace notification dot
 ]);
 
 /** Functional state animations that predate the revamp and convey a
