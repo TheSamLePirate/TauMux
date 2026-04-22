@@ -37,13 +37,17 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (add note
 - [x] 858/858 tests pass · typecheck clean
 
 ## Phase 3 — Window shell
-- [ ] Titlebar is exactly 38 px, gradient `#0d1317 → #0a0e11`, 0.5 px hairline below
-- [ ] Traffic lights are stock macOS (no CSS overrides)
-- [ ] Pixel-τ + `τ-mux` wordmark render in titlebar (Inter 600 / 12.5 px)
-- [ ] Command bar slot sized to 26 px, max 520 px
-- [ ] Outer window: 12 px radius, correct outer drop shadow, inner hairline
-- [ ] Status bar: 26 px, Mono 11, middle-dot separators
-- [ ] No body gradient visible; `body { background: var(--tau-bg); }`
+- [x] Titlebar is exactly 38 px, gradient `#0d1317 → #0a0e11`, 0.5 px hairline below (`box-shadow: inset 0 -0.5px 0 var(--tau-edge)`)
+- [x] 2026-refresh conflicting override at line ~4383 (28 px / different gradient) neutralised — guideline values authoritative
+- [x] Traffic lights: stock macOS; primary `#titlebar` rule no longer recolours them (padding-left 84 px preserves the standard mount area)
+- [x] Pixel-τ SVG mounted in `.titlebar-app-icon` via `IconTau({size:14})` + CSS `drop-shadow` glow per §6
+- [x] `#titlebar-text` = Inter 600 / 12.5 px (both primary + 2026-refresh override)
+- [ ] Command bar slot sized to 26 px, max 520 px — deferred to Phase 4 (lives inside CommandBar primitive)
+- [x] Outer window: 12 px radius (`--radius-lg`); outer drop shadow handled by Electrobun window chrome
+- [x] Status bar: 26 px, Mono 11, middle-dot separators — `.tau-status-bar` + `#tau-status-bar` skeleton mounted by `mountStatusBar()`; 1 px top edge per §3
+- [x] Sidebar + terminal-container both reserve 26 px bottom for the status bar
+- [x] No body gradient visible; `body { background: var(--tau-bg); }` confirmed
+- [x] 858/858 tests pass · typecheck clean
 
 ## Phase 4 — Shared primitives (`tau-primitives.ts`)
 - [ ] `Pane`

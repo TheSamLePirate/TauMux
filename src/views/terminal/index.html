@@ -77,6 +77,11 @@
     </div>
     <div id="sidebar"></div>
     <div id="terminal-container"></div>
+    <!-- τ-mux §8.3 status bar. Populated by StatusBar primitive
+         (Phase 4). 26 px tall, Mono 11, textDim; items separated by
+         middle dots in textFaint. Zones from left→right: identity ·
+         usage meters · (flex) · cost / model. -->
+    <div id="tau-status-bar" class="tau-status-bar tau-mono" role="status" aria-live="polite"></div>
     <script type="module" src="index.js"></script>
   </body>
 </html>

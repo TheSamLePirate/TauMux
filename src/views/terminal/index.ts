@@ -12,6 +12,7 @@ import {
 import { SurfaceManager } from "./surface-manager";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
 import { createIcon } from "./icons";
+import { IconTau } from "./tau-icons";
 import { showPromptDialog } from "./prompt-dialog";
 import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";
@@ -332,6 +333,40 @@ function mountTitlebarIcons() {
     if (!button) continue;
     button.replaceChildren(createIcon(iconName));
   }
+
+  // Pixel-τ logo per τ-mux §5/§6. Replaces the old icon.png background
+  // with the guideline-prescribed <rect>-based SVG. The glow is applied
+  // via `.titlebar-app-icon`'s CSS drop-shadow filter.
+  const appIconEl = document.getElementById("titlebar-app-icon");
+  if (appIconEl) appIconEl.replaceChildren(IconTau({ size: 14 }));
+}
+
+function mountStatusBar() {
+  // τ-mux §8.3 StatusBar seed. Zones (identity · meters · cost/model)
+  // are populated by SurfaceManager/SettingsPanel subscribers in later
+  // phases. For now we mount the structural skeleton so the bottom
+  // chrome is visible and screen-reader friendly.
+  const bar = document.getElementById("tau-status-bar");
+  if (!bar) return;
+  bar.replaceChildren();
+  const identity = document.createElement("div");
+  identity.className = "tau-status-zone";
+  identity.id = "tau-status-identity";
+  identity.innerHTML =
+    '<span class="tau-status-label">session</span>' +
+    '<span class="tau-status-value">τ-mux</span>';
+  const meters = document.createElement("div");
+  meters.className = "tau-status-zone";
+  meters.id = "tau-status-meters";
+  const spacer = document.createElement("div");
+  spacer.className = "tau-status-spacer";
+  const cost = document.createElement("div");
+  cost.className = "tau-status-zone";
+  cost.id = "tau-status-cost";
+  cost.innerHTML =
+    '<span class="tau-status-label">model</span>' +
+    '<span class="tau-status-value">—</span>';
+  bar.append(identity, meters, spacer, cost);
 }
 
 function handleResize() {
@@ -363,6 +398,7 @@ window.addEventListener("pagehide", () => {
   }
 });
 mountTitlebarIcons();
+mountStatusBar();
 
 setTimeout(() => {
   rpc.send("resize", { surfaceId: "__init__", cols: 80, rows: 24 });
