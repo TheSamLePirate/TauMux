@@ -2165,12 +2165,17 @@ body.sidebar-resizing {
  * the ring colour and inset halo paint over xterm. */
 .surface-container.notify-glow::after {
   content: "";
+  display: block;
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
   border: 1px solid transparent;
   border-radius: inherit;
   pointer-events: none;
-  z-index: 10;
+  z-index: 2147483000;
   animation: notify-glow-pulse 2s ease-in-out infinite;
 }
 .surface-container.notify-glow.tau-pane-human::after {
@@ -9486,21 +9491,34 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
  * exactly 1 px on all four sides regardless of the pane's position.
  * `pointer-events: none` keeps the click targets on the actual
  * terminal below. */
-.tau-pane::after {
+/* Force the overlay to actually render. Earlier rules in this file
+ * do `.surface-container::after { display: none }` with specificity
+ * 0,1,1 — we beat them with `.surface-container.tau-pane::after`
+ * (0,2,1) and explicitly set `display: block` since some of the
+ * neutralisers use `display` rather than `content`. */
+.tau-pane::after,
+.surface-container.tau-pane::after {
   content: "";
+  display: block;
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
   border: 1px solid transparent;
   border-radius: inherit;
   pointer-events: none;
-  z-index: 10;
+  z-index: 2147483000;
   transition: border-color var(--transition-fast);
 }
-.tau-pane.tau-pane-human.is-focused::after {
+.tau-pane.tau-pane-human.is-focused::after,
+.surface-container.tau-pane.tau-pane-human.is-focused::after {
   border-color: var(--tau-cyan);
   box-shadow: inset 0 0 12px var(--tau-cyan-dim);
 }
-.tau-pane.tau-pane-agent.is-focused::after {
+.tau-pane.tau-pane-agent.is-focused::after,
+.surface-container.tau-pane.tau-pane-agent.is-focused::after {
   border-color: var(--tau-agent);
   box-shadow: inset 0 0 12px var(--tau-agent-dim);
 }
