@@ -282,7 +282,13 @@ textarea {
   height: var(--titlebar-height);
   z-index: 80;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  /* Four columns so the workspace switcher (between center and
+   * actions) has its own slot. Column 3 is `minmax(0, auto)` with a
+   * max width cap below — prevents the actions strip from being
+   * pushed off-screen when many workspace pills crowd the switcher.
+   * Column 4 is rigid `auto` so the toolbar buttons are always
+   * visible regardless of how many workspaces the user has open. */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, auto) auto;
   align-items: center;
   gap: 18px;
   padding-left: 84px;
@@ -2128,35 +2134,32 @@ body.sidebar-resizing {
  * colour and must be immediately visible in every variant. Intensity
  * bumped from the Phase-5 pass so the halo reads at a glance; duration
  * kept at 2 s so it doesn't feel like a constant disco. */
+/* Inset-style notification glow — same symmetry reasoning as the focus
+ * indicator: outer box-shadow can clip at the terminal-container edge
+ * and look uneven. Inset keeps the entire effect inside the pane. */
 @keyframes notify-glow-pulse {
   0%, 100% {
-    border-color: rgba(255, 197, 107, 0.3);
     box-shadow:
-      0 0 0 0.5px rgba(255, 197, 107, 0.3),
-      0 0 8px rgba(255, 197, 107, 0.1);
+      inset 0 0 0 1px rgba(255, 197, 107, 0.3),
+      inset 0 0 8px rgba(255, 197, 107, 0.1);
   }
   50% {
-    border-color: rgba(255, 197, 107, 1);
     box-shadow:
-      0 0 0 1px rgba(255, 197, 107, 0.8),
-      0 0 28px 4px rgba(255, 197, 107, 0.5),
-      0 0 64px 8px rgba(255, 197, 107, 0.15);
+      inset 0 0 0 1px rgba(255, 197, 107, 1),
+      inset 0 0 24px rgba(255, 197, 107, 0.5);
   }
 }
 
 @keyframes notify-glow-pulse-human {
   0%, 100% {
-    border-color: rgba(111, 233, 255, 0.3);
     box-shadow:
-      0 0 0 0.5px rgba(111, 233, 255, 0.3),
-      0 0 8px rgba(111, 233, 255, 0.1);
+      inset 0 0 0 1px rgba(111, 233, 255, 0.3),
+      inset 0 0 8px rgba(111, 233, 255, 0.1);
   }
   50% {
-    border-color: rgba(111, 233, 255, 1);
     box-shadow:
-      0 0 0 1px rgba(111, 233, 255, 0.8),
-      0 0 28px 4px rgba(111, 233, 255, 0.5),
-      0 0 64px 8px rgba(111, 233, 255, 0.15);
+      inset 0 0 0 1px rgba(111, 233, 255, 1),
+      inset 0 0 24px rgba(111, 233, 255, 0.5);
   }
 }
 
@@ -9453,17 +9456,30 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
   background: var(--tau-void);
   overflow: hidden;
 }
+/* τ-mux focus indicator — the border ring is INSET so it stays inside
+ * the pane regardless of where the pane sits in the layout. Outer glow
+ * is smaller (16 px) and also inset-only so it can't clip asymmetrically
+ * against the terminal-container edge or the sidebar. Using integer
+ * px values (1 instead of 0.5) avoids subpixel-rounding asymmetry
+ * that was making the ring look thicker on two sides than the others. */
 .tau-pane.tau-pane-human.is-focused {
   box-shadow:
-    0 0 0 0.5px var(--tau-cyan),
-    0 0 24px var(--tau-cyan-dim);
+    inset 0 0 0 1px var(--tau-cyan),
+    inset 0 0 14px var(--tau-cyan-dim);
 }
 .tau-pane.tau-pane-agent.is-focused {
   box-shadow:
-    0 0 0 0.5px var(--tau-agent),
-    0 0 24px var(--tau-agent-dim);
+    inset 0 0 0 1px var(--tau-agent),
+    inset 0 0 14px var(--tau-agent-dim);
 }
 .tau-pane.tau-pane-mixed.is-focused {
+  box-shadow:
+    inset 0 0 0 1px var(--tau-text),
+    inset 0 0 14px rgba(214, 226, 232, 0.18);
+}
+/* Legacy outer-glow variants (kept only so subsequent CSS in this
+ * file can be over-ridden cleanly; do not target them). */
+.tau-pane.tau-pane-mixed.is-focused-legacy {
   box-shadow:
     0 0 0 0.5px var(--tau-text),
     0 0 20px rgba(214, 226, 232, 0.18);
@@ -9840,13 +9856,13 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
  * ──────────────────────────────────────────────────────────────── */
 
 /* ── §9.1 Bridge — default ──
- *   sidebar 240 px default (resizable + collapsible via ⌘B / resize
- *   handle per user preference), inner pane padding 6 px, inter-pane
- *   gap 6 px. Guideline §9.1 says "never collapsible" but the app
- *   treats that as UX friction, so we keep the handle active. */
-body[data-tau-variant="bridge"] {
-  --sidebar-width: 240px;
-}
+ *   sidebar resizable + collapsible, inner pane padding 6 px. The
+ *   sidebar width is driven by the user's saved `sidebarWidth`
+ *   setting (applied to :root by SurfaceManager.applySettings); the
+ *   resize handler writes new widths there too, so we DO NOT force
+ *   `--sidebar-width` at the variant scope — doing so beat the
+ *   handler's runtime updates. Guideline §9.1 says "never collapsible"
+ *   but the app treats that as UX friction so the handle stays active. */
 body[data-tau-variant="bridge"] #terminal-container {
   padding: 6px !important;
 }
@@ -9882,6 +9898,12 @@ body[data-tau-variant="atlas"] #terminal-container {
  * Three pills, active has a 0.5 px cyan-dim border. Hidden unless the
  * Bridge variant is active. */
 .tau-workspace-switcher {
+  /* Lives in grid column 3 of the titlebar (see `#titlebar` rule).
+   * max-width + overflow-x: auto keeps it from pushing the action
+   * buttons off-screen when a user has many workspaces. The scroll
+   * bar is hidden via `scrollbar-width: none` because a classic
+   * scrollbar in the titlebar is ugly — users scroll with a shift+
+   * wheel or drag-inertia trackpad gesture. */
   display: none;
   align-items: center;
   gap: 2px;
@@ -9891,6 +9913,12 @@ body[data-tau-variant="atlas"] #terminal-container {
   border-radius: var(--tau-r-btn);
   margin-left: 8px;
   height: 22px;
+  max-width: 40vw;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tau-workspace-switcher::-webkit-scrollbar {
+  display: none;
 }
 body[data-tau-variant="bridge"] .tau-workspace-switcher {
   display: inline-flex;
