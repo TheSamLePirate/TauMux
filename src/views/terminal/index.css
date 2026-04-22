@@ -1,6 +1,56 @@
+/* ── Inter — chrome font per τ-mux design guideline §2 ──
+ * Bundled from rsms/inter v4.0 under assets/fonts/inter/. `local()`
+ * lookups let an installed copy short-circuit the fetch; the woff2 file
+ * is the deterministic fallback. The JetBrains Mono Nerd Font used for
+ * the terminal body is registered below in the Mono-family @font-face. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    local("Inter"),
+    local("Inter-Regular"),
+    url("fonts/Inter-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src:
+    local("Inter Medium"),
+    local("Inter-Medium"),
+    url("fonts/Inter-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src:
+    local("Inter SemiBold"),
+    local("Inter-SemiBold"),
+    url("fonts/Inter-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src:
+    local("Inter Bold"),
+    local("Inter-Bold"),
+    url("fonts/Inter-Bold.woff2") format("woff2");
+}
+
 :root {
   /* ── τ-mux design tokens (source: design_guidelines/Design Guidelines tau-mux.md §1) ── */
   /* These are design-system invariants; never overridden at runtime by user themes. */
+  /* Font families per §2 — two families only. Inter for chrome, JetBrains
+   * Mono (Nerd) for anything terminal-pasteable. Nothing else permitted. */
+  --tau-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --tau-font-mono: "JetBrainsMono Nerd Font Mono", "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", monospace;
   --tau-void: #000000;
   --tau-bg: #07090b;
   --tau-panel: #0b1013;
@@ -94,14 +144,20 @@ body {
 
 body {
   position: relative;
-  font-family:
-    "JetBrainsMono Nerd Font Mono",
-    "JetBrains Mono",
-    "Berkeley Mono",
-    "SF Mono",
-    "Menlo",
-    monospace;
+  /* Chrome default is Inter per τ-mux §2. Terminal (xterm) body elements
+   * keep their own mono stack via the .xterm inline style set by xterm.js
+   * from the user's font-family setting. */
+  font-family: var(--tau-font-sans);
   background: var(--tau-bg);
+}
+
+/* Force Mono on anything that will be pasted into a terminal or carries
+ * numeric / path / identifier semantics. Used by §8 primitives. */
+.tau-mono,
+.xterm,
+.xterm .xterm-viewport,
+.xterm .xterm-screen {
+  font-family: var(--tau-font-mono);
 }
 
 /* body::before / body::after decorative overlays removed per τ-mux §0

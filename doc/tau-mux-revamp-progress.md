@@ -25,14 +25,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (add note
 - [x] App launches (will look broken — expected)  — deferred smoke to batch with Phase 3
 
 ## Phase 2 — Fonts + icon primitive
-- [ ] `assets/fonts/inter/Inter-{Regular,Medium,SemiBold,Bold}.woff2` committed
-- [ ] `electrobun.config.ts` copies fonts into `vendor/fonts/inter/`
-- [ ] `src/bun/web/asset-loader.ts` registers the font paths
-- [ ] `@font-face` block in `index.css` points at bundled files, uses `local()` first
-- [ ] `src/views/terminal/tau-icons.ts` exports the 8 approved SVG primitives
-- [ ] Pixel-τ logo renders from `<rect>` elements with `drop-shadow` glow
-- [ ] `scripts/audit-emoji.ts` written and wired into `bun test`
-- [ ] Emoji audit passes on current tree (or surfaces the exact set to remove)
+- [x] `assets/fonts/inter/Inter-{Regular,Medium,SemiBold,Bold}.woff2` committed (rsms/inter v4.0, ~443 KB total, woff2 magic verified)
+- [x] `electrobun.config.ts` copies fonts into `views/terminal/fonts/` for webview relative loading
+- [ ] `src/bun/web/asset-loader.ts` registers the font paths — deferred (web mirror out of scope per Phase-0 decision)
+- [x] `@font-face` block in `index.css` (four weights) with `local()` first then bundled woff2 fallback
+- [x] `--tau-font-sans` / `--tau-font-mono` tokens added; body chrome default switched to Inter, `.xterm` kept on JetBrains Mono Nerd
+- [x] `src/views/terminal/tau-icons.ts` exports the 8 approved SVG primitives + `tauIcon(name)` helper
+- [x] Pixel-τ logo renders from `<rect>` elements on a 10×10 grid; glow left to CSS `drop-shadow` per §6
+- [x] `scripts/audit-emoji.ts` written; CI step added in `.github/workflows/ci.yml`; `tests/audit-emoji.test.ts` runs it on every `bun test`
+- [x] Emoji audit passes — 2 pre-existing hits in `browser-pane.ts` (🔒 / ⚠) replaced with inline SVG primitives
+- [x] 858/858 tests pass · typecheck clean
 
 ## Phase 3 — Window shell
 - [ ] Titlebar is exactly 38 px, gradient `#0d1317 → #0a0e11`, 0.5 px hairline below

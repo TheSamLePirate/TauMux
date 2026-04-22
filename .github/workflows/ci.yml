@@ -121,6 +121,13 @@ jobs:
         # test hooks could become reachable without HYPERTERM_TEST_MODE.
         run: bun run audit:test-hooks
 
+      - name: Audit emoji (τ-mux design guideline §0)
+        # The τ-mux design guideline bans emoji code points in chrome.
+        # This check fails if any appear in src/views/terminal, src/bun,
+        # or src/shared. Lines carrying user content (not chrome) can
+        # opt out with `// emoji-audit-ignore-line`.
+        run: bun run audit:emoji
+
       - name: Run native Playwright tests
         env:
           CI: "1"

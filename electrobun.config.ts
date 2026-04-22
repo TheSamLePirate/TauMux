@@ -38,6 +38,20 @@ export default {
         "vendor/fonts/nerd-regular.ttf",
       "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf":
         "vendor/fonts/nerd-bold.ttf",
+      // Inter — chrome font per τ-mux design guideline §2. Bundled from
+      // the official rsms/inter v4.0 release so the app renders identical
+      // chrome offline. Four weights (400/500/600/700) cover labels,
+      // active tabs, titles, and the pixel-τ wordmark. The webview loads
+      // them via relative URL `fonts/Inter-*.woff2` from the @font-face
+      // block in index.css.
+      "assets/fonts/inter/Inter-Regular.woff2":
+        "views/terminal/fonts/Inter-Regular.woff2",
+      "assets/fonts/inter/Inter-Medium.woff2":
+        "views/terminal/fonts/Inter-Medium.woff2",
+      "assets/fonts/inter/Inter-SemiBold.woff2":
+        "views/terminal/fonts/Inter-SemiBold.woff2",
+      "assets/fonts/inter/Inter-Bold.woff2":
+        "views/terminal/fonts/Inter-Bold.woff2",
       // Notification sounds — served to the webview (relative path) and
       // to the web-mirror client via HTTP from the vendor copy.
       "assets/audio/finish.mp3": "views/terminal/audio/finish.mp3",

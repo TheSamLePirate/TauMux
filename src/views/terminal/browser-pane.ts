@@ -451,16 +451,52 @@ export function createBrowserPaneView(
   // ── Event wiring ──
 
   function updateLockIcon(url: string) {
+    // τ-mux §6: no glyph icons on chrome; SVG primitives only.
+    // Full Phase-10 overlay rewrite lives in browser-pane.ts; for now we
+    // render a 10 px cyan square (secure) or amber triangle-equivalent
+    // square (insecure) via inline SVG to stay guideline-compliant.
+    lockIcon.replaceChildren();
+    const NS = "http://www.w3.org/2000/svg";
     if (url.startsWith("https://")) {
-      lockIcon.textContent = "🔒";
+      const svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("width", "10");
+      svg.setAttribute("height", "10");
+      svg.setAttribute("viewBox", "0 0 10 10");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "0.8");
+      svg.setAttribute("stroke-linecap", "round");
+      const body = document.createElementNS(NS, "rect");
+      body.setAttribute("x", "2");
+      body.setAttribute("y", "4.5");
+      body.setAttribute("width", "6");
+      body.setAttribute("height", "4");
+      svg.appendChild(body);
+      const shackle = document.createElementNS(NS, "path");
+      shackle.setAttribute("d", "M3.2 4.5 V3 A1.8 1.8 0 0 1 6.8 3 V4.5");
+      svg.appendChild(shackle);
+      lockIcon.appendChild(svg);
       lockIcon.title = "Secure connection";
       lockIcon.className = "browser-lock-icon browser-lock-secure";
     } else if (url.startsWith("http://")) {
-      lockIcon.textContent = "⚠";
+      const svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("width", "10");
+      svg.setAttribute("height", "10");
+      svg.setAttribute("viewBox", "0 0 10 10");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "0.8");
+      svg.setAttribute("stroke-linecap", "round");
+      const tri = document.createElementNS(NS, "path");
+      tri.setAttribute("d", "M5 1.5 L9 8.5 L1 8.5 Z");
+      svg.appendChild(tri);
+      const bang = document.createElementNS(NS, "path");
+      bang.setAttribute("d", "M5 4 V6.2 M5 7.3 V7.6");
+      svg.appendChild(bang);
+      lockIcon.appendChild(svg);
       lockIcon.title = "Insecure connection";
       lockIcon.className = "browser-lock-icon browser-lock-insecure";
     } else {
-      lockIcon.textContent = "";
       lockIcon.className = "browser-lock-icon";
     }
   }
