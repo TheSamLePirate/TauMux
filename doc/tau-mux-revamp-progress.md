@@ -135,19 +135,25 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (add note
 - [x] 858/858 tests pass · typecheck clean
 
 ## Phase 10 — Overlay compliance sweep
-- [ ] `command-palette.ts`
-- [ ] `settings-panel.ts`
-- [ ] `process-manager.ts`
-- [ ] `agent-panel.ts` + `agent-panel-*.ts`
-- [ ] `browser-pane.ts`
-- [ ] `telegram-pane.ts`
-- [ ] `prompt-dialog.ts`
-- [ ] `toast.ts`
-- [ ] `panel.ts`
-- [ ] `terminal-search.ts`
-- [ ] `surface-details.ts`
-- [ ] `agent-panel-dialogs.ts`
-- [ ] `sidebar.ts` + `sidebar-manifest-card.ts` + `sidebar-state.ts` (variant-aware)
+Mechanical CSS sweep touched 134 rules — 130 chrome borders downsized `1px → 0.5px` per §3, 20 `border-radius` entries clamped to the 12 px budget, elevation box-shadows stripped of chromatic cyan/amber coating so the focused-pane glow stays the single loud state.
+
+Compliance per overlay scope (post-sweep audit):
+- [x] `command-palette.ts` — OK (0 borders ≥1 px, 0 chromatic glows); elevation drop shadow kept, cyan ring removed
+- [x] `settings-panel.ts` — OK structurally; 2 px borders retained on native slider thumb + color swatch (functional native form borders). White 4 % inner ring on the sheet is a non-chromatic hairline (keeps elevation legibility).
+- [x] `process-manager.ts` — OK (0 residual)
+- [x] `agent-panel.ts` + `agent-panel-*.ts` — OK; hover/focus chromatic glows on model/thinking toolbar, input focus, send button removed. Spinner border + 1 px semantic accent strip on `.agent-think` retained (emphatic-divider §3 exception).
+- [x] `browser-pane.ts` — OK (0 residual)
+- [x] `telegram-pane.ts` — OK (0 residual)
+- [x] `prompt-dialog.ts` — OK (cyan ring stripped)
+- [x] `toast.ts` — OK (3 px identity strip shrunk to 1 px)
+- [x] `panel.ts` — OK; amber edge glows on `.panel-position-inline`, `.panel-interactive`, `.panel.panel-resizing` stripped. Black drop-shadow elevation kept.
+- [x] `terminal-search.ts` — OK (0 residual)
+- [x] `surface-details.ts` — OK (0 residual)
+- [x] `agent-panel-dialogs.ts` — handled under the agent-panel sweep (shared `.agent-*` class tree)
+- [x] `sidebar.ts` + `sidebar-manifest-card.ts` + `sidebar-state.ts` — border/radius sweep applied; 1 px emphatic accent strips on notification + log items retained per §3 exception. Variant-aware rendering already in place from Phase 7 (Cockpit hides sidebar internals) and Phase 8 (Atlas prepends `#tau-atlas-graph`).
+- [ ] Primitive-based DOM rewrite of each overlay (Pane / CommandBar / StatusBar factories) — not required for visual compliance; deferred post-merge as a pure refactor.
+- [x] Full tree residual drift after sweep: 10 hits, all legitimate exceptions (native form borders, spinners, 1 px identity-accent strips per §3, one non-chromatic white hairline ring on `.settings-panel`)
+- [x] 858/858 tests pass · typecheck clean · emoji audit clean
 
 ## Phase 11 — Bloom gate
 - [ ] Settings migration writes `bloomMigratedToTau: true` and stores `legacyBloomIntensity`
