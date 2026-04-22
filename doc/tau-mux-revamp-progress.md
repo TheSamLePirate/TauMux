@@ -50,16 +50,19 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (add note
 - [x] 858/858 tests pass · typecheck clean
 
 ## Phase 4 — Shared primitives (`tau-primitives.ts`)
-- [ ] `Pane`
-- [ ] `Tab` + `TabBadge`
-- [ ] `CommandBar`
-- [ ] `StatusBar`
-- [ ] `Meter`
-- [ ] `BranchChip`
-- [ ] `WorkspaceCard`
-- [ ] `IdentityDot`
-- [ ] `surface-manager.ts` renders every pane through `Pane` (no bespoke pane DOM left)
-- [ ] Sidebar renders workspaces through `WorkspaceCard`
+- [x] `Pane` — factory + `PaneHandle` API (setFocused / setRunning / setIdentity)
+- [x] `Tab` + `TabBadge` — active = panelHi + 600 weight; three badge kinds (branch/model/status)
+- [x] `CommandBar` — 26 px, max 520 px, ⌘K kbd hint left / τ brand right with §6 drop-shadow glow
+- [x] `StatusBar` — handle API with setIdentity / setMeters / setCost zones
+- [x] `Meter` — 4 px tall, ok/warn/err semantics, never solo (label or valueText required)
+- [x] `BranchChip` — cyan-dim fill, 0.5 px cyan-dim border, Mono 600 / 9.5
+- [x] `WorkspaceCard` — identity dot + name (Mono 12.5/600) + box-drawing tree glyphs for sessions
+- [x] `IdentityDot` — 7 px, cyan/amber/mixed, `tauPulse` when running, focus glow only via ancestor `.is-focused`
+- [x] CSS for every primitive appended to `index.css` (~400 lines). Specificity wins over pre-revamp rules
+- [x] `surface-manager.ts` retrofit: `focusSurface` applies `.tau-pane` + `.tau-pane-{human|agent}` + `.is-focused` to every surface container; identity derived from `surfaceType` (agent=amber; terminal/browser/telegram=cyan)
+- [ ] Full pane-DOM rewrite via `Pane` primitive — deferred to Phase 10 (keeps "preserve every functionality" guardrail: Phase 4 makes the primitives available and retrofits focus/identity; Phase 10 migrates producers)
+- [ ] Sidebar renders workspaces through `WorkspaceCard` — deferred to Phase 10 (same rationale)
+- [x] 858/858 tests pass · typecheck clean
 
 ## Phase 5 — Focus indicator
 - [ ] `SurfaceManager.focusedPaneId` is the sole source of truth

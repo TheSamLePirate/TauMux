@@ -6,6 +6,16 @@ import { PanelManager } from "./panel-manager";
 import { PaneLayout, setPaneGap } from "./pane-layout";
 import { Sidebar } from "./sidebar";
 import { createIcon } from "./icons";
+import { applyTauPaneClasses } from "./tau-primitives";
+import type { TauIdentity } from "./tau-tokens";
+
+/** Map a surface kind to the τ-mux §7 identity signal (colour is identity). */
+function surfaceIdentity(
+  kind: "terminal" | "browser" | "agent" | "telegram",
+): TauIdentity {
+  // Agents are amber. Everything the user drives (shell, browser, chat) is cyan.
+  return kind === "agent" ? "agent" : "human";
+}
 import { TerminalEffects } from "./terminal-effects";
 import type {
   PanelEvent,
@@ -331,7 +341,9 @@ export class SurfaceManager {
   /** Add a surface as a new workspace. */
   addSurface(surfaceId: string, title: string): void {
     const view = this.createSurfaceView(surfaceId, title);
-    this.addNewWorkspace(surfaceId, title, view, () => focusSurfaceTerminal(view));
+    this.addNewWorkspace(surfaceId, title, view, () =>
+      focusSurfaceTerminal(view),
+    );
   }
 
   /** Add a browser surface as a new workspace. */
@@ -612,8 +624,18 @@ export class SurfaceManager {
   focusSurface(surfaceId: string): void {
     this.focusedSurfaceId = surfaceId;
     for (const v of this.surfaces.values()) {
-      v.container.classList.toggle("focused", v.id === surfaceId);
-      v.effects?.setFocused(v.id === surfaceId);
+      const isFocused = v.id === surfaceId;
+      v.container.classList.toggle("focused", isFocused);
+      // τ-mux §4: the focused pane is the only element that glows.
+      // applyTauPaneClasses writes `.tau-pane` + `.tau-pane-{identity}`
+      // + `.is-focused`; the CSS at the end of index.css routes the
+      // cyan/amber border + glow from there.
+      applyTauPaneClasses(
+        v.container,
+        surfaceIdentity(v.surfaceType),
+        isFocused,
+      );
+      v.effects?.setFocused(isFocused);
     }
     // Clear notification glow when surface becomes selected
     this.clearGlow(surfaceId);

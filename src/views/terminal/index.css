@@ -9313,3 +9313,402 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
 #sidebar.sidebar-v2.collapsed * {
   pointer-events: none;
 }
+
+/* ──────────────────────────────────────────────────────────────── *
+ * τ-mux shared primitives (Phase 4)                                *
+ *                                                                  *
+ * Class-level styling for the factories exported from              *
+ * tau-primitives.ts. Kept at the end of index.css so specificity   *
+ * wins over pre-revamp surface-bar / sidebar rules — retrofit code *
+ * can add these classes alongside existing ones and the guideline  *
+ * look takes over without touching the original selectors.         *
+ *                                                                  *
+ * Source: design_guidelines/Design Guidelines tau-mux.md §8.       *
+ * ──────────────────────────────────────────────────────────────── */
+
+/* ── IdentityDot (§7, §8.1) ──
+ * 7 px circle. Cyan (human / focus / system) / amber (agent) /
+ * text (mixed). Pulses while running. The focus glow is only
+ * applied when an ancestor has .is-focused (see §4). */
+.tau-identity-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--tau-text);
+  vertical-align: middle;
+}
+.tau-identity-dot.tau-identity-human { background: var(--tau-cyan); }
+.tau-identity-dot.tau-identity-agent { background: var(--tau-agent); }
+.tau-identity-dot.tau-identity-mixed { background: var(--tau-text); }
+.tau-identity-dot.is-running {
+  animation: tauPulse 1.4s ease-in-out infinite;
+}
+.tau-pane.is-focused > .tau-pane-header > .tau-identity-dot.tau-identity-human,
+.tau-pane.tau-pane-human.is-focused .tau-identity-dot.tau-identity-human {
+  box-shadow: 0 0 8px var(--tau-cyan-glow);
+}
+.tau-pane.is-focused > .tau-pane-header > .tau-identity-dot.tau-identity-agent,
+.tau-pane.tau-pane-agent.is-focused .tau-identity-dot.tau-identity-agent {
+  box-shadow: 0 0 8px rgba(255, 197, 107, 0.55);
+}
+
+@keyframes tauPulse {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50%      { opacity: 0.9;  transform: scale(1.2); }
+}
+
+/* ── Pane (§8.1, §4 focus indicator) ──
+ * 0.5 px hairline; focused state is the only loud element in chrome.
+ * Pane body bg is `void` black, header sits above on `panel` / `panel-hi`. */
+.tau-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-pane);
+  background: var(--tau-void);
+  overflow: hidden;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+.tau-pane.tau-pane-human.is-focused {
+  border-color: var(--tau-cyan);
+  box-shadow:
+    0 0 0 0.5px var(--tau-cyan),
+    0 0 24px var(--tau-cyan-dim);
+}
+.tau-pane.tau-pane-agent.is-focused {
+  border-color: var(--tau-agent);
+  box-shadow:
+    0 0 0 0.5px var(--tau-agent),
+    0 0 24px var(--tau-agent-dim);
+}
+.tau-pane.tau-pane-mixed.is-focused {
+  border-color: var(--tau-text);
+  box-shadow:
+    0 0 0 0.5px var(--tau-text),
+    0 0 20px rgba(214, 226, 232, 0.18);
+}
+
+.tau-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  background: var(--tau-panel);
+  color: var(--tau-text-dim);
+  font-family: var(--tau-font-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  border-bottom: 0.5px solid var(--tau-edge);
+  flex-shrink: 0;
+  user-select: none;
+}
+.tau-pane.is-focused > .tau-pane-header {
+  background: var(--tau-panel-hi);
+  color: var(--tau-text);
+}
+
+.tau-pane-title {
+  font-family: var(--tau-font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--tau-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.tau-pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.tau-pane-action {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--tau-r-btn);
+  color: var(--tau-text-mute);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+.tau-pane-action:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--tau-text);
+}
+.tau-pane-action:focus-visible {
+  outline: 0.5px solid var(--tau-cyan);
+  outline-offset: 1px;
+}
+
+.tau-pane-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  background: var(--tau-void);
+}
+
+/* ── Tab (§8.1) ──
+ * 3 × 10 px padding, radius 5 (button radius per §3). Active gets
+ * panelHi fill + 600 weight. Inactive stays at 500 to match §2. */
+.tau-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: none;
+  background: transparent;
+  color: var(--tau-text-dim);
+  font-family: var(--tau-font-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: var(--tau-r-btn);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+.tau-tab:hover { color: var(--tau-text); }
+.tau-tab.is-active {
+  background: var(--tau-panel-hi);
+  color: var(--tau-text);
+  font-weight: 600;
+}
+.tau-tab-label {
+  font: inherit;
+}
+
+/* ── TabBadge / BranchChip (§8.1, §8.5) ──
+ * 9.5 px Mono, 0.5 px border, 3 px radius. */
+.tau-badge,
+.tau-branch-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  font-family: var(--tau-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--tau-text);
+  background: rgba(255, 255, 255, 0.03);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-chip);
+  white-space: nowrap;
+  user-select: none;
+}
+.tau-badge-branch,
+.tau-branch-chip {
+  background: rgba(111, 233, 255, 0.08);
+  border-color: var(--tau-cyan-dim);
+  color: var(--tau-cyan);
+}
+.tau-badge-model {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--tau-edge);
+  color: var(--tau-text-dim);
+}
+.tau-badge-status {
+  background: rgba(255, 197, 107, 0.08);
+  border-color: rgba(255, 197, 107, 0.35);
+  color: var(--tau-agent);
+}
+
+/* ── Meter (§8.4) ── 4 px tall, 50 px wide default. */
+.tau-meter-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--tau-font-mono);
+  font-size: 10.5px;
+  color: var(--tau-text-dim);
+}
+.tau-meter-label {
+  text-transform: lowercase;
+  color: var(--tau-text-mute);
+}
+.tau-meter {
+  position: relative;
+  height: 4px;
+  min-width: 30px;
+  background: var(--tau-edge);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.tau-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: 1px;
+}
+.tau-meter-ok .tau-meter-fill {
+  background: var(--tau-ok);
+  box-shadow: 0 0 6px rgba(140, 233, 154, 0.4);
+}
+.tau-meter-warn .tau-meter-fill {
+  background: var(--tau-warn);
+  box-shadow: 0 0 6px rgba(255, 197, 107, 0.4);
+}
+.tau-meter-err .tau-meter-fill {
+  background: var(--tau-err);
+  box-shadow: 0 0 6px rgba(255, 138, 138, 0.4);
+}
+.tau-meter-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--tau-text);
+}
+
+/* ── CommandBar (§8.2) ── 26 px tall, max 520 px wide. */
+.tau-command-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  max-width: 520px;
+  width: 100%;
+  padding: 0 10px;
+  background: var(--tau-panel);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-btn);
+  color: var(--tau-text-dim);
+}
+.tau-command-bar-kbd {
+  font-size: 11px;
+  color: var(--tau-text-mute);
+  flex-shrink: 0;
+  user-select: none;
+}
+.tau-command-bar-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: var(--tau-font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--tau-text);
+}
+.tau-command-bar-input::placeholder {
+  color: var(--tau-text-dim);
+}
+.tau-command-bar-brand {
+  display: grid;
+  place-items: center;
+  color: var(--tau-cyan);
+  flex-shrink: 0;
+  filter:
+    drop-shadow(0 0 4px var(--tau-cyan-glow))
+    drop-shadow(0 0 1px var(--tau-cyan));
+}
+.tau-command-bar-brand rect { fill: currentColor; }
+
+/* ── WorkspaceCard (§8.6) ──
+ * Sidebar row. 8–10 px padding, 8 px radius, panelHi bg when active.
+ * Tree glyphs in textFaint per the allowed "box-drawing" set in §11. */
+.tau-workspace-card {
+  padding: 10px;
+  border-radius: var(--tau-r-pane);
+  background: transparent;
+  border: 0.5px solid transparent;
+  color: var(--tau-text);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+  cursor: pointer;
+}
+.tau-workspace-card:hover { background: rgba(255, 255, 255, 0.02); }
+.tau-workspace-card.is-active {
+  background: var(--tau-panel-hi);
+  border-color: var(--tau-edge);
+}
+.tau-workspace-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.tau-workspace-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--tau-text);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tau-workspace-module {
+  font-size: 9.5px;
+  color: var(--tau-text-mute);
+}
+.tau-workspace-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 3px;
+}
+.tau-workspace-session {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--tau-text-dim);
+}
+.tau-workspace-tree {
+  color: var(--tau-text-faint);
+  font-size: 11px;
+  width: 10px;
+  display: inline-block;
+}
+.tau-workspace-session-name {
+  color: var(--tau-text);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.tau-workspace-foot {
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--tau-text-mute);
+}
+
+/* ── Surface-manager retrofit (§4 focus rule on existing panes) ──
+ * `.surface-container` is the pre-revamp pane root. When the surface
+ * manager adds `.tau-pane` + `.tau-pane-human/agent` + `.is-focused`,
+ * the guideline focus indicator takes over via the rules above.
+ * These rules harmonise the existing `.surface-bar` (the old pane
+ * header) so it reads as the τ-mux Pane header without rewriting
+ * surface-manager.ts. */
+.surface-container.tau-pane .surface-bar {
+  height: 28px;
+  padding: 0 10px;
+  background: var(--tau-panel);
+  border-bottom: 0.5px solid var(--tau-edge);
+  gap: 8px;
+}
+.surface-container.tau-pane.is-focused .surface-bar {
+  background: var(--tau-panel-hi);
+}
+.surface-container.tau-pane.tau-pane-human .surface-bar-icon,
+.surface-container.tau-pane.tau-pane-human .surface-bar-title {
+  color: var(--tau-text);
+}
+.surface-container.tau-pane.tau-pane-agent .surface-bar-icon,
+.surface-container.tau-pane.tau-pane-agent .surface-bar-title {
+  color: var(--tau-text);
+}
