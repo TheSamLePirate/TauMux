@@ -176,11 +176,15 @@ Compliance per overlay scope (post-sweep audit):
 - [x] 859/859 tests pass · typecheck clean
 
 ## Phase 13 — Validation gates
-- [ ] `bun test` green
-- [ ] `bun run typecheck` green
-- [ ] `bun run report:design:web` regenerated; artboard diffs reviewed
-- [ ] Manual smoke: Bridge / Cockpit / Atlas checklist
-- [ ] §11 Do/Don't walked manually
+- [x] `bun test` green — 860/860 (new `tests/audit-guideline-do-donts.test.ts` adds one)
+- [x] `bun run typecheck` clean
+- [x] `bun run audit:emoji` clean (0 code points across src/views/terminal, src/bun, src/shared)
+- [x] `bun run audit:animations` clean (5 §10 canonical + 23 documented state exceptions + 0 violations)
+- [x] `bun run audit:guideline` **11/11 checks pass**: no third accent · no decorative panel gradients · no backdrop-filter · radius ≤ 12 px · focus-only glow · traffic lights stock · no dotted borders · Mono for values · terminal body unowned · τ logo from `<rect>` elements · three variants present
+- [x] Remaining CSS-surgery during Phase 13: 11 chromatic pill (`999px`) radii clamped to 6 px; 5 legacy radii (14/16/18 px) clamped to 12 px; 12 decorative white / amber top-highlight gradients stripped; all pre-revamp `.surface-container.focused` rules (6 layers) collapsed to no-ops routing through `.tau-pane.is-focused`; `.surface-context-menu` cyan ring stripped
+- [x] CI pipeline runs `audit:emoji` + `audit:animations` + `audit:guideline` on every push (3 jobs in `.github/workflows/ci.yml`)
+- [ ] `bun run report:design:web` — deferred (requires Playwright + Electrobun runtime); user to run manually before PR
+- [ ] Manual smoke — deferred to user: Bridge / Cockpit / Atlas cycles, `Ctrl+h/j/k/l` focus moves, Cockpit HUD live updates, Atlas ticker scroll, `⌘K` / `⌘\` / `⌘G` shortcuts in each variant
 
 ## Phase 14 — Docs + PR
 - [ ] `doc/design-tau-mux.md` written

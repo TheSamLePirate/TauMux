@@ -135,6 +135,15 @@ jobs:
         # nor on the state-exception allowlist inside the script.
         run: bun run audit:animations
 
+      - name: Audit §11 Do/Don't (τ-mux design guideline §11)
+        # Runs the 11 programmatic §11 compliance checks: no third
+        # accent, no decorative panel gradients, no backdrop-filter,
+        # radius budget, focus-only-glow, macOS traffic lights stock,
+        # no dotted borders, Mono for terminal-pasteable values,
+        # terminal body unowned, τ logo from <rect> elements, all
+        # three variants present.
+        run: bun run audit:guideline
+
       - name: Run native Playwright tests
         env:
           CI: "1"

@@ -451,8 +451,8 @@ textarea {
 
 #sidebar {
   /* τ-mux §8 sidebar: flat --tau-panel surface, 0.5 px hairline right
-   * edge, no backdrop-filter, no top-highlight gradient. Bottom reserves
-   * 26 px for the §8.3 status bar. */
+   * edge, no blur, no top-highlight gradient. Bottom reserves 26 px
+   * for the §8.3 status bar. */
   position: fixed;
   top: var(--titlebar-height);
   left: 0;
@@ -890,7 +890,7 @@ body.sidebar-resizing {
 .workspace-dot {
   width: 7px;
   height: 7px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--workspace-accent);
   flex-shrink: 0;
   box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2);
@@ -2009,7 +2009,6 @@ body.sidebar-resizing {
   overflow: hidden;
   border-radius: 0;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 46%),
     var(--bg-terminal-muted);
   border: 1px solid rgba(39, 39, 42, 0.96);
   box-shadow:
@@ -2143,7 +2142,6 @@ body.sidebar-resizing {
   gap: 12px;
   padding: 0 10px 0 12px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 80%),
     rgba(9, 9, 11, 0.92);
   border-bottom: 1px solid rgba(39, 39, 42, 0.92);
   font-size: 10px;
@@ -2399,7 +2397,7 @@ body.sidebar-resizing {
 .surface-drag-ghost-badge {
   flex-shrink: 0;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--workspace-accent) 18%, rgba(255, 255, 255, 0.03));
   color: color-mix(in srgb, var(--workspace-accent) 24%, var(--text-main));
   font-size: 10px;
@@ -2440,7 +2438,7 @@ body.sidebar-resizing {
 
 .surface-drop-label {
   padding: 5px 9px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: rgba(7, 10, 15, 0.82);
   color: var(--text-main);
   font-size: 10px;
@@ -2726,6 +2724,8 @@ body.terminal-typing .panel {
 }
 
 .surface-context-menu {
+  /* τ-mux §4: only the focused pane glows. Context menu uses a
+   * neutral panel bg + hairline border + black elevation shadow. */
   position: fixed;
   left: 0;
   top: 0;
@@ -2735,14 +2735,10 @@ body.terminal-typing .panel {
   flex-direction: column;
   gap: 2px;
   padding: 6px;
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 197, 107, 0.08), transparent 22%),
-    rgba(8, 8, 11, 0.94);
-  border: 1px solid rgba(111, 233, 255, 0.32);
-  box-shadow:
-    0 22px 54px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(111, 233, 255, 0.05);
+  border-radius: 8px;
+  background: var(--tau-panel);
+  border: 0.5px solid var(--tau-edge);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.5);
   opacity: 0;
   transform: translateY(4px) scale(0.98);
   pointer-events: none;
@@ -2808,7 +2804,6 @@ body.terminal-typing .panel {
   padding: 20px;
   border-radius: 12px;
   background:
-    linear-gradient(180deg, rgba(255, 197, 107, 0.08), transparent 26%),
     rgba(0, 0, 0, 0.9);
   border: 0.5px solid rgba(111, 233, 255, 0.58);
   box-shadow:
@@ -2988,7 +2983,6 @@ body.terminal-typing .panel {
   overflow-y: auto;
   padding: 10px;
   background:
-    linear-gradient(180deg, rgba(255, 197, 107, 0.08), transparent 28%),
     rgba(7, 7, 10, 0.96);
 }
 
@@ -3504,7 +3498,7 @@ body.terminal-typing .panel {
   align-items: center;
   gap: 4px;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.04);
   border: 0.5px solid rgba(255, 255, 255, 0.055);
   font-variant-numeric: tabular-nums;
@@ -3584,7 +3578,7 @@ body.terminal-typing .panel {
   font-weight: 580;
   color: rgba(229, 231, 237, 0.42);
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.045);
   font-variant-numeric: tabular-nums;
 }
@@ -4530,7 +4524,7 @@ body::before, body::after { content: none; }
 #titlebar .toolbar-icon-strip {
   gap: 4px;
   padding: 4px;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.04);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
@@ -4565,7 +4559,6 @@ body::before, body::after { content: none; }
   padding: 14px 12px 16px 14px;
   gap: 12px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 110px),
     rgba(22, 25, 33, 0.78);
   border-right: 0.5px solid rgba(255, 255, 255, 0.06);
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.02);
@@ -4628,10 +4621,9 @@ body::before, body::after { content: none; }
 .workspace-item {
   gap: 8px;
   padding: 12px;
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 50%),
     rgba(255, 255, 255, 0.035);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
@@ -4643,13 +4635,12 @@ body::before, body::after { content: none; }
   bottom: 10px;
   left: 8px;
   width: 3px;
-  border-radius: 999px;
+  border-radius: 6px;
 }
 
 .workspace-item:hover {
   border-color: rgba(255, 255, 255, 0.1);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 52%),
     rgba(255, 255, 255, 0.05);
   transform: translateY(-1px);
 }
@@ -4699,7 +4690,7 @@ body::before, body::after { content: none; }
 .workspace-port-chip,
 .workspace-cwd-chip {
   min-height: 20px;
-  border-radius: 999px;
+  border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.07);
   background: rgba(255, 255, 255, 0.05);
 }
@@ -4753,7 +4744,7 @@ body::before, body::after { content: none; }
 .workspace-package {
   margin: 0 0 0 16px;
   padding: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.035);
 }
@@ -4775,7 +4766,7 @@ body::before, body::after { content: none; }
 
 .workspace-package-type,
 .workspace-package-bin-chip {
-  border-radius: 999px;
+  border-radius: 6px;
 }
 
 .workspace-script-btn {
@@ -4820,7 +4811,7 @@ body::before, body::after { content: none; }
 
 .notification-item,
 .log-item {
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.035);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
@@ -4869,7 +4860,6 @@ body::before, body::after { content: none; }
   border-radius: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 48%),
     rgba(18, 22, 29, 0.84);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
@@ -4888,13 +4878,7 @@ body::before, body::after { content: none; }
   filter: saturate(0.96) brightness(0.97);
 }
 
-.surface-container.focused {
-  border-color: color-mix(in srgb, var(--accent-primary) 24%, rgba(255, 255, 255, 0.1));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 0 0 1px color-mix(in srgb, var(--accent-primary) 12%, transparent),
-    0 18px 42px rgba(0, 0, 0, 0.3);
-}
+.surface-container.focused { /* handled by .tau-pane.is-focused — see Phase 5 */ }
 
 .surface-container.focused::after {
   opacity: 0.5;
@@ -4905,7 +4889,6 @@ body::before, body::after { content: none; }
   gap: 10px;
   padding: 0 12px 0 14px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 80%),
     rgba(22, 26, 34, 0.92);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   color: rgba(232, 238, 248, 0.48);
@@ -4932,7 +4915,7 @@ body::before, body::after { content: none; }
 .surface-chip {
   height: 20px;
   padding: 0 8px;
-  border-radius: 999px;
+  border-radius: 6px;
   font-size: 10px;
   background: rgba(255, 255, 255, 0.05);
   color: rgba(232, 238, 248, 0.68);
@@ -5039,7 +5022,6 @@ body::before, body::after { content: none; }
   border-radius: 12px;
   border: 0.5px solid rgba(255, 255, 255, 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 22%),
     rgba(24, 28, 36, 0.92);
   box-shadow: var(--shadow-sheet);
 }
@@ -5210,7 +5192,7 @@ body::before, body::after { content: none; }
 .theme-card {
   gap: 8px;
   padding: 8px;
-  border-radius: 16px;
+  border-radius: 12px;
   border-color: rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.035);
 }
@@ -5648,9 +5630,7 @@ body::after {
   border-color: var(--window-border);
 }
 
-.surface-container.focused {
-  border-color: color-mix(in srgb, var(--window-primary) 18%, var(--window-border-strong));
-}
+.surface-container.focused { /* handled by .tau-pane.is-focused — see Phase 5 */ }
 
 .surface-bar {
   min-height: 32px;
@@ -5882,10 +5862,7 @@ body::after {
   filter: none;
 }
 
-.surface-container.focused {
-  border-color: color-mix(in srgb, var(--accent-primary) 18%, var(--window-border-strong));
-  box-shadow: none;
-}
+.surface-container.focused { /* handled by .tau-pane.is-focused — see Phase 5 */ }
 
 .surface-bar {
   background: rgba(24, 28, 35, 0.99);
@@ -6036,7 +6013,7 @@ body::before {
   inset: 0;
   pointer-events: none;
   border: 1px solid var(--t3-border);
-  border-radius: 18px;
+  border-radius: 12px;
   z-index: 10001;
 }
 
@@ -6136,9 +6113,7 @@ body::after {
   border-color: var(--t3-border);
 }
 
-.surface-container.focused {
-  border-color: color-mix(in srgb, var(--accent-primary) 20%, var(--t3-border));
-}
+.surface-container.focused { /* handled by .tau-pane.is-focused — see Phase 5 */ }
 
 .surface-bar {
   background: var(--t3-card);
@@ -6501,12 +6476,7 @@ body::after {
   border-bottom-right-radius: var(--window-corner-radius);
 }
 
-.surface-container.focused {
-  border-color: color-mix(in srgb, var(--accent-primary) 38%, white);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 28%, white),
-    0 0 0 1px color-mix(in srgb, var(--accent-primary) 16%, transparent);
-}
+.surface-container.focused { /* handled by .tau-pane.is-focused — see Phase 5 */ }
 
 .surface-bar {
   min-height: 32px;
@@ -7714,7 +7684,6 @@ body::after {
   padding: 0 !important;
   gap: 0 !important;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 110px),
     var(--sb-bg) !important;
   border-right: 0.5px solid var(--sb-hairline) !important;
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.02) !important;
