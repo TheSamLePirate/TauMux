@@ -8,6 +8,7 @@ import type { SurfaceMetadataPoller } from "./surface-metadata";
 
 import type { AppState, Handler, HandlerDeps } from "./rpc-handlers/types";
 import { METHOD_SCHEMAS, validateParams } from "./rpc-handlers/shared";
+import { type AuditRegistryHandle, registerAudit } from "./rpc-handlers/audit";
 import { registerSystem } from "./rpc-handlers/system";
 import { registerWorkspace } from "./rpc-handlers/workspace";
 import { registerSurface } from "./rpc-handlers/surface";
@@ -65,6 +66,11 @@ export interface RpcHandlerOptions {
   /** Absolute path of the active log file. Pass null (or omit) when the
    *  caller has no log tee — `system.identify` will report null too. */
   logPath?: string | null;
+  /** Audit registry — exposes the audit list + last-results cache so
+   *  the `audit.*` RPC handlers can read/run/fix without owning the
+   *  state. Omit when the caller (e.g. unit tests) doesn't need
+   *  audits; the registry handlers will not be installed. */
+  audits?: AuditRegistryHandle;
 }
 
 export function createRpcHandler(
@@ -127,6 +133,7 @@ export function createRpcHandler(
     registerBrowserCookies(deps),
     registerBrowserDom(deps),
     registerTelegram(deps),
+    options.audits ? registerAudit(deps, options.audits) : {},
   );
 
   return (method: string, params: Record<string, unknown>) => {

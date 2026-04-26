@@ -48,6 +48,14 @@ export interface AppSettings {
    *  Disable if a tool emits OSC 9;4 noise you don't want surfaced. */
   terminalOsc94Enabled: boolean;
 
+  /** Pinned `git config --global user.name` checked at startup by
+   *  the audit module (`src/bun/audits.ts`). Mismatch surfaces a
+   *  warn-level audit result with a one-step fix. Null disables the
+   *  audit so collaborators on this project don't get false alarms.
+   *  Default: `"olivierveinand"` per the original ask in
+   *  `doc/issues_now.md`. */
+  auditsGitUserNameExpected: string | null;
+
   /** τ-mux §11 bloom gate. Stamped by SettingsManager the first time
    *  a pre-τ-mux settings file is loaded; we also snapshot the user's
    *  pre-migration bloomIntensity into `legacyBloomIntensity` so
@@ -580,6 +588,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   terminalBloom: false,
   bloomIntensity: 0,
   terminalOsc94Enabled: true,
+  auditsGitUserNameExpected: "olivierveinand",
   bloomMigratedToTau: false,
   legacyBloomIntensity: 0,
 
@@ -725,6 +734,13 @@ export function validateSettings(s: AppSettings): AppSettings {
       typeof s.terminalOsc94Enabled === "boolean"
         ? s.terminalOsc94Enabled
         : true,
+    auditsGitUserNameExpected:
+      s.auditsGitUserNameExpected === null
+        ? null
+        : typeof s.auditsGitUserNameExpected === "string" &&
+            s.auditsGitUserNameExpected.length > 0
+          ? s.auditsGitUserNameExpected
+          : "olivierveinand",
     htStatusKeyOrder: Array.isArray(s.htStatusKeyOrder)
       ? (s.htStatusKeyOrder.filter(
           (k): k is string => typeof k === "string" && k.length > 0,

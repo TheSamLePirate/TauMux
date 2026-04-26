@@ -697,6 +697,28 @@ function mapCommand(): RpcCall {
       break;
     }
 
+    // ── Startup audits ──
+    // `audit list`   — return cached results (the running app
+    //                  populates this once at boot via runAudits).
+    // `audit run`    — rerun every audit; refresh the cache.
+    // `audit fix`    — apply the named audit's fix and rerun it.
+    case "audit": {
+      const sub = positional[0] || "list";
+      switch (sub) {
+        case "list":
+          return { method: "audit.list", params: {} };
+        case "run":
+          return { method: "audit.run", params: {} };
+        case "fix":
+          return { method: "audit.fix", params: { id: positional[1] } };
+        default:
+          console.error(`Unknown audit subcommand: ${sub}`);
+          console.error("Supported: list | run | fix <id>");
+          process.exit(1);
+      }
+      break;
+    }
+
     // ── Agent panes ──
     case "agent": {
       const sub = positional[0] || "identify";
@@ -1099,6 +1121,10 @@ function formatOutput(result: unknown): void {
     formatTelegram(result);
     return;
   }
+  if (command === "audit") {
+    formatAudit(result);
+    return;
+  }
   if (command === "screenshot" && result && typeof result === "object") {
     const { path, cropped, surface_id } = result as {
       path: string;
@@ -1326,6 +1352,51 @@ function formatTelegram(result: object): void {
   console.log(JSON.stringify(result, null, 2));
 }
 
+interface AuditWireResult {
+  id: string;
+  ok: boolean;
+  severity: "info" | "warn" | "err";
+  message: string;
+  fixAvailable?: boolean;
+  fixLabel?: string;
+}
+
+/** Pretty-print audit results. Single result (from `audit fix`) and
+ *  list response (from `audit list / run`) both go through here so
+ *  the CLI's output is uniform. */
+function formatAudit(result: unknown): void {
+  if (Array.isArray(result)) {
+    if (result.length === 0) {
+      console.log("(no audits registered — set auditsGitUserNameExpected to enable)");
+      return;
+    }
+    for (const r of result as AuditWireResult[]) {
+      printAuditLine(r);
+    }
+    return;
+  }
+  if (result && typeof result === "object") {
+    printAuditLine(result as AuditWireResult);
+    return;
+  }
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function printAuditLine(r: AuditWireResult): void {
+  // ANSI: green ✓ / yellow ⚠ / red ✗  (TTY only).
+  const useColor = process.stdout.isTTY;
+  const marker = r.ok
+    ? useColor ? "\x1b[32m✓\x1b[0m" : "✓"
+    : r.severity === "err"
+      ? useColor ? "\x1b[31m✗\x1b[0m" : "✗"
+      : useColor ? "\x1b[33m⚠\x1b[0m" : "⚠";
+  const head = `${marker}  ${r.id.padEnd(20)} ${r.message}`;
+  console.log(head);
+  if (!r.ok && r.fixAvailable && r.fixLabel) {
+    console.log(`   fix: ${r.fixLabel}  (run: ht audit fix ${r.id})`);
+  }
+}
+
 function formatRelative(ts: number): string {
   const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
   if (diffSec < 60) return `${diffSec}s ago`;
@@ -1492,6 +1563,13 @@ System:
                                         debugging.
   logs [--tail]                         Print today's log file path. With
                                         --tail, stream new lines (tail -F).
+
+Startup audits:
+  audit [list]                          List the cached audit results
+                                        (the app reruns once at boot).
+  audit run                             Re-run every registered audit.
+  audit fix <id>                        Apply the audit's one-step fix
+                                        and re-verify.
 
 Aliases:
   capture-pane                          Alias for read-screen (tmux compat)

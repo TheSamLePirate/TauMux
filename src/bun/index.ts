@@ -64,6 +64,12 @@ import {
 } from "./telegram-service";
 import { wireMessage as wireTelegramMessage } from "./rpc-handlers/telegram";
 import { setupLogging } from "./logger";
+import {
+  defaultAudits,
+  runAudits,
+  type Audit,
+  type AuditResult,
+} from "./audits";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -558,6 +564,11 @@ const bunMessageHandlers = {
       updated.telegramAllowedUserIds !== previous.telegramAllowedUserIds
     ) {
       void applyTelegramSettings();
+    }
+    if (
+      updated.auditsGitUserNameExpected !== previous.auditsGitUserNameExpected
+    ) {
+      rebuildAudits();
     }
     rpc.send("settingsChanged", { settings: updated });
   },
@@ -1935,6 +1946,20 @@ if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
 // Expose path to child shells so the `ht` CLI can locate the server
 process.env["HT_SOCKET_PATH"] = socketPath;
 
+// Audit registry — rebuilt from settings on demand so a flipped
+// `auditsGitUserNameExpected` adds / removes the audit without a
+// restart. The cached `lastAuditResults` powers `audit.list` so the
+// CLI / future sidebar banner can read without re-shelling-out.
+let cachedAudits: Audit[] = defaultAudits({
+  gitUserNameExpected: settingsManager.get().auditsGitUserNameExpected,
+});
+let lastAuditResults: AuditResult[] = [];
+function rebuildAudits(): void {
+  cachedAudits = defaultAudits({
+    gitUserNameExpected: settingsManager.get().auditsGitUserNameExpected,
+  });
+}
+
 const socketHandler = createRpcHandler(
   sessions,
   () => app.getAppState(),
@@ -1954,10 +1979,32 @@ const socketHandler = createRpcHandler(
     getTelegramService: () => telegramService ?? undefined,
     socketPath,
     logPath: loggerHandle.currentPath,
+    audits: {
+      getAudits: () => cachedAudits,
+      getLast: () => lastAuditResults,
+      setLast: (results) => {
+        lastAuditResults = results;
+      },
+    },
   },
 );
 const socketServer = new SocketServer(socketPath, socketHandler);
 socketServer.start();
+
+// Run audits once at startup. Cheap (one git invocation) and gives
+// the user a canary against wrong-config drift right at boot. Logged
+// at warn level when something flags so the log file (Plan #01) shows
+// it even when no UI is consuming yet.
+void runAudits(cachedAudits).then((results) => {
+  lastAuditResults = results;
+  for (const r of results) {
+    if (r.ok) {
+      console.log(`[audit] ${r.id}: ${r.message}`);
+    } else {
+      console.warn(`[audit] ${r.id}: ${r.message}`);
+    }
+  }
+});
 
 // Auto-start web mirror server
 function setupWebServerCallbacks(ws: WebServer) {
