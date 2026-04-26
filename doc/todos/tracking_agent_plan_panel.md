@@ -54,7 +54,7 @@ Defer (for a Commit B):
 - [x] `bun run typecheck` clean
 - [x] `bun test` — 1055/1055 (was 1026; +15 store + 14 heuristic)
 - [x] `bun run bump:patch` — 0.2.10 → 0.2.11
-- [ ] Commit — next
+- [x] Commit — `f72c275`
 
 ## Deviations from the plan
 
@@ -106,8 +106,52 @@ formatter ran on multiple writes per the existing pattern)
 
 ## Verification log
 
-(empty)
+| Run                                        | Result                              |
+| ------------------------------------------ | ----------------------------------- |
+| `bun run typecheck`                        | clean (after every edit)            |
+| `bun test tests/plan-store.test.ts`        | 15/15 pass                          |
+| `bun test tests/auto-continue.test.ts`     | 14/14 pass                          |
+| `bun test` (full)                          | 1055/1055 pass, 107704 expect() calls |
+| `bun run bump:patch`                       | 0.2.10 → 0.2.11                     |
 
 ## Commits
 
-(empty)
+- `f72c275` — plan: typed PlanStore + ht plan CLI + heuristic auto-continue
+  - 12 files changed; 5 new files (plan-store, auto-continue, rpc handler, 2 tests)
+
+## Retrospective
+
+What worked:
+- Splitting Plan #09 into a protocol commit and a UI/engine commit
+  meant I could ship the durable contract (types + store + RPC +
+  CLI + broadcast) without blocking on the panel UI or the LLM
+  provider story.
+- Heuristic-as-pure-function lets the test suite cover every
+  branch in 14 cases without spawning a process or mocking an API.
+  Future Commit B's model-backed engine can wrap or fall back to
+  this function unchanged.
+- Reusing the existing `RpcHandlerOptions` shape (audits, health)
+  for `plans` kept the wiring boilerplate at one line in the
+  aggregator and one line at the bun bootstrap.
+- The `restorePlans` broadcast lands a finished pipeline now —
+  Commit B's panel just listens; no server-side wire change later.
+
+What I'd do differently:
+- The CLI's `plan set` requires a JSON-on-the-command-line for
+  steps. For agents it's fine (they emit JSON), but for humans
+  testing it's awkward. A future polish: `ht plan add <id> --title
+  --state` to append one step at a time would round it out.
+- I considered persisting plans to `~/Library/Application Support/
+  hyperterm-canvas/plans.json` so they survive a restart. Skipped:
+  agents that emit plans are mostly long-running anyway, and a
+  restart often wants a clean slate. Trivial to add when needed.
+
+Carried over to Commit B:
+- Plan panel UI (sidebar widget + optional docked pane variant)
+- Settings: `autoContinue.engine` (off / heuristic / model / hybrid)
+- LLM provider integration (Anthropic / local) with safe fallback
+  to heuristic on model error
+- `agent.turnEnded` event wiring + per-surface cooldown +
+  consecutive-auto-continue counter
+- Status-key bridge (`plan_array` → PlanStore) — open to demand;
+  parser is small if we go that way
