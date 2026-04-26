@@ -38,7 +38,7 @@ flicker is gone — deferring until live UI is available.
 - [x] `bun run typecheck` clean
 - [x] `bun test` — 998/998 (was 992; +6 settings tests)
 - [x] `bun run bump:patch` — 0.2.7 → 0.2.8
-- [ ] Commit — next
+- [x] Commit — `369c6a2`
 
 ## Deferred
 
@@ -89,8 +89,45 @@ flicker is gone — deferring until live UI is available.
 
 ## Verification log
 
-(empty)
+| Run                                                  | Result                              |
+| ---------------------------------------------------- | ----------------------------------- |
+| `bun run typecheck`                                  | clean (after every edit)            |
+| `bun test tests/workspace-card-settings.test.ts`     | 6/6 pass                            |
+| `bun test` (full)                                    | 998/998 pass, 107587 expect() calls |
+| `bun run bump:patch`                                 | 0.2.7 → 0.2.8                       |
 
 ## Commits
 
-(empty)
+- `369c6a2` — sidebar: modular workspace-card settings (density + per-section toggles)
+  - 10 files changed, 415 insertions(+), 11 deletions(-)
+
+## Retrospective
+
+What worked:
+- Push-from-surface-manager (`setWorkspaceCardOptions`) keeps the
+  sidebar settings-free and matches the existing pattern (the
+  sidebar already takes pre-shaped `WorkspaceInfo[]` from
+  `buildSidebarWorkspaces`). One small method, no plumbing churn.
+- Density via `data-*` attribute + CSS rules — no JS-side
+  measurement, no inline styles, scales naturally with theme tokens.
+- Validating non-boolean show fields back to `true` (rather than
+  `false`) preserves a forgiving upgrade path: a corrupted
+  settings.json can't accidentally make a workspace card empty.
+
+What I'd do differently:
+- The density CSS values are hard-coded numerics. Promoting them
+  to CSS custom properties (`--ws-card-padding-{compact,…}`) would
+  make a future "let me dial this in by 2 px" PR a one-line change.
+  Skipped to keep the diff tight; cheap follow-up.
+- I didn't add a sidebar smoke test that toggles each show flag and
+  asserts the corresponding section is/isn't in the DOM. Defaults
+  test + structural typecheck cover the contract; the integration
+  belongs in a happy-dom test if/when the sidebar refactor in
+  Section A reaches a unit-testable form.
+
+Carried over to follow-ups:
+- Flicker fix (Section A) — keyed-reconciliation refactor for
+  `WorkspaceCardView`, needs visual reproduction
+- Density CSS variables for fine-tuning
+- Per-card log tail line count slider (Plan §B `logTailLines`)
+- Show-toggle integration test once Section A lands
