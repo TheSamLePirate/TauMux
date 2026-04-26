@@ -55,7 +55,7 @@ infrastructure so the next time it happens we have data.
 - [x] `bun run typecheck` clean
 - [x] `bun test` — 977/977 (was 965; +12 health tests)
 - [x] `bun run bump:patch` — 0.2.5 → 0.2.6
-- [ ] Commit — next
+- [x] Commit — `fb63279`
 
 ## Deviations from the plan
 
@@ -107,8 +107,47 @@ infrastructure so the next time it happens we have data.
 
 ## Verification log
 
-(empty)
+| Run                                | Result                              |
+| ---------------------------------- | ----------------------------------- |
+| `bun run typecheck`                | clean (after every edit)            |
+| `bun test tests/health.test.ts`    | 12/12 pass                          |
+| `bun test` (full)                  | 977/977 pass, 107536 expect() calls |
+| `bun run bump:patch`               | 0.2.5 → 0.2.6                       |
 
 ## Commits
 
-(empty)
+- `fb63279` — health: subsystem registry + ht health/restart for fault isolation
+  - 11 files changed, 598 insertions(+), 6 deletions(-)
+
+## Retrospective
+
+What worked:
+- `HealthRegistry` was a textbook small-state-machine module —
+  pure data, push-from-subsystem, no polling. Fits the project's
+  established "parser-first / pure helpers" pattern.
+- Substring fault attribution is hacky but cheap and good enough.
+  When the next telegram crash actually happens we'll find out
+  quickly whether it's accurate enough to keep.
+- Reusing AuditResult → health row mapping (severity-to-severity)
+  meant Plan #14's audit work landed in `ht health` for free with
+  ~5 lines of glue.
+
+What I'd do differently:
+- I should have written a "real reproduction" test for the
+  unhandledRejection path (synthesising a rejected promise inside
+  a fake telegram handler and asserting the registry row goes
+  red). Substring attribution is testable but I went with shipping
+  the diagnostic infra and waiting for the next real symptom
+  rather than synthesising one.
+- The `system.health` snapshot is a polled read today. If/when a
+  webview consumer wires up, switching to the existing
+  `subscribe` channel + an Electrobun message is one small edit.
+  I could have done it preemptively but YAGNI; the doc captures
+  the path.
+
+Carried over to follow-ups:
+- Sidebar warn-pill + Settings restart button (UI surfaces)
+- Web-mirror broadcast on health change (pure additive)
+- telegram-db WAL mode + retries on `SQLITE_BUSY`
+- SocketServer auto-rebind (still pending a real reproduction)
+- `ht doctor` should include the health snapshot (one-line glue)
