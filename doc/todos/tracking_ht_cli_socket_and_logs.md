@@ -40,7 +40,7 @@
 - [x] `bun test` — 865/865 green (up from 860 baseline; +4 in bin-ht-help, +1 in rpc-handler)
 - [ ] `bun start` smoke — **see Open Questions; not run in this session**
 - [x] `bun run bump:patch` — 0.2.0 → 0.2.1
-- [ ] Commit (next)
+- [x] Commit — `37ee86b`
 
 ## Deviations from the plan
 
@@ -104,4 +104,33 @@
 
 ## Commits
 
-(populated after commit lands)
+- `37ee86b` — ht: surface real socket + log paths; add doctor / logs / reveal-log
+  - 31 files changed, 2789 insertions(+), 24 deletions(-) (most of the
+    insertions are the doc/todos/ plan markdowns shipped alongside)
+
+## Retrospective
+
+What worked:
+- The plan's split between A/B/C/D was the right granularity. Each
+  task fit in one tight edit pass.
+- Threading `socketPath` + `logPath` through `HandlerDeps` was easier
+  than expected because `RpcHandlerOptions` already existed — no new
+  abstraction needed.
+- Co-locating `doctor` / `logs` in `bin/ht`'s `main()` (alongside the
+  telegram intercept block) instead of routing through `mapCommand`
+  kept their multi-call flows readable.
+
+What I'd do differently:
+- The plan's "expose getter on SocketServer" line was the only
+  over-spec — should have been "thread the constant from index.ts".
+  Caught this on first read and noted it as a deviation; fine.
+- I didn't end up needing `getLogDir()` / `getCurrentLogPath()` in
+  logger.ts; the plan's Section D specced them up-front. In future
+  plans, prefer "expose the thing you need" over "expose the thing
+  you might need".
+
+Cross-plan note for future executors:
+- The new `restoreDiagnostics` push (bun→webview) and `revealLogFile`
+  message (webview→bun) are reusable. Plan #14's "audits" block can
+  piggyback on `restoreDiagnostics` instead of inventing its own
+  channel.
