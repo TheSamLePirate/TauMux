@@ -1,0 +1,200 @@
+#!/usr/bin/env bun
+/**
+ * τ-mux — show_webcam
+ *
+ * Open the system webcam in an interactive HTML panel via
+ * `getUserMedia`. The panel runs entirely in the webview — bun
+ * just ships the markup. The user grants camera permission inside
+ * the webview the first time the panel runs.
+ *
+ * Usage:
+ *   show_webcam                                 # default 480x360
+ *   show_webcam --width 640 --height 480
+ *   show_webcam --device "FaceTime HD Camera"   # device label match
+ *   show_webcam --mirror                        # mirror horizontally (selfie view)
+ *
+ * Flags:
+ *   --device "..."        prefer a device whose label includes this
+ *                          substring (default: first available)
+ *   --mirror              flip the preview horizontally
+ *   --inline / --x / --y / --width / --height / --no-wait
+ */
+
+import { ht } from "./hyperterm";
+import { PANEL_FLAGS, parseArgs } from "./lib/cli";
+
+if (!ht.available) {
+  console.error("show_webcam: not running inside τ-mux.");
+  process.exit(1);
+}
+
+let parsed;
+try {
+  parsed = parseArgs(process.argv.slice(2), {
+    schema: [
+      ...PANEL_FLAGS,
+      { name: "device", long: "device", kind: "string", default: "" },
+      { name: "mirror", long: "mirror", kind: "boolean", default: false },
+    ] as const,
+  });
+} catch (err) {
+  console.error(`show_webcam: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+const { flags } = parsed;
+const width = flags.width === 520 ? 480 : flags.width;
+const height = flags.height === 480 ? 360 : flags.height;
+const deviceMatch = JSON.stringify(flags.device);
+const mirror = flags.mirror ? "scaleX(-1)" : "none";
+
+// The panel script handles permission prompts, device picking,
+// errors, and a single "snapshot" button that downloads the current
+// frame. It runs once when the panel mounts; the page is destroyed
+// when the user closes the panel.
+const html = `<div class="wc-pane">
+  <header>
+    <span class="wc-tag">webcam</span>
+    <span class="wc-status" id="wc-status">requesting…</span>
+    <button id="wc-snap" type="button">snapshot</button>
+  </header>
+  <div class="wc-frame">
+    <video id="wc-video" autoplay playsinline muted></video>
+  </div>
+</div>
+<style>
+  body { margin: 0; }
+  .wc-pane {
+    font-family: ui-monospace, SF Mono, "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: #d6d8dc;
+    background: rgba(20, 24, 30, 0.97);
+    border-radius: 10px;
+    height: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+  }
+  .wc-pane header {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    letter-spacing: 0.04em;
+  }
+  .wc-tag { color: #66c0f4; font-weight: 600; }
+  .wc-status { color: #9aa0a6; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wc-pane button {
+    background: rgba(102, 192, 244, 0.18);
+    color: #66c0f4;
+    border: 1px solid rgba(102, 192, 244, 0.4);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .wc-pane button:hover { background: rgba(102, 192, 244, 0.28); }
+  .wc-frame {
+    flex: 1 1 auto;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  #wc-video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transform: ${mirror};
+  }
+</style>
+<script>
+(async () => {
+  const status = document.getElementById("wc-status");
+  const video = document.getElementById("wc-video");
+  const snap = document.getElementById("wc-snap");
+  const wantedLabel = ${deviceMatch};
+  let stream = null;
+
+  function setStatus(text) {
+    if (status) status.textContent = text;
+  }
+
+  function pickDeviceId(devices) {
+    const cams = devices.filter((d) => d.kind === "videoinput");
+    if (cams.length === 0) return null;
+    if (wantedLabel) {
+      const m = cams.find((d) =>
+        d.label && d.label.toLowerCase().includes(wantedLabel.toLowerCase()),
+      );
+      if (m) return m.deviceId;
+    }
+    return cams[0].deviceId;
+  }
+
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("getUserMedia not available in this webview");
+    }
+    // Initial permission grant — without this the device labels are
+    // empty, so we can't pick by name.
+    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    if (wantedLabel) {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const id = pickDeviceId(devices);
+      if (id) {
+        stream.getTracks().forEach((t) => t.stop());
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: id } },
+          audio: false,
+        });
+      }
+    }
+    video.srcObject = stream;
+    const track = stream.getVideoTracks()[0];
+    setStatus(track ? track.label || "live" : "live");
+  } catch (err) {
+    setStatus("error: " + (err && err.message ? err.message : String(err)));
+  }
+
+  snap.addEventListener("click", () => {
+    if (!video.videoWidth) return;
+    const c = document.createElement("canvas");
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    const url = c.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "webcam-" + Date.now() + ".png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+
+  window.addEventListener("beforeunload", () => {
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+  });
+})();
+</script>`;
+
+// `interactive: true` forwards mouse/keyboard events to the panel
+// so the snapshot button stays clickable.
+const panelId = ht.showHtml(html, {
+  position: flags.inline ? "inline" : "float",
+  x: flags.x,
+  y: flags.y,
+  width,
+  height,
+  draggable: true,
+  resizable: true,
+  interactive: true,
+});
+
+if (!flags.noWait) {
+  await ht.waitForClose(panelId).catch(() => {});
+}
