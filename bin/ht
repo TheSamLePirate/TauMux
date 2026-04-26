@@ -706,6 +706,111 @@ function mapCommand(): RpcCall {
     case "health":
       return { method: "system.health", params: {} };
 
+    // ── Agent plan (Plan #09) ──
+    // `ht plan set --workspace W [--agent A] --json '[…]'`
+    //   — replace the plan with the supplied steps.
+    // `ht plan update <stepId> --state done|active|waiting|err`
+    //   — patch a single step's state and/or title.
+    // `ht plan complete`           — mark every step as done.
+    // `ht plan clear`              — drop the plan entirely.
+    // `ht plan list`               — print every active plan.
+    case "plan": {
+      const sub = positional[0] || "list";
+      const workspaceId =
+        flags["workspace"] ||
+        flags["workspace_id"] ||
+        process.env["HT_WORKSPACE_ID"] ||
+        undefined;
+      const agentId =
+        flags["agent"] || flags["agent_id"] || undefined;
+      switch (sub) {
+        case "list":
+          return { method: "plan.list", params: {} };
+        case "set": {
+          if (!workspaceId) {
+            console.error(
+              "ht plan set: --workspace W is required (or set HT_WORKSPACE_ID)",
+            );
+            process.exit(1);
+          }
+          const json = flags["json"];
+          if (!json) {
+            console.error(
+              "ht plan set: --json '<steps>' is required (array of {id,title,state})",
+            );
+            process.exit(1);
+          }
+          let steps: unknown;
+          try {
+            steps = JSON.parse(json);
+          } catch (err) {
+            console.error(`ht plan set: invalid JSON — ${(err as Error).message}`);
+            process.exit(1);
+          }
+          return {
+            method: "plan.set",
+            params: {
+              workspace_id: workspaceId,
+              agent_id: agentId,
+              steps,
+            },
+          };
+        }
+        case "update": {
+          if (!workspaceId) {
+            console.error(
+              "ht plan update: --workspace W is required (or set HT_WORKSPACE_ID)",
+            );
+            process.exit(1);
+          }
+          const stepId = positional[1];
+          if (!stepId) {
+            console.error("ht plan update: <stepId> positional is required");
+            process.exit(1);
+          }
+          return {
+            method: "plan.update",
+            params: {
+              workspace_id: workspaceId,
+              agent_id: agentId,
+              step_id: stepId,
+              state: flags["state"],
+              title: flags["title"],
+            },
+          };
+        }
+        case "complete": {
+          if (!workspaceId) {
+            console.error(
+              "ht plan complete: --workspace W is required (or set HT_WORKSPACE_ID)",
+            );
+            process.exit(1);
+          }
+          return {
+            method: "plan.complete",
+            params: { workspace_id: workspaceId, agent_id: agentId },
+          };
+        }
+        case "clear": {
+          if (!workspaceId) {
+            console.error(
+              "ht plan clear: --workspace W is required (or set HT_WORKSPACE_ID)",
+            );
+            process.exit(1);
+          }
+          return {
+            method: "plan.clear",
+            params: { workspace_id: workspaceId, agent_id: agentId },
+          };
+        }
+        default:
+          console.error(`Unknown plan subcommand: ${sub}`);
+          console.error("Supported: list | set | update | complete | clear");
+          process.exit(1);
+      }
+      break;
+    }
+
     // ── Startup audits ──
     // `audit list`   — return cached results (the running app
     //                  populates this once at boot via runAudits).
@@ -1138,6 +1243,10 @@ function formatOutput(result: unknown): void {
     formatHealth(result);
     return;
   }
+  if (command === "plan") {
+    formatPlan(result);
+    return;
+  }
   if (command === "screenshot" && result && typeof result === "object") {
     const { path, cropped, surface_id } = result as {
       path: string;
@@ -1363,6 +1472,66 @@ function formatTelegram(result: object): void {
   }
 
   console.log(JSON.stringify(result, null, 2));
+}
+
+interface PlanWireStep {
+  id: string;
+  title: string;
+  state: "done" | "active" | "waiting" | "err";
+}
+interface PlanWire {
+  workspaceId: string;
+  agentId?: string;
+  steps: PlanWireStep[];
+  updatedAt: number;
+}
+
+/** Pretty-print plan results. `plan list` returns `{plans: [...]}`;
+ *  `plan set / update / complete` return a single Plan or null;
+ *  `plan clear` returns `{removed: boolean}`. Each path goes through
+ *  here so the CLI's output is uniform across subcommands. */
+function formatPlan(result: unknown): void {
+  if (!result) {
+    console.log("(no plan)");
+    return;
+  }
+  if (typeof result === "object" && "removed" in (result as object)) {
+    const r = result as { removed: boolean };
+    console.log(r.removed ? "ok (plan removed)" : "(no plan to clear)");
+    return;
+  }
+  if (typeof result === "object" && "plans" in (result as object)) {
+    const list = ((result as { plans: PlanWire[] }).plans ?? []) as PlanWire[];
+    if (list.length === 0) {
+      console.log("(no plans)");
+      return;
+    }
+    for (let i = 0; i < list.length; i++) {
+      if (i > 0) console.log("");
+      printPlan(list[i]!);
+    }
+    return;
+  }
+  printPlan(result as PlanWire);
+}
+
+function printPlan(plan: PlanWire): void {
+  const useColor = process.stdout.isTTY;
+  const head = plan.agentId
+    ? `${plan.workspaceId}  ${plan.agentId}`
+    : plan.workspaceId;
+  console.log(head);
+  for (const step of plan.steps) {
+    const marker =
+      step.state === "done"
+        ? useColor ? "\x1b[32m✓\x1b[0m" : "✓"
+        : step.state === "active"
+          ? useColor ? "\x1b[36m●\x1b[0m" : "●"
+          : step.state === "err"
+            ? useColor ? "\x1b[31m✗\x1b[0m" : "✗"
+            : useColor ? "\x1b[90m○\x1b[0m" : "○";
+    console.log(`  ${marker}  ${step.id.padEnd(8)} ${step.title}`);
+  }
 }
 
 interface HealthEntry {
@@ -1633,6 +1802,17 @@ Subsystem health:
                                         scripting, parse the JSON output via
                                         --json or rely on the prefix marker
                                         (✓ OK vs ✗ DEGRADED).
+
+Agent plan (Plan #09):
+  plan list                             Print every active plan in the
+                                        bun-side PlanStore.
+  plan set --workspace W [--agent A]    Replace the plan. --json carries the
+       --json '<steps>'                 array of {id,title,state}.
+  plan update <stepId> [--workspace W]  Patch one step. --state =
+       --state done|active|waiting|err  done|active|waiting|err. --title
+       [--title T]                      replaces the step title.
+  plan complete --workspace W           Mark every step as done.
+  plan clear --workspace W              Drop the plan entirely.
 
 Aliases:
   capture-pane                          Alias for read-screen (tmux compat)

@@ -347,6 +347,34 @@ export type NativeContextMenuRequest =
 
 // === RPC Schema ===
 // bun.messages = what bun RECEIVES from webview
+// ── Plan #09: agent plan store ───────────────────────────────────────
+// Each plan step carries an opaque short id (`M1` / `step-3` / …),
+// a human-readable title, and a state. `done` / `active` / `waiting`
+// are the canonical states; `err` lands a step in red and is the
+// signal the auto-continue engine uses to bail rather than push the
+// agent forward over a failure.
+export type PlanStepState = "done" | "active" | "waiting" | "err";
+
+export interface PlanStep {
+  /** Stable identifier — typically the agent's own step label
+   *  (`M1`, `M2`, …). Used by `ht plan update <id> --state …`. */
+  id: string;
+  title: string;
+  state: PlanStepState;
+}
+
+export interface Plan {
+  /** Workspace this plan belongs to. */
+  workspaceId: string;
+  /** Optional agent id (e.g. `claude:1`). When omitted, treated as
+   *  the workspace-level plan — useful when only one agent runs in
+   *  the workspace and the user doesn't care to scope. */
+  agentId?: string;
+  steps: PlanStep[];
+  /** Wall-clock ms of the most recent set/update. */
+  updatedAt: number;
+}
+
 // webview.messages = what webview RECEIVES from bun
 
 export interface TauMuxRPC extends ElectrobunRPCSchema {
@@ -681,6 +709,12 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       // firing stay listed so the user's hide / reorder choices
       // persist.
       restoreHtKeysSeen: { keys: string[] };
+
+      // Plan #09 — every active plan in the bun-side PlanStore. Pushed
+      // (debounced 100 ms) on every set / update / complete / clear so
+      // the webview's plan panel can render without polling. The wire
+      // shape is the same `Plan[]` callers receive from `plan.list`.
+      restorePlans: { plans: Plan[] };
 
       // Socket API dispatched actions (bun → webview)
       socketAction: { action: string; payload: Record<string, unknown> };

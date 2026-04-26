@@ -71,6 +71,7 @@ import {
   type AuditResult,
 } from "./audits";
 import { HealthRegistry } from "./health";
+import { PlanStore } from "./plan-store";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -91,6 +92,25 @@ const loggerHandle = setupLogging(configDir);
 // Subsystems push their state via `health.set(id, severity, msg)`;
 // `system.health` RPC and `ht health` CLI surface the snapshot.
 const health = new HealthRegistry();
+
+// Plan #09 — agent plan store. In-memory only; agents publish via
+// `ht plan set/update/complete/clear`. The store emits change
+// snapshots; we debounce-broadcast them to the webview as
+// `restorePlans` so the future plan panel can render without
+// polling.
+const plans = new PlanStore();
+let plansBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
+plans.subscribe(() => {
+  if (plansBroadcastTimer) return;
+  plansBroadcastTimer = setTimeout(() => {
+    plansBroadcastTimer = null;
+    rpc.send("restorePlans", { plans: plans.list() });
+    app.webServer?.broadcast({
+      type: "plansSnapshot",
+      plans: plans.list(),
+    });
+  }, 100);
+});
 // Seed pty / socket / web-mirror with a "starting" baseline. Each
 // subsystem updates its row when it actually comes up. Audits push
 // their own row from the startup runner below.
@@ -2216,6 +2236,7 @@ const socketHandler = createRpcHandler(
       },
     },
     health,
+    plans,
   },
 );
 const socketServer = new SocketServer(socketPath, socketHandler);

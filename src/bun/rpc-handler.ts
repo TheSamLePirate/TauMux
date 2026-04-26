@@ -9,6 +9,8 @@ import type { SurfaceMetadataPoller } from "./surface-metadata";
 import type { AppState, Handler, HandlerDeps } from "./rpc-handlers/types";
 import { METHOD_SCHEMAS, validateParams } from "./rpc-handlers/shared";
 import { type AuditRegistryHandle, registerAudit } from "./rpc-handlers/audit";
+import { registerPlan } from "./rpc-handlers/plan";
+import type { PlanStore } from "./plan-store";
 import { registerSystem } from "./rpc-handlers/system";
 import { registerWorkspace } from "./rpc-handlers/workspace";
 import { registerSurface } from "./rpc-handlers/surface";
@@ -77,6 +79,10 @@ export interface RpcHandlerOptions {
   /** Health aggregator. When wired, `system.health` returns the
    *  current snapshot. */
   health?: import("./health").HealthRegistry;
+  /** Plan #09 — when wired, `plan.*` handlers register and the
+   *  CLI / agents can publish multi-step plans into the store.
+   *  Optional in test fixtures that don't need plan handlers. */
+  plans?: PlanStore;
 }
 
 export function createRpcHandler(
@@ -142,6 +148,7 @@ export function createRpcHandler(
     registerBrowserDom(deps),
     registerTelegram(deps),
     options.audits ? registerAudit(deps, options.audits) : {},
+    options.plans ? registerPlan(deps, options.plans) : {},
   );
 
   return (method: string, params: Record<string, unknown>) => {
