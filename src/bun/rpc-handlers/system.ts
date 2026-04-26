@@ -1,7 +1,7 @@
 import type { Handler, HandlerDeps } from "./types";
 import { computeNormalizedRects } from "./shared";
 
-const VERSION = "0.2.5";
+const VERSION = "0.2.6";
 const START_TIME_MS = Date.now();
 
 /** system.* handlers: diagnostic + discovery RPCs.
@@ -12,7 +12,7 @@ export function registerSystem(
   deps: HandlerDeps,
   allMethodNames: () => string[],
 ): Record<string, Handler> {
-  const { sessions, getState, shutdown, socketPath, logPath } = deps;
+  const { sessions, getState, shutdown, socketPath, logPath, health } = deps;
 
   return {
     // Preserves the legacy "PONG" response so existing CLI + tests keep
@@ -61,6 +61,15 @@ export function registerSystem(
       version: 1,
       methods: allMethodNames().sort(),
     }),
+
+    /** Aggregated subsystem health. Returns `{ ok, entries[] }`
+     *  where `ok` is false if any subsystem is `degraded` or `error`
+     *  (`disabled` doesn't count — see health.ts). Stub when the
+     *  caller didn't wire a registry, so e2e fixtures stay slim. */
+    "system.health": () => {
+      if (!health) return { ok: true, entries: [] };
+      return health.snapshot();
+    },
 
     "system.tree": () => {
       const state = getState();

@@ -70,6 +70,7 @@ import {
   type Audit,
   type AuditResult,
 } from "./audits";
+import { HealthRegistry } from "./health";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -83,6 +84,54 @@ const configDir =
 // `~/Library/Logs/tau-mux/app-YYYY-MM-DD.log` in normal runs and under
 // `$HT_CONFIG_DIR/logs/` when e2e has relocated state.
 const loggerHandle = setupLogging(configDir);
+
+// Subsystem health registry. Built before any subsystem starts so
+// initial states can land as the bootstrap progresses. Plan #07: a
+// crash in one subsystem (telegram, web mirror) must not be silent.
+// Subsystems push their state via `health.set(id, severity, msg)`;
+// `system.health` RPC and `ht health` CLI surface the snapshot.
+const health = new HealthRegistry();
+// Seed pty / socket / web-mirror with a "starting" baseline. Each
+// subsystem updates its row when it actually comes up. Audits push
+// their own row from the startup runner below.
+health.set("pty", "ok", "Session manager ready");
+health.set("socket", "degraded", "Binding socket");
+health.set("web-mirror", "disabled", "Not started");
+
+// Plan #07 — fault isolation. Without these handlers an unhandled
+// rejection or uncaught exception originating in *any* subsystem
+// (most often the telegram long-poll loop) takes the entire bun
+// process down, which kills the socket server and breaks `ht`. We
+// log loudly, mark the offending subsystem when we can identify it,
+// and continue. Truly unrecoverable errors (out-of-memory, native
+// crashes) bypass this hook anyway.
+process.on("unhandledRejection", (reason: unknown) => {
+  const msg =
+    reason instanceof Error
+      ? `${reason.message}\n${reason.stack ?? ""}`
+      : String(reason);
+  console.error("[fatal] unhandledRejection:", msg);
+  attributeFault(msg);
+});
+process.on("uncaughtException", (err: Error) => {
+  console.error("[fatal] uncaughtException:", err.message, err.stack ?? "");
+  attributeFault(`${err.message}\n${err.stack ?? ""}`);
+});
+
+/** Best-effort fault attribution: when the stack mentions a subsystem
+ *  we've registered, mark its health row as `error` so the user sees
+ *  *which* subsystem destabilised. The check is substring-based —
+ *  good enough to catch the obvious culprits (telegram, telegram-db,
+ *  web/server) without false-positive paranoia. */
+function attributeFault(text: string): void {
+  if (text.includes("telegram-service") || text.includes("telegram-db")) {
+    health.set("telegram", "error", "Crashed — see app log for stack");
+  } else if (text.includes("web-server") || text.includes("/web/")) {
+    health.set("web-mirror", "error", "Crashed — see app log for stack");
+  } else if (text.includes("session-manager") || text.includes("pty-manager")) {
+    health.set("pty", "error", "Crashed — see app log for stack");
+  }
+}
 
 // `HT_E2E=1` marks this process as an e2e test run. Used to suppress the
 // install-ht-CLI nag, skip real-user-disrupting side effects, and tag logs.
@@ -1329,6 +1378,7 @@ async function applyTelegramSettings(): Promise<void> {
 
   if (!s.telegramEnabled) {
     telegramMisconfigured = null;
+    health.set("telegram", "disabled", "Telegram not enabled in settings");
     broadcastTelegramState();
     return;
   }
@@ -1345,6 +1395,11 @@ async function applyTelegramSettings(): Promise<void> {
     console.warn(
       "[telegram] enabled but no bot token configured — see Settings → Telegram",
     );
+    health.set(
+      "telegram",
+      "error",
+      "Telegram enabled but no bot token configured",
+    );
     broadcastTelegramState();
     return;
   }
@@ -1357,8 +1412,44 @@ async function applyTelegramSettings(): Promise<void> {
     onIncoming: (message) => {
       broadcastTelegramMessage(wireTelegramMessage(message));
     },
-    onStatus: () => {
+    onStatus: (status) => {
       broadcastTelegramState();
+      // Mirror the service state machine into the health registry so
+      // `system.health` and `ht health` reflect Telegram's actual
+      // condition without polling. `polling` is fully ok; transient
+      // states (`starting` / `conflict`) are degraded; `error` lights
+      // a hard failure with the upstream reason.
+      switch (status.state) {
+        case "polling":
+          health.set(
+            "telegram",
+            "ok",
+            status.botUsername
+              ? `Polling as @${status.botUsername}`
+              : "Polling",
+          );
+          break;
+        case "starting":
+          health.set("telegram", "degraded", "Starting up");
+          break;
+        case "conflict":
+          health.set(
+            "telegram",
+            "degraded",
+            "Conflict — another consumer is using getUpdates",
+          );
+          break;
+        case "error":
+          health.set(
+            "telegram",
+            "error",
+            status.error ?? "Telegram service error",
+          );
+          break;
+        case "disabled":
+          health.set("telegram", "disabled", "Telegram service stopped");
+          break;
+      }
     },
     onLog: (level, msg) => {
       if (level === "error" || level === "warn") {
@@ -1728,6 +1819,17 @@ function sendWebServerStatus(): void {
     port: app.webServerPort,
     url: running ? `http://localhost:${app.webServerPort}` : undefined,
   });
+  // Mirror state into the health registry so `ht health` reflects the
+  // mirror's actual status without polling.
+  if (running) {
+    health.set(
+      "web-mirror",
+      "ok",
+      `Running on http://localhost:${app.webServerPort}`,
+    );
+  } else {
+    health.set("web-mirror", "disabled", "Stopped");
+  }
 }
 
 function toggleWebServer(): void {
@@ -1977,6 +2079,7 @@ const socketHandler = createRpcHandler(
     testModeEnabled: HT_TEST_MODE,
     telegramDb,
     getTelegramService: () => telegramService ?? undefined,
+    restartTelegramService: () => applyTelegramSettings(),
     socketPath,
     logPath: loggerHandle.currentPath,
     audits: {
@@ -1986,15 +2089,24 @@ const socketHandler = createRpcHandler(
         lastAuditResults = results;
       },
     },
+    health,
   },
 );
 const socketServer = new SocketServer(socketPath, socketHandler);
 socketServer.start();
+// Health: socket lifecycle. SocketServer logs binding errors itself
+// (it doesn't throw) so by the time we reach this point either the
+// listener is up or it failed silently and `ht` will be unreachable.
+// We assume up; if a future refactor adds a real `bound` getter we'll
+// flip to consulting it.
+health.set("socket", "ok", `Bound to ${socketPath}`);
 
 // Run audits once at startup. Cheap (one git invocation) and gives
 // the user a canary against wrong-config drift right at boot. Logged
 // at warn level when something flags so the log file (Plan #01) shows
-// it even when no UI is consuming yet.
+// it even when no UI is consuming yet. Each result also pushes a
+// health row keyed by the audit id so `ht health` surfaces failing
+// canaries alongside the rest of the subsystem state.
 void runAudits(cachedAudits).then((results) => {
   lastAuditResults = results;
   for (const r of results) {
@@ -2003,6 +2115,16 @@ void runAudits(cachedAudits).then((results) => {
     } else {
       console.warn(`[audit] ${r.id}: ${r.message}`);
     }
+    const sev =
+      r.severity === "info"
+        ? "ok"
+        : r.severity === "warn"
+          ? "degraded"
+          : "error";
+    health.set(`audit:${r.id}`, sev, r.message);
+  }
+  if (cachedAudits.length === 0) {
+    health.set("audits", "disabled", "No audits configured");
   }
 });
 

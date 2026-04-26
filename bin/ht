@@ -668,6 +668,8 @@ function mapCommand(): RpcCall {
       switch (sub) {
         case "status":
           return { method: "telegram.status", params: {} };
+        case "restart":
+          return { method: "telegram.restart", params: {} };
         case "chats":
         case "list":
           return { method: "telegram.chats", params: {} };
@@ -696,6 +698,13 @@ function mapCommand(): RpcCall {
       }
       break;
     }
+
+    // ── Subsystem health ──
+    // Aggregated view of every wired subsystem (pty, socket, web
+    // mirror, telegram, audits). `ok: true` iff nothing is degraded
+    // or errored — disabled subsystems don't count.
+    case "health":
+      return { method: "system.health", params: {} };
 
     // ── Startup audits ──
     // `audit list`   — return cached results (the running app
@@ -1125,6 +1134,10 @@ function formatOutput(result: unknown): void {
     formatAudit(result);
     return;
   }
+  if (command === "health") {
+    formatHealth(result);
+    return;
+  }
   if (command === "screenshot" && result && typeof result === "object") {
     const { path, cropped, surface_id } = result as {
       path: string;
@@ -1352,6 +1365,43 @@ function formatTelegram(result: object): void {
   console.log(JSON.stringify(result, null, 2));
 }
 
+interface HealthEntry {
+  id: string;
+  severity: "ok" | "degraded" | "error" | "disabled";
+  message: string;
+  updatedAt: number;
+}
+
+/** Pretty-print the `{ok, entries[]}` health snapshot. ANSI markers
+ *  on a TTY; a one-line "OK · N subsystem(s)" summary up top so a
+ *  glance over `ht health` is enough on green builds. */
+function formatHealth(result: unknown): void {
+  if (!result || typeof result !== "object") {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  const r = result as { ok: boolean; entries: HealthEntry[] };
+  const useColor = process.stdout.isTTY;
+  const okMark = useColor ? "\x1b[32m✓\x1b[0m" : "✓";
+  const failMark = useColor ? "\x1b[31m✗\x1b[0m" : "✗";
+  const summary = r.ok ? `${okMark} OK` : `${failMark} DEGRADED`;
+  console.log(`${summary} · ${r.entries.length} subsystem(s)`);
+  if (r.entries.length === 0) return;
+  for (const e of r.entries) {
+    const marker =
+      e.severity === "ok"
+        ? useColor ? "\x1b[32m●\x1b[0m" : "●"
+        : e.severity === "disabled"
+          ? useColor ? "\x1b[90m○\x1b[0m" : "○"
+          : e.severity === "degraded"
+            ? useColor ? "\x1b[33m◐\x1b[0m" : "◐"
+            : useColor ? "\x1b[31m✗\x1b[0m" : "✗";
+    console.log(
+      `${marker}  ${e.id.padEnd(20)} [${e.severity.padEnd(8)}] ${e.message}`,
+    );
+  }
+}
+
 interface AuditWireResult {
   id: string;
   ok: boolean;
@@ -1543,6 +1593,10 @@ Agent panes:
 Telegram:
   telegram status                       Show bot service state (disabled / starting /
                                         polling / error: <reason>)
+  telegram restart                      Tear down + restart the long-poll service.
+                                        Use to clear stuck backoff after a transient
+                                        API outage or right after rotating the bot
+                                        token in Settings.
   telegram chats                        List known chats with last-seen times
   telegram read [--chat ID] [--limit N] Print recent messages for a chat
                                         (default limit 20). When --chat /
@@ -1570,6 +1624,15 @@ Startup audits:
   audit run                             Re-run every registered audit.
   audit fix <id>                        Apply the audit's one-step fix
                                         and re-verify.
+
+Subsystem health:
+  health                                Aggregated state of every wired
+                                        subsystem (pty, socket, web mirror,
+                                        telegram, audits). Exits with the
+                                        same code regardless of state — for
+                                        scripting, parse the JSON output via
+                                        --json or rely on the prefix marker
+                                        (✓ OK vs ✗ DEGRADED).
 
 Aliases:
   capture-pane                          Alias for read-screen (tmux compat)

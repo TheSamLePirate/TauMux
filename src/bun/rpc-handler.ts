@@ -56,6 +56,9 @@ export interface RpcHandlerOptions {
   /** Live accessor for the long-poll Telegram bot service. Thunk so the
    *  registry sees the freshest instance after a settings change. */
   getTelegramService?: () => TelegramService | undefined;
+  /** Tear down + recreate the Telegram service. Wired into the
+   *  `telegram.restart` RPC. */
+  restartTelegramService?: () => Promise<void>;
   /** SQLite log used by `telegram.history` / `telegram.chats`. */
   telegramDb?: TelegramDatabase;
   /** Absolute socket path the SocketServer is bound to. Defaults to
@@ -71,6 +74,9 @@ export interface RpcHandlerOptions {
    *  state. Omit when the caller (e.g. unit tests) doesn't need
    *  audits; the registry handlers will not be installed. */
   audits?: AuditRegistryHandle;
+  /** Health aggregator. When wired, `system.health` returns the
+   *  current snapshot. */
+  health?: import("./health").HealthRegistry;
 }
 
 export function createRpcHandler(
@@ -106,9 +112,11 @@ export function createRpcHandler(
     piAgentManager: options.piAgentManager,
     shutdown: options.shutdown,
     getTelegramService: options.getTelegramService,
+    restartTelegramService: options.restartTelegramService,
     telegramDb: options.telegramDb,
     socketPath: options.socketPath ?? "/tmp/hyperterm.sock",
     logPath: options.logPath ?? null,
+    health: options.health,
   };
 
   // `system.capabilities` needs to know the full registered surface —

@@ -7,6 +7,7 @@ import type { SessionManager } from "../session-manager";
 import type { SurfaceMetadataPoller } from "../surface-metadata";
 import type { TelegramService } from "../telegram-service";
 import type { TelegramDatabase } from "../telegram-db";
+import type { HealthRegistry } from "../health";
 import type { PaneNode } from "../../shared/types";
 
 export interface AppState {
@@ -86,6 +87,11 @@ export interface HandlerDeps {
    *  recreated on token / enabled changes — handlers must always read
    *  the freshest reference. */
   getTelegramService?: () => TelegramService | undefined;
+  /** Tear down + recreate the Telegram service. Plan #07 surfaces
+   *  this via `telegram.restart` so a user-fixable transient error
+   *  (token rotated, transient API outage) can be cleared from the
+   *  CLI without flipping settings. Optional in tests. */
+  restartTelegramService?: () => Promise<void>;
   /** SQLite log behind the Telegram service. Always defined when the
    *  bot integration is wired in, used by the read-side RPC even when
    *  the long-poll loop is off. */
@@ -99,4 +105,7 @@ export interface HandlerDeps {
    *  via `system.identify` so the CLI can point at it without re-deriving
    *  the platform path. */
   logPath: string | null;
+  /** Subsystem health aggregator. Read by `system.health`. Optional in
+   *  test fixtures that don't need health surfaces. */
+  health?: HealthRegistry;
 }

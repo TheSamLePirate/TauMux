@@ -57,6 +57,24 @@ export function registerTelegram(deps: HandlerDeps): Record<string, Handler> {
       }
       return { status: service.getStatus() };
     },
+
+    /** Tear down + recreate the long-poll service. Useful when the
+     *  Telegram API briefly returned 5xx and we're stuck in
+     *  exponential backoff, or when a token rotation has just landed
+     *  in settings and we don't want to wait for the next
+     *  applyTelegramSettings cycle. Returns `{ ok: true }` on
+     *  success; throws when the host process didn't wire the
+     *  `restartTelegramService` callback (test fixtures). */
+    "telegram.restart": async () => {
+      const restart = deps.restartTelegramService;
+      if (!restart) {
+        throw new Error(
+          "telegram.restart: not supported in this process (no restart callback wired)",
+        );
+      }
+      await restart();
+      return { ok: true };
+    },
   };
 }
 
