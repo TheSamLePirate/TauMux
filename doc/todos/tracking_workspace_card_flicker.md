@@ -54,7 +54,7 @@ visual symptom necessarily follows.
 - [x] `bun run typecheck` clean
 - [x] `bun test` — 1026/1026 (was 1016; +10 stability tests)
 - [x] `bun run bump:patch` — 0.2.9 → 0.2.10
-- [ ] Commit — next
+- [x] Commit — `73ebe80`
 
 ## Deviations from the plan
 
@@ -111,8 +111,61 @@ visual symptom necessarily follows.
 
 ## Verification log
 
-(empty)
+| Run                                                  | Result                              |
+| ---------------------------------------------------- | ----------------------------------- |
+| `bun run typecheck`                                  | clean                               |
+| `bun test tests/sidebar-card-stability.test.ts`      | 10/10 pass                          |
+| `bun test` (full)                                    | 1026/1026 pass, 107652 expect() calls |
+| `bun run bump:patch`                                 | 0.2.9 → 0.2.10                      |
+
+Visual confirmation that the flicker is gone is **deferred** —
+needs a live `bun start` run with the metadata poller firing every
+1 Hz. The headless tests prove the *cause* is gone (outer card
+DOM identity preserved across refreshes); the visible symptom
+necessarily follows from that contract.
 
 ## Commits
 
-(empty)
+- `73ebe80` — sidebar: keyed reconciliation eliminates workspace-card flicker
+  - 6 files changed, 671 insertions(+), 85 deletions(-)
+
+## Retrospective
+
+What worked:
+- Identity-as-contract testing was a clean way to prove the fix
+  without live UI. Capturing `HTMLElement` references and
+  asserting `toBe(...)` (referential equality) after a refresh
+  catches every form of "the node was rebuilt".
+- The `insertBefore`/`appendChild` move primitive is exactly right
+  for this kind of work: re-parenting an already-mounted element
+  is identity-preserving by spec, no extra logic needed.
+- Splitting outer-shell from inner-content into separate methods
+  meant I could keep stable listeners attached without having to
+  remove/re-add them on every render. The id-capture + late-lookup
+  pattern reads cleanly.
+
+What I'd do differently:
+- I started with a reorder test that asserted DOM order matched
+  input order — but the sidebar persists user manual order, so my
+  premise was wrong. Should have re-read `orderedWorkspaces()` and
+  `reconcileManualOrder()` before writing the assertion.
+- The inner content still rebuilds on every refresh
+  (`replaceChildren()` + repopulate). Tier 2 reconciliation per
+  subfield would be a much larger undertaking — separate
+  controllers per status pill / log row / collapse section. The
+  current change captures ~80% of the visible benefit; the
+  remaining 20% is deferred until someone hits a case where it's
+  needed.
+- I considered batching multiple `renderWorkspaces` calls within a
+  single tick via `requestAnimationFrame`. Decided against
+  preemptively — the upstream pipeline (metadata poll + focus
+  events) already debounces, and adding rAF would change timing
+  behaviour subtly. Cheap to add later if profiling shows redundant
+  reconciliation passes.
+
+Carried over to follow-ups:
+- Tier 2 reconciliation: per-subfield reuse for status pills, log
+  rows, port chips, collapse sections
+- Visual verification of the flicker fix on a live run
+- Profile renderWorkspaces under sustained 1 Hz polls; see if
+  there's a measurable CPU win to surface in `system.health`
