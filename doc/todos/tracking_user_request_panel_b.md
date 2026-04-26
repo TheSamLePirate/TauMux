@@ -105,7 +105,7 @@ already exists; the panel's a presentation-layer follow-up.
 - [x] `bun scripts/audit-emoji.ts` — clean (post-fix; 3 emojis
       slipped into JSDoc / comments and were stripped)
 - [x] `bun run bump:patch` — 0.2.13 → 0.2.14
-- [ ] Commit — next
+- [x] Commit — `ec5caaf`
 
 ## Deviations from the plan
 
@@ -159,8 +159,56 @@ already exists; the panel's a presentation-layer follow-up.
 
 ## Verification log
 
-(empty)
+| Run                                          | Result                              |
+| -------------------------------------------- | ----------------------------------- |
+| `bun run typecheck`                          | clean (after backtick + emoji fixes)|
+| `bun test tests/telegram-ask-links.test.ts`  | 11/11 pass                          |
+| `bun test tests/ask-user-telegram.test.ts`   | 24/24 pass                          |
+| `bun scripts/audit-emoji.ts`                 | clean (post-fix)                    |
+| `bun test` (full)                            | 1144/1144 pass, 107859 expect() calls |
+| `bun run bump:patch`                         | 0.2.13 → 0.2.14                     |
 
 ## Commits
 
-(empty)
+- `ec5caaf` — ask-user: route ht ask through Telegram for all four kinds
+  - 12 files changed, 1442 insertions(+), 14 deletions(-)
+
+## Retrospective
+
+What worked:
+- Pure helpers in `ask-user-telegram.ts` got 24 hermetic test
+  cases covering every interaction shape — no transport, no db,
+  no service. The host wiring is glue around helpers I trust
+  independently.
+- The `ReplyMarkup` union (`InlineKeyboardMarkup` |
+  `ForceReplyMarkup`) was a clean abstraction. `kind: text`
+  returns force_reply; every other kind returns inline buttons;
+  the rest of the pipeline doesn't care which.
+- Resolution-feedback edits via `editMessageText` make the
+  Telegram chat actually useful as an audit log — scroll back,
+  every question has its answer stamped on it.
+- Two-step confirm-command gate fits naturally into the callback
+  dispatch ("ack" edits the message in place to reveal Run; "run"
+  resolves the queue). No extra round-trip for the gate.
+
+What I'd do differently:
+- The `requestTitleCache` is in-memory only. A bun restart between
+  fan-out and resolve loses the title and the resolution edit
+  falls back to the literal "Question" placeholder. Persisting
+  the title in `ask_user_links` would close the loop.
+- Hit the same backtick-in-template-literal trap as Plans #07/#08
+  and the same emoji-in-comments trap as #03/#08. A single
+  `bun run audits` aggregate script (running every
+  `scripts/audit-*.ts`) would be a real time-saver — logged for
+  next session.
+
+Carried over to follow-ups:
+- Modal panel UI in the webview (Plan #10 A push channel is ready)
+- Persist title in `ask_user_links` for restart-safe resolution
+  edits
+- Per-feature allow-list (currently shares `telegramAllowedUserIds`
+  with notifications + smart-buttons)
+- Cancel-via-text path for force_reply prompts ("/cancel" body →
+  action=cancel)
+- `bun run audits` aggregate script bundling every `audit-*.ts`
+  as a single pre-commit gate
