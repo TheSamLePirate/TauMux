@@ -32,6 +32,10 @@ export class SettingsPanel {
    *  when bun pushes `restoreDiagnostics` after the webview boots —
    *  null until then; the Advanced section degrades to "loading…". */
   private diagnostics: SettingsDiagnostics | null = null;
+  /** Insertion-ordered list of `ht set-status` keys seen since the
+   *  app booted. Pushed (debounced) by bun as `restoreHtKeysSeen`.
+   *  Powers the "Discovered ht keys" subsection in Settings → Layout. */
+  private htKeysSeen: string[] = [];
   // Persisted across open/close cycles so picking "Theme" and closing
   // doesn't snap back to "General" on reopen. localStorage write is
   // wrapped in try/catch because private-browsing modes throw.
@@ -200,6 +204,14 @@ export class SettingsPanel {
     // Re-render so Advanced shows the resolved paths if it's currently
     // visible; harmless when another section is active.
     if (this.visible && this.activeSection === "advanced") {
+      this.renderActiveSection();
+    }
+  }
+
+  setHtKeysSeen(keys: string[]): void {
+    this.htKeysSeen = [...keys];
+    // The discovered-keys block lives in the Layout section.
+    if (this.visible && this.activeSection === "layout") {
       this.renderActiveSection();
     }
   }
@@ -512,6 +524,106 @@ export class SettingsPanel {
       });
       c.appendChild(orderList);
     }
+
+    // ── Discovered ht keys ──
+    // Live list of every `ht set-status <key>` the running session has
+    // seen. Lets users hide noisy keys or reorder them without
+    // touching the registry. Empty until at least one script publishes
+    // a key — render a hint in that case so the section isn't silently
+    // missing.
+    this.renderDiscoveredHtKeys(c, s);
+  }
+
+  private renderDiscoveredHtKeys(c: HTMLElement, s: AppSettings): void {
+    this.sectionTitle(c, "Discovered ht keys");
+    this.sectionDesc(
+      c,
+      "Every `ht set-status` key seen since this session started. Toggle visibility, reorder. New keys default to visible at the end.",
+    );
+
+    if (this.htKeysSeen.length === 0) {
+      this.infoNote(
+        c,
+        "No keys yet. Run `ht set-status <key> <value>` from any pane and the key will appear here.",
+      );
+      return;
+    }
+
+    const hidden = new Set(s.htStatusKeyHidden ?? []);
+    const orderRaw = (s.htStatusKeyOrder ?? []).slice();
+    // Compose the rendered list: known order first, then any
+    // newly-seen keys appended (matches the runtime resolver in
+    // `applyHtStatusKeySettings`). Keys in `htStatusKeyOrder` that
+    // aren't in `htKeysSeen` are listed last and dimmed so the user
+    // sees their stale customisation.
+    const seenSet = new Set(this.htKeysSeen);
+    const visited = new Set<string>();
+    const composed: { key: string; stale: boolean }[] = [];
+    for (const k of orderRaw) {
+      if (visited.has(k)) continue;
+      visited.add(k);
+      composed.push({ key: k, stale: !seenSet.has(k) });
+    }
+    for (const k of this.htKeysSeen) {
+      if (visited.has(k)) continue;
+      visited.add(k);
+      composed.push({ key: k, stale: false });
+    }
+
+    const list = document.createElement("div");
+    list.className = "status-key-order";
+    composed.forEach(({ key, stale }, i) => {
+      const row = document.createElement("div");
+      row.className = `status-key-order-row ht-key${stale ? " stale" : ""}`;
+
+      const check = document.createElement("button");
+      check.type = "button";
+      check.className = "status-key-order-btn";
+      const isVisible = !hidden.has(key);
+      check.textContent = isVisible ? "●" : "○";
+      check.title = isVisible ? "Hide this key" : "Show this key";
+      check.addEventListener("click", () => {
+        const next = isVisible
+          ? [...new Set([...(s.htStatusKeyHidden ?? []), key])]
+          : (s.htStatusKeyHidden ?? []).filter((k) => k !== key);
+        this.emit({ htStatusKeyHidden: next });
+        setTimeout(() => this.renderActiveSection(), 20);
+      });
+
+      const label = document.createElement("span");
+      label.className = "status-key-order-label";
+      label.textContent = stale ? `${key} (not seen this session)` : key;
+
+      const up = document.createElement("button");
+      up.type = "button";
+      up.className = "status-key-order-btn";
+      up.textContent = "↑";
+      up.disabled = i === 0;
+      up.addEventListener("click", () => {
+        if (i === 0) return;
+        const ordered = composed.map((c) => c.key);
+        [ordered[i - 1], ordered[i]] = [ordered[i]!, ordered[i - 1]!];
+        this.emit({ htStatusKeyOrder: ordered });
+        setTimeout(() => this.renderActiveSection(), 20);
+      });
+
+      const down = document.createElement("button");
+      down.type = "button";
+      down.className = "status-key-order-btn";
+      down.textContent = "↓";
+      down.disabled = i === composed.length - 1;
+      down.addEventListener("click", () => {
+        if (i === composed.length - 1) return;
+        const ordered = composed.map((c) => c.key);
+        [ordered[i], ordered[i + 1]] = [ordered[i + 1]!, ordered[i]!];
+        this.emit({ htStatusKeyOrder: ordered });
+        setTimeout(() => this.renderActiveSection(), 20);
+      });
+
+      row.append(check, label, up, down);
+      list.appendChild(row);
+    });
+    c.appendChild(list);
   }
 
   private renderTheme(c: HTMLElement, s: AppSettings): void {

@@ -17,6 +17,7 @@
  * metadata poll (≈1 Hz) and every workspace/focus event.
  */
 import type { AppSettings } from "../../shared/settings";
+import { applyHtStatusKeySettings } from "../../shared/settings";
 import type { SurfaceMetadata } from "../../shared/types";
 import { parseStatusKey } from "../../shared/status-key";
 import { Meter } from "./tau-primitives";
@@ -448,20 +449,34 @@ const htAllKey: StatusKeyRenderer = {
   id: "ht-all",
   label: "ht: all statuses",
   description:
-    "Every current `ht set-status` pill on the active workspace, in the order they were set.",
+    "Every current `ht set-status` pill on the active workspace. Order respects Settings → Layout → Discovered ht keys; hidden keys are filtered out.",
   group: "system",
-  render: ({ htStatuses }) => {
+  render: ({ htStatuses, settings }) => {
     if (htStatuses.length === 0) return null;
+    // Compose the display list: user's explicit order first, then any
+    // workspace-local entries the resolver doesn't know about (a key
+    // can fire before bun's debounced htKeysSeen broadcast lands), then
+    // drop anything in `htStatusKeyHidden`.
+    const seenInWorkspace = htStatuses.map((e) => e.key);
+    const allowedInOrder = applyHtStatusKeySettings(
+      seenInWorkspace,
+      settings.htStatusKeyOrder ?? [],
+      settings.htStatusKeyHidden ?? [],
+    );
+    if (allowedInOrder.length === 0) return null;
+    const byKey = new Map(htStatuses.map((e) => [e.key, e]));
     const wrap = document.createElement("span");
     wrap.className = "tau-ht-status-strip";
-    htStatuses.forEach((e, i) => {
+    allowedInOrder.forEach((key, i) => {
+      const entry = byKey.get(key);
+      if (!entry) return;
       if (i > 0) {
         const dim = document.createElement("span");
         dim.className = "tau-hud-sep";
         dim.textContent = "·";
         wrap.appendChild(dim);
       }
-      wrap.appendChild(renderHtEntry(e));
+      wrap.appendChild(renderHtEntry(entry));
     });
     return wrap;
   },

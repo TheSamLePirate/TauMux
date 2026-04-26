@@ -63,6 +63,18 @@ export class AppContext {
   /** Debounce handle for the layout saver. */
   layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** Every distinct `ht set-status` key that has fired since this
+   *  process booted. Powers Settings → Layout → Discovered ht keys
+   *  so users can hide / reorder script-published keys without
+   *  redefining the registry. Iteration order = insertion order
+   *  (Set<string> is insertion-ordered); the settings panel
+   *  composes a final order via `htStatusKeyOrder` if the user has
+   *  customised it. */
+  htKeysSeen = new Set<string>();
+  /** Debounce handle for the htKeysSeen broadcaster — coalesces
+   *  multiple `setStatus` calls in the same tick into one push. */
+  htKeysSeenTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(opts: AppContextOptions) {
     this.configDir = opts.configDir;
     this.sessions = opts.sessions;

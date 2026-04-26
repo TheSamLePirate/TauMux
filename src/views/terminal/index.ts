@@ -173,6 +173,9 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       restoreDiagnostics: (payload) => {
         settingsPanel.setDiagnostics(payload);
       },
+      restoreHtKeysSeen: (payload) => {
+        settingsPanel.setHtKeysSeen(payload.keys);
+      },
       settingsChanged: (payload) => {
         applySettings(payload.settings);
       },

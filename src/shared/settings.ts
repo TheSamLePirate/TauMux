@@ -99,6 +99,20 @@ export interface AppSettings {
    *  renderer. Empty array = empty bar (allowed). */
   statusBarKeys: string[];
 
+  /** Custom display order for `ht set-status` keys. Keys not listed
+   *  fall back to the insertion order in the bun-side `htKeysSeen`
+   *  set. Empty array = pure insertion order. Used by the `ht-all`
+   *  bottom-bar renderer and the sidebar workspace card status grid
+   *  so a user's reorder choice applies in both places. */
+  htStatusKeyOrder: string[];
+
+  /** Subset of seen `ht set-status` keys the user has unchecked in
+   *  Settings → Layout → Discovered ht keys. Hidden keys are filtered
+   *  out of `ht-all` and the sidebar status grid. New keys default
+   *  to visible (absent from this list) so a script doesn't have to
+   *  ask permission to surface a new metric. */
+  htStatusKeyHidden: string[];
+
   // Browser
   /** Search engine for browser address bar non-URL queries. */
   browserSearchEngine: "google" | "duckduckgo" | "bing" | "kagi";
@@ -602,6 +616,8 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
     "ports",
     "time",
   ],
+  htStatusKeyOrder: [],
+  htStatusKeyHidden: [],
 
   browserSearchEngine: "google",
   browserHomePage: "",
@@ -709,7 +725,57 @@ export function validateSettings(s: AppSettings): AppSettings {
       typeof s.terminalOsc94Enabled === "boolean"
         ? s.terminalOsc94Enabled
         : true,
+    htStatusKeyOrder: Array.isArray(s.htStatusKeyOrder)
+      ? (s.htStatusKeyOrder.filter(
+          (k): k is string => typeof k === "string" && k.length > 0,
+        ) as string[])
+      : [],
+    htStatusKeyHidden: Array.isArray(s.htStatusKeyHidden)
+      ? (s.htStatusKeyHidden.filter(
+          (k): k is string => typeof k === "string" && k.length > 0,
+        ) as string[])
+      : [],
   };
+}
+
+/** Compose the final ordered list of visible `ht set-status` keys
+ *  from a discovered-key set + user's order/hide preferences.
+ *
+ *  Pure helper so the bottom-bar `ht-all` renderer, the sidebar
+ *  workspace card, and tests can all share a single source of truth.
+ *
+ *  Algorithm:
+ *    1. Start with `htStatusKeyOrder` (user's customised order).
+ *    2. Append any `seen` keys not yet listed, in their original
+ *       insertion order — so newly-published keys land at the end.
+ *    3. Drop anything in `htStatusKeyHidden`.
+ *    4. Drop anything not in `seen` (a key might be in
+ *       `htStatusKeyOrder` from a previous session but no longer
+ *       firing — leave the entry as-is in settings, just don't
+ *       render).
+ */
+export function applyHtStatusKeySettings(
+  seen: readonly string[],
+  order: readonly string[],
+  hidden: readonly string[],
+): string[] {
+  const seenSet = new Set(seen);
+  const hiddenSet = new Set(hidden);
+  const visited = new Set<string>();
+  const out: string[] = [];
+  for (const k of order) {
+    if (visited.has(k)) continue;
+    visited.add(k);
+    if (!seenSet.has(k) || hiddenSet.has(k)) continue;
+    out.push(k);
+  }
+  for (const k of seen) {
+    if (visited.has(k)) continue;
+    visited.add(k);
+    if (hiddenSet.has(k)) continue;
+    out.push(k);
+  }
+  return out;
 }
 
 /** τ-mux §11 bloom gate — run once per install on the first load of a

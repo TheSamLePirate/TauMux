@@ -10581,6 +10581,14 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   font-size: 12px;
   color: var(--tau-text);
 }
+/* "Discovered ht keys" rows: prepend a visibility toggle column.
+ * Distinct class so we don't perturb the built-in statusBarKeys grid. */
+.status-key-order-row.ht-key {
+  grid-template-columns: auto 1fr auto auto;
+}
+.status-key-order-row.stale {
+  opacity: 0.45;
+}
 .status-key-order-label {
   white-space: nowrap;
   overflow: hidden;

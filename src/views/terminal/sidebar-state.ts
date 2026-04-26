@@ -19,6 +19,7 @@ import type {
   PackageInfo,
   SurfaceMetadata,
 } from "../../shared/types";
+import { applyHtStatusKeySettings } from "../../shared/settings";
 import type { WorkspaceInfo } from "./sidebar";
 import type { Workspace } from "./surface-manager";
 
@@ -41,6 +42,14 @@ export interface SidebarStateInput {
   /** "<workspaceId>:<scriptKey>" → epoch ms of last non-zero exit.
    *  Drives the red dot on a package.json script pill. */
   scriptErrors: Map<string, number>;
+  /** User's customised display order for `ht set-status` keys, from
+   *  `AppSettings.htStatusKeyOrder`. Empty / omitted = pure insertion
+   *  order. Optional so legacy test fixtures don't have to specify
+   *  it. */
+  htStatusKeyOrder?: readonly string[];
+  /** Subset of seen keys to hide. Filtered out of every workspace's
+   *  status grid. Optional for the same reason as `htStatusKeyOrder`. */
+  htStatusKeyHidden?: readonly string[];
 }
 
 /** Build the `WorkspaceInfo[]` array that `Sidebar.setWorkspaces`
@@ -204,12 +213,7 @@ function buildOneWorkspace(
     surfaceTitles,
     focusedSurfaceTitle,
     focusedSurfaceCommand,
-    statusPills: [...ws.status.entries()].map(([key, s]) => ({
-      key,
-      value: s.value,
-      color: s.color,
-      icon: s.icon,
-    })),
+    statusPills: buildStatusPillsForWorkspace(ws, input),
     progress: ws.progress,
     listeningPorts,
     packageJson,
@@ -225,6 +229,35 @@ function buildOneWorkspace(
     processCount: procCount,
     cpuHistory,
   };
+}
+
+/** Compose the workspace-card statusPills array from the
+ *  Workspace's `status` map and the user's ht-key settings. We
+ *  preserve the script-supplied value/color/icon and just decide
+ *  *which* keys appear and *in what order*. Pure projection so it's
+ *  trivial to test alongside `applyHtStatusKeySettings`. */
+function buildStatusPillsForWorkspace(
+  ws: Workspace,
+  input: SidebarStateInput,
+): WorkspaceInfo["statusPills"] {
+  const seen = [...ws.status.keys()];
+  const ordered = applyHtStatusKeySettings(
+    seen,
+    input.htStatusKeyOrder ?? [],
+    input.htStatusKeyHidden ?? [],
+  );
+  const pills: WorkspaceInfo["statusPills"] = [];
+  for (const key of ordered) {
+    const entry = ws.status.get(key);
+    if (!entry) continue;
+    pills.push({
+      key,
+      value: entry.value,
+      color: entry.color,
+      icon: entry.icon,
+    });
+  }
+  return pills;
 }
 
 /** Rolling CPU% history per workspace — fed to the mini sparkline in

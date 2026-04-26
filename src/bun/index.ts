@@ -1121,6 +1121,22 @@ function sendWebviewAction(
   rpc.send("socketAction", { action, payload });
 }
 
+/** Push the cumulative `htKeysSeen` snapshot to the webview + web
+ *  mirror. Debounced 200 ms so a script firing dozens of
+ *  `ht set-status` calls in a tick produces a single push.
+ *  Insertion-ordered Set, so the wire `keys[]` reflects the order in
+ *  which scripts first published each key — Settings → Layout uses
+ *  that order as the default. */
+function scheduleHtKeysSeenBroadcast(): void {
+  if (app.htKeysSeenTimer) return;
+  app.htKeysSeenTimer = setTimeout(() => {
+    app.htKeysSeenTimer = null;
+    const keys = [...app.htKeysSeen];
+    rpc.send("restoreHtKeysSeen", { keys });
+    app.webServer?.broadcast({ type: "htKeysSeen", keys });
+  }, 200);
+}
+
 function createWorkspaceSurface(
   cols: number,
   rows: number,
@@ -1827,6 +1843,17 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     action === "log"
   ) {
     app.webServer?.broadcast({ type: "sidebarAction", action, payload });
+    if (action === "setStatus") {
+      const key = payload["key"];
+      if (
+        typeof key === "string" &&
+        key.length > 0 &&
+        !app.htKeysSeen.has(key)
+      ) {
+        app.htKeysSeen.add(key);
+        scheduleHtKeysSeenBroadcast();
+      }
+    }
   } else if (action === "createBrowserSurface") {
     createBrowserWorkspaceSurface(payload["url"] as string | undefined);
   } else if (action === "createAgentSurface") {

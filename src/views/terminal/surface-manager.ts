@@ -150,6 +150,13 @@ export class SurfaceManager {
    *  the parser falls back to its default behaviour (the chunk is
    *  silently consumed without painting progress). Default true. */
   private osc94Enabled = true;
+  /** Cached `ht set-status` key order from settings — applied when
+   *  building the sidebar workspace cards so user reorder choices
+   *  propagate without a full settings re-flow. */
+  private htStatusKeyOrder: readonly string[] = [];
+  /** Cached `ht set-status` hidden keys — same as above for
+   *  visibility. */
+  private htStatusKeyHidden: readonly string[] = [];
   private wsCounter = 0;
   private paneDrag: PaneDragController;
   private fontSize: number;
@@ -965,6 +972,11 @@ export class SurfaceManager {
     this.fontSize = s.fontSize;
     this.terminalEffectsEnabled = s.terminalBloom;
     this.osc94Enabled = s.terminalOsc94Enabled;
+    this.htStatusKeyOrder = s.htStatusKeyOrder ?? [];
+    this.htStatusKeyHidden = s.htStatusKeyHidden ?? [];
+    // Repaint the sidebar so the new ht-key visibility / order applies
+    // immediately. Cheap because buildSidebarWorkspaces is pure.
+    this.updateSidebar();
     setNotificationSoundSettings({
       enabled: s.notificationSoundEnabled,
       volume: s.notificationSoundVolume,
@@ -1704,6 +1716,8 @@ export class SurfaceManager {
         metadata: this.metadata,
         selectedCwds: this.selectedCwds,
         scriptErrors: this.scriptErrors,
+        htStatusKeyOrder: this.htStatusKeyOrder,
+        htStatusKeyHidden: this.htStatusKeyHidden,
       }),
     );
     this.notifyWorkspaceChanged();

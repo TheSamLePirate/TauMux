@@ -674,6 +674,14 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
         configDir: string;
       };
 
+      // Cumulative list of `ht set-status` key names seen since the
+      // app booted, in insertion order. Powers the Settings → Layout
+      // "Discovered ht keys" subsection. Pushed (debounced 200 ms)
+      // every time a new key fires; never pruned — keys that stop
+      // firing stay listed so the user's hide / reorder choices
+      // persist.
+      restoreHtKeysSeen: { keys: string[] };
+
       // Socket API dispatched actions (bun → webview)
       socketAction: { action: string; payload: Record<string, unknown> };
 
