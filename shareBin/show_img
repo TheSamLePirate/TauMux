@@ -1,60 +1,93 @@
-#!/usr/bin/env python3
-"""Display an image file as a floating panel.
+#!/usr/bin/env bun
+/**
+ * τ-mux — show_img
+ *
+ * Display an image file as a floating sideband panel. Ports the
+ * previous Python implementation per Plan #05 (no python in
+ * shareBin) — same interface, same MAX_BYTES guard, same event
+ * print loop.
+ *
+ * Usage:
+ *   show_img <image_path>
+ *   show_img --x 200 --y 100 <image_path>
+ *   show_img --no-wait <image_path>     # exit after creating the panel
+ */
 
-Usage: show_img <image_path>
-"""
+import { statSync } from "node:fs";
+import { ht } from "./hyperterm";
 
-import os
-import sys
-from hyperterm import ht
+if (!ht.available) {
+  console.error("show_img: not running inside τ-mux.");
+  process.exit(0);
+}
 
-if not ht.available:
-    print("Not running inside τ-mux.")
-    sys.exit(0)
+ht.onError((code, message, ref) => {
+  console.error(
+    `[hyperterm error] ${code}: ${message}${ref ? ` (ref=${ref})` : ""}`,
+  );
+});
 
-ht.on_error(
-    lambda code, msg, ref=None: print(
-        f"[error] {code}: {msg}", file=sys.stderr
-    )
-)
+const argv = process.argv.slice(2);
+const flags = { noWait: false };
+let x = 100;
+let y = 80;
+let path = "";
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i]!;
+  if (a === "--no-wait") flags.noWait = true;
+  else if (a === "--x") x = parseInt(argv[++i] ?? "100", 10);
+  else if (a === "--y") y = parseInt(argv[++i] ?? "80", 10);
+  else if (!path) path = a;
+}
 
-if len(sys.argv) < 2:
-    print("Usage: show_img <image_path>")
-    sys.exit(1)
+if (!path) {
+  console.error("Usage: show_img [--x N --y N] [--no-wait] <image_path>");
+  process.exit(1);
+}
 
-path = sys.argv[1]
+// Guard against absurdly large images — the binary is read fully
+// into memory before being pushed over fd4. 50 MB matches the
+// previous Python implementation's cap.
+const MAX_BYTES = 50 * 1024 * 1024;
+let size: number;
+try {
+  size = statSync(path).size;
+} catch (err) {
+  console.error(`Cannot stat ${path}: ${(err as Error).message}`);
+  process.exit(1);
+}
+if (size > MAX_BYTES) {
+  console.error(
+    `Refusing to display ${path}: ${size} bytes exceeds ${MAX_BYTES} byte cap.`,
+  );
+  process.exit(1);
+}
 
-# Guard against absurdly large images — the binary is read fully into memory
-# before being pushed over fd4.
-MAX_BYTES = 50 * 1024 * 1024
-try:
-    size = os.path.getsize(path)
-except OSError as e:
-    print(f"Cannot stat {path}: {e}", file=sys.stderr)
-    sys.exit(1)
-if size > MAX_BYTES:
-    print(
-        f"Refusing to display {path}: {size} bytes exceeds "
-        f"{MAX_BYTES} byte cap.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+const panelId = await ht.showImage(path, { x, y, timeout: 20_000 });
+console.log(`Displayed image: ${path} (id=${panelId})`);
+if (flags.noWait) {
+  process.exit(0);
+}
+console.log("Drag, resize, or close the panel. Press Ctrl+C to clear.");
 
-panel_id = ht.show_image(path, x=100, y=80, timeout=20000)
-print(f"Displayed image: {path} (id={panel_id})")
-print("Drag, resize, or close the panel. Press Ctrl+C to clear.")
+// Mirror the Python event-print loop so anyone watching the calling
+// shell sees the same telemetry on drag / resize / close.
+ht.onEvent((event) => {
+  if (event.id !== panelId) return;
+  let line = `  Event: ${event.event}`;
+  if (typeof event.x === "number" && typeof event.y === "number") {
+    line += ` x=${event.x} y=${event.y}`;
+  }
+  if (typeof event.width === "number" && typeof event.height === "number") {
+    line += ` w=${event.width} h=${event.height}`;
+  }
+  console.log(line);
+});
 
-try:
-    for event in ht.events():
-        if event.get("id") == panel_id:
-            print(f"  Event: {event['event']}", end="")
-            if "x" in event:
-                print(f" x={event['x']} y={event['y']}", end="")
-            if "width" in event:
-                print(f" w={event['width']} h={event['height']}", end="")
-            print()
-            if event["event"] == "close":
-                break
-except KeyboardInterrupt:
-    ht.clear(panel_id)
-    print("\nCleared.")
+process.on("SIGINT", () => {
+  ht.clear(panelId);
+  console.log("\nCleared.");
+  process.exit(0);
+});
+
+await ht.waitForClose(panelId).catch(() => {});
