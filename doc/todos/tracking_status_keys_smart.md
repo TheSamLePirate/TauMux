@@ -28,7 +28,7 @@ commits to keep each reviewable:
 - [x] `bun run typecheck` clean
 - [x] `bun test` — 916/916 (was 915 pre-CSS-fix; was 865 baseline; +37 parser, +14 renderers)
 - [x] `bun run bump:patch` — 0.2.1 → 0.2.2
-- [ ] Commit A — next
+- [x] Commit A — `782a3bb`
 
 ### Commit B — discovery + settings UI for ht keys (stretch)
 
@@ -100,4 +100,45 @@ commits to keep each reviewable:
 
 ## Commits
 
-(empty)
+- `782a3bb` — status: smart key DSL with renderer dispatcher (parser + v1 renderers)
+  - 12 files changed, 1612 insertions(+), 59 deletions(-)
+
+## Verification log
+
+| Run                                         | Result                              |
+| ------------------------------------------- | ----------------------------------- |
+| `bun run typecheck`                         | clean                               |
+| `bun test tests/status-key-parser.test.ts`  | 37/37 pass                          |
+| `bun test tests/status-key-renderers.test.ts` | 14/14 pass                        |
+| `bun test` (full suite, post-edit)          | 916/916 pass, 107444 expect() calls |
+| `bun run bump:patch`                        | 0.2.1 → 0.2.2                       |
+
+## Retrospective (commit A)
+
+What worked:
+- Parser-first approach. Writing the table-driven parser tests before
+  the renderers caught an off-by-one in the suffix peeling logic
+  immediately and the renderers came out clean.
+- Sharing the parser between sidebar + bottom bar via a single
+  `renderStatusEntry({context: "bar"|"card"})` keeps both surfaces
+  visually consistent — same key really does render the same content
+  everywhere.
+- Total parsers (no throws, always-returnable text fallback) means
+  even shipping renderers I haven't fully validated against weird
+  scripts won't blank the UI.
+
+What I'd do differently:
+- The first test run failing on `§11 no-dotted-borders` was a
+  reminder to skim the design audits before adding chrome. Cheap
+  catch but a wasted iteration.
+- I packed all v1 renderers into one file. As we add more (`bar`,
+  `vbar`, `gauge`, `bytes`, `ms`, `kv`, `md`, `image`, `code`,
+  `sparkline`) it'll be worth splitting per-renderer once the file
+  passes ~500 LOC.
+
+Carried over to commit B:
+- Discovery: bun-side `htKeysSeen: Set<string>` + debounced broadcast
+- Settings UI: discovered-keys list with reorder + hide, persisted as
+  `htStatusKeyOrder`/`htStatusKeyHidden` in `AppSettings`
+- Optional: a small `shareBin/demo_status_keys` script that exercises
+  every renderer so users can see the DSL in action live.
