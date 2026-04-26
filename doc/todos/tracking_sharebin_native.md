@@ -60,7 +60,7 @@ Defer:
 - [x] `bun run typecheck` clean
 - [x] `bun test` — 1109/1109 pass (was 1080; +29 sharebin libs)
 - [x] `bun run bump:patch` — 0.2.12 → 0.2.13
-- [ ] Commit — next
+- [x] Commit — `a952564`
 
 ## Deviations from the plan
 
@@ -114,8 +114,58 @@ Defer:
 
 ## Verification log
 
-(empty)
+| Run                                       | Result                              |
+| ----------------------------------------- | ----------------------------------- |
+| `bun run typecheck`                       | clean                               |
+| `bun test tests/sharebin-libs.test.ts`    | 29/29 pass                          |
+| `bun test` (full)                         | 1109/1109 pass, 107809 expect() calls |
+| `bun run bump:patch`                      | 0.2.12 → 0.2.13                     |
 
 ## Commits
 
-(empty)
+- `a952564` — shareBin: lib infrastructure + show_json + show_diff + show_img port
+  - 9 files changed; 4 lib modules + 2 new utilities + 1 ported
+
+## Retrospective
+
+What worked:
+- Pure rendering helpers in `shareBin/lib/` — every utility now
+  shares one HTML escape implementation, one markdown subset, one
+  JSON tree, one diff parser. Adding the next utility (`show_yaml`,
+  `show_table`, …) is mostly a bin/ wrapper around an existing or
+  one new lib module.
+- Hermetic tests on the libs — 29 cases run in 11 ms, cover the
+  load-bearing safety story (HTML escape, XSS-guard on links).
+- Python `show_img` port was a 1:1 port; same UX, same guards.
+  Honors the user's "no python in utilities" without shifting any
+  external contracts.
+
+What I'd do differently:
+- I assumed `shareBin/` didn't exist (a confused earlier `ls` of
+  `share-bin/` reported "no such directory"). It DID exist with
+  pre-built scripts. Lesson: when `ls` returns missing, double-
+  check the exact spelling and path before assuming a fresh start.
+  The earlier confusion didn't cause harm here — my new files
+  slotted in cleanly — but it's a good correction for next time.
+- I initially wrote a new `show_md` and the Write tool rejected
+  it (file already existed). Caught the mistake by reading the
+  existing one — it's a richer live-reload script than my version
+  would have been. Pivoting to "keep existing, ship lib" was the
+  right call but only because the file rejection forced me to
+  look. A pre-write `ls` of the destination would have caught it
+  earlier.
+
+Carried over to follow-ups:
+- `show_yaml` — same shape as `show_json`; YAML → JSON via a tiny
+  parser, then reuse `lib/json-tree.ts`
+- `show_gitlog` — uses `git log --pretty=format` + a small
+  graph-row renderer
+- `show_table` — CSV / TSV → sortable table
+- `show_qr` — text → SVG QR via a small encoder
+- `show_chart` — CSV column → line/bar chart (canvas2d via
+  the existing fd4 pipeline)
+- `show_webcam` — getUserMedia in an interactive HTML panel
+- `show_html` — already-existing pattern (just `ht.showHtml(stdin)`),
+  thin wrapper
+- Migrate the Python *demos* in `scripts/` (separate from
+  `shareBin/`; not on PATH) per Phase 1 of the original plan
