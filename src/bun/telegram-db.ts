@@ -78,6 +78,22 @@ export class TelegramDatabase {
         k TEXT PRIMARY KEY,
         v TEXT NOT NULL
       );
+      -- Plan #08: links a Telegram bot message (one with inline
+      -- keyboard buttons) back to the τ-mux notification + surface
+      -- that produced it. When a user taps a button minutes later
+      -- and Telegram delivers the callback_query, the host looks up
+      -- the parent message_id here to recover {notificationId, surfaceId}
+      -- without keeping volatile state in memory.
+      CREATE TABLE IF NOT EXISTS notification_links (
+        chat_id TEXT NOT NULL,
+        tg_message_id INTEGER NOT NULL,
+        notification_id TEXT NOT NULL,
+        surface_id TEXT,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (chat_id, tg_message_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_notification_links_created
+        ON notification_links (created_at);
     `);
     // Dedupe any pre-existing duplicates from older app versions before
     // we add the partial UNIQUE index — index creation would otherwise
@@ -286,6 +302,73 @@ export class TelegramDatabase {
       .prepare(`SELECT COUNT(*) AS n FROM messages WHERE chat_id = ?`)
       .get(chatId) as { n: number };
     return row.n;
+  }
+
+  /** Persist the (chatId, tgMessageId) → (notificationId, surfaceId)
+   *  link for the bot message that just landed in a chat. Idempotent:
+   *  re-binding the same key overwrites the targets (rare, but
+   *  harmless if the host ever resends). */
+  linkNotification(opts: {
+    chatId: string;
+    tgMessageId: number;
+    notificationId: string;
+    surfaceId?: string | null;
+    ts?: number;
+  }): void {
+    const ts = opts.ts ?? Date.now();
+    this.db
+      .prepare(
+        `INSERT INTO notification_links
+           (chat_id, tg_message_id, notification_id, surface_id, created_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(chat_id, tg_message_id) DO UPDATE SET
+           notification_id = excluded.notification_id,
+           surface_id      = excluded.surface_id,
+           created_at      = excluded.created_at`,
+      )
+      .run(
+        opts.chatId,
+        opts.tgMessageId,
+        opts.notificationId,
+        opts.surfaceId ?? null,
+        ts,
+      );
+  }
+
+  /** Resolve the τ-mux origin of a tapped Telegram button by looking
+   *  up the (chatId, tgMessageId) tuple from the inbound
+   *  `callback_query`. Returns null when the link wasn't recorded
+   *  (e.g. message predates Plan #08, or links were pruned). */
+  getNotificationLink(
+    chatId: string,
+    tgMessageId: number,
+  ): { notificationId: string; surfaceId: string | null } | null {
+    const row = this.db
+      .prepare(
+        `SELECT notification_id, surface_id
+           FROM notification_links
+          WHERE chat_id = ? AND tg_message_id = ?`,
+      )
+      .get(chatId, tgMessageId) as
+      | { notification_id: string; surface_id: string | null }
+      | undefined;
+    if (!row) return null;
+    return {
+      notificationId: row.notification_id,
+      surfaceId: row.surface_id,
+    };
+  }
+
+  /** Drop notification_links rows older than `cutoffMs`. Telegram
+   *  callback_query payloads have no upper time bound, but tapping
+   *  a 24-hour-old notification button is a degenerate case — let
+   *  the bot reply "expired" instead of acting on stale state. */
+  pruneOldNotificationLinks(cutoffMs: number): number {
+    const stmt = this.db.prepare(
+      `DELETE FROM notification_links WHERE created_at < ?`,
+    );
+    const res = stmt.run(cutoffMs);
+    return Number(res.changes);
   }
 
   close(): void {

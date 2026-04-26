@@ -77,6 +77,9 @@ function createStubTransport(): Stub {
         sentMessages.push({ chatId, text });
         return { ok: true, messageId: sentMessages.length };
       },
+      async answerCallbackQuery() {
+        return { ok: true };
+      },
       async getMe() {
         return { ok: true, username: "TestBot" };
       },

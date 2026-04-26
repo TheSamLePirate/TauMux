@@ -178,6 +178,18 @@ const panelRegistry = new PanelRegistry();
 // `applyTelegramSettings`, gated on `telegramEnabled` + a non-empty
 // token.
 const telegramDb = new TelegramDatabase(join(configDir, "telegram.db"));
+// Plan #08: drop notification_links rows older than 24h on startup so
+// stale taps (a user opening a day-old DM and pressing Continue)
+// don't fire actions on a surface that may have been recycled.
+try {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const dropped = telegramDb.pruneOldNotificationLinks(cutoff);
+  if (dropped > 0) {
+    console.log(`[telegram] pruned ${dropped} stale notification link(s)`);
+  }
+} catch (err) {
+  console.warn("[telegram] notification_links prune failed:", err);
+}
 let telegramService: TelegramService | null = null;
 
 // Env var HYPERTERM_WEB_PORT overrides the user setting so the dev/test
@@ -1360,6 +1372,101 @@ async function sendTelegramAndBroadcast(
   }
 }
 
+/** Plan #08 — same as sendTelegramAndBroadcast but attaches inline
+ *  keyboard buttons + persists a notification_links row so the
+ *  inbound callback_query handler can recover the τ-mux origin
+ *  later. The buttons are fixed for v1 (OK / Continue / Stop);
+ *  custom button sets land in a follow-up. */
+async function sendTelegramNotificationWithButtons(opts: {
+  chatId: string;
+  text: string;
+  notificationId: string;
+  surfaceId: string | null;
+}): Promise<void> {
+  const svc = telegramService;
+  if (!svc) return;
+  // Compact `<action>|<id>` payload — Telegram caps callback_data at
+  // 64 bytes; notification ids stay well under.
+  const buttons = [
+    [
+      { text: "OK", callback_data: `ok|${opts.notificationId}` },
+      { text: "Continue", callback_data: `continue|${opts.notificationId}` },
+      { text: "Stop", callback_data: `stop|${opts.notificationId}` },
+    ],
+  ];
+  try {
+    const persisted = await svc.sendMessageWithButtons(
+      opts.chatId,
+      opts.text,
+      buttons,
+    );
+    broadcastTelegramMessage(wireTelegramMessage(persisted));
+    if (persisted.tgMessageId !== null) {
+      telegramDb.linkNotification({
+        chatId: opts.chatId,
+        tgMessageId: persisted.tgMessageId,
+        notificationId: opts.notificationId,
+        surfaceId: opts.surfaceId,
+      });
+    }
+  } catch (err) {
+    console.warn("[telegram] send with buttons failed:", err);
+  }
+}
+
+/** Resolve a tapped button into a τ-mux action and dispatch it via
+ *  the existing socket handler — same surface as the CLI / external
+ *  scripts use, so any current rate limits / audit entries apply
+ *  uniformly. Drops silently when:
+ *    - the link can't be resolved (link expired, db pruned, message
+ *      predates Plan #08)
+ *    - the data string doesn't parse cleanly
+ *  Logs the dispatch path so the user can audit what their tap did. */
+async function handleTelegramCallback(info: {
+  callbackQueryId: string;
+  fromUserId: string;
+  fromName: string;
+  chatId: string;
+  messageId: number;
+  data: string;
+}): Promise<void> {
+  const link = telegramDb.getNotificationLink(info.chatId, info.messageId);
+  if (!link) {
+    console.warn(
+      `[telegram] callback ${info.data} ignored — no link for chat=${info.chatId} msg=${info.messageId}`,
+    );
+    return;
+  }
+  const sepIdx = info.data.indexOf("|");
+  const action = sepIdx === -1 ? info.data : info.data.slice(0, sepIdx);
+  console.log(
+    `[telegram] callback action=${action} from=${info.fromName}(${info.fromUserId}) notif=${link.notificationId} surface=${link.surfaceId ?? "(none)"}`,
+  );
+  try {
+    if (action === "ok") {
+      socketHandler("notification.dismiss", { id: link.notificationId });
+    } else if (action === "continue") {
+      if (!link.surfaceId) return;
+      socketHandler("surface.send_text", {
+        surface_id: link.surfaceId,
+        text: "\n",
+      });
+    } else if (action === "stop") {
+      if (!link.surfaceId) return;
+      socketHandler("surface.send_key", {
+        surface_id: link.surfaceId,
+        key: "ctrl+c",
+      });
+    } else {
+      console.warn(`[telegram] callback action unknown: ${action}`);
+    }
+  } catch (err) {
+    console.warn(
+      `[telegram] callback dispatch failed: ${(err as Error).message}`,
+    );
+  }
+}
+
 /** Stash for the "enabled but no token" failure state so the sidebar
  *  + settings panel can tell the user WHY the service isn't running
  *  instead of silently reporting "disabled" (which looks the same as
@@ -1411,6 +1518,9 @@ async function applyTelegramSettings(): Promise<void> {
     db: telegramDb,
     onIncoming: (message) => {
       broadcastTelegramMessage(wireTelegramMessage(message));
+    },
+    onCallback: (info) => {
+      void handleTelegramCallback(info);
     },
     onStatus: (status) => {
       broadcastTelegramState();
@@ -1924,6 +2034,10 @@ function dispatch(action: string, payload: Record<string, unknown>) {
       // function is pure — it returns the {chatId, text} deliveries to
       // perform; we just wire them through sendTelegramAndBroadcast so
       // the live service handles rate limiting + persistence.
+      // Plan #08: when `telegramNotificationButtonsEnabled` is on,
+      // route through the buttons-aware send so each forwarded
+      // notification carries OK / Continue / Stop and persists a
+      // notification_links row for the inbound callback handler.
       if (telegramService) {
         const settings = settingsManager.get();
         const surfaceId = (latest["surfaceId"] as string | null) ?? null;
@@ -1939,8 +2053,20 @@ function dispatch(action: string, payload: Record<string, unknown>) {
           workspace: ws?.name ?? undefined,
           pane: (ws?.surfaceTitles?.[surfaceId ?? ""] as string) ?? undefined,
         });
+        const notificationId = String(latest["id"] ?? "");
+        const buttonsOn =
+          settings.telegramNotificationButtonsEnabled && !!notificationId;
         for (const { chatId, text } of deliveries) {
-          void sendTelegramAndBroadcast(chatId, text);
+          if (buttonsOn) {
+            void sendTelegramNotificationWithButtons({
+              chatId,
+              text,
+              notificationId,
+              surfaceId,
+            });
+          } else {
+            void sendTelegramAndBroadcast(chatId, text);
+          }
         }
       }
     } else if (dismissed) {

@@ -1023,6 +1023,20 @@ export class SettingsPanel {
       "telegramNotificationsEnabled",
       { note: "DM sidebar notifications to every allowed ID." },
     );
+
+    this.toggleField(
+      c,
+      "Smart Buttons on Notifications",
+      s.telegramNotificationButtonsEnabled,
+      "telegramNotificationButtonsEnabled",
+      {
+        note:
+          "Attach OK / Continue / Stop buttons to forwarded notifications. " +
+          "Tapping Continue sends a newline into the originating pane; " +
+          "Stop sends Ctrl-C; OK dismisses the notification. Off by default — " +
+          "the buttons execute keystrokes on your machine.",
+      },
+    );
   }
 
   /** Password-style input. Same wiring as `textField` but masked, with a

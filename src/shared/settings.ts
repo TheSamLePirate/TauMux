@@ -145,6 +145,13 @@ export interface AppSettings {
   /** Forward sidebar notifications to Telegram when on. Independent of
    *  `notificationSoundEnabled`. */
   telegramNotificationsEnabled: boolean;
+  /** Plan #08: when on, every forwarded notification carries an
+   *  inline keyboard (OK / Continue / Stop). Tapped buttons fire
+   *  the corresponding action on the originating surface — Continue
+   *  sends a newline; Stop sends Ctrl-C; OK dismisses the
+   *  notification. Off by default — the buttons execute keystrokes
+   *  on the user's machine. */
+  telegramNotificationButtonsEnabled: boolean;
 }
 
 export interface ThemePreset {
@@ -639,6 +646,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   // accounts the moment it goes live. Trim/edit in Settings → Telegram.
   telegramAllowedUserIds: "8446656662",
   telegramNotificationsEnabled: false,
+  telegramNotificationButtonsEnabled: false,
 };
 
 function clamp(v: number, min: number, max: number): number {
@@ -705,6 +713,10 @@ export function validateSettings(s: AppSettings): AppSettings {
     telegramBotToken: (s.telegramBotToken ?? "").trim(),
     telegramAllowedUserIds: normalizeAllowedIds(s.telegramAllowedUserIds),
     telegramNotificationsEnabled: !!s.telegramNotificationsEnabled,
+    telegramNotificationButtonsEnabled:
+      typeof s.telegramNotificationButtonsEnabled === "boolean"
+        ? s.telegramNotificationButtonsEnabled
+        : false,
     cursorStyle:
       s.cursorStyle === "bar" || s.cursorStyle === "underline"
         ? s.cursorStyle

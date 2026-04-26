@@ -1,6 +1,22 @@
 import { TelegramDatabase, type TelegramMessage } from "./telegram-db";
 import { parseAllowedTelegramIds } from "../shared/settings";
 
+/** A single inline keyboard button — `text` shows on the bot's
+ *  message; `callback_data` round-trips back to the bot when a user
+ *  taps it. Stick to short ASCII identifiers (`ok|<surfaceId>`) for
+ *  callback_data — Telegram caps it at 64 bytes. */
+export interface InlineKeyboardButton {
+  text: string;
+  callback_data: string;
+}
+
+/** Telegram's `reply_markup.inline_keyboard` — array of rows, each
+ *  row an array of buttons. Two rows of two buttons render as a 2×2
+ *  grid; one row of three buttons renders side-by-side. */
+export interface InlineKeyboardMarkup {
+  inline_keyboard: InlineKeyboardButton[][];
+}
+
 /** Telegram bot interface used by the service. Real impl is `fetch` against
  *  api.telegram.org; tests inject a stub so no real network calls happen.
  *  Keep it intentionally narrow — only the endpoints we actually use. */
@@ -14,7 +30,18 @@ export interface TelegramTransport {
     chatId: string;
     text: string;
     signal?: AbortSignal;
+    /** Optional inline keyboard markup. When present, the message
+     *  is rendered with tappable buttons; the user's tap arrives back
+     *  as a `callback_query` update on the next poll. */
+    replyMarkup?: InlineKeyboardMarkup;
   }): Promise<{ ok: boolean; messageId?: number; description?: string }>;
+  /** Acknowledge a callback_query so Telegram stops nagging the user.
+   *  Optional `text` shows a transient toast in their client. */
+  answerCallbackQuery(opts: {
+    callbackQueryId: string;
+    text?: string;
+    signal?: AbortSignal;
+  }): Promise<{ ok: boolean }>;
   /** One-shot identity probe. Used at startup so the status pill can
    *  show "polling @MyBotName" and a malformed token surfaces before
    *  the first incoming message. */
@@ -34,6 +61,34 @@ export interface TelegramUpdate {
     text: string;
     date: number;
   };
+  /** Set when a user taps an inline keyboard button on one of the
+   *  bot's outbound messages. `messageId` identifies which bot
+   *  message bore the buttons (the host looks it up in the
+   *  `notification_links` table to recover the originating
+   *  surface / notification). */
+  callbackQuery?: {
+    id: string;
+    fromUserId: string;
+    fromName: string;
+    chatId: string;
+    messageId: number;
+    data: string;
+  };
+}
+
+/** Inbound callback event the host wires up. Emitted exactly once
+ *  per allowed-list-passing user tap; the service has already
+ *  acknowledged the query so the host doesn't have to. */
+export interface TelegramCallbackInfo {
+  callbackQueryId: string;
+  fromUserId: string;
+  fromName: string;
+  chatId: string;
+  messageId: number;
+  /** The raw `<action>|<payload>` string the bot's button carried.
+   *  Hosts parse this to dispatch — keeping the wire format opaque
+   *  here lets future button sets evolve without service changes. */
+  data: string;
 }
 
 export type TelegramServiceState =
@@ -69,6 +124,12 @@ export interface TelegramServiceOptions {
   transport?: TelegramTransport;
   /** Called when an inbound message lands (after persistence + allow-list). */
   onIncoming?: (message: TelegramMessage) => void;
+  /** Called when an inline-keyboard button tap survives the
+   *  allow-list. The service has already acknowledged the
+   *  callback_query so Telegram stops the loading spinner; the host
+   *  is responsible for the actual action (sending text into a
+   *  surface, dismissing a notification, …). */
+  onCallback?: (info: TelegramCallbackInfo) => void;
   /** Called whenever the service state changes (UI status pill). */
   onStatus?: (status: TelegramServiceStatus) => void;
   /** Called for non-fatal logging the host wants to surface. */
@@ -289,6 +350,9 @@ export class TelegramService {
         for (const update of updates) {
           this.offset = Math.max(this.offset ?? 0, update.updateId + 1);
           this.handleUpdate(update);
+          if (update.callbackQuery) {
+            void this.handleCallbackQuery(update.callbackQuery);
+          }
         }
         // Persist after the batch (not per-update) — Telegram already
         // ack'd the whole window, so we can resume from any point in the
@@ -332,6 +396,97 @@ export class TelegramService {
         backoff = Math.min(backoff * 2, ERROR_BACKOFF_MAX_MS);
       }
     }
+  }
+
+  /** Send `text` to `chatId` with an inline keyboard attached. The
+   *  buttons render as tappable rows under the message; user taps
+   *  arrive on the next `getUpdates` batch as `callback_query`
+   *  payloads (handled by `handleCallbackQuery`). Returns the
+   *  persisted outbound row so callers can correlate the bot's
+   *  message id with their own state (e.g. notification id). */
+  async sendMessageWithButtons(
+    chatId: string,
+    text: string,
+    buttons: InlineKeyboardButton[][],
+  ): Promise<TelegramMessage> {
+    const ts = Date.now();
+    let tgMessageId: number | null = null;
+    let sendError: string | null = null;
+
+    if (!this.allowOutbound(chatId)) {
+      sendError = "rate limited (1 msg/sec/chat)";
+    } else {
+      try {
+        const result = await this.transport.sendMessage({
+          chatId,
+          text,
+          replyMarkup: { inline_keyboard: buttons },
+        });
+        if (result.ok && typeof result.messageId === "number") {
+          tgMessageId = result.messageId;
+        } else {
+          sendError = result.description ?? "sendMessage failed";
+        }
+      } catch (err) {
+        sendError = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    const { message: persisted } = this.opts.db.insertMessage({
+      chatId,
+      direction: "out",
+      text,
+      ts,
+      tgMessageId,
+    });
+    this.opts.db.touchChat(chatId, ts);
+    if (sendError) {
+      this.opts.onLog?.("warn", `telegram send failed: ${sendError}`);
+    }
+    return persisted;
+  }
+
+  /** Validate + dispatch a single callback_query. The service ACKs
+   *  the query (so Telegram stops the loading spinner) regardless of
+   *  whether the host accepts the action — silent rejection of an
+   *  off-allow-list user would leave their button stuck spinning. */
+  private async handleCallbackQuery(
+    cq: NonNullable<TelegramUpdate["callbackQuery"]>,
+  ): Promise<void> {
+    if (this.allowed.size > 0 && !this.allowed.has(cq.fromUserId)) {
+      this.opts.onLog?.(
+        "info",
+        `telegram: dropped callback from non-allowed user ${cq.fromUserId}`,
+      );
+      // ACK with a polite "not authorised" toast so the user knows
+      // their tap was seen but rejected — better UX than a hung
+      // spinner.
+      try {
+        await this.transport.answerCallbackQuery({
+          callbackQueryId: cq.id,
+          text: "Not authorised",
+        });
+      } catch {
+        /* swallow — log already noted the rejection */
+      }
+      return;
+    }
+    try {
+      await this.transport.answerCallbackQuery({ callbackQueryId: cq.id });
+    } catch (err) {
+      this.opts.onLog?.(
+        "warn",
+        `telegram: answerCallbackQuery failed: ${(err as Error).message}`,
+      );
+    }
+    this.opts.onCallback?.({
+      callbackQueryId: cq.id,
+      fromUserId: cq.fromUserId,
+      fromName: cq.fromName,
+      chatId: cq.chatId,
+      messageId: cq.messageId,
+      data: cq.data,
+    });
   }
 
   private handleUpdate(update: TelegramUpdate): void {
@@ -393,10 +548,12 @@ function createFetchTransport(token: string): TelegramTransport {
         timeout: String(timeout),
       });
       if (typeof offset === "number") params.set("offset", String(offset));
-      // `allowed_updates=["message"]` keeps us off edited_message /
-      // channel_post / inline_query / etc. — phase 1 only handles direct
-      // messages, the rest are noise on the wire.
-      params.set("allowed_updates", '["message"]');
+      // Subscribe to direct messages and inline-keyboard callback
+      // queries. Phase 2 (Plan #08) adds the callback subscription so
+      // tapped buttons on bot messages round-trip back. Other update
+      // kinds (edited_message, channel_post, inline_query) stay
+      // filtered out — they're noise on this wire.
+      params.set("allowed_updates", '["message","callback_query"]');
       const res = await fetch(`${base}/getUpdates?${params.toString()}`, {
         signal,
       });
@@ -430,11 +587,13 @@ function createFetchTransport(token: string): TelegramTransport {
       }
       return (body.result ?? []).map(parseRawUpdate).filter(isUpdate);
     },
-    async sendMessage({ chatId, text, signal }) {
+    async sendMessage({ chatId, text, signal, replyMarkup }) {
+      const payload: Record<string, unknown> = { chat_id: chatId, text };
+      if (replyMarkup) payload["reply_markup"] = replyMarkup;
       const res = await fetch(`${base}/sendMessage`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text }),
+        body: JSON.stringify(payload),
         signal,
       });
       const body = (await res.json().catch(() => ({}))) as {
@@ -447,6 +606,20 @@ function createFetchTransport(token: string): TelegramTransport {
         messageId: body.result?.message_id,
         description: body.description,
       };
+    },
+    async answerCallbackQuery({ callbackQueryId, text, signal }) {
+      const payload: Record<string, unknown> = {
+        callback_query_id: callbackQueryId,
+      };
+      if (text) payload["text"] = text;
+      const res = await fetch(`${base}/answerCallbackQuery`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+        signal,
+      });
+      const body = (await res.json().catch(() => ({}))) as { ok?: boolean };
+      return { ok: !!body.ok };
     },
     async getMe({ signal }) {
       const res = await fetch(`${base}/getMe`, { signal });
@@ -464,11 +637,31 @@ function createFetchTransport(token: string): TelegramTransport {
   };
 }
 
-function parseRawUpdate(raw: Record<string, unknown>): TelegramUpdate | null {
+export function parseRawUpdate(
+  raw: Record<string, unknown>,
+): TelegramUpdate | null {
   const updateId = raw["update_id"];
   if (typeof updateId !== "number") return null;
+  const out: TelegramUpdate = { updateId };
+
   const message = raw["message"] as Record<string, unknown> | undefined;
-  if (!message) return { updateId };
+  if (message) {
+    const parsed = parseMessage(message);
+    if (parsed) out.message = parsed;
+  }
+
+  const cq = raw["callback_query"] as Record<string, unknown> | undefined;
+  if (cq) {
+    const parsed = parseCallbackQuery(cq);
+    if (parsed) out.callbackQuery = parsed;
+  }
+
+  return out;
+}
+
+function parseMessage(
+  message: Record<string, unknown>,
+): TelegramUpdate["message"] {
   const chat = message["chat"] as Record<string, unknown> | undefined;
   const from = message["from"] as Record<string, unknown> | undefined;
   const text = message["text"];
@@ -481,7 +674,7 @@ function parseRawUpdate(raw: Record<string, unknown>): TelegramUpdate | null {
     typeof messageId !== "number" ||
     typeof date !== "number"
   ) {
-    return { updateId };
+    return undefined;
   }
   const chatId = chat["id"];
   const fromId = from["id"];
@@ -489,27 +682,72 @@ function parseRawUpdate(raw: Record<string, unknown>): TelegramUpdate | null {
     (typeof chatId !== "number" && typeof chatId !== "string") ||
     (typeof fromId !== "number" && typeof fromId !== "string")
   ) {
-    return { updateId };
+    return undefined;
   }
+  const fromName = composeFromName(from, fromId);
+  return {
+    messageId,
+    chatId: String(chatId),
+    chatTitle: (chat["title"] as string | undefined) ?? fromName,
+    fromUserId: String(fromId),
+    fromName,
+    text,
+    date,
+  };
+}
+
+/** Decode a `callback_query` payload. Telegram nests the bot's
+ *  message under `.message` (so we can correlate to which message
+ *  bore the buttons) — we strictly require it; a callback_query
+ *  without a parent message can't round-trip to a notification link
+ *  anyway. */
+function parseCallbackQuery(
+  cq: Record<string, unknown>,
+): TelegramUpdate["callbackQuery"] {
+  const id = cq["id"];
+  const data = cq["data"];
+  const from = cq["from"] as Record<string, unknown> | undefined;
+  const parentMessage = cq["message"] as Record<string, unknown> | undefined;
+  if (typeof id !== "string" || typeof data !== "string" || !from) {
+    return undefined;
+  }
+  const fromId = from["id"];
+  if (typeof fromId !== "number" && typeof fromId !== "string") {
+    return undefined;
+  }
+  const parentChat = parentMessage?.["chat"] as
+    | Record<string, unknown>
+    | undefined;
+  const parentMessageId = parentMessage?.["message_id"];
+  const chatId = parentChat?.["id"];
+  if (
+    typeof parentMessageId !== "number" ||
+    (typeof chatId !== "number" && typeof chatId !== "string")
+  ) {
+    return undefined;
+  }
+  return {
+    id,
+    fromUserId: String(fromId),
+    fromName: composeFromName(from, fromId),
+    chatId: String(chatId),
+    messageId: parentMessageId,
+    data,
+  };
+}
+
+function composeFromName(
+  from: Record<string, unknown>,
+  fromId: number | string,
+): string {
   const firstName = (from["first_name"] as string | undefined) ?? "";
   const lastName = (from["last_name"] as string | undefined) ?? "";
   const username = (from["username"] as string | undefined) ?? "";
-  const fromName =
+  return (
     [firstName, lastName].filter(Boolean).join(" ") ||
     username ||
-    String(fromId);
-  return {
-    updateId,
-    message: {
-      messageId,
-      chatId: String(chatId),
-      chatTitle: (chat["title"] as string | undefined) ?? fromName,
-      fromUserId: String(fromId),
-      fromName,
-      text,
-      date,
-    },
-  };
+    String(fromId)
+  );
 }
 
 function isUpdate(u: TelegramUpdate | null): u is TelegramUpdate {
