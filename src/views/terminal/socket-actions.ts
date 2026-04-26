@@ -24,6 +24,7 @@
 import { showToast } from "./toast";
 import { playNotificationSound } from "./sounds";
 import type { SurfaceManager } from "./surface-manager";
+import type { NotificationOverlay } from "./notification-overlay";
 
 type RpcSend = (name: any, payload: any) => void;
 
@@ -45,6 +46,10 @@ export interface SocketActionContext {
    *  actually makes it into `layout.json`. */
   flushWorkspaceStateSync: () => void;
   onActionComplete: () => void;
+  /** Plan #03 — overlay manager. Pops a transient card over the
+   *  originating surface for fresh notifications. Optional so test
+   *  fixtures don't have to wire the overlay infra. */
+  notificationOverlay?: NotificationOverlay;
 }
 
 type Handler = (
@@ -140,7 +145,7 @@ const SOCKET_ACTION_HANDLERS: Record<string, Handler> = {
   clearProgress: (p, { surfaceManager }) => {
     surfaceManager.clearProgress(p["workspaceId"] as string | undefined);
   },
-  notification: (p, { surfaceManager }) => {
+  notification: (p, { surfaceManager, notificationOverlay }) => {
     const notifs =
       (p["notifications"] as {
         id: string;
@@ -150,9 +155,27 @@ const SOCKET_ACTION_HANDLERS: Record<string, Handler> = {
         surfaceId?: string | null;
       }[]) || [];
     surfaceManager.getSidebar().setNotifications(notifs);
+    const dismissedId = (p["dismissed"] as string) ?? null;
+    if (dismissedId && notificationOverlay) {
+      // Find the surface this notification was tied to so we can
+      // ask the overlay to drop it. Fast — at most a ring-buffer
+      // length scan, and notifications.list is capped at 500.
+      const match = notifs.find((n) => n.id === dismissedId);
+      if (match?.surfaceId) {
+        notificationOverlay.dismiss(match.surfaceId, dismissedId);
+      } else {
+        // The notification was already removed from the list (the
+        // dismiss is what shrunk it). Try the originally-emitted
+        // surfaceId payload; fall through to a global sweep
+        // otherwise.
+        const surfaceId = (p["surfaceId"] as string) ?? null;
+        if (surfaceId) notificationOverlay.dismiss(surfaceId, dismissedId);
+      }
+    }
     if (notifs.length === 0) {
-      // Notifications cleared — stop all glows
+      // Notifications cleared — stop all glows + drop every overlay.
       surfaceManager.clearGlow();
+      notificationOverlay?.dismissAll();
     } else {
       // Glow the source surface pane
       const notifSurfaceId = (p["surfaceId"] as string) ?? null;
@@ -160,7 +183,34 @@ const SOCKET_ACTION_HANDLERS: Record<string, Handler> = {
       // `latest` is only populated on create dispatches — not on
       // dismiss/clear rebroadcasts — so the sound only fires when a
       // genuinely new notification arrives.
-      if (p["latest"]) playNotificationSound();
+      const latest = p["latest"] as
+        | {
+            id?: string;
+            title?: string;
+            body?: string;
+            surfaceId?: string | null;
+          }
+        | undefined;
+      if (latest) playNotificationSound();
+      // Plan #03 §A — show an overlay over the originating surface
+      // for the freshly-arrived notification. Only fires on the
+      // create dispatch (latest is set); dismiss / clear go through
+      // the dismissedId branch above.
+      if (latest && notificationOverlay) {
+        const surfaceId = latest.surfaceId ?? notifSurfaceId;
+        if (typeof latest.id === "string" && surfaceId) {
+          const container = surfaceManager.getSurfaceContainer(surfaceId);
+          if (container) {
+            notificationOverlay.show(container, {
+              id: latest.id,
+              surfaceId,
+              title: latest.title ?? "Notification",
+              body: latest.body ?? "",
+              time: Date.now(),
+            });
+          }
+        }
+      }
     }
   },
   log: (p, { surfaceManager }) => {

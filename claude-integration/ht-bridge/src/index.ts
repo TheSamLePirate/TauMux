@@ -80,6 +80,12 @@ interface Config {
   // Notification subtitle.
   notifySubtitle: string;
 
+  // Plan #03 §C — when false (default), the "Claude Code · waiting"
+  // notification is suppressed and only the sidebar status pill is
+  // updated. Users who want the toast back can flip this to true in
+  // ht-bridge config.json (or set HT_CLAUDE_NOTIFY_ON_IDLE=1).
+  notifyOnIdle: boolean;
+
   // Pricing tables — $ per million tokens. Unknown models fall back to
   // a tier heuristic (opus / sonnet / haiku substring match).
   pricing: Record<string, ModelCost>;
@@ -125,6 +131,7 @@ const DEFAULT_CONFIG: Config = {
   tickerIcon: "chart",
   tickerColor: "#89b4fa",
   notifySubtitle: "Claude Code",
+  notifyOnIdle: false,
   // Seed prices for the Claude 4.x family as of 2026-04. Unknown versions
   // fall back to a tier heuristic in `findFuzzyPrice`. Users can override
   // via config.json without touching this source.
@@ -200,6 +207,11 @@ function loadConfig(): Config {
     c.tickerEnabled =
       env.HT_CLAUDE_TICKER_ENABLED !== "0" &&
       env.HT_CLAUDE_TICKER_ENABLED.toLowerCase() !== "false";
+  }
+  if (env.HT_CLAUDE_NOTIFY_ON_IDLE !== undefined) {
+    c.notifyOnIdle =
+      env.HT_CLAUDE_NOTIFY_ON_IDLE !== "0" &&
+      env.HT_CLAUDE_NOTIFY_ON_IDLE.toLowerCase() !== "false";
   }
   return c;
 }
@@ -545,8 +557,13 @@ function handleNotifyIdle(cfg: Config, payload: Record<string, unknown>): void {
     cfg.labelIcon,
     cfg.idleColor,
   );
-  const msg = (payload["message"] as string) || "Awaiting your prompt";
-  htNotify(cfg, "Claude Code · waiting", msg);
+  // Plan #03 §C — the idle "waiting" notification is opt-in. The
+  // sidebar pill above is enough information for most workflows;
+  // a toast on every Claude pause is just noise.
+  if (cfg.notifyOnIdle) {
+    const msg = (payload["message"] as string) || "Awaiting your prompt";
+    htNotify(cfg, "Claude Code · waiting", msg);
+  }
 }
 
 function handleNotifyPermission(

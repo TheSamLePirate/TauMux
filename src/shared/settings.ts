@@ -56,6 +56,16 @@ export interface AppSettings {
    *  `doc/issues_now.md`. */
   auditsGitUserNameExpected: string | null;
 
+  /** Plan #03 — when true, a notification carrying a `surface_id`
+   *  also pops a transient overlay card anchored over that surface.
+   *  Independent from the sidebar list (the sidebar always tracks
+   *  every notification regardless). Default true. */
+  notificationOverlayEnabled: boolean;
+  /** Auto-dismiss duration for the overlay card, in ms. 0 disables
+   *  auto-dismiss (overlay stays until clicked). Hover pauses the
+   *  timer; the remaining duration restarts on mouseleave. */
+  notificationOverlayMs: number;
+
   /** Sidebar workspace-card density. Drives padding + font-size
    *  scale via the `[data-ws-card-density]` attribute on the
    *  sidebar root. Plan #06 — users can choose how much vertical
@@ -613,6 +623,8 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   bloomIntensity: 0,
   terminalOsc94Enabled: true,
   auditsGitUserNameExpected: "olivierveinand",
+  notificationOverlayEnabled: true,
+  notificationOverlayMs: 6000,
   workspaceCardDensity: "comfortable",
   workspaceCardShowMeta: true,
   workspaceCardShowStats: true,
@@ -777,6 +789,16 @@ export function validateSettings(s: AppSettings): AppSettings {
             s.auditsGitUserNameExpected.length > 0
           ? s.auditsGitUserNameExpected
           : "olivierveinand",
+    notificationOverlayEnabled:
+      typeof s.notificationOverlayEnabled === "boolean"
+        ? s.notificationOverlayEnabled
+        : true,
+    notificationOverlayMs:
+      typeof s.notificationOverlayMs === "number" &&
+      Number.isFinite(s.notificationOverlayMs) &&
+      s.notificationOverlayMs >= 0
+        ? Math.min(60_000, Math.max(0, Math.floor(s.notificationOverlayMs)))
+        : 6000,
     workspaceCardDensity:
       s.workspaceCardDensity === "compact" ||
       s.workspaceCardDensity === "spacious"

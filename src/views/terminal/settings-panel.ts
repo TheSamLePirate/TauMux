@@ -315,6 +315,24 @@ export class SettingsPanel {
       { min: 0, max: 1, step: 0.05 },
       (v) => `${Math.round(v * 100)}%`,
     );
+
+    this.toggleField(
+      c,
+      "Notification Overlay",
+      s.notificationOverlayEnabled,
+      "notificationOverlayEnabled",
+      {
+        note: "Pop a transient card over the originating surface when a notification arrives. Click the body to focus that pane; click the close button to dismiss.",
+      },
+    );
+    this.sliderField(
+      c,
+      "Overlay Auto-dismiss",
+      s.notificationOverlayMs,
+      "notificationOverlayMs",
+      { min: 0, max: 30_000, step: 500 },
+      (v) => (v === 0 ? "off (manual)" : `${(v / 1000).toFixed(1)}s`),
+    );
   }
 
   private renderAppearance(c: HTMLElement, s: AppSettings): void {

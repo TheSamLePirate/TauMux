@@ -1472,6 +1472,14 @@ export class SurfaceManager {
     };
   }
 
+  /** Plan #03 — anchor accessor for the notification overlay. Returns
+   *  the surface container element so the overlay can attach itself
+   *  inside the surface bounds; null when the surface is no longer
+   *  mounted (caller should drop the overlay). */
+  getSurfaceContainer(surfaceId: string): HTMLElement | null {
+    return this.surfaces.get(surfaceId)?.container ?? null;
+  }
+
   /** Start a persistent notification glow on a surface pane. */
   notifyGlow(surfaceId: string | null): void {
     if (surfaceId) {

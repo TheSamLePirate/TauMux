@@ -27,6 +27,7 @@ import { showToast } from "./toast";
 import { registerAgentEvents } from "./agent-events";
 import { registerBrowserEvents } from "./browser-events";
 import { createSocketActionDispatcher } from "./socket-actions";
+import { NotificationOverlay } from "./notification-overlay";
 import { createTestActionRouter } from "./__test-handlers";
 import {
   type Binding,
@@ -276,6 +277,14 @@ function applySettings(settings: AppSettings): void {
   currentSettings = settings;
   surfaceManager.applySettings(settings);
   if (settingsPanel.isVisible()) settingsPanel.updateSettings(settings);
+  // Plan #03 — push the latest overlay knobs to the manager. A flip
+  // of `notificationOverlayEnabled` to false dismisses every live
+  // overlay; an `Ms` change refreshes the auto-dismiss timers in
+  // place rather than waiting for the next notification.
+  notificationOverlay.setOptions({
+    enabled: settings.notificationOverlayEnabled,
+    autoDismissMs: settings.notificationOverlayMs,
+  });
   // τ-mux §9 — variant controller. Lazily constructed on first
   // applySettings so #tau-status-bar (mounted by mountStatusBar()) is
   // guaranteed to exist. Every subsequent call routes through
@@ -1310,6 +1319,17 @@ window.addEventListener("ht-surface-focused", (e: Event) => {
   }
 });
 
+// Plan #03 §A — programmatic surface focus. Notification overlay
+// fires this when the user taps a card body so the originating pane
+// gets keyboard focus + the bun side is told.
+window.addEventListener("ht-focus-surface", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (typeof detail?.surfaceId === "string") {
+    surfaceManager.focusSurface(detail.surfaceId);
+    rpc.send("focusSurface", { surfaceId: detail.surfaceId });
+  }
+});
+
 window.addEventListener("ht-open-context-menu", (e: Event) => {
   const detail = (e as CustomEvent<NativeContextMenuRequest>).detail;
   if (detail) {
@@ -1936,6 +1956,25 @@ window.addEventListener("ht-split", (e: Event) => {
   }
 });
 
+// Plan #03 §A — overlay manager. Hooks dispatch a `ht-focus-surface`
+// event for click-to-focus and route close-button taps through the
+// existing `notification.dismiss` RPC so sidebar + native chrome
+// stay in sync.
+const notificationOverlay = new NotificationOverlay({
+  onCardActivate: ({ id, surfaceId }) => {
+    window.dispatchEvent(
+      new CustomEvent("ht-focus-surface", { detail: { surfaceId } }),
+    );
+    rpc.send("dismissNotification", { id });
+  },
+  onCardDismiss: ({ id }) => {
+    rpc.send("dismissNotification", { id });
+  },
+  onOverflowClick: () => {
+    surfaceManager.setSidebarVisible(true);
+  },
+});
+
 const dispatchSocketAction = createSocketActionDispatcher({
   surfaceManager,
   rpc,
@@ -1967,6 +2006,7 @@ const dispatchSocketAction = createSocketActionDispatcher({
     syncWorkspaceState();
     syncToolbarState();
   },
+  notificationOverlay,
 });
 
 // Tier 2 test router. No-op in production (window.__htTestMode__ is never
