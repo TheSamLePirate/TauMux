@@ -60,7 +60,7 @@ top of this contract.
 - [x] `bun test` — 1080/1080 (was 1055; +16 queue, +9 RPC
       integration)
 - [x] `bun run bump:patch` — 0.2.11 → 0.2.12
-- [ ] Commit — next
+- [x] Commit — `3dd4744`
 
 ## Deferred
 
@@ -125,8 +125,54 @@ top of this contract.
 
 ## Verification log
 
-(empty)
+| Run                                              | Result                              |
+| ------------------------------------------------ | ----------------------------------- |
+| `bun run typecheck`                              | clean (after backtick fix)          |
+| `bun test tests/ask-user-queue.test.ts`          | 16/16 pass                          |
+| `bun test tests/rpc-handler-ask-user.test.ts`    | 9/9 pass                            |
+| `bun test` (full)                                | 1080/1080 pass, 107747 expect() calls |
+| `bun bin/ht --help` (post-fix)                   | exits 0, includes "ask" section    |
+| `bun run bump:patch`                             | 0.2.11 → 0.2.12                     |
 
 ## Commits
 
-(empty)
+- `3dd4744` — ask-user: agent → user question protocol with ht ask CLI
+  - 5 new files (ask-user-queue, rpc-handlers/ask-user, 2 tests, tracking)
+
+## Retrospective
+
+What worked:
+- Splitting the queue into a pure-state module + a thin RPC
+  adapter let me cover every behaviour with hermetic tests
+  (manual timer factory + injected clock + custom idFactory).
+  9 integration tests on top wire the actual `createRpcHandler`
+  and assert the long-pending Promise resolves end-to-end.
+- The CLI-driven answering flow is a great fallback shape — even
+  without a panel, `ht ask` is end-to-end usable today (one shell
+  asks, another answers). Future panel landing on top of the same
+  RPC contract is purely additive.
+- Extending `runRpc` with an optional timeout instead of forking a
+  separate "long-pending" client kept the CLI codebase tight; the
+  one site that needs it (`runAskQuestion`) passes 0 explicitly.
+
+What I'd do differently:
+- The `--help` template literal trap caught me on the first
+  full-suite run. The `bin/ht --help` snapshot test from Plan #01
+  did its job catching it, but ideally I'd wire a static-analysis
+  check that spots embedded backticks inside the help banner. Low
+  priority — caught in 30s by the suite.
+- I considered persisting pending requests to disk so a bun
+  restart wouldn't strand an awaiting agent. Decided against:
+  agents that run a CLI synchronously die when the bun process
+  does anyway, so persistence wouldn't help. Documented as a
+  caveat in the deviation log.
+
+Carried over to Commit B / follow-ups:
+- Modal panel UI in the webview (channel + state already shipped)
+- Telegram routing — re-uses Plan #08 callback infra; needs a
+  new button-set for yesno/choice/text and a force_reply flow
+  for the text/confirm-command kinds
+- Sidebar pending badge (count of open requests by surface)
+- `confirm-command` two-step UX (queue contract is in place via
+  the `unsafe` flag; the panel implements the gate)
+- Settings: per-surface auto-cancel default for stranded requests
