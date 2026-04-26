@@ -179,6 +179,14 @@ export interface AppSettings {
    *  notification. Off by default — the buttons execute keystrokes
    *  on the user's machine. */
   telegramNotificationButtonsEnabled: boolean;
+  /** Plan #10 commit B: when on, every queued `agent.ask_user`
+   *  question with kind `yesno` or `choice` is fanned out to
+   *  allow-listed Telegram chats with matching inline keyboard
+   *  buttons. Tapping a button resolves the agent's `ht ask`
+   *  invocation. Off by default — agents hold the user's attention
+   *  via the bound surface; opting in routes their attention to
+   *  the user's phone. */
+  telegramAskUserEnabled: boolean;
 }
 
 export interface ThemePreset {
@@ -683,6 +691,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   telegramAllowedUserIds: "8446656662",
   telegramNotificationsEnabled: false,
   telegramNotificationButtonsEnabled: false,
+  telegramAskUserEnabled: false,
 };
 
 function clamp(v: number, min: number, max: number): number {
@@ -752,6 +761,10 @@ export function validateSettings(s: AppSettings): AppSettings {
     telegramNotificationButtonsEnabled:
       typeof s.telegramNotificationButtonsEnabled === "boolean"
         ? s.telegramNotificationButtonsEnabled
+        : false,
+    telegramAskUserEnabled:
+      typeof s.telegramAskUserEnabled === "boolean"
+        ? s.telegramAskUserEnabled
         : false,
     cursorStyle:
       s.cursorStyle === "bar" || s.cursorStyle === "underline"

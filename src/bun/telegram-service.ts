@@ -17,6 +17,20 @@ export interface InlineKeyboardMarkup {
   inline_keyboard: InlineKeyboardButton[][];
 }
 
+/** `force_reply` markup — instructs the user's client to open a
+ *  reply box pre-targeted at this message. Plan #10 commit B uses
+ *  it for `kind: text` questions: when the user types and sends,
+ *  the inbound update carries `reply_to_message` matching the
+ *  original prompt's tg_message_id, which we look up in
+ *  text_reply_links to route the typed answer to the queue. */
+export interface ForceReplyMarkup {
+  force_reply: true;
+  selective?: boolean;
+  input_field_placeholder?: string;
+}
+
+export type ReplyMarkup = InlineKeyboardMarkup | ForceReplyMarkup;
+
 /** Telegram bot interface used by the service. Real impl is `fetch` against
  *  api.telegram.org; tests inject a stub so no real network calls happen.
  *  Keep it intentionally narrow — only the endpoints we actually use. */
@@ -30,11 +44,29 @@ export interface TelegramTransport {
     chatId: string;
     text: string;
     signal?: AbortSignal;
-    /** Optional inline keyboard markup. When present, the message
-     *  is rendered with tappable buttons; the user's tap arrives back
-     *  as a `callback_query` update on the next poll. */
-    replyMarkup?: InlineKeyboardMarkup;
+    /** Optional inline keyboard markup OR force_reply hint.
+     *  Inline keyboards: buttons; user tap arrives as
+     *  `callback_query`. Force-reply: opens the user's reply box
+     *  pre-targeted at this message; their typed answer arrives as
+     *  a normal message with `reply_to_message` set. */
+    replyMarkup?: ReplyMarkup;
+    /** Optional Telegram parse mode (`MarkdownV2` or `HTML`).
+     *  When set, the bot's text is rendered with formatting per
+     *  the matching escape rules. Plan #10 uses MarkdownV2 for the
+     *  ask-user prompt (bold title, monospace body fragments). */
+    parseMode?: "MarkdownV2" | "HTML";
   }): Promise<{ ok: boolean; messageId?: number; description?: string }>;
+  /** Edit a previously-sent message in place — used by Plan #10
+   *  to stamp resolution footers ("answered: yes") on top of the
+   *  original ask-user prompt and remove the now-stale buttons. */
+  editMessageText(opts: {
+    chatId: string;
+    tgMessageId: number;
+    text: string;
+    replyMarkup?: ReplyMarkup;
+    parseMode?: "MarkdownV2" | "HTML";
+    signal?: AbortSignal;
+  }): Promise<{ ok: boolean; description?: string }>;
   /** Acknowledge a callback_query so Telegram stops nagging the user.
    *  Optional `text` shows a transient toast in their client. */
   answerCallbackQuery(opts: {
@@ -60,6 +92,11 @@ export interface TelegramUpdate {
     fromName: string;
     text: string;
     date: number;
+    /** Plan #10 — when the user uses Telegram's reply UI (force_reply
+     *  or any reply), their inbound message carries the original
+     *  message id. The host looks this up in `text_reply_links` to
+     *  route a typed answer to the matching ask-user request. */
+    replyToMessageId?: number;
   };
   /** Set when a user taps an inline keyboard button on one of the
    *  bot's outbound messages. `messageId` identifies which bot
@@ -122,8 +159,14 @@ export interface TelegramServiceOptions {
   allowedUserIds: string;
   db: TelegramDatabase;
   transport?: TelegramTransport;
-  /** Called when an inbound message lands (after persistence + allow-list). */
-  onIncoming?: (message: TelegramMessage) => void;
+  /** Called when an inbound message lands (after persistence +
+   *  allow-list). Plan #10 commit B threads `replyToMessageId`
+   *  through so the host can match a typed force_reply answer to a
+   *  pending ask-user request. */
+  onIncoming?: (
+    message: TelegramMessage,
+    extra?: { replyToMessageId?: number },
+  ) => void;
   /** Called when an inline-keyboard button tap survives the
    *  allow-list. The service has already acknowledged the
    *  callback_query so Telegram stops the loading spinner; the host
@@ -409,6 +452,23 @@ export class TelegramService {
     text: string,
     buttons: InlineKeyboardButton[][],
   ): Promise<TelegramMessage> {
+    return this.sendRich(chatId, text, {
+      inline_keyboard: buttons,
+    });
+  }
+
+  /** Plan #10 commit B — generic rich send. Accepts any
+   *  `ReplyMarkup` (inline keyboard or force-reply) plus an
+   *  optional MarkdownV2 / HTML parse mode for the bot's text.
+   *  Same persistence + rate limiting as `sendMessage` so callers
+   *  get a uniform `TelegramMessage` row regardless of which UX
+   *  shape they invoked. */
+  async sendRich(
+    chatId: string,
+    text: string,
+    replyMarkup: ReplyMarkup | undefined,
+    parseMode?: "MarkdownV2" | "HTML",
+  ): Promise<TelegramMessage> {
     const ts = Date.now();
     let tgMessageId: number | null = null;
     let sendError: string | null = null;
@@ -420,7 +480,8 @@ export class TelegramService {
         const result = await this.transport.sendMessage({
           chatId,
           text,
-          replyMarkup: { inline_keyboard: buttons },
+          replyMarkup,
+          parseMode,
         });
         if (result.ok && typeof result.messageId === "number") {
           tgMessageId = result.messageId;
@@ -444,6 +505,42 @@ export class TelegramService {
       this.opts.onLog?.("warn", `telegram send failed: ${sendError}`);
     }
     return persisted;
+  }
+
+  /** Edit a previously-sent bot message. Used by Plan #10 commit B
+   *  to stamp resolution footers ("answered: yes" etc.) on top of
+   *  ask-user prompts when they resolve. Best-effort — swallows
+   *  transport errors with a warn log so a transient Telegram
+   *  failure doesn't crash the queue's event loop. */
+  async editMessage(
+    chatId: string,
+    tgMessageId: number,
+    text: string,
+    replyMarkup?: ReplyMarkup,
+    parseMode?: "MarkdownV2" | "HTML",
+  ): Promise<boolean> {
+    try {
+      const result = await this.transport.editMessageText({
+        chatId,
+        tgMessageId,
+        text,
+        replyMarkup,
+        parseMode,
+      });
+      if (!result.ok) {
+        this.opts.onLog?.(
+          "warn",
+          `telegram editMessageText failed: ${result.description ?? "unknown"}`,
+        );
+      }
+      return result.ok;
+    } catch (err) {
+      this.opts.onLog?.(
+        "warn",
+        `telegram editMessageText threw: ${(err as Error).message}`,
+      );
+      return false;
+    }
   }
 
   /** Validate + dispatch a single callback_query. The service ACKs
@@ -519,7 +616,9 @@ export class TelegramService {
       name: msg.chatTitle || msg.fromName || msg.chatId,
       ts: persisted.ts,
     });
-    this.opts.onIncoming?.(persisted);
+    this.opts.onIncoming?.(persisted, {
+      replyToMessageId: msg.replyToMessageId,
+    });
   }
 }
 
@@ -587,9 +686,10 @@ function createFetchTransport(token: string): TelegramTransport {
       }
       return (body.result ?? []).map(parseRawUpdate).filter(isUpdate);
     },
-    async sendMessage({ chatId, text, signal, replyMarkup }) {
+    async sendMessage({ chatId, text, signal, replyMarkup, parseMode }) {
       const payload: Record<string, unknown> = { chat_id: chatId, text };
       if (replyMarkup) payload["reply_markup"] = replyMarkup;
+      if (parseMode) payload["parse_mode"] = parseMode;
       const res = await fetch(`${base}/sendMessage`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -606,6 +706,33 @@ function createFetchTransport(token: string): TelegramTransport {
         messageId: body.result?.message_id,
         description: body.description,
       };
+    },
+    async editMessageText({
+      chatId,
+      tgMessageId,
+      text,
+      replyMarkup,
+      parseMode,
+      signal,
+    }) {
+      const payload: Record<string, unknown> = {
+        chat_id: chatId,
+        message_id: tgMessageId,
+        text,
+      };
+      if (replyMarkup) payload["reply_markup"] = replyMarkup;
+      if (parseMode) payload["parse_mode"] = parseMode;
+      const res = await fetch(`${base}/editMessageText`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+        signal,
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        description?: string;
+      };
+      return { ok: !!body.ok, description: body.description };
     },
     async answerCallbackQuery({ callbackQueryId, text, signal }) {
       const payload: Record<string, unknown> = {
@@ -685,6 +812,15 @@ function parseMessage(
     return undefined;
   }
   const fromName = composeFromName(from, fromId);
+  // Plan #10 — capture reply_to_message.message_id when present so
+  // the host can route typed answers from `force_reply` prompts.
+  const replyTo = message["reply_to_message"] as
+    | Record<string, unknown>
+    | undefined;
+  const replyToMessageId =
+    replyTo && typeof replyTo["message_id"] === "number"
+      ? (replyTo["message_id"] as number)
+      : undefined;
   return {
     messageId,
     chatId: String(chatId),
@@ -693,6 +829,7 @@ function parseMessage(
     fromName,
     text,
     date,
+    replyToMessageId,
   };
 }
 

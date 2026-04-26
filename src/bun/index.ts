@@ -73,6 +73,14 @@ import {
 import { HealthRegistry } from "./health";
 import { PlanStore } from "./plan-store";
 import { AskUserQueue } from "./ask-user-queue";
+import {
+  buildButtonsForKind,
+  formatQuestionForTelegram,
+  formatResolutionFooter,
+  parseAskCallbackData,
+  type AskUserAttribution,
+} from "./ask-user-telegram";
+import { parseAllowedTelegramIds } from "../shared/settings";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -127,6 +135,11 @@ askUser.subscribe((event) => {
       type: "askUserShown",
       request: event.request,
     });
+    // Plan #10 commit B — fan out to Telegram when the user opted
+    // in. Fire-and-forget; the helper persists link rows so the
+    // callback / reply-to handlers can route the answer back into
+    // the queue.
+    void fanoutAskUserToTelegram(event.request);
   } else {
     rpc.send("askUserEvent", {
       kind: "resolved",
@@ -138,6 +151,10 @@ askUser.subscribe((event) => {
       request_id: event.request_id,
       response: event.response,
     });
+    // Plan #10 commit B — stamp resolution footers on every
+    // Telegram message linked to this request so the chat history
+    // becomes a clean audit log of every answered question.
+    void editAskUserResolutionToTelegram(event.request_id, event.response);
   }
 });
 // Seed pty / socket / web-mirror with a "starting" baseline. Each
@@ -236,8 +253,18 @@ try {
   if (dropped > 0) {
     console.log(`[telegram] pruned ${dropped} stale notification link(s)`);
   }
+  // Plan #10 commit B — same 24h horizon for ask-user link rows
+  // (button-driven kinds + force_reply text). A tap on a day-old
+  // ask prompt would fire against a stale request id.
+  const askDropped = telegramDb.pruneOldAskUserLinks(cutoff);
+  const replyDropped = telegramDb.pruneOldTextReplyLinks(cutoff);
+  if (askDropped > 0 || replyDropped > 0) {
+    console.log(
+      `[telegram] pruned ${askDropped} ask-user + ${replyDropped} text-reply link(s)`,
+    );
+  }
 } catch (err) {
-  console.warn("[telegram] notification_links prune failed:", err);
+  console.warn("[telegram] link table prune failed:", err);
 }
 let telegramService: TelegramService | null = null;
 
@@ -1471,6 +1498,205 @@ async function sendTelegramNotificationWithButtons(opts: {
  *      predates Plan #08)
  *    - the data string doesn't parse cleanly
  *  Logs the dispatch path so the user can audit what their tap did. */
+/** Plan #10 commit B — fan an ask-user request out to every
+ *  allow-listed Telegram chat. For yesno / choice / confirm-command
+ *  the message carries an inline keyboard; for text it carries
+ *  force_reply. Each successful send persists a link row so the
+ *  matching callback (or reply_to_message) can resolve the queue.
+ *  Fire-and-forget — if a chat send fails, the CLI fallback path
+ *  (`ht ask answer`) still works. */
+async function fanoutAskUserToTelegram(
+  request: import("../shared/types").AskUserRequest,
+): Promise<void> {
+  const settings = settingsManager.get();
+  if (!settings.telegramAskUserEnabled) return;
+  const svc = telegramService;
+  if (!svc) return;
+  const allowed = parseAllowedTelegramIds(settings.telegramAllowedUserIds);
+  if (allowed.size === 0) return;
+
+  const attribution = resolveAskAttribution(request);
+  const text = formatQuestionForTelegram(request, attribution);
+  const markup = buildButtonsForKind(request);
+
+  // Cache the title so the resolution edit can re-stamp it without
+  // a SQLite round-trip. Cleared on resolve.
+  requestTitleCache.set(request.request_id, request.title);
+
+  for (const chatId of allowed) {
+    try {
+      const persisted = await svc.sendRich(chatId, text, markup, "MarkdownV2");
+      if (persisted.tgMessageId === null) continue;
+      // Persist the right link table per kind so the response
+      // routing can find it later.
+      if (request.kind === "text") {
+        telegramDb.linkTextReply({
+          chatId,
+          tgMessageId: persisted.tgMessageId,
+          requestId: request.request_id,
+        });
+      } else {
+        telegramDb.linkAskUser({
+          chatId,
+          tgMessageId: persisted.tgMessageId,
+          requestId: request.request_id,
+          kind: request.kind,
+        });
+      }
+      broadcastTelegramMessage(wireTelegramMessage(persisted));
+    } catch (err) {
+      console.warn(
+        `[telegram] ask-user fan-out to ${chatId} failed: ${(err as Error).message}`,
+      );
+    }
+  }
+}
+
+/** Pull the workspace + pane attribution for a request from the
+ *  authoritative AppContext snapshot. Empty when the surface no
+ *  longer exists (e.g. closed mid-question). */
+function resolveAskAttribution(
+  request: import("../shared/types").AskUserRequest,
+): AskUserAttribution {
+  const ws = app.workspaceState.find((w) =>
+    w.surfaceIds.includes(request.surface_id),
+  );
+  return {
+    workspace: ws?.name,
+    pane: (ws?.surfaceTitles?.[request.surface_id] as string) ?? undefined,
+    agent: request.agent_id,
+  };
+}
+
+/** Plan #10 commit B — when an ask-user request resolves (answer /
+ *  cancel / timeout), edit every linked Telegram message to stamp
+ *  the resolution footer + remove the now-stale buttons. We also
+ *  drop the link rows so a stale tap can't accidentally re-resolve
+ *  a future request that recycles the id. */
+async function editAskUserResolutionToTelegram(
+  requestId: string,
+  response: import("../shared/types").AskUserResponse,
+): Promise<void> {
+  const svc = telegramService;
+  // Even when the service is gone we still need to drop the link
+  // rows so they can't outlive the request.
+  const askLinks = telegramDb.getAskUserLinksForRequest(requestId);
+  if (svc && askLinks.length > 0) {
+    // Reconstruct enough of the request to render the footer. We
+    // store kind in the link row; everything else needed by the
+    // formatter is in the `response` + a synthetic title pulled
+    // back from the original message text would be costly to fetch.
+    // Use a lightweight stub — the footer template only reads
+    // title + attribution, and we don't know either at this point.
+    // Reasonable simplification: render a footer-only edit (no
+    // strike-through over the original title). This still removes
+    // the buttons + stamps the answer on top of the original body
+    // because we render with a fresh template.
+    const stubRequest: import("../shared/types").AskUserRequest = {
+      request_id: requestId,
+      surface_id: "",
+      kind: askLinks[0]!.kind as import("../shared/types").AskUserKind,
+      title: requestTitleCache.get(requestId) ?? "Question",
+      created_at: 0,
+    };
+    const text = formatResolutionFooter(stubRequest, response);
+    for (const link of askLinks) {
+      // No replyMarkup → buttons disappear from the message.
+      void svc.editMessage(
+        link.chatId,
+        link.tgMessageId,
+        text,
+        undefined,
+        "MarkdownV2",
+      );
+    }
+  }
+  // For text requests we don't edit — Telegram's force_reply
+  // prompt is replaced by the user's reply itself in the chat
+  // flow, so editing it would just add noise.
+  telegramDb.dropAllLinksForRequest(requestId);
+  requestTitleCache.delete(requestId);
+}
+
+/** Tiny in-memory cache of (request_id → title) populated when we
+ *  fan out, consumed when we edit on resolution. Avoids round-
+ *  tripping through SQLite for a one-line string we already have
+ *  in hand at fan-out time. */
+const requestTitleCache = new Map<string, string>();
+
+/** Plan #10 commit B — dispatch a parsed `ask|<id>|<value>`
+ *  callback. Looks up the request kind from the link row, applies
+ *  the kind-specific value semantics, and resolves the queue (or
+ *  edits the message in place for the confirm-command "ack" step
+ *  that reveals the run gate). */
+async function handleAskCallback(
+  info: {
+    callbackQueryId: string;
+    fromUserId: string;
+    fromName: string;
+    chatId: string;
+    messageId: number;
+    data: string;
+  },
+  cb: { requestId: string; value: string },
+): Promise<void> {
+  const link = telegramDb.getAskUserLink(info.chatId, info.messageId);
+  if (!link) {
+    console.warn(
+      `[telegram] ask callback ignored — no link for chat=${info.chatId} msg=${info.messageId}`,
+    );
+    return;
+  }
+  console.log(
+    `[telegram] ask callback action=${cb.value} from=${info.fromName}(${info.fromUserId}) request=${cb.requestId}`,
+  );
+  const value = cb.value;
+  // Confirm-command "ack" — reveal the run gate by editing the
+  // message in place; do NOT resolve the queue.
+  if (link.kind === "confirm-command" && value === "ack") {
+    const svc = telegramService;
+    if (!svc) return;
+    const stub: import("../shared/types").AskUserRequest = {
+      request_id: cb.requestId,
+      surface_id: "",
+      kind: "confirm-command",
+      title: requestTitleCache.get(cb.requestId) ?? "Confirm",
+      created_at: 0,
+    };
+    const markup = buildButtonsForKind(stub, { confirmRevealed: true });
+    const text = formatQuestionForTelegram(stub, {});
+    void svc.editMessage(
+      info.chatId,
+      info.messageId,
+      // Re-stamp the prompt with a warning emphasis on the body.
+      text + "\n\n*\\!\\!\\! Tap Run to execute the destructive action\\.*",
+      markup,
+      "MarkdownV2",
+    );
+    return;
+  }
+  if (value === "cancel") {
+    socketHandler("agent.ask_cancel", {
+      request_id: cb.requestId,
+      reason: `cancelled by ${info.fromName} via Telegram`,
+    });
+    return;
+  }
+  // Everything else is an answer. Map kind-specific tokens back to
+  // the canonical answer values per AskUserResponse semantics.
+  let answerValue = value;
+  if (link.kind === "yesno") {
+    answerValue = value === "yes" ? "yes" : value === "no" ? "no" : value;
+  } else if (link.kind === "confirm-command") {
+    if (value === "run") answerValue = "run";
+    else return; // unknown token; ignore
+  }
+  socketHandler("agent.ask_answer", {
+    request_id: cb.requestId,
+    value: answerValue,
+  });
+}
+
 async function handleTelegramCallback(info: {
   callbackQueryId: string;
   fromUserId: string;
@@ -1479,6 +1705,14 @@ async function handleTelegramCallback(info: {
   messageId: number;
   data: string;
 }): Promise<void> {
+  // Plan #10 commit B — ask|<id>|<value> wins routing first; the
+  // notification dispatch below is the fallback for the legacy
+  // ok/continue/stop family.
+  const askCb = parseAskCallbackData(info.data);
+  if (askCb) {
+    await handleAskCallback(info, askCb);
+    return;
+  }
   const link = telegramDb.getNotificationLink(info.chatId, info.messageId);
   if (!link) {
     console.warn(
@@ -1565,8 +1799,27 @@ async function applyTelegramSettings(): Promise<void> {
     token: s.telegramBotToken,
     allowedUserIds: s.telegramAllowedUserIds,
     db: telegramDb,
-    onIncoming: (message) => {
+    onIncoming: (message, extra) => {
       broadcastTelegramMessage(wireTelegramMessage(message));
+      // Plan #10 commit B — route a force_reply answer back into
+      // the AskUserQueue when the inbound message replies to one
+      // of our ask-user prompts. Falls through silently for normal
+      // chat messages.
+      if (extra?.replyToMessageId !== undefined) {
+        const link = telegramDb.getTextReplyLink(
+          message.chatId,
+          extra.replyToMessageId,
+        );
+        if (link) {
+          console.log(
+            `[telegram] text reply routed to ask request=${link.requestId}`,
+          );
+          socketHandler("agent.ask_answer", {
+            request_id: link.requestId,
+            value: message.text,
+          });
+        }
+      }
     },
     onCallback: (info) => {
       void handleTelegramCallback(info);

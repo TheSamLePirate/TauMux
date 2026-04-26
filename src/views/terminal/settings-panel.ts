@@ -1125,6 +1125,21 @@ export class SettingsPanel {
           "the buttons execute keystrokes on your machine.",
       },
     );
+
+    this.toggleField(
+      c,
+      "Route ht ask to Telegram",
+      s.telegramAskUserEnabled,
+      "telegramAskUserEnabled",
+      {
+        note:
+          "Forward agent-driven `ht ask` questions to allow-listed " +
+          "Telegram chats. Yes/No/choice render as inline buttons; " +
+          "text questions use force_reply so you type the answer in chat; " +
+          "confirm-command questions show a two-step gate. Resolved " +
+          "messages are edited in place to leave a clean audit trail.",
+      },
+    );
   }
 
   /** Password-style input. Same wiring as `textField` but masked, with a

@@ -94,6 +94,37 @@ export class TelegramDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_notification_links_created
         ON notification_links (created_at);
+      -- Plan #10 commit B — links a Telegram bot message bearing
+      -- inline keyboard buttons to the originating ask-user request.
+      -- Used by the callback dispatch (ask|<id>|<value>) to recover
+      -- the request id, and by the resolution-feedback edit to find
+      -- every message that needs its footer stamped.
+      CREATE TABLE IF NOT EXISTS ask_user_links (
+        chat_id TEXT NOT NULL,
+        tg_message_id INTEGER NOT NULL,
+        request_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (chat_id, tg_message_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ask_user_links_request
+        ON ask_user_links (request_id);
+      CREATE INDEX IF NOT EXISTS idx_ask_user_links_created
+        ON ask_user_links (created_at);
+      -- Plan #10 — distinct table for kind=text prompts. The user
+      -- replies to the bot's force_reply prompt; the inbound update
+      -- carries reply_to_message.message_id matching this row.
+      CREATE TABLE IF NOT EXISTS text_reply_links (
+        chat_id TEXT NOT NULL,
+        tg_message_id INTEGER NOT NULL,
+        request_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (chat_id, tg_message_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_text_reply_links_request
+        ON text_reply_links (request_id);
+      CREATE INDEX IF NOT EXISTS idx_text_reply_links_created
+        ON text_reply_links (created_at);
     `);
     // Dedupe any pre-existing duplicates from older app versions before
     // we add the partial UNIQUE index — index creation would otherwise
@@ -369,6 +400,136 @@ export class TelegramDatabase {
     );
     const res = stmt.run(cutoffMs);
     return Number(res.changes);
+  }
+
+  // ── Plan #10: ask-user links ───────────────────────────────────
+
+  /** Persist (chatId, tgMessageId) → (requestId, kind) for an
+   *  ask-user prompt sent to Telegram. Idempotent on the key —
+   *  rebinding overwrites. `kind` mirrors `AskUserKind` so the
+   *  callback dispatch can apply kind-specific value semantics
+   *  (e.g. confirm-command's two-step "ack" → "run"). */
+  linkAskUser(opts: {
+    chatId: string;
+    tgMessageId: number;
+    requestId: string;
+    kind: string;
+    ts?: number;
+  }): void {
+    const ts = opts.ts ?? Date.now();
+    this.db
+      .prepare(
+        `INSERT INTO ask_user_links
+           (chat_id, tg_message_id, request_id, kind, created_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(chat_id, tg_message_id) DO UPDATE SET
+           request_id = excluded.request_id,
+           kind       = excluded.kind,
+           created_at = excluded.created_at`,
+      )
+      .run(opts.chatId, opts.tgMessageId, opts.requestId, opts.kind, ts);
+  }
+
+  /** Resolve a tapped button or pending-edit lookup. Returns null
+   *  when the link wasn't recorded. */
+  getAskUserLink(
+    chatId: string,
+    tgMessageId: number,
+  ): { requestId: string; kind: string } | null {
+    const row = this.db
+      .prepare(
+        `SELECT request_id, kind FROM ask_user_links
+          WHERE chat_id = ? AND tg_message_id = ?`,
+      )
+      .get(chatId, tgMessageId) as
+      | { request_id: string; kind: string }
+      | undefined;
+    if (!row) return null;
+    return { requestId: row.request_id, kind: row.kind };
+  }
+
+  /** All link rows for a given request id — used by the resolution-
+   *  feedback edit to find every chat the prompt was fanned out to. */
+  getAskUserLinksForRequest(
+    requestId: string,
+  ): Array<{ chatId: string; tgMessageId: number; kind: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT chat_id, tg_message_id, kind FROM ask_user_links
+          WHERE request_id = ?`,
+      )
+      .all(requestId) as Array<{
+      chat_id: string;
+      tg_message_id: number;
+      kind: string;
+    }>;
+    return rows.map((r) => ({
+      chatId: r.chat_id,
+      tgMessageId: r.tg_message_id,
+      kind: r.kind,
+    }));
+  }
+
+  pruneOldAskUserLinks(cutoffMs: number): number {
+    const stmt = this.db.prepare(
+      `DELETE FROM ask_user_links WHERE created_at < ?`,
+    );
+    return Number(stmt.run(cutoffMs).changes);
+  }
+
+  // ── Plan #10: text-reply links ─────────────────────────────────
+
+  linkTextReply(opts: {
+    chatId: string;
+    tgMessageId: number;
+    requestId: string;
+    ts?: number;
+  }): void {
+    const ts = opts.ts ?? Date.now();
+    this.db
+      .prepare(
+        `INSERT INTO text_reply_links
+           (chat_id, tg_message_id, request_id, created_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(chat_id, tg_message_id) DO UPDATE SET
+           request_id = excluded.request_id,
+           created_at = excluded.created_at`,
+      )
+      .run(opts.chatId, opts.tgMessageId, opts.requestId, ts);
+  }
+
+  getTextReplyLink(
+    chatId: string,
+    tgMessageId: number,
+  ): { requestId: string } | null {
+    const row = this.db
+      .prepare(
+        `SELECT request_id FROM text_reply_links
+          WHERE chat_id = ? AND tg_message_id = ?`,
+      )
+      .get(chatId, tgMessageId) as { request_id: string } | undefined;
+    if (!row) return null;
+    return { requestId: row.request_id };
+  }
+
+  pruneOldTextReplyLinks(cutoffMs: number): number {
+    const stmt = this.db.prepare(
+      `DELETE FROM text_reply_links WHERE created_at < ?`,
+    );
+    return Number(stmt.run(cutoffMs).changes);
+  }
+
+  /** Drop every link row for a request id — both ask_user_links
+   *  and text_reply_links. Used right after a request resolves so
+   *  a stale tap on an old (now-edited) message can't accidentally
+   *  re-resolve a fresh request that recycled the id. */
+  dropAllLinksForRequest(requestId: string): void {
+    this.db
+      .prepare(`DELETE FROM ask_user_links WHERE request_id = ?`)
+      .run(requestId);
+    this.db
+      .prepare(`DELETE FROM text_reply_links WHERE request_id = ?`)
+      .run(requestId);
   }
 
   close(): void {
