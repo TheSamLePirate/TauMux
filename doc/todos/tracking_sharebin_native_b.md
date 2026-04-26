@@ -65,7 +65,7 @@ Defer to a future commit:
 - [x] `bun test` — 1179/1179 (was 1144; +35 lib-b)
 - [x] `bun scripts/audit-emoji.ts` clean
 - [x] `bun run bump:patch` — 0.2.14 → 0.2.15
-- [ ] Commit — next
+- [x] Commit — `444effd`
 
 ## Deviations from the plan
 
@@ -108,8 +108,50 @@ formatter ran on multiple writes per the established pattern)
 
 ## Verification log
 
-(empty)
+| Run                                            | Result                              |
+| ---------------------------------------------- | ----------------------------------- |
+| `bun run typecheck`                            | clean                               |
+| `bun test tests/sharebin-libs-b.test.ts`       | 35/35 pass                          |
+| `bun scripts/audit-emoji.ts`                   | clean                               |
+| `bun test` (full)                              | 1179/1179 pass, 107904 expect() calls |
+| `bun run bump:patch`                           | 0.2.14 → 0.2.15                     |
 
 ## Commits
 
-(empty)
+- `444effd` — shareBin: show_table + show_yaml + show_html + lib infrastructure
+  - 11 files changed: 3 new libs + 3 new executables + 1 test file + tracking
+
+## Retrospective
+
+What worked:
+- Three utilities, three lib modules, one tracking file. The
+  pattern from commit A (pure lib + thin executable + hermetic
+  tests) scales linearly — every new utility from here on lands
+  with the same shape.
+- The CSV parser hit the obvious edge cases first try (quoted
+  fields with embedded newlines, doubled-quote escape, CRLF).
+  Test-driven feels right when the spec is RFC-y.
+- Sortable-table-via-embedded-script is a nice property: the
+  panel stays interactive after the source script exits because
+  the JS lives in the rendered HTML, not in webview code.
+- The minimal YAML parser is opinionated and honest — it covers
+  what agents actually dump, throws cleanly on what it doesn't,
+  and points at `yq` for the rest.
+
+What I'd do differently:
+- The YAML parser's sequence-of-mappings handling does a `[...lines]`
+  spread + a synthetic line replacement; a bit hacky. A cleaner
+  refactor would track a `lineOverride` parallel state instead.
+  Cheap follow-up; tests pin behaviour so the refactor is safe.
+- I keep writing similar-shaped scripts (read-stdin-or-file,
+  parse-flags, render, ht.showHtml, waitForClose). Pulling that
+  scaffold into `lib/cli.ts` would shrink each utility by ~30
+  lines. Worth doing on the next utility batch.
+
+Carried over to follow-ups:
+- show_gitlog (git log → commit-graph table)
+- show_qr (Reed-Solomon QR encoder)
+- show_chart (line / bar / scatter via SVG)
+- show_webcam (getUserMedia in interactive panel)
+- shareBin/lib/cli.ts — extract the read-stdin-or-file +
+  flag-parsing scaffold every utility duplicates today
