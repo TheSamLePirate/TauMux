@@ -198,7 +198,8 @@ follow-up:
 
 ## Commits
 
-- (pending) — shareBin: show_qr + show_chart + show_gitlog + show_webcam + lib/cli.ts
+- `bb0dcc5` — shareBin: show_qr + show_chart + show_gitlog + show_webcam + lib/cli.ts
+  - 13 files changed; 4 new libs + 4 new executables + 1 test file + tracking + version bump
 
 ## Retrospective
 
