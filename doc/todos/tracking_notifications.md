@@ -62,7 +62,7 @@ more", auto-dismiss with explicit timeout knob.
 - [x] `bun run typecheck` clean
 - [x] `bun test` — 1016/1016 (was 998; +18 overlay tests)
 - [x] `bun run bump:patch` — 0.2.8 → 0.2.9
-- [ ] Commit — next
+- [x] Commit — `f6ae82c`
 
 ## Deferred
 
@@ -128,8 +128,55 @@ more", auto-dismiss with explicit timeout knob.
 
 ## Verification log
 
-(empty)
+| Run                                              | Result                              |
+| ------------------------------------------------ | ----------------------------------- |
+| `bun run typecheck`                              | clean (after every edit)            |
+| `bun test tests/notification-overlay.test.ts`    | 18/18 pass                          |
+| `bun scripts/audit-emoji.ts`                     | clean (post-fix)                    |
+| `bun scripts/audit-animations.ts`                | clean (post-registration)           |
+| `bun scripts/audit-guideline-do-donts.ts`        | 11/11 pass (post-radius-fix)        |
+| `bun test` (full)                                | 1016/1016 pass, 107615 expect() calls |
+| `bun run bump:patch`                             | 0.2.8 → 0.2.9                       |
 
 ## Commits
 
-(empty)
+- `f6ae82c` — notifications: terminal-anchored overlay cards + suppress Claude idle toast
+  - 14 files changed, 1132 insertions(+), 8 deletions(-)
+
+## Retrospective
+
+What worked:
+- Splitting `composeStack` out as a pure function gave me 5 trivial
+  tests covering the load-bearing ordering / overflow logic without
+  any DOM. The DOM tests are then thin shells over its results.
+- Per-surface `OverlayStack` rooted inside the surface container
+  means existing layout / drag / resize logic moves overlays for
+  free — no extra repositioning code, no resize observers.
+- Pause-and-resume of the auto-dismiss timer + the meter animation
+  reads naturally on hover without any setTimeout-arithmetic
+  surprises. Storing the deadline + recomputing remaining ms on
+  pause is more robust than tracking elapsed.
+- The dismiss path routing through the existing
+  `dismissNotification` RPC means a tap on the overlay is
+  indistinguishable from a tap on the sidebar — single source of
+  truth for "this notification is read".
+
+What I'd do differently:
+- Three audits caught me in a row (emoji / animations / radius).
+  Worth wiring `bun scripts/audit-*.ts` into a single
+  `bun run audits` package script and running it before
+  `bun test` on UI work. Cheap follow-up.
+- I considered adding a small "auto-test" mode to the overlay where
+  fast test code can advance the auto-dismiss without waiting on
+  real timers. Skipped — the actual `Bun.sleep(80)` is fast enough,
+  and synthesising the timeout would risk drift between fixture
+  and production behaviour.
+
+Carried over to follow-ups:
+- Section B — auto-accept Claude permission prompts (needs Claude
+  hook payload taxonomy + security-review of safe prompt-kind list)
+- Per-pane chip showing "+N pending" while the sidebar is closed
+- Telegram routing for overlay actions (the existing Plan #08
+  callback path already covers OK / Continue / Stop on
+  forwarded notifications; could surface overlays for
+  Telegram-originated actions too)
