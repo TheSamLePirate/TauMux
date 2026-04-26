@@ -41,7 +41,7 @@ environment. Logged as deferred.
 - [x] `bun run typecheck` clean
 - [x] `bun test` — 965/965 pass (was 952; +13 audit tests)
 - [x] `bun run bump:patch` — 0.2.4 → 0.2.5
-- [ ] Commit — next
+- [x] Commit — `b66f62f`
 
 ## Deferred
 
@@ -89,8 +89,47 @@ environment. Logged as deferred.
 
 ## Verification log
 
-(empty)
+| Run                                | Result                              |
+| ---------------------------------- | ----------------------------------- |
+| `bun run typecheck`                | clean (after every edit)            |
+| `bun test tests/audits.test.ts`    | 13/13 pass                          |
+| `bun test` (full)                  | 965/965 pass, 107518 expect() calls |
+| `bun bin/ht --help` (manual)       | "Startup audits" section present    |
+| `bun run bump:patch`               | 0.2.4 → 0.2.5                       |
 
 ## Commits
 
-(empty)
+- `b66f62f` — audit: startup canary checks (git-user) with ht audit list/run/fix
+  - 11 files changed, 718 insertions(+), 3 deletions(-)
+
+## Retrospective (part A)
+
+What worked:
+- Subprocess hooking (`GitRunner` parameter) made the test suite
+  trivially hermetic. No fixture files, no env scrubbing, just a
+  `runner: GitRunner = async (args) => …` stub.
+- Threading `audits` through `RpcHandlerOptions` as optional means
+  the existing 38-test `tests/rpc-handler.test.ts` setup needed
+  zero changes — the `audit.*` handlers only register when wired.
+- Reusing the existing logger (`console.warn` lands in the rotating
+  log) gave us a "log file shows the canary fired" story for free
+  without inventing a new persistence layer.
+
+What I'd do differently:
+- The CLI pretty-printer's TTY check (`process.stdout.isTTY`)
+  trips inside Bun-spawned tests where stdout is piped — colour
+  codes get suppressed in test output as expected, but if I want
+  a future test to assert the colour codes exist, I'll need to
+  inject the TTY signal explicitly.
+- Plan said "expose via `ht doctor`". I haven't wired audits into
+  doctor yet — small follow-up. Probably worth a dedicated
+  `--with-audits` flag or just always include them since doctor is
+  meant to be the kitchen-sink diagnostic.
+
+Carried over to a follow-up:
+- Sidebar warn banner with "Fix" button (data path is in place)
+- Settings panel input field for `auditsGitUserNameExpected`
+  (validated already, just no UI yet)
+- Plan #14 part B — sidebar resize line-height bug (needs live
+  UI repro, can't reproduce in this environment)
+- `ht doctor` integration — list audits in the doctor output
