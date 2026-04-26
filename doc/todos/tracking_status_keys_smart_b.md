@@ -21,7 +21,7 @@
 - [x] `bun run typecheck` clean
 - [x] `bun test` — 952/952 pass (was 943; +9 resolver tests)
 - [x] `bun run bump:patch` — 0.2.3 → 0.2.4
-- [ ] Commit B — next
+- [x] Commit B — `c6d12c8`
 
 ## Deviations from the plan
 
@@ -73,8 +73,43 @@
 
 ## Verification log
 
-(empty)
+| Run                                                    | Result                              |
+| ------------------------------------------------------ | ----------------------------------- |
+| `bun run typecheck`                                    | clean (after every edit)            |
+| `bun test tests/ht-status-key-settings.test.ts`        | 9/9 pass                            |
+| `bun test` (full suite)                                | 952/952 pass, 107482 expect() calls |
+| `bun run bump:patch`                                   | 0.2.3 → 0.2.4                       |
 
 ## Commits
 
-(empty)
+- `c6d12c8` — status: discover ht keys + Settings → Layout reorder/hide UI
+  - 15 files changed, 452 insertions(+), 13 deletions(-)
+
+## Retrospective (commit B, closes Plan #02)
+
+What worked:
+- Pure-helper-first again. Writing the resolver with table-driven
+  tests took 10 minutes and let me wire it into both bottom-bar and
+  sidebar with confidence. Both call sites are 4 lines each.
+- The "stale entries dimmed" UX detail came out of the resolver's
+  inherent capability (it tolerates order entries that aren't in
+  `seen`). I just rendered that distinction in the settings panel
+  and the user sees a clear story for legacy customisations.
+- Optional `SidebarStateInput.htStatusKey*` saved touching every
+  legacy sidebar-state test fixture.
+
+What I'd do differently:
+- I should have grepped the full project for shared CSS class names
+  before mutating `.status-key-order-row` in commit B. Instead I
+  noticed the grid-template clash by typecheck-passing-but-the-UI-
+  would-have-broken and patched mid-stream. A grep pass at the
+  start would have saved that thought.
+- The webview→bun resync flow (if a long-lived webview reconnects
+  mid-session) could miss the initial debounced push — I'm relying
+  on bun pushing `restoreHtKeysSeen` only when a new key arrives.
+  In practice this is fine because the webview is the *same* one
+  that sees the dispatch; web-mirror clients get a fresh broadcast.
+  Worth noting if anyone cares.
+
+Plan #02 is now fully closed. Both the protocol (commit A) and the
+UX for managing discovered keys (commit B) are shipped.
