@@ -598,6 +598,14 @@ The `tests-e2e/` suite exercises the web mirror (HTTP + WebSocket + xterm.js ren
 - **Theme default** — Obsidian (10 built-in presets)
 - **Font** — JetBrains Mono Nerd Font
 
+
+## Logger: 
+
+Logs go to ~/Library/Logs/tau-mux/app-YYYY-MM-DD.log — one file per day, rotating by date.
+Quick way to tail today's:
+tail -f ~/Library/Logs/tau-mux/app-$(date +%Y-%m-%d).log
+(Tests redirect to $HT_CONFIG_DIR/logs to keep the real directory clean — see src/bun/logger.ts:9-13.)
+
 ## License
 
 MIT

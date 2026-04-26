@@ -14,6 +14,8 @@ const command = args[0];
 
 if (!command || command === "--help" || command === "-h") {
   printHelp();
+  console.log(SOCKET_PATH);
+  console.log(process.env["HT_SOCKET_PATH"] );
   process.exit(0);
 }
 
