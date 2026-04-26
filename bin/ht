@@ -877,26 +877,35 @@ function mapCommand(): RpcCall {
 
 /** One JSON-RPC round-trip over the unix socket. Resolves to the
  *  decoded `result`, rejects on transport failure / server error /
- *  5s timeout. Single-shot — opens, sends, closes on first response. */
+ *  timeout. Single-shot — opens, sends, closes on first response.
+ *
+ *  `timeoutMs` defaults to 5000 (the original watchdog so a stuck
+ *  app doesn't hang the CLI forever). Plan #10's `agent.ask_user`
+ *  RPC is long-pending — pass 0 to disable the watchdog and wait
+ *  for the bun-side response. */
 function runRpc(
   method: string,
   params: Record<string, unknown>,
+  timeoutMs: number = 5000,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify({ id: "1", method, params }) + "\n";
     const sock = connect(SOCKET_PATH);
     let buf = "";
     let done = false;
-    const timer = setTimeout(() => {
-      if (done) return;
-      done = true;
-      sock.end();
-      reject(
-        new Error(
-          `no response from HyperTerm within 5s (method=${method}). The app may be unresponsive. Socket: ${SOCKET_PATH}`,
-        ),
-      );
-    }, 5000);
+    const timer =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            if (done) return;
+            done = true;
+            sock.end();
+            reject(
+              new Error(
+                `no response from HyperTerm within ${timeoutMs}ms (method=${method}). The app may be unresponsive. Socket: ${SOCKET_PATH}`,
+              ),
+            );
+          }, timeoutMs)
+        : null;
 
     sock.on("connect", () => sock.write(payload));
     sock.on("data", (chunk) => {
@@ -909,7 +918,7 @@ function runRpc(
           const res = JSON.parse(line);
           if (done) return;
           done = true;
-          clearTimeout(timer);
+          if (timer) clearTimeout(timer);
           sock.end();
           if (res.error) reject(new Error(String(res.error)));
           else resolve(res.result);
@@ -1078,6 +1087,174 @@ async function runLogs(): Promise<void> {
   console.log(logPath);
 }
 
+/** `ht ask` (Plan #10) — blocking question to the human user.
+ *  Subcommands:
+ *    ask <kind> [--title T] [--body B] [--choices …] [--default V] [--timeout MS]
+ *      → fires `agent.ask_user`, blocks until the matching answer
+ *        lands. Prints the chosen value on stdout; exits non-zero on
+ *        cancel/timeout with a stderr reason.
+ *    ask pending [--surface S]
+ *      → list pending requests.
+ *    ask answer <id> <value>
+ *      → resolve a pending request from a sibling shell. Returns
+ *        `(ok)` on success, `(no such id)` otherwise.
+ *    ask cancel <id> [--reason …]
+ *      → cancel a pending request. */
+async function runAsk(): Promise<void> {
+  const sub = positional[0] || "";
+  const isKnownKind =
+    sub === "yesno" ||
+    sub === "choice" ||
+    sub === "text" ||
+    sub === "confirm-command";
+  if (sub === "pending") {
+    return runAskPending();
+  }
+  if (sub === "answer") {
+    return runAskAnswer();
+  }
+  if (sub === "cancel") {
+    return runAskCancel();
+  }
+  if (isKnownKind) {
+    return runAskQuestion(sub);
+  }
+  console.error(
+    "Usage: ht ask <yesno|choice|text|confirm-command> [--title T] [--body B] [--choices a,b,c] [--default V] [--timeout MS]",
+  );
+  console.error("       ht ask pending [--surface S]");
+  console.error("       ht ask answer <id> <value>");
+  console.error("       ht ask cancel <id> [--reason …]");
+  process.exit(1);
+}
+
+async function runAskQuestion(kind: string): Promise<void> {
+  const surfaceId =
+    flags["surface"] || process.env["HT_SURFACE"] || undefined;
+  if (!surfaceId) {
+    console.error(
+      "ht ask: --surface S is required (or run inside a τ-mux pane so HT_SURFACE is set)",
+    );
+    process.exit(1);
+  }
+  const title = flags["title"] || positional[1] || "";
+  if (!title) {
+    console.error("ht ask: --title T is required");
+    process.exit(1);
+  }
+  const body = flags["body"];
+  const choicesRaw = flags["choices"];
+  const choices =
+    kind === "choice" && choicesRaw
+      ? choicesRaw.split(",").map((s) => {
+          const [id, label] = s.split(":");
+          const cleanId = (id ?? "").trim();
+          return {
+            id: cleanId,
+            label: (label ?? cleanId).trim(),
+          };
+        })
+      : undefined;
+  if (kind === "choice" && (!choices || choices.length === 0)) {
+    console.error(
+      "ht ask choice: --choices a,b,c (or 'id:label,id:label') is required",
+    );
+    process.exit(1);
+  }
+  const timeoutRaw = flags["timeout"];
+  const timeoutMs =
+    typeof timeoutRaw === "string" && timeoutRaw.length > 0
+      ? Math.max(0, Math.floor(Number(timeoutRaw)))
+      : undefined;
+  // The wire timeout is whatever the bun-side queue enforces; we
+  // disable the CLI's runRpc watchdog so the long-pending RPC can
+  // sit until the user answers.
+  const params: Record<string, unknown> = {
+    surface_id: surfaceId,
+    kind,
+    title,
+  };
+  if (body) params["body"] = body;
+  if (choices) params["choices"] = choices;
+  if (flags["default"]) params["default"] = flags["default"];
+  if (typeof timeoutMs === "number") params["timeout_ms"] = timeoutMs;
+  if (flags["unsafe"] === "true") params["unsafe"] = true;
+  if (flags["agent"]) params["agent_id"] = flags["agent"];
+
+  let result: { request_id: string; action: string; value?: string; reason?: string };
+  try {
+    result = (await runRpc("agent.ask_user", params, 0)) as typeof result;
+  } catch (err) {
+    console.error(`ht ask: ${(err as Error).message}`);
+    process.exit(1);
+  }
+  if (result.action === "ok" && typeof result.value === "string") {
+    console.log(result.value);
+    return;
+  }
+  if (result.action === "timeout") {
+    console.error("ht ask: timed out");
+    process.exit(2);
+  }
+  // cancel
+  if (result.reason) console.error(`ht ask: cancelled — ${result.reason}`);
+  else console.error("ht ask: cancelled");
+  process.exit(3);
+}
+
+async function runAskPending(): Promise<void> {
+  const params: Record<string, unknown> = {};
+  if (flags["surface"]) params["surface_id"] = flags["surface"];
+  const result = (await runRpc("agent.ask_pending", params)) as {
+    pending: Array<{
+      request_id: string;
+      surface_id: string;
+      kind: string;
+      title: string;
+      body?: string;
+    }>;
+  };
+  if (!result.pending || result.pending.length === 0) {
+    console.log("(no pending questions)");
+    return;
+  }
+  for (const r of result.pending) {
+    const head = `${r.request_id.padEnd(10)} ${r.kind.padEnd(16)} ${r.surface_id}`;
+    console.log(`${head}  ${r.title}`);
+    if (r.body) console.log(`   ${r.body.split("\n").join("\n   ")}`);
+  }
+}
+
+async function runAskAnswer(): Promise<void> {
+  const id = positional[1];
+  const value = positional[2];
+  if (!id || value === undefined) {
+    console.error("ht ask answer: <id> <value> are required");
+    process.exit(1);
+  }
+  const result = (await runRpc("agent.ask_answer", {
+    request_id: id,
+    value,
+  })) as { resolved: boolean };
+  console.log(result.resolved ? "ok" : "(no such id — already resolved or unknown)");
+  if (!result.resolved) process.exit(1);
+}
+
+async function runAskCancel(): Promise<void> {
+  const id = positional[1];
+  if (!id) {
+    console.error("ht ask cancel: <id> is required");
+    process.exit(1);
+  }
+  const params: Record<string, unknown> = { request_id: id };
+  if (flags["reason"]) params["reason"] = flags["reason"];
+  const result = (await runRpc("agent.ask_cancel", params)) as {
+    resolved: boolean;
+  };
+  console.log(result.resolved ? "ok (cancelled)" : "(no such id)");
+  if (!result.resolved) process.exit(1);
+}
+
 async function runTelegramRead(): Promise<void> {
   let chatId =
     flags["chat"] ||
@@ -1170,6 +1347,13 @@ async function main(): Promise<void> {
   }
   if (command === "logs") {
     await runLogs();
+    return;
+  }
+  // `ask` blocks indefinitely (or until --timeout) waiting for a
+  // human to answer via a sibling `ht ask answer …` / future panel
+  // / Telegram. Intercept so we can disable the runRpc watchdog.
+  if (command === "ask") {
+    await runAsk();
     return;
   }
 
@@ -1813,6 +1997,17 @@ Agent plan (Plan #09):
        [--title T]                      replaces the step title.
   plan complete --workspace W           Mark every step as done.
   plan clear --workspace W              Drop the plan entirely.
+
+Ask the user (Plan #10):
+  ask <kind> --title T [--body B]       Block until the user answers via a
+       [--choices id:label,...]         sibling 'ht ask answer'. Kinds:
+       [--default V] [--timeout MS]     yesno | choice | text |
+       [--unsafe true]                  confirm-command. Prints the chosen
+                                        value on stdout; exits non-zero on
+                                        cancel/timeout.
+  ask pending [--surface S]             List pending questions.
+  ask answer <id> <value>               Resolve a pending question.
+  ask cancel <id> [--reason ...]        Cancel a pending question.
 
 Aliases:
   capture-pane                          Alias for read-screen (tmux compat)

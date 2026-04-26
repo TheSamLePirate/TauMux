@@ -11,6 +11,8 @@ import { METHOD_SCHEMAS, validateParams } from "./rpc-handlers/shared";
 import { type AuditRegistryHandle, registerAudit } from "./rpc-handlers/audit";
 import { registerPlan } from "./rpc-handlers/plan";
 import type { PlanStore } from "./plan-store";
+import { registerAskUser } from "./rpc-handlers/ask-user";
+import type { AskUserQueue } from "./ask-user-queue";
 import { registerSystem } from "./rpc-handlers/system";
 import { registerWorkspace } from "./rpc-handlers/workspace";
 import { registerSurface } from "./rpc-handlers/surface";
@@ -83,6 +85,10 @@ export interface RpcHandlerOptions {
    *  CLI / agents can publish multi-step plans into the store.
    *  Optional in test fixtures that don't need plan handlers. */
   plans?: PlanStore;
+  /** Plan #10 — when wired, `agent.ask_*` handlers register and
+   *  the queue holds pending agent → user questions. Optional in
+   *  test fixtures. */
+  askUser?: AskUserQueue;
 }
 
 export function createRpcHandler(
@@ -149,6 +155,7 @@ export function createRpcHandler(
     registerTelegram(deps),
     options.audits ? registerAudit(deps, options.audits) : {},
     options.plans ? registerPlan(deps, options.plans) : {},
+    options.askUser ? registerAskUser(deps, options.askUser) : {},
   );
 
   return (method: string, params: Record<string, unknown>) => {

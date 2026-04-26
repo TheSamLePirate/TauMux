@@ -347,6 +347,68 @@ export type NativeContextMenuRequest =
 
 // === RPC Schema ===
 // bun.messages = what bun RECEIVES from webview
+// ── Plan #10: agent → user question protocol ────────────────────────
+// An agent (CLI / future model integration) calls `agent.ask_user`
+// when it needs human input. The bun-side queue holds the request
+// until the user answers via the matching CLI / panel / Telegram
+// path; the original `ht ask` invocation blocks on stdout until the
+// resolution comes back. Optional `timeout_ms` lets agents bound
+// the wait; rejected with `action: "timeout"` when it elapses.
+export type AskUserKind = "yesno" | "choice" | "text" | "confirm-command";
+
+export interface AskUserChoice {
+  id: string;
+  label: string;
+}
+
+export interface AskUserRequest {
+  /** Stable id assigned by the queue when the request lands.
+   *  Surfaced by `agent.ask_pending` so a sibling CLI / UI can
+   *  dispatch a response by id. */
+  request_id: string;
+  /** Originating surface — drives where the future modal panel
+   *  anchors and which surface gets focus on resolve. Required even
+   *  for headless callers; the CLI forwards `HT_SURFACE`. */
+  surface_id: string;
+  /** Optional agent id (e.g. `claude:1`) for attribution. Allows
+   *  multiple agents to ask questions on the same surface. */
+  agent_id?: string;
+  kind: AskUserKind;
+  /** One-line prompt. */
+  title: string;
+  /** Optional multi-line body — markdown is allowed when the panel
+   *  lands; the CLI prints it verbatim. */
+  body?: string;
+  /** For `kind === "choice"`: the available picks. Empty for other
+   *  kinds. */
+  choices?: AskUserChoice[];
+  /** Pre-filled / preselected value (interpreted per-kind). */
+  default?: string;
+  /** Auto-cancel-with-timeout after this many ms. 0 / undefined =
+   *  wait forever. */
+  timeout_ms?: number;
+  /** Hint: render with a "destructive" treatment (used for
+   *  confirm-command). */
+  unsafe?: boolean;
+  /** Wall-clock ms when the request landed in the queue. */
+  created_at: number;
+}
+
+export interface AskUserResponse {
+  request_id: string;
+  action: "ok" | "cancel" | "timeout";
+  /** The chosen value:
+   *    yesno         — "yes" or "no"
+   *    choice        — the chosen choice id
+   *    text          — the typed string
+   *    confirm-command — "run" on accept; absent on cancel/timeout
+   */
+  value?: string;
+  /** Optional human-readable reason (e.g. user supplied a cancel
+   *  message). Surfaced by `ht ask` on stderr for context. */
+  reason?: string;
+}
+
 // ── Plan #09: agent plan store ───────────────────────────────────────
 // Each plan step carries an opaque short id (`M1` / `step-3` / …),
 // a human-readable title, and a state. `done` / `active` / `waiting`
@@ -715,6 +777,25 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       // the webview's plan panel can render without polling. The wire
       // shape is the same `Plan[]` callers receive from `plan.list`.
       restorePlans: { plans: Plan[] };
+
+      // Plan #10 — pending agent → user questions. The future modal
+      // panel listens on this channel. `kind: "shown"` covers add +
+      // update; `kind: "resolved"` carries the response so the panel
+      // can fade out the matching card.
+      askUserEvent:
+        | {
+            kind: "shown";
+            request: AskUserRequest;
+          }
+        | {
+            kind: "resolved";
+            request_id: string;
+            response: AskUserResponse;
+          }
+        | {
+            kind: "snapshot";
+            pending: AskUserRequest[];
+          };
 
       // Socket API dispatched actions (bun → webview)
       socketAction: { action: string; payload: Record<string, unknown> };

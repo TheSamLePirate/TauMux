@@ -72,6 +72,7 @@ import {
 } from "./audits";
 import { HealthRegistry } from "./health";
 import { PlanStore } from "./plan-store";
+import { AskUserQueue } from "./ask-user-queue";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -110,6 +111,34 @@ plans.subscribe(() => {
       plans: plans.list(),
     });
   }, 100);
+});
+
+// Plan #10 — agent → user question queue. Long-pending RPCs
+// (`agent.ask_user`) await resolution from a sibling
+// `agent.ask_answer` / `agent.ask_cancel` (or the timeout). The
+// future webview panel listens on the `askUserEvent` push channel;
+// we forward every shown / resolved transition immediately
+// (transitions are rare; no need to debounce).
+const askUser = new AskUserQueue();
+askUser.subscribe((event) => {
+  if (event.kind === "shown") {
+    rpc.send("askUserEvent", { kind: "shown", request: event.request });
+    app.webServer?.broadcast({
+      type: "askUserShown",
+      request: event.request,
+    });
+  } else {
+    rpc.send("askUserEvent", {
+      kind: "resolved",
+      request_id: event.request_id,
+      response: event.response,
+    });
+    app.webServer?.broadcast({
+      type: "askUserResolved",
+      request_id: event.request_id,
+      response: event.response,
+    });
+  }
 });
 // Seed pty / socket / web-mirror with a "starting" baseline. Each
 // subsystem updates its row when it actually comes up. Audits push
@@ -2237,6 +2266,7 @@ const socketHandler = createRpcHandler(
     },
     health,
     plans,
+    askUser,
   },
 );
 const socketServer = new SocketServer(socketPath, socketHandler);
