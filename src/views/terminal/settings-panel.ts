@@ -973,6 +973,19 @@ export class SettingsPanel {
       note: "Width of the sidebar in pixels.",
     });
 
+    this.toggleField(
+      c,
+      "OSC 9;4 progress reporting",
+      s.terminalOsc94Enabled,
+      "terminalOsc94Enabled",
+      {
+        note:
+          "Decode ConEmu-style progress escapes (cargo, ninja, modern build " +
+          "tools) and bridge them to the workspace progress bar. Disable if a " +
+          "tool emits 9;4 noise you don't want surfaced.",
+      },
+    );
+
     // Diagnostic paths — read-only. Useful when bug-reporting; the
     // "Reveal" button matches the App-menu item of the same name.
     this.diagnosticPathsBlock(c);

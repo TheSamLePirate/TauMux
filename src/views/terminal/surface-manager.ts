@@ -17,6 +17,7 @@ function surfaceIdentity(
   return kind === "agent" ? "agent" : "human";
 }
 import { TerminalEffects } from "./terminal-effects";
+import { describeOsc94State, parseOsc94Payload } from "./osc-progress";
 import type {
   PanelEvent,
   PersistedLayout,
@@ -144,6 +145,11 @@ export class SurfaceManager {
   private dividerEls: HTMLDivElement[] = [];
   private sidebar: Sidebar;
   private terminalEffectsEnabled = true;
+  /** Routed from `AppSettings.terminalOsc94Enabled` — when false, the
+   *  registered xterm OSC 9 handler returns false on 9;4 messages so
+   *  the parser falls back to its default behaviour (the chunk is
+   *  silently consumed without painting progress). Default true. */
+  private osc94Enabled = true;
   private wsCounter = 0;
   private paneDrag: PaneDragController;
   private fontSize: number;
@@ -958,6 +964,7 @@ export class SurfaceManager {
   applySettings(s: AppSettings): void {
     this.fontSize = s.fontSize;
     this.terminalEffectsEnabled = s.terminalBloom;
+    this.osc94Enabled = s.terminalOsc94Enabled;
     setNotificationSoundSettings({
       enabled: s.notificationSoundEnabled,
       volume: s.notificationSoundVolume,
@@ -2072,6 +2079,54 @@ export class SurfaceManager {
         const clean = title.trim().slice(0, 60);
         if (!clean) return;
         this.renameSurface(surfaceId, clean, { fromOsc: true });
+      });
+    }
+
+    // OSC 9;4 progress reporting (ConEmu-flavoured, supported by every
+    // modern terminal). Build tools (`cargo`, `ninja`, `pv`, custom
+    // scripts) emit `ESC ] 9 ; 4 ; <state> ; <progress> ESC \` to
+    // surface progress in the host terminal. We bridge to the existing
+    // workspace progress bar so the user sees a coherent indicator
+    // regardless of whether the source was a script (`ht set-progress`)
+    // or a build tool's OSC. Gated by `terminalOsc94Enabled` so users
+    // who want to opt out can.
+    //
+    // `parser` is exposed via the proposed-api flag (allowProposedApi
+    // is already true for our terminal). The mock used in
+    // happy-dom-based SurfaceManager tests doesn't expose `parser`, so
+    // we feature-detect to keep those green.
+    const parser = (
+      term as unknown as {
+        parser?: {
+          registerOscHandler?: (
+            ident: number,
+            cb: (data: string) => boolean,
+          ) => void;
+        };
+      }
+    ).parser;
+    if (parser?.registerOscHandler) {
+      parser.registerOscHandler(9, (body) => {
+        if (!this.osc94Enabled) return false;
+        const update = parseOsc94Payload(body);
+        if (!update) return false; // not a 9;4 message — let other handlers run
+        const wsHit = this.findWorkspaceForSurface(surfaceId);
+        if (!wsHit) return true;
+        if (update.state === "remove") {
+          this.clearProgress(wsHit.id);
+        } else {
+          // Indeterminate / state-without-value: keep whatever level
+          // was last known so the bar doesn't snap to 0 mid-stream.
+          const prev = this.workspaces[wsHit.index]?.progress?.value;
+          const value =
+            update.value === null ? (prev ?? 0) : update.value / 100;
+          this.setProgress(
+            wsHit.id,
+            value,
+            describeOsc94State(update.state) ?? undefined,
+          );
+        }
+        return true; // we handled it; don't echo to the buffer
       });
     }
 

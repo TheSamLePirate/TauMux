@@ -42,6 +42,12 @@ export interface AppSettings {
   terminalBloom: boolean;
   bloomIntensity: number;
 
+  /** OSC 9;4 progress passthrough. When true, the xterm OSC 9
+   *  handler decodes ConEmu-style progress messages (`ESC ] 9 ; 4 ; …`)
+   *  and bridges them to the workspace progress bar. Default true.
+   *  Disable if a tool emits OSC 9;4 noise you don't want surfaced. */
+  terminalOsc94Enabled: boolean;
+
   /** τ-mux §11 bloom gate. Stamped by SettingsManager the first time
    *  a pre-τ-mux settings file is loaded; we also snapshot the user's
    *  pre-migration bloomIntensity into `legacyBloomIntensity` so
@@ -559,6 +565,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   // adjusting the slider is a no-op (prevents surprise glow).
   terminalBloom: false,
   bloomIntensity: 0,
+  terminalOsc94Enabled: true,
   bloomMigratedToTau: false,
   legacyBloomIntensity: 0,
 
@@ -698,6 +705,10 @@ export function validateSettings(s: AppSettings): AppSettings {
       0,
       2,
     ),
+    terminalOsc94Enabled:
+      typeof s.terminalOsc94Enabled === "boolean"
+        ? s.terminalOsc94Enabled
+        : true,
   };
 }
 
