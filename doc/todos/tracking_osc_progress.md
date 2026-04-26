@@ -18,7 +18,7 @@
 - [x] `bun run typecheck` clean
 - [x] `bun test` — 943/943 (was 916; +27 OSC parser tests)
 - [x] `bun run bump:patch` — 0.2.2 → 0.2.3
-- [ ] Commit — next
+- [x] Commit — `67165a5`
 
 ## Deviations from the plan
 
@@ -57,8 +57,38 @@
 
 ## Verification log
 
-(empty)
+| Run                                  | Result                              |
+| ------------------------------------ | ----------------------------------- |
+| `bun run typecheck`                  | clean (after every edit)            |
+| `bun test tests/osc-progress.test.ts` | 27/27 pass                         |
+| `bun test` (full)                    | 943/943 pass, 107473 expect() calls |
+| `bun run bump:patch`                 | 0.2.2 → 0.2.3                       |
 
 ## Commits
 
-(empty)
+- `67165a5` — xterm: bridge OSC 9;4 progress reports to the workspace progress bar
+  - 10 files changed, 431 insertions(+), 3 deletions(-)
+
+## Retrospective
+
+What worked:
+- Pure-parser-first paid off again. 27 table-driven cases were
+  trivial to author once the wire format was nailed down, and they
+  caught my off-by-one in the value-required-but-empty path
+  immediately.
+- Feature-detecting `term.parser.registerOscHandler` (instead of
+  asserting it exists) kept the SurfaceManager mock tests green
+  without me having to teach the mock about a new xterm method.
+- Reusing the existing `setProgress` plumbing meant zero new RPC
+  surface, zero new socket-action types, and zero new web-mirror
+  wiring — the whole pipeline was already in place.
+
+What I'd do differently:
+- Building a per-pane progress chip from the start might have been
+  worth it; reusing the workspace-level bar is correct but a single
+  busy pane in a multi-pane workspace is a slightly weird UX.
+  Cheap follow-up.
+- I didn't add an end-to-end test that feeds OSC bytes through a
+  real xterm and asserts the workspace progress changed — happy-dom
+  doesn't run xterm cleanly. The pure parser is the high-leverage
+  bit; the bridge code is small enough that visual review covers it.
