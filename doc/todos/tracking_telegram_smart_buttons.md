@@ -65,7 +65,7 @@ are pure additions on top of what this commit lands.
 - [x] `bun run typecheck` clean
 - [x] `bun test` — 992/992 (was 977; +15 callback tests)
 - [x] `bun run bump:patch` — 0.2.6 → 0.2.7
-- [ ] Commit — next
+- [x] Commit — `f0fa116`
 
 ## Deferred (follow-ups)
 
@@ -123,8 +123,48 @@ are pure additions on top of what this commit lands.
 
 ## Verification log
 
-(empty)
+| Run                                       | Result                              |
+| ----------------------------------------- | ----------------------------------- |
+| `bun run typecheck`                       | clean (after every edit)            |
+| `bun test tests/telegram-callback.test.ts` | 15/15 pass                         |
+| `bun test` (full)                         | 992/992 pass, 107562 expect() calls |
+| `bun scripts/audit-emoji.ts` (post-fix)   | clean (initially flagged emoji button labels — replaced with text) |
+| `bun run bump:patch`                      | 0.2.6 → 0.2.7                       |
 
 ## Commits
 
-(empty)
+- `f0fa116` — telegram: inline-keyboard buttons on forwarded notifications (OK/Continue/Stop)
+  - 11 files changed, 1035 insertions(+), 28 deletions(-)
+
+## Retrospective
+
+What worked:
+- The existing `TelegramTransport` injection point made the entire
+  callback wire testable without touching real Telegram. 15
+  hermetic tests cover the round-trip, allow-list, and persistence
+  paths.
+- Reusing the existing rate limiter + `insertMessage` for
+  `sendMessageWithButtons` meant the buttons-aware send inherits
+  the same robustness as the plain send (per-chat token bucket,
+  duplicate detection via tg_message_id partial unique index).
+- Persisting `notification_links` rows by `(chat_id, tg_message_id)`
+  primary key makes the lookup O(log n) at callback time and the
+  prune O(n on cutoff) — both cheap. The 24-hour cutoff matches
+  Telegram's natural conversation horizon.
+
+What I'd do differently:
+- I should have run `bun scripts/audit-emoji.ts` before `bun test`
+  on the first attempt — would have caught the button-label
+  emojis in 200ms instead of 9s. Adding it to my pre-commit
+  routine for any work that touches user-facing strings.
+- The acked-on-reject UX (transient "Not authorised" toast) is
+  not unit-tested directly; I assert that `answerCallbackQuery`
+  was called, but don't assert the `text:` payload. Worth a
+  one-line tightening if anyone changes the fixture later.
+
+Carried over to follow-ups:
+- "Commit" button + `shareBin/auto-commit` script
+- Custom free-text path with two-step confirmation
+- `ht notify --buttons claude|pi|default` per-call override
+- Project-scoped button sets (Claude vs pi vs default), routed
+  via the existing claude-integration / pi-extensions hooks
