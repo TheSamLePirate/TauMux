@@ -14,8 +14,6 @@ const command = args[0];
 
 if (!command || command === "--help" || command === "-h") {
   printHelp();
-  console.log(SOCKET_PATH);
-  console.log(process.env["HT_SOCKET_PATH"] );
   process.exit(0);
 }
 
@@ -833,6 +831,117 @@ async function resolveDefaultChatId(): Promise<{
   }
 }
 
+/** `ht doctor` — diagnostic kitchen sink. Prints the resolved socket
+ *  path, whether `HT_SOCKET_PATH` was explicit, socket reachability,
+ *  app version, log file path, and the local Bun runtime version.
+ *
+ *  This is the first command users run when "the CLI doesn't seem to
+ *  do anything"; it's also the canonical "paste this output in your
+ *  bug report" command. Each line is prefixed with a stable key so
+ *  scripts can grep by `^socket_path:` etc. */
+async function runDoctor(): Promise<void> {
+  const envSet = !!process.env["HT_SOCKET_PATH"];
+  console.log(`socket_path:        ${SOCKET_PATH}`);
+  console.log(
+    `HT_SOCKET_PATH:     ${envSet ? "set" : "unset (using default)"}`,
+  );
+  console.log(`bun_version:        ${typeof Bun !== "undefined" ? Bun.version : "n/a"}`);
+
+  // Single round-trip — system.identify includes socket_path + log_path.
+  let identify: {
+    focused_surface?: unknown;
+    active_workspace?: unknown;
+    socket_path?: unknown;
+    log_path?: unknown;
+  } | null = null;
+  try {
+    identify = (await runRpc("system.identify", {})) as typeof identify;
+    console.log(`socket_reachable:   yes`);
+  } catch (err) {
+    console.log(
+      `socket_reachable:   no (${(err as Error & { code?: string }).code ?? (err as Error).message})`,
+    );
+  }
+
+  if (identify) {
+    console.log(
+      `socket_path_bound:  ${String(identify.socket_path ?? "(unknown)")}`,
+    );
+    console.log(`log_path:           ${String(identify.log_path ?? "(none)")}`);
+    console.log(
+      `focused_surface:    ${String(identify.focused_surface ?? "(none)")}`,
+    );
+    console.log(
+      `active_workspace:   ${String(identify.active_workspace ?? "(none)")}`,
+    );
+
+    // Detect drift: the CLI's resolved path vs. the path the running
+    // app is actually bound to. If they differ, the user almost
+    // certainly has a stale shell with no `HT_SOCKET_PATH` export.
+    if (
+      typeof identify.socket_path === "string" &&
+      identify.socket_path !== SOCKET_PATH
+    ) {
+      console.log("");
+      console.log(
+        `warning: CLI socket path (${SOCKET_PATH}) differs from app's bound path (${identify.socket_path}).`,
+      );
+      console.log(
+        `         export HT_SOCKET_PATH="${identify.socket_path}" and reopen this shell.`,
+      );
+    }
+  }
+
+  let version: string | null = null;
+  try {
+    version = (await runRpc("system.version", {})) as string;
+    console.log(`app_version:        ${version}`);
+  } catch {
+    // Already covered by socket_reachable above.
+  }
+}
+
+/** `ht logs` — print today's log file path. With `--tail`, exec
+ *  `tail -F` on it and inherit stdio so the user can stream the file
+ *  in their existing terminal. */
+async function runLogs(): Promise<void> {
+  let logPath: string | null = null;
+  try {
+    const identify = (await runRpc("system.identify", {})) as {
+      log_path?: unknown;
+    };
+    if (typeof identify.log_path === "string" && identify.log_path) {
+      logPath = identify.log_path;
+    }
+  } catch {
+    // App not running. We can still tell the user where logs *would* be
+    // for the default config dir; rederiving the exact path would
+    // duplicate logger.ts's logic, so just point at the directory.
+    console.error("HyperTerm Canvas is not running.");
+    console.error(`Default log directory: ~/Library/Logs/tau-mux/`);
+    process.exit(1);
+  }
+
+  if (!logPath) {
+    console.error(
+      "log file disabled (the app could not open its log directory).",
+    );
+    process.exit(1);
+  }
+
+  if (flags["tail"] === "true" || flags["t"] === "true") {
+    const tail = Bun.spawn(["tail", "-F", logPath], {
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    process.on("SIGINT", () => tail.kill());
+    await tail.exited;
+    return;
+  }
+
+  console.log(logPath);
+}
+
 async function runTelegramRead(): Promise<void> {
   let chatId =
     flags["chat"] ||
@@ -913,6 +1022,18 @@ async function main(): Promise<void> {
     (positional[0] === "read" || positional[0] === "history")
   ) {
     await runTelegramRead();
+    return;
+  }
+
+  // `doctor` / `logs` are diagnostic commands that combine multiple
+  // signals (env, RPC, filesystem, child process). Intercept before
+  // mapCommand because they don't map cleanly to a single RPC call.
+  if (command === "doctor") {
+    await runDoctor();
+    return;
+  }
+  if (command === "logs") {
+    await runLogs();
     return;
   }
 
@@ -1256,7 +1377,12 @@ Sidebar:
   clear-status <key>
   set-progress <0.0-1.0> [--label L]
   clear-progress
-  log [--level L] [--source S] "message"  Add log entry to sidebar
+  log [--level info|warn|err] [--source NAME] "message"
+                                    Push a line to the sidebar log of the
+                                    active (or --surface) pane.
+                                    Example:
+                                      ht log --level warn --source build \
+                                        "tsc reported 3 errors"
 
 Notifications:
   notify [--title T] [--body B]         Create a notification
@@ -1360,6 +1486,12 @@ Telegram:
 System:
   shutdown                              Graceful exit (flushes settings,
                                         layout, cookies, history)
+  doctor                                Print socket path, reachability,
+                                        log file location, app + bun
+                                        versions. Run this first when
+                                        debugging.
+  logs [--tail]                         Print today's log file path. With
+                                        --tail, stream new lines (tail -F).
 
 Aliases:
   capture-pane                          Alias for read-screen (tmux compat)

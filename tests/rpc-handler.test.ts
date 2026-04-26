@@ -62,6 +62,34 @@ describe("RPC Handler", () => {
     const result = handler("system.identify", {}) as Record<string, unknown>;
     expect(result["focused_surface"]).toBe("surface:1");
     expect(result["active_workspace"]).toBe("ws:1");
+    // Default fallback when no socketPath option is wired (test fixtures
+    // commonly omit it). Production callers must always pass the bound
+    // path; that branch is covered by the next test.
+    expect(result["socket_path"]).toBe("/tmp/hyperterm.sock");
+    expect(result["log_path"]).toBeNull();
+  });
+
+  test("system.identify reports the socket_path passed via options", () => {
+    sessions = new SessionManager("/bin/sh");
+    const state = makeState();
+    const handler = createRpcHandler(
+      sessions,
+      () => state,
+      () => {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        socketPath: "/var/run/custom.sock",
+        logPath: "/var/log/custom.log",
+      },
+    );
+    const result = handler("system.identify", {}) as Record<string, unknown>;
+    expect(result["socket_path"]).toBe("/var/run/custom.sock");
+    expect(result["log_path"]).toBe("/var/log/custom.log");
   });
 
   test("system.capabilities returns method list", () => {

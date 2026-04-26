@@ -28,6 +28,7 @@ export const MENU_ACTIONS = {
   openProjectReadme: "help.open-project-readme",
   setWorkspaceColor: "workspace.set-color",
   installHtCli: "app.install-ht-cli",
+  revealLogFile: "app.reveal-log-file",
   browserSplitRight: "browser.split-right",
   browserSplitDown: "browser.split-down",
   agentNew: "agent.new",
@@ -51,6 +52,10 @@ export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
         {
           label: "Install 'ht' Command in PATH",
           action: MENU_ACTIONS.installHtCli,
+        },
+        {
+          label: "Reveal Log File in Finder",
+          action: MENU_ACTIONS.revealLogFile,
         },
         { type: "divider" },
         {

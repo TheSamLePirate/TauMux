@@ -433,6 +433,11 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       // Open an external URL in the system default handler (browser, etc.)
       openExternal: { url: string };
 
+      // Reveal the active log file in Finder. Webview triggers this from
+      // the Settings → Advanced "Reveal" button; same end-effect as the
+      // top-level "Reveal Log File in Finder" menu item.
+      revealLogFile: void;
+
       // Window visibility (drives metadata polling rate on the bun side)
       windowVisibility: { visible: boolean };
 
@@ -658,6 +663,16 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       // Settings
       restoreSettings: { settings: AppSettings };
       settingsChanged: { settings: AppSettings };
+
+      // Static runtime paths surfaced to the Settings → Advanced panel.
+      // Sent once at startup; values do not change for the lifetime of
+      // the app (logPath rotates daily but the panel re-fetches via the
+      // RPC `system.identify` if you really need today's path).
+      restoreDiagnostics: {
+        logPath: string | null;
+        socketPath: string;
+        configDir: string;
+      };
 
       // Socket API dispatched actions (bun → webview)
       socketAction: { action: string; payload: Record<string, unknown> };

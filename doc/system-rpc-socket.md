@@ -25,6 +25,33 @@ ht version
 # Output: tau-mux 0.0.1
 ```
 
+If something is off, `ht doctor` is the canonical diagnostic — it reports the resolved socket path, whether `HT_SOCKET_PATH` was set, socket reachability, the active log file path, and the local Bun runtime version. Run it first when bug-reporting:
+
+```bash
+ht doctor
+# socket_path:        /Users/olivier/Library/Application Support/hyperterm-canvas/hyperterm.sock
+# HT_SOCKET_PATH:     set
+# bun_version:        1.3.9
+# socket_reachable:   yes
+# socket_path_bound:  /Users/olivier/Library/Application Support/hyperterm-canvas/hyperterm.sock
+# log_path:           /Users/olivier/Library/Logs/tau-mux/app-2026-04-26.log
+# focused_surface:    surface:1
+# active_workspace:   ws:1
+# app_version:        tau-mux 0.2.0
+```
+
+The bound `socket_path` reported by the running app is the source of truth — if it differs from the path the CLI resolved, `ht doctor` prints a warning telling you which `HT_SOCKET_PATH` to export.
+
+`ht logs` prints today's log file path; `ht logs --tail` streams new lines as they arrive (uses `tail -F`):
+
+```bash
+ht logs
+# /Users/olivier/Library/Logs/tau-mux/app-2026-04-26.log
+
+ht logs --tail
+# (streams the active log file; ^C to exit)
+```
+
 ---
 
 ## 1. Workspaces and Navigation
@@ -167,7 +194,7 @@ ht clear-progress
 ```
 
 ### Logs
-Push structural logs to the sidebar's log viewer.
+Push structural logs to the sidebar's log viewer. Each entry shows the level (colour-coded), an optional `source` tag, the message body, and a timestamp. Useful for surfacing build/deploy/test phases that don't deserve a notification but should be discoverable in the workspace card.
 
 ```bash
 ht log "Server listening on port 3000"
@@ -176,6 +203,21 @@ ht log --level success "Tests passed (42/42)"
 ```
 
 *(Valid levels are: `info`, `progress`, `success`, `warning`, `error`)*
+
+**Worked example — wrap a build script:**
+
+```bash
+#!/usr/bin/env bash
+ht log --source build --level progress "starting tsc"
+if bun run typecheck; then
+  ht log --source build --level success "typecheck clean"
+else
+  ht log --source build --level error "typecheck reported errors"
+  exit 1
+fi
+```
+
+The `source` field is free-form. By convention, use a single short token (`build`, `test`, `deploy`, `db-migrate`) — the sidebar groups entries by source when it has space. Logs are scoped to the active workspace unless `--surface` / `--workspace` overrides; agents writing from inside a pane inherit the right scope automatically (the CLI forwards `HT_SURFACE`).
 
 ---
 
@@ -295,9 +337,12 @@ ht identify --json
 # {
 #   "focused_surface": "surface:1",
 #   "active_workspace": "ws:1",
-#   "socket_path": "/tmp/hyperterm.sock"
+#   "socket_path": "/Users/olivier/Library/Application Support/hyperterm-canvas/hyperterm.sock",
+#   "log_path": "/Users/olivier/Library/Logs/tau-mux/app-2026-04-26.log"
 # }
 ```
+
+Both `socket_path` and `log_path` reflect the running app's actual state — `socket_path` is the path the SocketServer is bound to (was historically hardcoded; now reports truth), `log_path` is the active rotated log file or `null` when the file tee failed to open. Use these when scripting against `ht` from a context that needs to know where to look without re-deriving the platform paths.
 
 ### Custom RPC Scripts
 Because `ht` is just a thin wrapper over a JSON-RPC Unix socket, you can bypass the CLI entirely and communicate with the terminal using Python, Node, or Netcat.

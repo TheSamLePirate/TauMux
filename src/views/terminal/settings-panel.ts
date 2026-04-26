@@ -16,23 +16,42 @@ interface Section {
   render: (content: HTMLElement, settings: AppSettings) => void;
 }
 
+export interface SettingsDiagnostics {
+  logPath: string | null;
+  socketPath: string;
+  configDir: string;
+}
+
 export class SettingsPanel {
   private overlay: HTMLDivElement;
   private panel: HTMLDivElement;
   private nav: HTMLDivElement;
   private content: HTMLDivElement;
   private settings: AppSettings = { ...DEFAULT_SETTINGS };
+  /** Static runtime paths surfaced in the Advanced section. Populated
+   *  when bun pushes `restoreDiagnostics` after the webview boots —
+   *  null until then; the Advanced section degrades to "loading…". */
+  private diagnostics: SettingsDiagnostics | null = null;
   // Persisted across open/close cycles so picking "Theme" and closing
   // doesn't snap back to "General" on reopen. localStorage write is
   // wrapped in try/catch because private-browsing modes throw.
   private static STORAGE_KEY = "hyperterm-canvas.settings-panel.section";
   private activeSection = SettingsPanel.loadActiveSection();
   private onChange: SettingChangeHandler;
+  /** Webview→bun bridge for the Advanced section's "Reveal Log File"
+   *  button. Optional — the button is hidden when no callback is wired,
+   *  which keeps the panel usable in test fixtures that don't mount the
+   *  full RPC pipeline. */
+  private onRevealLogFile?: () => void;
   private visible = false;
   private sections: Section[];
 
-  constructor(onChange: SettingChangeHandler) {
+  constructor(
+    onChange: SettingChangeHandler,
+    options: { onRevealLogFile?: () => void } = {},
+  ) {
     this.onChange = onChange;
+    this.onRevealLogFile = options.onRevealLogFile;
 
     this.sections = [
       {
@@ -174,6 +193,15 @@ export class SettingsPanel {
   updateSettings(settings: AppSettings): void {
     this.settings = { ...settings, ansiColors: { ...settings.ansiColors } };
     if (this.visible) this.renderActiveSection();
+  }
+
+  setDiagnostics(d: SettingsDiagnostics): void {
+    this.diagnostics = d;
+    // Re-render so Advanced shows the resolved paths if it's currently
+    // visible; harmless when another section is active.
+    if (this.visible && this.activeSection === "advanced") {
+      this.renderActiveSection();
+    }
   }
 
   // ── Navigation ──
@@ -945,6 +973,10 @@ export class SettingsPanel {
       note: "Width of the sidebar in pixels.",
     });
 
+    // Diagnostic paths — read-only. Useful when bug-reporting; the
+    // "Reveal" button matches the App-menu item of the same name.
+    this.diagnosticPathsBlock(c);
+
     // Reset all
     const resetWrap = document.createElement("div");
     resetWrap.className = "settings-field settings-reset-wrap";
@@ -956,6 +988,54 @@ export class SettingsPanel {
     });
     resetWrap.appendChild(resetBtn);
     c.appendChild(resetWrap);
+  }
+
+  /** Read-only "Diagnostics" group: log file, socket, config dir. The
+   *  log file row gets a "Reveal in Finder" button when the bun bridge
+   *  was wired in (production) and silently degrades to a static
+   *  readout in test fixtures. */
+  private diagnosticPathsBlock(c: HTMLElement): void {
+    this.sectionTitle(c, "Diagnostics");
+    this.sectionDesc(
+      c,
+      "Runtime paths for bug reports. Read-only — paste them into issues, or click Reveal to open Finder at the active log file.",
+    );
+
+    const d = this.diagnostics;
+    const logPath = d?.logPath ?? null;
+    const socketPath = d?.socketPath ?? "(not yet known)";
+    const configDir = d?.configDir ?? "(not yet known)";
+
+    this.readOnlyPathField(c, "Log file", logPath ?? "(disabled)", {
+      revealLabel: logPath && this.onRevealLogFile ? "Reveal" : undefined,
+      onReveal: () => this.onRevealLogFile?.(),
+    });
+    this.readOnlyPathField(c, "Socket", socketPath);
+    this.readOnlyPathField(c, "Config dir", configDir);
+  }
+
+  /** Inline read-only path display: label, monospace value, optional
+   *  action button on the right. Style matches existing settings fields
+   *  so the row blends with the surrounding form. */
+  private readOnlyPathField(
+    c: HTMLElement,
+    label: string,
+    value: string,
+    opts: { revealLabel?: string; onReveal?: () => void } = {},
+  ): void {
+    const row = this.fieldRow(c, label);
+    const wrap = document.createElement("div");
+    wrap.className = "settings-input settings-readonly-path";
+    wrap.textContent = value;
+    wrap.title = value;
+    row.appendChild(wrap);
+    if (opts.revealLabel && opts.onReveal) {
+      const btn = document.createElement("button");
+      btn.className = "settings-action-btn";
+      btn.textContent = opts.revealLabel;
+      btn.addEventListener("click", () => opts.onReveal?.());
+      row.appendChild(btn);
+    }
   }
 
   // ── Field builders ──

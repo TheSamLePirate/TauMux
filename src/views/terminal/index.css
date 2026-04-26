@@ -4376,6 +4376,39 @@ body.terminal-typing .panel {
   white-space: nowrap;
 }
 
+/* Read-only diagnostic path readouts (Settings → Advanced) */
+
+.settings-readonly-path {
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 11px;
+  color: var(--text-muted);
+  user-select: text;
+  cursor: text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 10px;
+}
+
+.settings-action-btn {
+  margin-left: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 0.5px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.settings-action-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
 /* Reset buttons */
 
 .settings-reset-btn {

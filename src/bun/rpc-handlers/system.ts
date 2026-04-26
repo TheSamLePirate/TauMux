@@ -1,7 +1,7 @@
 import type { Handler, HandlerDeps } from "./types";
 import { computeNormalizedRects } from "./shared";
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 const START_TIME_MS = Date.now();
 
 /** system.* handlers: diagnostic + discovery RPCs.
@@ -12,7 +12,7 @@ export function registerSystem(
   deps: HandlerDeps,
   allMethodNames: () => string[],
 ): Record<string, Handler> {
-  const { sessions, getState, shutdown } = deps;
+  const { sessions, getState, shutdown, socketPath, logPath } = deps;
 
   return {
     // Preserves the legacy "PONG" response so existing CLI + tests keep
@@ -51,7 +51,8 @@ export function registerSystem(
       return {
         focused_surface: state.focusedSurfaceId,
         active_workspace: state.activeWorkspaceId,
-        socket_path: "/tmp/hyperterm.sock",
+        socket_path: socketPath,
+        log_path: logPath,
       };
     },
 

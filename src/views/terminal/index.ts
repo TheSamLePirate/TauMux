@@ -170,6 +170,9 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       restoreSettings: (payload) => {
         applySettings(payload.settings);
       },
+      restoreDiagnostics: (payload) => {
+        settingsPanel.setDiagnostics(payload);
+      },
       settingsChanged: (payload) => {
         applySettings(payload.settings);
       },
@@ -252,14 +255,19 @@ surfaceManager.setTerminalEffectsEnabled(loadTerminalEffectsEnabled());
 let currentSettings: AppSettings | null = null;
 let variantController: VariantController | null = null;
 
-const settingsPanel = new SettingsPanel((partial) => {
-  // Apply eagerly on the webview side — don't wait for bun roundtrip
-  const base = currentSettings ?? DEFAULT_SETTINGS;
-  const merged = mergeSettings(base, partial);
-  applySettings(merged);
-  // Send to bun for persistence
-  rpc.send("updateSettings", { settings: partial });
-});
+const settingsPanel = new SettingsPanel(
+  (partial) => {
+    // Apply eagerly on the webview side — don't wait for bun roundtrip
+    const base = currentSettings ?? DEFAULT_SETTINGS;
+    const merged = mergeSettings(base, partial);
+    applySettings(merged);
+    // Send to bun for persistence
+    rpc.send("updateSettings", { settings: partial });
+  },
+  {
+    onRevealLogFile: () => rpc.send("revealLogFile"),
+  },
+);
 
 function applySettings(settings: AppSettings): void {
   currentSettings = settings;

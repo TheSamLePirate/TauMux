@@ -57,6 +57,14 @@ export interface RpcHandlerOptions {
   getTelegramService?: () => TelegramService | undefined;
   /** SQLite log used by `telegram.history` / `telegram.chats`. */
   telegramDb?: TelegramDatabase;
+  /** Absolute socket path the SocketServer is bound to. Defaults to
+   *  the legacy `/tmp/hyperterm.sock` placeholder so test fixtures that
+   *  do not exercise the socket can keep their existing setup; the real
+   *  app must pass the bound path so `system.identify` reports truth. */
+  socketPath?: string;
+  /** Absolute path of the active log file. Pass null (or omit) when the
+   *  caller has no log tee — `system.identify` will report null too. */
+  logPath?: string | null;
 }
 
 export function createRpcHandler(
@@ -93,6 +101,8 @@ export function createRpcHandler(
     shutdown: options.shutdown,
     getTelegramService: options.getTelegramService,
     telegramDb: options.telegramDb,
+    socketPath: options.socketPath ?? "/tmp/hyperterm.sock",
+    logPath: options.logPath ?? null,
   };
 
   // `system.capabilities` needs to know the full registered surface —

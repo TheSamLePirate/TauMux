@@ -376,6 +376,14 @@ const bunMessageHandlers = {
       app.initialResizeReceived = true;
       // Send settings now that the webview is ready
       rpc.send("restoreSettings", { settings: settingsManager.get() });
+      // Static runtime paths for the Settings → Advanced panel. Sent
+      // once; the panel caches them. logPath is null when the file tee
+      // failed to open (read-only home, full disk, etc).
+      rpc.send("restoreDiagnostics", {
+        logPath: loggerHandle.currentPath,
+        socketPath,
+        configDir,
+      });
       // Tier 2: flip the webview's test-mode flag before any test fixture
       // tries to exercise a `__test.*` RPC. Under the dual-fact gate this
       // is a no-op for production.
@@ -564,6 +572,9 @@ const bunMessageHandlers = {
     } catch (err) {
       console.error("[openExternal] failed:", err);
     }
+  },
+  revealLogFile: () => {
+    revealLogFile();
   },
   windowVisibility: (payload) => {
     // Slow down metadata polling while the window is hidden — still
@@ -1559,6 +1570,9 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
     case MENU_ACTIONS.installHtCli:
       void installHtCli();
       break;
+    case MENU_ACTIONS.revealLogFile:
+      revealLogFile();
+      break;
     case MENU_ACTIONS.agentNew:
       createAgentWorkspaceSurface();
       break;
@@ -1582,6 +1596,27 @@ function resolveBundledHtBinary(): string {
   // process.execPath inside the wrapped app points at Contents/MacOS/<launcher>
   // dirname(dirname(...)) → Contents/
   return join(dirname(dirname(process.execPath)), "MacOS", "ht");
+}
+
+/** Open Finder with the active log file selected. Falls back to a
+ *  toast when the file tee never opened (read-only home, etc) so the
+ *  user understands why nothing happened. */
+function revealLogFile(): void {
+  const path = loggerHandle.currentPath;
+  if (!path) {
+    toast(
+      "Log file unavailable — the app could not open its log directory.",
+      "warning",
+    );
+    return;
+  }
+  // `open -R` reveals the file in Finder rather than opening it in
+  // Console.app, which is what the menu label promises. macOS-only;
+  // the app is macOS-only too.
+  const proc = Bun.spawnSync(["/usr/bin/open", "-R", path]);
+  if (proc.exitCode !== 0) {
+    toast(`Could not reveal log file: ${path}`, "error");
+  }
 }
 
 async function installHtCli(): Promise<void> {
@@ -1862,6 +1897,17 @@ async function requestWebview(
   });
 }
 
+// Socket path is computed before createRpcHandler so the dispatcher can
+// expose it via `system.identify`. Bun resolves the path once; both the
+// RPC handler and the SocketServer share the same constant so external
+// tooling (`ht identify`) can never disagree with what was actually
+// bound.
+const socketPath = join(configDir, "hyperterm.sock");
+// Ensure the config directory exists before binding the socket
+if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
+// Expose path to child shells so the `ht` CLI can locate the server
+process.env["HT_SOCKET_PATH"] = socketPath;
+
 const socketHandler = createRpcHandler(
   sessions,
   () => app.getAppState(),
@@ -1879,13 +1925,10 @@ const socketHandler = createRpcHandler(
     testModeEnabled: HT_TEST_MODE,
     telegramDb,
     getTelegramService: () => telegramService ?? undefined,
+    socketPath,
+    logPath: loggerHandle.currentPath,
   },
 );
-const socketPath = join(configDir, "hyperterm.sock");
-// Ensure the config directory exists before binding the socket
-if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
-// Expose path to child shells so the `ht` CLI can locate the server
-process.env["HT_SOCKET_PATH"] = socketPath;
 const socketServer = new SocketServer(socketPath, socketHandler);
 socketServer.start();
 

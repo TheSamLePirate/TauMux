@@ -90,4 +90,13 @@ export interface HandlerDeps {
    *  bot integration is wired in, used by the read-side RPC even when
    *  the long-poll loop is off. */
   telegramDb?: TelegramDatabase;
+  /** Absolute path the socket server is bound to. Surfaced via
+   *  `system.identify` so external tooling sees the real path instead
+   *  of the historical `/tmp/hyperterm.sock` placeholder. */
+  socketPath: string;
+  /** Absolute path of the active log file (rotates daily; null when the
+   *  file tee is disabled — read-only home, missing perms, etc). Surfaced
+   *  via `system.identify` so the CLI can point at it without re-deriving
+   *  the platform path. */
+  logPath: string | null;
 }
