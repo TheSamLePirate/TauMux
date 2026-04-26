@@ -229,6 +229,24 @@ export class Sidebar {
    *  behaviour so tests + e2e fixtures keep rendering everything. */
   private cardOptions: WorkspaceCardOptions = DEFAULT_WORKSPACE_CARD_OPTIONS;
 
+  /** Plan #06 §A — keyed reconciliation cache. The previous
+   *  implementation did `listEl.innerHTML = ""` on every refresh,
+   *  which tore down every workspace card and rebuilt it from
+   *  scratch — visible flicker on the 1 Hz metadata poll. Now we
+   *  keep the outer card element per workspace id and update its
+   *  contents in place; reordering uses `appendChild` (which
+   *  re-parents in place rather than cloning), so node identity
+   *  survives every refresh. */
+  private workspaceItems = new Map<string, HTMLElement>();
+  /** Cached group-rule rows ("PINNED" / "ALL"). Same identity
+   *  story as the cards — reused across refreshes so background /
+   *  border / box-shadow don't strobe. */
+  private groupRulePinned: HTMLElement | null = null;
+  private groupRuleAll: HTMLElement | null = null;
+  /** Empty-state placeholder element. Reused so swapping in/out of
+   *  empty state keeps the parent's layout stable. */
+  private emptyEl: HTMLElement | null = null;
+
   constructor(container: HTMLElement, callbacks: SidebarCallbacks) {
     this.container = container;
     this.callbacks = callbacks;
@@ -607,43 +625,136 @@ export class Sidebar {
       this.listCountEl.textContent = `${filtered.length}${filtered.length !== ordered.length ? ` / ${ordered.length}` : ""}`;
     }
 
-    this.listEl.innerHTML = "";
-
     if (filtered.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "sidebar-empty";
-      if (ordered.length === 0) {
-        empty.textContent = "No workspaces yet — ⌘T to create one";
-      } else {
-        empty.textContent =
-          this.searchTerm.length > 0
+      // Empty state — drop every cached card from the DOM but keep
+      // the cache (workspaces may flicker out and back in via
+      // filter changes; reusing the next time saves the rebuild).
+      // We do detach them from the parent so the empty placeholder
+      // becomes the only visible row.
+      for (const item of this.workspaceItems.values()) {
+        if (item.parentElement) item.parentElement.removeChild(item);
+      }
+      this.detachGroupRules();
+      const empty = this.ensureEmpty();
+      empty.textContent =
+        ordered.length === 0
+          ? "No workspaces yet — ⌘T to create one"
+          : this.searchTerm.length > 0
             ? `No match for "${this.searchTerm}"`
             : this.filterMode === "pinned"
               ? "No pinned workspaces"
               : "No matching workspaces";
+      // Remove any other children, then mount the cached empty.
+      while (this.listEl.firstChild && this.listEl.firstChild !== empty) {
+        this.listEl.removeChild(this.listEl.firstChild);
       }
-      this.listEl.appendChild(empty);
+      if (empty.parentElement !== this.listEl) {
+        this.listEl.appendChild(empty);
+      }
       return;
+    }
+
+    // Empty state was previously visible — drop it.
+    if (this.emptyEl?.parentElement === this.listEl) {
+      this.listEl.removeChild(this.emptyEl);
     }
 
     // Pinned first, with a flat "PINNED" rule between groups.
     const pinned = filtered.filter((w) => this.pinnedIds.has(w.id));
     const rest = filtered.filter((w) => !this.pinnedIds.has(w.id));
 
+    // Build the desired ordered list of `(rule | card)` nodes —
+    // identity-stable: reuses cached elements where possible.
+    const desired: HTMLElement[] = [];
     if (pinned.length > 0) {
-      this.listEl.appendChild(this.buildGroupRule("PINNED", pinned.length));
-      for (const ws of pinned)
-        this.listEl.appendChild(this.buildWorkspaceCard(ws));
+      desired.push(this.ensureGroupRulePinned(pinned.length));
+      for (const ws of pinned) desired.push(this.upsertWorkspaceCard(ws));
     }
     if (rest.length > 0) {
       if (pinned.length > 0) {
-        this.listEl.appendChild(this.buildGroupRule("ALL", rest.length));
+        desired.push(this.ensureGroupRuleAll(rest.length));
       }
-      for (const ws of rest)
-        this.listEl.appendChild(this.buildWorkspaceCard(ws));
+      for (const ws of rest) desired.push(this.upsertWorkspaceCard(ws));
+    }
+
+    // Reconcile with the current children. `appendChild` re-parents
+    // an already-attached node (preserving identity); we walk the
+    // desired list and either append-as-new or move-into-position.
+    // After this loop, anything still left in `current` past
+    // `desired.length` is leftover and gets removed.
+    const liveCards = new Set(desired);
+    let i = 0;
+    let cur = this.listEl.firstChild as HTMLElement | null;
+    while (i < desired.length) {
+      const want = desired[i]!;
+      if (cur === want) {
+        cur = want.nextSibling as HTMLElement | null;
+        i++;
+        continue;
+      }
+      // `insertBefore(want, cur)` is the move primitive — if `want`
+      // is already mounted elsewhere it's removed first; if not it's
+      // inserted; either way order is corrected without re-creating
+      // the node.
+      this.listEl.insertBefore(want, cur);
+      i++;
+    }
+    // Drop any trailing children that aren't in the desired list.
+    while (cur) {
+      const next = cur.nextSibling as HTMLElement | null;
+      if (!liveCards.has(cur)) this.listEl.removeChild(cur);
+      cur = next;
+    }
+    // Garbage-collect cards for workspaces no longer present.
+    const liveIds = new Set(filtered.map((w) => w.id));
+    for (const [id, el] of [...this.workspaceItems.entries()]) {
+      if (!liveIds.has(id)) {
+        if (el.parentElement) el.parentElement.removeChild(el);
+        this.workspaceItems.delete(id);
+      }
     }
 
     this.applyHighlight();
+  }
+
+  private detachGroupRules(): void {
+    if (this.groupRulePinned?.parentElement === this.listEl) {
+      this.listEl.removeChild(this.groupRulePinned);
+    }
+    if (this.groupRuleAll?.parentElement === this.listEl) {
+      this.listEl.removeChild(this.groupRuleAll);
+    }
+  }
+
+  private ensureEmpty(): HTMLElement {
+    if (!this.emptyEl) {
+      this.emptyEl = document.createElement("div");
+      this.emptyEl.className = "sidebar-empty";
+    }
+    return this.emptyEl;
+  }
+
+  private ensureGroupRulePinned(count: number): HTMLElement {
+    if (!this.groupRulePinned) {
+      this.groupRulePinned = this.buildGroupRule("PINNED", count);
+    } else {
+      this.updateGroupRuleCount(this.groupRulePinned, count);
+    }
+    return this.groupRulePinned;
+  }
+
+  private ensureGroupRuleAll(count: number): HTMLElement {
+    if (!this.groupRuleAll) {
+      this.groupRuleAll = this.buildGroupRule("ALL", count);
+    } else {
+      this.updateGroupRuleCount(this.groupRuleAll, count);
+    }
+    return this.groupRuleAll;
+  }
+
+  private updateGroupRuleCount(rule: HTMLElement, count: number): void {
+    const el = rule.querySelector<HTMLElement>(".sidebar-group-rule-count");
+    if (el) el.textContent = String(count);
   }
 
   private buildGroupRule(label: string, count: number): HTMLElement {
@@ -661,6 +772,147 @@ export class Sidebar {
     c.textContent = String(count);
     row.appendChild(c);
     return row;
+  }
+
+  /** Cache-aware card constructor. First call for a workspace builds
+   *  the outer shell + attaches stable listeners; subsequent calls
+   *  reuse the same element and only refresh inner contents +
+   *  variable attributes (class flags, accent var, aria-current).
+   *  Node identity survives every refresh, so the browser doesn't
+   *  flash background/border on each metadata poll. */
+  private upsertWorkspaceCard(ws: WorkspaceInfo): HTMLElement {
+    let item = this.workspaceItems.get(ws.id);
+    if (!item) {
+      item = this.createWorkspaceCardShell(ws.id);
+      this.workspaceItems.set(ws.id, item);
+    }
+    this.populateWorkspaceCard(item, ws);
+    return item;
+  }
+
+  /** Build the outer shell once. Listeners attach here so they
+   *  survive every render; they read the current `ws` snapshot
+   *  from `this.workspaces` via id rather than capturing a stale
+   *  reference. */
+  private createWorkspaceCardShell(id: string): HTMLElement {
+    const item = document.createElement("div");
+    item.className = "workspace-item";
+    item.dataset["workspaceId"] = id;
+    item.setAttribute("role", "button");
+    item.setAttribute("tabindex", "-1");
+    item.draggable = true;
+
+    item.addEventListener("click", () => {
+      this.callbacks.onSelectWorkspace(id);
+    });
+    item.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const ws = this.workspaces.find((w) => w.id === id);
+      if (!ws) return;
+      const detail: WorkspaceContextMenuRequest = {
+        kind: "workspace",
+        workspaceId: ws.id,
+        name: ws.name,
+        color: ws.color,
+      };
+      window.dispatchEvent(new CustomEvent("ht-open-context-menu", { detail }));
+    });
+
+    this.wireDragAndDrop(item, id);
+    return item;
+  }
+
+  /** Update an outer card's variable attributes + inner contents
+   *  in place. The outer element identity is preserved; only the
+   *  things that actually changed get touched. Inner subfields are
+   *  rebuilt on every call (Tier 1 of the plan); per-subfield
+   *  reconciliation is a future tier-2 polish. */
+  private populateWorkspaceCard(item: HTMLElement, ws: WorkspaceInfo): void {
+    this.ensureUiState(ws.id);
+    const accent = ws.color || DEFAULT_ACCENT;
+
+    // Attribute updates — assignments to `className` and
+    // `dataset[*]` are cheap and idempotent. Browsers no-op when
+    // the new value matches the old.
+    item.className = `workspace-item${ws.active ? " active" : ""}${
+      this.pinnedIds.has(ws.id) ? " pinned" : ""
+    }`;
+    item.style.setProperty("--workspace-accent", accent);
+    item.setAttribute("aria-current", ws.active ? "true" : "false");
+
+    // Inner content — clear and rebuild. Tier 2 (per-subfield
+    // reconciliation) would chase the remaining flicker on the
+    // inner rows; the load-bearing fix is keeping the outer
+    // identity stable across refreshes.
+    item.replaceChildren();
+
+    // Stripe on the left — thick, always tinted with the workspace
+    // colour. Cheap to rebuild; lives under the outer item.
+    const stripe = document.createElement("span");
+    stripe.className = "workspace-stripe";
+    stripe.setAttribute("aria-hidden", "true");
+    item.appendChild(stripe);
+
+    // Compact header row — workspace name + pin + close.
+    item.appendChild(this.buildCardHeader(ws));
+
+    const show = this.cardOptions.show;
+
+    if (show.meta) {
+      const meta = this.buildCardMetaRow(ws);
+      if (meta) item.appendChild(meta);
+    }
+
+    if (show.stats) {
+      item.appendChild(this.buildCardStatRow(ws, accent));
+    }
+
+    if (ws.active) {
+      if (ws.cwds.length > 1) {
+        item.appendChild(this.buildCwdRow(ws));
+      }
+
+      if (show.panes && ws.surfaceTitles.length > 1) {
+        item.appendChild(
+          this.buildCollapseSection({
+            wsId: ws.id,
+            key: "panesOpen",
+            title: "Panes",
+            count: ws.surfaceTitles.length,
+            build: () => this.buildPanesList(ws),
+          }),
+        );
+      }
+
+      if (show.manifests && (ws.packageJson || ws.cargoToml)) {
+        const count = (ws.packageJson ? 1 : 0) + (ws.cargoToml ? 1 : 0);
+        item.appendChild(
+          this.buildCollapseSection({
+            wsId: ws.id,
+            key: "manifestsOpen",
+            title: "Manifests",
+            count,
+            build: () => this.buildManifestsBlock(ws),
+          }),
+        );
+      }
+
+      if (show.statusPills && ws.statusPills.length > 0) {
+        item.appendChild(
+          this.buildCollapseSection({
+            wsId: ws.id,
+            key: "statusOpen",
+            title: "Status",
+            count: ws.statusPills.length,
+            build: () => this.buildStatusGrid(ws),
+          }),
+        );
+      }
+
+      if (show.progress && ws.progress) {
+        item.appendChild(this.buildProgressBar(ws));
+      }
+    }
   }
 
   private orderedWorkspaces(): WorkspaceInfo[] {
@@ -700,116 +952,15 @@ export class Sidebar {
   }
 
   // ── Workspace card ─────────────────────────────────────────────────
-
-  private buildWorkspaceCard(ws: WorkspaceInfo): HTMLElement {
-    this.ensureUiState(ws.id);
-    const accent = ws.color || DEFAULT_ACCENT;
-
-    const item = document.createElement("div");
-    item.className = `workspace-item${ws.active ? " active" : ""}${
-      this.pinnedIds.has(ws.id) ? " pinned" : ""
-    }`;
-    item.dataset["workspaceId"] = ws.id;
-    item.style.setProperty("--workspace-accent", accent);
-    item.setAttribute("role", "button");
-    item.setAttribute("tabindex", "-1");
-    item.setAttribute("aria-current", ws.active ? "true" : "false");
-    item.draggable = true;
-
-    // Stripe on the left — thick, always tinted with the workspace color.
-    const stripe = document.createElement("span");
-    stripe.className = "workspace-stripe";
-    stripe.setAttribute("aria-hidden", "true");
-    item.appendChild(stripe);
-
-    // ── Compact header row ── (always rendered — workspace name +
-    //  pin + close affordances are essential identification chrome)
-    const header = this.buildCardHeader(ws);
-    item.appendChild(header);
-
-    const show = this.cardOptions.show;
-
-    // ── Meta row: focused fg command + inline port chips ──
-    if (show.meta) {
-      const meta = this.buildCardMetaRow(ws);
-      if (meta) item.appendChild(meta);
-    }
-
-    // ── Stat row: CPU bar + numeric chips (always, every workspace) ──
-    if (show.stats) {
-      item.appendChild(this.buildCardStatRow(ws, accent));
-    }
-
-    // ── Active-only: expanded sub-sections ──
-    if (ws.active) {
-      // CWD selector (inline) when >1 distinct cwd.
-      if (ws.cwds.length > 1) {
-        item.appendChild(this.buildCwdRow(ws));
-      }
-
-      // Panes list — collapsible, compact.
-      if (show.panes && ws.surfaceTitles.length > 1) {
-        item.appendChild(
-          this.buildCollapseSection({
-            wsId: ws.id,
-            key: "panesOpen",
-            title: "Panes",
-            count: ws.surfaceTitles.length,
-            build: () => this.buildPanesList(ws),
-          }),
-        );
-      }
-
-      // Manifests (npm + cargo).
-      if (show.manifests && (ws.packageJson || ws.cargoToml)) {
-        const count = (ws.packageJson ? 1 : 0) + (ws.cargoToml ? 1 : 0);
-        item.appendChild(
-          this.buildCollapseSection({
-            wsId: ws.id,
-            key: "manifestsOpen",
-            title: "Manifests",
-            count,
-            build: () => this.buildManifestsBlock(ws),
-          }),
-        );
-      }
-
-      // Status pills.
-      if (show.statusPills && ws.statusPills.length > 0) {
-        item.appendChild(
-          this.buildCollapseSection({
-            wsId: ws.id,
-            key: "statusOpen",
-            title: "Status",
-            count: ws.statusPills.length,
-            build: () => this.buildStatusGrid(ws),
-          }),
-        );
-      }
-
-      // Progress.
-      if (show.progress && ws.progress) {
-        item.appendChild(this.buildProgressBar(ws));
-      }
-    }
-
-    item.addEventListener("click", () => {
-      this.callbacks.onSelectWorkspace(ws.id);
-    });
-    item.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      const detail: WorkspaceContextMenuRequest = {
-        kind: "workspace",
-        workspaceId: ws.id,
-        name: ws.name,
-        color: ws.color,
-      };
-      window.dispatchEvent(new CustomEvent("ht-open-context-menu", { detail }));
-    });
-
-    this.wireDragAndDrop(item, ws.id);
-    return item;
-  }
+  //
+  // Plan #06 §A — keyed reconciliation. The outer card builder /
+  // populator is split into `createWorkspaceCardShell(id)` (called
+  // once, attaches stable listeners) and `populateWorkspaceCard(item, ws)`
+  // (called on every render, refreshes inner contents in place). The
+  // top-level `upsertWorkspaceCard(ws)` consults the
+  // `workspaceItems` cache and dispatches accordingly. The previous
+  // `buildWorkspaceCard(ws)` builder is gone — its body lives in the
+  // two helpers above.
 
   private buildCardHeader(ws: WorkspaceInfo): HTMLElement {
     const header = document.createElement("div");
