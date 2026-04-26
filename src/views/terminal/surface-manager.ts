@@ -974,6 +974,23 @@ export class SurfaceManager {
     this.osc94Enabled = s.terminalOsc94Enabled;
     this.htStatusKeyOrder = s.htStatusKeyOrder ?? [];
     this.htStatusKeyHidden = s.htStatusKeyHidden ?? [];
+    // Plan #06 — push the workspace-card display preferences into
+    // the sidebar. Each toggle gates whether the corresponding
+    // section is rendered for the active workspace; density drives
+    // CSS via a [data-ws-card-density] attribute on the sidebar
+    // root. Density changes apply immediately even before the next
+    // metadata refresh because the attribute itself is the lever.
+    this.sidebar.setWorkspaceCardOptions({
+      density: s.workspaceCardDensity,
+      show: {
+        meta: s.workspaceCardShowMeta,
+        stats: s.workspaceCardShowStats,
+        panes: s.workspaceCardShowPanes,
+        manifests: s.workspaceCardShowManifests,
+        statusPills: s.workspaceCardShowStatusPills,
+        progress: s.workspaceCardShowProgress,
+      },
+    });
     // Repaint the sidebar so the new ht-key visibility / order applies
     // immediately. Cheap because buildSidebarWorkspaces is pure.
     this.updateSidebar();

@@ -56,6 +56,23 @@ export interface AppSettings {
    *  `doc/issues_now.md`. */
   auditsGitUserNameExpected: string | null;
 
+  /** Sidebar workspace-card density. Drives padding + font-size
+   *  scale via the `[data-ws-card-density]` attribute on the
+   *  sidebar root. Plan #06 — users can choose how much vertical
+   *  real estate each workspace card takes. */
+  workspaceCardDensity: "compact" | "comfortable" | "spacious";
+  /** Sidebar workspace card subfield toggles. Each flag gates
+   *  whether the corresponding section is rendered for the active
+   *  workspace. Defaults to true so an upgrade from a pre-Plan-#06
+   *  settings file keeps rendering everything until the user opts
+   *  out. */
+  workspaceCardShowMeta: boolean;
+  workspaceCardShowStats: boolean;
+  workspaceCardShowPanes: boolean;
+  workspaceCardShowManifests: boolean;
+  workspaceCardShowStatusPills: boolean;
+  workspaceCardShowProgress: boolean;
+
   /** τ-mux §11 bloom gate. Stamped by SettingsManager the first time
    *  a pre-τ-mux settings file is loaded; we also snapshot the user's
    *  pre-migration bloomIntensity into `legacyBloomIntensity` so
@@ -596,6 +613,13 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   bloomIntensity: 0,
   terminalOsc94Enabled: true,
   auditsGitUserNameExpected: "olivierveinand",
+  workspaceCardDensity: "comfortable",
+  workspaceCardShowMeta: true,
+  workspaceCardShowStats: true,
+  workspaceCardShowPanes: true,
+  workspaceCardShowManifests: true,
+  workspaceCardShowStatusPills: true,
+  workspaceCardShowProgress: true,
   bloomMigratedToTau: false,
   legacyBloomIntensity: 0,
 
@@ -753,6 +777,35 @@ export function validateSettings(s: AppSettings): AppSettings {
             s.auditsGitUserNameExpected.length > 0
           ? s.auditsGitUserNameExpected
           : "olivierveinand",
+    workspaceCardDensity:
+      s.workspaceCardDensity === "compact" ||
+      s.workspaceCardDensity === "spacious"
+        ? s.workspaceCardDensity
+        : "comfortable",
+    workspaceCardShowMeta:
+      typeof s.workspaceCardShowMeta === "boolean"
+        ? s.workspaceCardShowMeta
+        : true,
+    workspaceCardShowStats:
+      typeof s.workspaceCardShowStats === "boolean"
+        ? s.workspaceCardShowStats
+        : true,
+    workspaceCardShowPanes:
+      typeof s.workspaceCardShowPanes === "boolean"
+        ? s.workspaceCardShowPanes
+        : true,
+    workspaceCardShowManifests:
+      typeof s.workspaceCardShowManifests === "boolean"
+        ? s.workspaceCardShowManifests
+        : true,
+    workspaceCardShowStatusPills:
+      typeof s.workspaceCardShowStatusPills === "boolean"
+        ? s.workspaceCardShowStatusPills
+        : true,
+    workspaceCardShowProgress:
+      typeof s.workspaceCardShowProgress === "boolean"
+        ? s.workspaceCardShowProgress
+        : true,
     htStatusKeyOrder: Array.isArray(s.htStatusKeyOrder)
       ? (s.htStatusKeyOrder.filter(
           (k): k is string => typeof k === "string" && k.length > 0,

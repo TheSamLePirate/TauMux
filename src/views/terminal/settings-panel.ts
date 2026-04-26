@@ -532,6 +532,76 @@ export class SettingsPanel {
     // a key — render a hint in that case so the section isn't silently
     // missing.
     this.renderDiscoveredHtKeys(c, s);
+
+    // Plan #06 — workspace-card density + per-section toggles.
+    this.renderWorkspaceCardBlock(c, s);
+  }
+
+  private renderWorkspaceCardBlock(c: HTMLElement, s: AppSettings): void {
+    this.sectionTitle(c, "Workspace card");
+    this.sectionDesc(
+      c,
+      "Density + which sections render in each sidebar workspace card. The header (name + pin + close) is always visible.",
+    );
+
+    this.segmentedField(
+      c,
+      "Density",
+      s.workspaceCardDensity,
+      "workspaceCardDensity",
+      [
+        { value: "compact", label: "Compact" },
+        { value: "comfortable", label: "Comfortable" },
+        { value: "spacious", label: "Spacious" },
+      ],
+    );
+
+    this.toggleField(
+      c,
+      "Show meta row",
+      s.workspaceCardShowMeta,
+      "workspaceCardShowMeta",
+      { note: "Foreground command + listening port chips." },
+    );
+    this.toggleField(
+      c,
+      "Show stats row",
+      s.workspaceCardShowStats,
+      "workspaceCardShowStats",
+      { note: "Aggregate CPU bar + memory chip across the workspace's panes." },
+    );
+    this.toggleField(
+      c,
+      "Show panes list",
+      s.workspaceCardShowPanes,
+      "workspaceCardShowPanes",
+      { note: "Collapsible per-pane list (only when >1 panes)." },
+    );
+    this.toggleField(
+      c,
+      "Show manifests",
+      s.workspaceCardShowManifests,
+      "workspaceCardShowManifests",
+      {
+        note: "package.json + Cargo.toml cards with quick-launch script chips.",
+      },
+    );
+    this.toggleField(
+      c,
+      "Show ht status pills",
+      s.workspaceCardShowStatusPills,
+      "workspaceCardShowStatusPills",
+      { note: "`ht set-status` entries displayed in the workspace card." },
+    );
+    this.toggleField(
+      c,
+      "Show progress bar",
+      s.workspaceCardShowProgress,
+      "workspaceCardShowProgress",
+      {
+        note: "Workspace progress bar driven by `ht set-progress` and OSC 9;4.",
+      },
+    );
   }
 
   private renderDiscoveredHtKeys(c: HTMLElement, s: AppSettings): void {

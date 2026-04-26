@@ -154,6 +154,32 @@ const DEFAULT_WS_UI: WorkspaceUiState = {
 
 const DEFAULT_ACCENT = "#89b4fa";
 
+/** Subfield visibility + density configuration for the workspace
+ *  cards. Pushed in by surface-manager from `AppSettings`. */
+export interface WorkspaceCardOptions {
+  density: "compact" | "comfortable" | "spacious";
+  show: {
+    meta: boolean;
+    stats: boolean;
+    panes: boolean;
+    manifests: boolean;
+    statusPills: boolean;
+    progress: boolean;
+  };
+}
+
+export const DEFAULT_WORKSPACE_CARD_OPTIONS: WorkspaceCardOptions = {
+  density: "comfortable",
+  show: {
+    meta: true,
+    stats: true,
+    panes: true,
+    manifests: true,
+    statusPills: true,
+    progress: true,
+  },
+};
+
 export class Sidebar {
   private container: HTMLElement;
   private headerEl: HTMLElement;
@@ -196,6 +222,12 @@ export class Sidebar {
   private highlightIndex = -1;
   private renamingId: string | null = null;
   private expandedPackages: Set<string> = new Set();
+
+  /** Plan #06: per-section visibility + density for the workspace
+   *  card. Surface-manager pushes the user's choices via
+   *  `setWorkspaceCardOptions`; defaults match the pre-Plan-#06
+   *  behaviour so tests + e2e fixtures keep rendering everything. */
+  private cardOptions: WorkspaceCardOptions = DEFAULT_WORKSPACE_CARD_OPTIONS;
 
   constructor(container: HTMLElement, callbacks: SidebarCallbacks) {
     this.container = container;
@@ -280,6 +312,18 @@ export class Sidebar {
     this.reconcileUiState();
     this.renderWorkspaces();
     this.renderGlobalStats();
+  }
+
+  /** Push the workspace-card display preferences in. Surface-manager
+   *  calls this from `applySettings` so any change in
+   *  `workspaceCardDensity` / `workspaceCardShow*` settings repaints
+   *  the affected cards on the next render pass. The density attr
+   *  lands on the sidebar root immediately so CSS density rules
+   *  apply even before the next data update. */
+  setWorkspaceCardOptions(options: WorkspaceCardOptions): void {
+    this.cardOptions = options;
+    this.container.setAttribute("data-ws-card-density", options.density);
+    if (this.workspaces.length > 0) this.renderWorkspaces();
   }
 
   toggle(): void {
@@ -678,16 +722,23 @@ export class Sidebar {
     stripe.setAttribute("aria-hidden", "true");
     item.appendChild(stripe);
 
-    // ── Compact header row ──
+    // ── Compact header row ── (always rendered — workspace name +
+    //  pin + close affordances are essential identification chrome)
     const header = this.buildCardHeader(ws);
     item.appendChild(header);
 
+    const show = this.cardOptions.show;
+
     // ── Meta row: focused fg command + inline port chips ──
-    const meta = this.buildCardMetaRow(ws);
-    if (meta) item.appendChild(meta);
+    if (show.meta) {
+      const meta = this.buildCardMetaRow(ws);
+      if (meta) item.appendChild(meta);
+    }
 
     // ── Stat row: CPU bar + numeric chips (always, every workspace) ──
-    item.appendChild(this.buildCardStatRow(ws, accent));
+    if (show.stats) {
+      item.appendChild(this.buildCardStatRow(ws, accent));
+    }
 
     // ── Active-only: expanded sub-sections ──
     if (ws.active) {
@@ -697,7 +748,7 @@ export class Sidebar {
       }
 
       // Panes list — collapsible, compact.
-      if (ws.surfaceTitles.length > 1) {
+      if (show.panes && ws.surfaceTitles.length > 1) {
         item.appendChild(
           this.buildCollapseSection({
             wsId: ws.id,
@@ -710,7 +761,7 @@ export class Sidebar {
       }
 
       // Manifests (npm + cargo).
-      if (ws.packageJson || ws.cargoToml) {
+      if (show.manifests && (ws.packageJson || ws.cargoToml)) {
         const count = (ws.packageJson ? 1 : 0) + (ws.cargoToml ? 1 : 0);
         item.appendChild(
           this.buildCollapseSection({
@@ -724,7 +775,7 @@ export class Sidebar {
       }
 
       // Status pills.
-      if (ws.statusPills.length > 0) {
+      if (show.statusPills && ws.statusPills.length > 0) {
         item.appendChild(
           this.buildCollapseSection({
             wsId: ws.id,
@@ -737,7 +788,7 @@ export class Sidebar {
       }
 
       // Progress.
-      if (ws.progress) {
+      if (show.progress && ws.progress) {
         item.appendChild(this.buildProgressBar(ws));
       }
     }

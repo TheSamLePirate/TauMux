@@ -5775,6 +5775,28 @@ body::after {
   border-color: color-mix(in srgb, var(--window-primary) 18%, var(--window-border));
 }
 
+/* Plan #06 — workspace-card density. The sidebar root carries
+ * `data-ws-card-density="compact|comfortable|spacious"` (set by
+ * `Sidebar.setWorkspaceCardOptions`). `comfortable` is the default
+ * baseline — the rules above already match it. The variants tighten
+ * or loosen padding + gap and scale the workspace name slightly so
+ * the entire card tracks the user's density choice without each
+ * subfield needing density-aware code. */
+[data-ws-card-density="compact"] .workspace-item {
+  gap: 4px;
+  padding: 6px 10px;
+}
+[data-ws-card-density="compact"] .workspace-name {
+  font-size: 12px;
+}
+[data-ws-card-density="spacious"] .workspace-item {
+  gap: 12px;
+  padding: 18px;
+}
+[data-ws-card-density="spacious"] .workspace-name {
+  font-size: 14px;
+}
+
 .workspace-name {
   font-size: 13px;
   font-weight: 600;
