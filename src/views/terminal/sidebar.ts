@@ -4,12 +4,14 @@ import type {
   TelegramStatusWire,
   WorkspaceContextMenuRequest,
 } from "../../shared/types";
+import { parseStatusKey } from "../../shared/status-key";
 import { ICON_TEMPLATES, createIcon, type IconName } from "./icons";
 import {
   renderManifestCard,
   type ManifestAction,
   type ManifestActionState,
 } from "./sidebar-manifest-card";
+import { renderStatusEntry } from "./status-renderers";
 
 // ─────────────────────────────────────────────────────────────────────
 // Sidebar (V2 — hyper-dense, color-forward, zero border-radius)
@@ -1077,25 +1079,55 @@ export class Sidebar {
     const wrap = document.createElement("div");
     wrap.className = "workspace-status";
     for (const pill of ws.statusPills) {
+      const parsed = parseStatusKey(pill.key);
+      // Hidden flag (leading `_`) opts the entry out of the sidebar
+      // workspace card while keeping it available to the bottom
+      // status bar. Lets scripts publish private metrics without
+      // crowding the card.
+      if (parsed.hidden) continue;
+
       const entry = document.createElement("div");
-      entry.className = "status-entry";
+      entry.className = `status-entry status-entry-${parsed.layout}`;
 
-      const keyLine = document.createElement("div");
-      keyLine.className = "status-entry-key";
-      if (pill.icon && pill.icon in ICON_TEMPLATES) {
-        keyLine.append(createIcon(pill.icon as IconName, "", 10));
+      // Block-layout renderers (lineGraph, array, longtext) handle
+      // their own label + body, so we render them whole. Inline
+      // renderers slot inside the existing two-row chrome
+      // (label row + value row) to match the established density.
+      if (parsed.layout === "block") {
+        entry.appendChild(
+          renderStatusEntry({
+            parsed,
+            value: pill.value,
+            color: pill.color,
+            icon: pill.icon,
+            context: "card",
+          }),
+        );
+      } else {
+        const keyLine = document.createElement("div");
+        keyLine.className = "status-entry-key";
+        if (pill.icon && pill.icon in ICON_TEMPLATES) {
+          keyLine.append(createIcon(pill.icon as IconName, "", 10));
+        }
+        const keyText = document.createElement("span");
+        keyText.textContent = parsed.displayName;
+        keyLine.appendChild(keyText);
+        entry.appendChild(keyLine);
+
+        const valueLine = document.createElement("div");
+        valueLine.className = "status-entry-value";
+        valueLine.title = `${pill.key}: ${pill.value}`;
+        valueLine.appendChild(
+          renderStatusEntry({
+            parsed,
+            value: pill.value,
+            color: pill.color,
+            icon: pill.icon,
+            context: "card",
+          }),
+        );
+        entry.appendChild(valueLine);
       }
-      const keyText = document.createElement("span");
-      keyText.textContent = pill.key;
-      keyLine.appendChild(keyText);
-      entry.appendChild(keyLine);
-
-      const valueLine = document.createElement("div");
-      valueLine.className = "status-entry-value";
-      valueLine.textContent = pill.value;
-      valueLine.title = pill.value;
-      if (pill.color) valueLine.style.color = pill.color;
-      entry.appendChild(valueLine);
 
       wrap.appendChild(entry);
     }

@@ -18,7 +18,9 @@
  */
 import type { AppSettings } from "../../shared/settings";
 import type { SurfaceMetadata } from "../../shared/types";
+import { parseStatusKey } from "../../shared/status-key";
 import { Meter } from "./tau-primitives";
+import { renderStatusEntry } from "./status-renderers";
 
 export interface StatusWorkspaceInfo {
   id: string;
@@ -383,45 +385,29 @@ const timeKey: StatusKeyRenderer = {
 // current entry as compact chips; `ht:<name>` is a dynamic form the
 // UI registry exposes via its id convention.
 
-function renderHtEntry(entry: HtStatusEntry): HTMLSpanElement {
-  const wrap = document.createElement("span");
-  wrap.className = "tau-status-kv tau-ht-status";
-  wrap.title = `ht ${entry.key}: ${entry.value}`;
-  const l = document.createElement("span");
-  l.className = "tau-status-label";
-  l.textContent = entry.key;
-  wrap.appendChild(l);
-  wrap.appendChild(document.createTextNode(" "));
-  const v = document.createElement("span");
-  v.className = "tau-status-value";
-  v.textContent = entry.value;
-  wrap.appendChild(v);
-  if (entry.color) {
-    // Identity token resolution: cyan / amber / ok / warn / err
-    // keywords collapse to --tau-* vars so the entry respects the
-    // design palette; raw hex passes through unchanged.
-    const c = entry.color.toLowerCase();
-    const mapped =
-      c === "cyan" || c === "human"
-        ? "var(--tau-cyan)"
-        : c === "amber" || c === "agent"
-          ? "var(--tau-agent)"
-          : c === "ok" || c === "green"
-            ? "var(--tau-ok)"
-            : c === "warn" || c === "warning" || c === "yellow"
-              ? "var(--tau-warn)"
-              : c === "err" || c === "error" || c === "red"
-                ? "var(--tau-err)"
-                : entry.color;
-    v.style.color = mapped;
-    v.style.fontWeight = "600";
-  }
-  return wrap;
+/** Render a `ht set-status` entry through the smart-key dispatcher.
+ *  All `ht-*` registry keys (well-known + catch-all) call into this so
+ *  the bottom bar gets identical treatment as the sidebar card. */
+function renderHtEntry(entry: HtStatusEntry): HTMLElement {
+  const parsed = parseStatusKey(entry.key);
+  const el = renderStatusEntry({
+    parsed,
+    value: entry.value,
+    color: entry.color,
+    icon: entry.icon,
+    context: "bar",
+  });
+  // Tooltip carries the full key/value so even the truncated longtext
+  // chip still surfaces the original payload on hover.
+  el.title = `ht ${entry.key}: ${entry.value}`;
+  return el;
 }
 
-/** Factory for the three well-known ht keys. Returns the entry's
- *  renderer-wrapped span, or null when no script has set that key on
- *  the active workspace. */
+/** Factory for the three well-known ht keys. Matches by parsed
+ *  `displayName` so `status`, `status_text`, `status_warn`, and
+ *  `_status_pct_warn` all resolve to the same well-known key — the
+ *  script controls rendering; the well-known id only controls
+ *  *which* entry the bottom bar surfaces. */
 function makeHtKey(
   name: string,
   label: string,
@@ -433,9 +419,11 @@ function makeHtKey(
     description,
     group: "system",
     render: ({ htStatuses }) => {
-      const entry = htStatuses.find((e) => e.key === name);
+      const entry = htStatuses.find(
+        (e) => parseStatusKey(e.key).displayName === name,
+      );
       if (!entry) return null;
-      return renderHtEntry({ ...entry, key: name });
+      return renderHtEntry(entry);
     },
   };
 }

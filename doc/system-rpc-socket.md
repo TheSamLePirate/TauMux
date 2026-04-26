@@ -182,6 +182,48 @@ ht clear-status build
 
 Status is **attributed to the caller's workspace automatically** — inside a τ-mux shell, `HT_SURFACE` is set on every child process and `ht` forwards it in the `surface_id` param; the Bun-side handler then resolves which workspace owns that surface. You rarely need `--workspace <id>` explicitly. When neither `--workspace` nor `HT_SURFACE` is available (e.g. running `ht` from an external shell), the server falls back to the currently-active workspace. The same resolution applies to `clear-status`, `set-progress`, `clear-progress`, and `log`.
 
+#### Smart status keys (suffix DSL)
+
+The key name is more than a label — its suffix tells τ-mux *how* to render the body. The parser is right-to-left and falls back gracefully when the body doesn't match the expected grammar (you'll see a plain text chip instead of a broken render).
+
+| Suffix       | Body grammar                                | Renders as                                            |
+| ------------ | ------------------------------------------- | ----------------------------------------------------- |
+| `_text`      | raw string (default — no suffix needed)     | label/value pill                                      |
+| `_longtext`  | raw string                                  | block in the sidebar; truncated chip in the bottom bar |
+| `_num`       | parseable number                            | `42` / `3.5k` / `1.2M` (auto-formatted)               |
+| `_pct`       | `0..100` or `0..1`                          | meter bar with percentage value                        |
+| `_lineGraph` | comma list of numbers                       | sparkline (inline in bar; full chart with min/max in card) |
+| `_array`     | JSON array of arrays — `[[label, state], …]` | vertical list with state-coloured chips per row       |
+| `_link`      | `<label>\|<url>` or bare `<url>` (http(s) only) | clickable anchor opened in the system browser    |
+| `_time`      | epoch ms / epoch s / ISO-8601               | "5m ago"-style relative time                          |
+| `_eta`       | future epoch / ISO                          | "in 2h"-style countdown                                |
+
+Suffix chains compose: `cpu_hist_lineGraph_warn` is a line graph rendered in the warn colour. Recognised semantic tokens (`ok`, `warn`, `err`, `info`) are pulled from the very tail; renderer suffixes are stripped after that. Unknown tokens fold back into the display label, so `foo_unknown_pct` reads as "foo unknown" with a percentage.
+
+A leading underscore (`_internal_pct`) hides the entry from the sidebar workspace card while still exposing it to the bottom status bar — useful for private metrics that shouldn't crowd the card.
+
+```bash
+# Live CPU bar — bar goes red over 80% automatically
+ht set-status cpu_pct 73
+
+# Same key with explicit semantic — overrides the value-driven threshold
+ht set-status cpu_pct_ok 95
+
+# Multi-step plan rendered as a checklist in the sidebar card
+ht set-status plan_array '[["P1: explore","done"],["P2: edit","active"],["P3: commit","waiting"]]'
+
+# Sparkline of the last n samples
+ht set-status latency_hist_lineGraph "23,55,77,55,44,22,77,88"
+
+# Clickable link to a dashboard
+ht set-status dashboard_link "Live metrics|https://grafana.internal/d/api"
+
+# Hidden-from-card metric, visible only in the bottom bar
+ht set-status _gc_count_num 42
+```
+
+The same renderer dispatcher serves both the sidebar card (block layout for line graphs / arrays / longtext) and the bottom status bar (always inline) — so the same key produces consistent visuals everywhere it appears.
+
 ### Progress Bars
 Display a global progress bar for long-running tasks within a workspace.
 

@@ -10628,3 +10628,109 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   flex: 0 0 auto;
   white-space: nowrap;
 }
+
+.tau-status-link {
+  color: var(--tau-cyan, #66c0f4);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.tau-status-link:hover {
+  filter: brightness(1.3);
+}
+
+/* Smart status-key block-layout renderers (sidebar workspace card).
+ * Each block has a small label row + body; lineGraph adds a min/max
+ * meta line under the chart, array renders a vertical list. */
+.tau-ht-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  font-family: var(--tau-font-mono);
+}
+.tau-ht-block-label {
+  font-size: 9.5px;
+  color: var(--tau-text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.tau-ht-block-body {
+  font-size: 11px;
+  color: var(--tau-text);
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tau-ht-block-meta {
+  font-size: 9.5px;
+  color: var(--tau-text-mute);
+  letter-spacing: 0.04em;
+}
+.tau-sparkline {
+  color: var(--tau-cyan);
+  display: block;
+}
+.tau-ht-lineGraph .tau-sparkline {
+  color: currentColor;
+}
+
+/* Array list (e.g. `plan_array`) — single row per item, optional
+ * state token chip on the right. */
+.tau-ht-array-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tau-ht-array-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+.tau-ht-array-cell {
+  color: var(--tau-text);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tau-ht-array-state {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  border: 0.5px solid currentColor;
+}
+.tau-ht-state-done {
+  color: var(--tau-ok, #4ade80);
+}
+.tau-ht-state-active {
+  color: var(--tau-cyan, #66c0f4);
+}
+.tau-ht-state-waiting {
+  color: var(--tau-text-mute);
+}
+.tau-ht-state-err {
+  color: var(--tau-err, #f87171);
+}
+.tau-ht-state-neutral {
+  color: var(--tau-text-mute);
+}
+
+/* Block-layout status entries reset the default 2-row card chrome. */
+.status-entry-block {
+  flex-direction: column;
+  gap: 0;
+}
+.status-entry-block .status-entry-key,
+.status-entry-block .status-entry-value {
+  display: none;
+}
