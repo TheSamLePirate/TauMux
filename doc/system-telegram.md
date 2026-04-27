@@ -79,13 +79,37 @@ The pane is overlay-style and never touches PTY state. The bot service runs in t
 2. The pure planner returns zero or more `{chatId, text}` deliveries — empty when the toggle is off, the allow-list is empty, or the title+body is empty.
 3. Each delivery flows through the same `sendTelegramAndBroadcast` funnel — meaning notification-forwarded messages land in the user's own chat history, are rate-limited, and obey allow-list semantics.
 
+### Notification buttons (Plan #08, v1.1)
+
+When `telegramNotificationButtonsEnabled` is on, every forwarded notification carries a 4-up Telegram inline keyboard:
+
+| Button     | Action                                                                                          |
+| ---------- | ----------------------------------------------------------------------------------------------- |
+| **OK**     | `surface.send_key {key:"enter"}` (real CR / `\r`, not LF) → `notification.dismiss`             |
+| **No**     | `surface.send_key {key:"down"}` → 200 ms pause → `surface.send_key {key:"enter"}` → dismiss     |
+| **Continue** | `surface.send_text {text:"Continue"}` → `surface.send_key {key:"enter"}`                       |
+| **Cancel** | `surface.send_key {key:"ctrl+c"}` (real SIGINT — `KEY_MAP["ctrl+c"]` is `\x03`)                  |
+
+The dispatcher lives in `src/bun/telegram-button-dispatch.ts` as a pure function (`dispatchTelegramNotificationButton`) so it's unit-testable without booting `src/bun/index.ts`. `src/bun/index.ts:handleTelegramCallback` resolves the inbound `callback_query` against `notification_links`, then calls the dispatcher with `dispatch=socketHandler` and `setTimer=setTimeout`.
+
+Wire payloads use compact `<action>|<notificationId>` `callback_data` so they fit Telegram's 64-byte limit. Legacy `stop` payloads (from before the rename to `cancel`) remain aliased so day-old DMs that predate the rename still SIGINT correctly until they age out of `notification_links` (24 h cutoff, pruned on bun startup).
+
+Allow-list: callbacks from a `from_user_id` that isn't in `telegramAllowedUserIds` are rejected with a "Not authorised" toast on the user's Telegram client. The same allow-list governs inbound messages, so a user trusted to chat is also trusted to push buttons.
+
+Audit: every dispatched action emits a `[telegram] callback action=<x> from=<name>(<id>) notif=<id> surface=<id>` log line so the operator can trace exactly what fired the keystroke.
+
+#### Persistence
+
+The `notification_links(chat_id, tg_message_id)` table records the τ-mux origin of every button-equipped notification. On Bun startup, `pruneOldNotificationLinks(now - 24h)` drops stale rows so a tap on a day-old DM doesn't fire a key into a surface that's long gone.
+
 ## Settings
 
 ```ts
-telegramEnabled: boolean;            // master switch
-telegramBotToken: string;            // unencrypted in settings.json
-telegramAllowedUserIds: string;      // comma-list of numeric ids
-telegramNotificationsEnabled: boolean; // forward sidebar notifications
+telegramEnabled: boolean;                       // master switch
+telegramBotToken: string;                       // unencrypted in settings.json
+telegramAllowedUserIds: string;                 // comma-list of numeric ids
+telegramNotificationsEnabled: boolean;          // forward sidebar notifications
+telegramNotificationButtonsEnabled: boolean;    // attach OK/No/Continue/Cancel buttons (Plan #08 v1.1)
 ```
 
 Allow-list normalization: split on `,`, trim each entry, drop anything that isn't `^\d+$`, dedupe preserving order. An empty string means "allow from anyone" — not recommended.
@@ -111,10 +135,11 @@ ht telegram send [--chat ID] [TEXT…] # stdin if no positional; default chat = 
 
 ## Tests
 
-- `tests/telegram-db.test.ts` — insert/dedup, history pagination, trim cap, kv round-trip, outbound rows skipping the unique index.
+- `tests/telegram-db.test.ts` — insert/dedup, history pagination, trim cap, kv round-trip, outbound rows skipping the unique index, `notification_links` round-trip + prune.
 - `tests/telegram-service.test.ts` — allow-list filter, send persistence on failure, abort cleanup, getMe, formatter + planner.
 - `tests/telegram-settings.test.ts` — allow-list normalization + parser parity.
 - `tests/rpc-handler-telegram.test.ts` — every RPC method incl. error paths, with mock service.
+- `tests/telegram-callback.test.ts` — `parseRawUpdate` callback_query payloads, service callback dispatch (allow-listed + reject), `sendMessageWithButtons` reply_markup on the wire, `dispatchTelegramNotificationButton` per-action sequences (OK/No/Continue/Cancel + legacy stop alias), `KEY_MAP["ctrl+c"]==="\x03"`, `KEY_MAP["enter"]==="\r"`.
 - `tests/web-client-store.test.ts` — telegram reducer cases (state/history/message/select/glow).
 
 No test makes a real Telegram API call — the `TelegramTransport` interface is always stubbed.

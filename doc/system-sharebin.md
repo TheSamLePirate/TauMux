@@ -102,3 +102,49 @@ When generating the internal logic, layout, or graphics for the sideband panel, 
 
 ### 6. Do Not Modify Internal Core Code
 You do **not** need to modify `bin/ht`, `src/bun/pty-manager.ts`, `rpc-handler`, or `electrobun.config.ts`. The `shareBin` folder is automatically included in the application bundle and appended to the terminal's `$PATH`. Just drop the script in, `chmod +x`, and it's ready to use.
+
+---
+
+## Bundled scripts
+
+The repo ships a small starter set of scripts under `shareBin/` so a fresh checkout is usable out of the box:
+
+| Script              | Purpose                                                                        |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `show_chart`        | CSV/TSV column → line / bar / scatter chart in a sideband panel.               |
+| `show_diff` / `show_gitdiff` | Coloured diff overlay (file diff or `git diff` of the current repo).  |
+| `show_gitlog`       | `git log` graph rendered as an HTML overlay.                                   |
+| `show_html`         | Raw HTML body → sideband html panel.                                           |
+| `show_img`          | Display an image (path / URL) in a floating panel.                             |
+| `show_json`         | Stdin or `<path>` → pretty-printed JSON viewer.                                |
+| `show_md`           | Markdown body → rendered overlay (subset: bold / italic / code / links).      |
+| `show_qr`           | Encode a string as a QR code SVG.                                              |
+| `show_sysmon`       | Live CPU / memory / process panel, refreshed via metadata RPC.                 |
+| `show_table`        | CSV/TSV → sortable HTML table.                                                 |
+| `show_webcam`       | AVFoundation webcam stream into a panel (macOS — needs entitlement).           |
+| `show_yaml`         | YAML body → highlighted block.                                                 |
+| `demo_status_keys`  | Exercise every renderer in the smart status-key DSL (Plan #02). See below.     |
+
+### `demo_status_keys` — smart status-key live demo
+
+`shareBin/demo_status_keys` calls `ht set-status` with realistic payloads for every renderer in the DSL (`numeric · time · state · chart · data · rich` — 38 total). Useful for:
+
+- **Visual smoke-testing** the sidebar workspace card + bottom status bar after touching the renderer dispatcher.
+- **Showing a new user** the full catalogue of expressive status entries available to any shareBin script.
+- **Regression spotting** — `--live` keeps the line-graph / vbar / area renderers ticking with random samples every 1.5 s so you can watch them animate.
+
+```bash
+shareBin/demo_status_keys           # set 45 demo entries, exit
+shareBin/demo_status_keys --live    # set, then re-tick chart entries until Ctrl-C
+shareBin/demo_status_keys --clear   # remove all demo entries
+```
+
+Output starts with `[demo_status_keys] using <path-to-ht>` so a misrouted spawn is obvious. The script auto-locates `ht` across all three layouts:
+
+1. **Packaged `.app`** — `<App>/Contents/MacOS/ht` (the Mach-O binary `scripts/post-build.ts` produces).
+2. **Dev checkout** — `<repo>/bin/ht`.
+3. **Installed shim** — fall back to `which ht`.
+
+When `ht` returns a non-zero status, the first failure prints with full context (exit code + stderr body — most often `HyperTerm Canvas is not running. Socket not found: <path>`); subsequent failures collapse to one line each. The trailing summary tallies success/failure honestly (`Set 3/45 demo status keys`).
+
+The full DSL reference, body grammars, and worked examples live in [`doc/system-rpc-socket.md` § "Smart status keys (suffix DSL)"](system-rpc-socket.md#smart-status-keys-suffix-dsl).

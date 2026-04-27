@@ -125,6 +125,19 @@ ht send-key enter
 ht send-key up
 ```
 
+#### Recognised `send-key` names
+
+`surface.send_key` (and the `ht send-key` CLI shim) accepts a name from `KEY_MAP` in `src/bun/rpc-handlers/shared.ts`. The map produces the canonical terminal escape sequence for each key — most importantly, `enter` is **CR** (`\r`), not LF (`\n`); LF is `ctrl+j`, which is what your TUI sees if you `send_text "\n"`.
+
+| Group         | Names                                                                           |
+| ------------- | ------------------------------------------------------------------------------- |
+| Editing       | `enter` / `return` (CR `\r`) · `tab` · `backspace` · `delete` · `escape` / `esc` · `space` |
+| Navigation    | `up` · `down` · `left` · `right` · `home` · `end` · `pageup` · `pagedown`       |
+| Ctrl letters  | `ctrl+a` … `ctrl+z` (ASCII 0x01–0x1A) — `ctrl+c` is SIGINT, `ctrl+d` is EOF, `ctrl+l` clears |
+| Misc ctrl     | `ctrl+\` (0x1c) · `ctrl+]` (0x1d)                                               |
+
+The full `ctrl+*` family was added in 0.2.20 to fix the Telegram Cancel button (Plan #08 v1.1) — before that, `ctrl+c` was missing from the map and `surface.send_key {key:"ctrl+c"}` silently no-op'd. Names are case-insensitive (`Enter`, `ENTER`, `enter` all work). Unknown names are dropped silently — the handler treats `seq === undefined` as "no input to write" so a bad key request doesn't crash the surface.
+
 **Reading output:**
 ```bash
 # Read the last 20 lines of text from a background pane
