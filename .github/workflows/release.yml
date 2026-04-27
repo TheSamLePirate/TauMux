@@ -1,0 +1,87 @@
+name: Release
+
+# Two ways to ship a release:
+#   - Push a tag matching `v*` (e.g. `git tag v0.2.28 && git push --tags`).
+#   - Run this workflow manually from the Actions UI with a `tag` input
+#     pointing at an already-pushed tag.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release (e.g. v0.2.28)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build .app + DMG + CLI, publish release
+    # macos-14 is arm64. The build produces an arm64-only .dmg.
+    # For Intel Mac coverage, expand to a matrix later.
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `gh release create --generate-notes` needs full history
+          # to enumerate commits since the previous tag.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Resolve tag name
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build .app + DMG (stable, with display-name patch)
+        run: bun run package:mac
+
+      - name: Build standalone `ht` CLI
+        run: bun run build:cli
+
+      - name: Verify artifacts
+        run: |
+          ls -lh artifacts/
+          ls -lh build/ht-cli || true
+          test -f artifacts/stable-macos-arm64-tau-mux.dmg
+          test -f artifacts/stable-macos-arm64-tau-mux.app.tar.zst
+          test -f build/ht-cli
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.name }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "τ-mux $TAG" \
+              --generate-notes \
+              --verify-tag
+          fi
+          gh release upload "$TAG" --clobber \
+            artifacts/stable-macos-arm64-tau-mux.dmg \
+            artifacts/stable-macos-arm64-tau-mux.app.tar.zst \
+            artifacts/stable-macos-arm64-update.json \
+            build/ht-cli

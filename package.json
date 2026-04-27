@@ -1,6 +1,6 @@
 {
   "name": "tau-mux",
-  "version": "0.2.27",
+  "version": "0.2.28",
   "type": "module",
   "description": "A hybrid terminal emulator with structured rendering channels",
   "bin": {
