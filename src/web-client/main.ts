@@ -40,6 +40,21 @@ import {
   telegramAuthorLabel,
   telegramSendFailed,
 } from "../shared/telegram-view";
+import { attachTouchGestures, pickWorkspaceStep } from "./touch-gestures";
+import { createProcessManagerView } from "./process-manager";
+import {
+  createSettingsPanelView,
+  getPinchZoomEnabled,
+  getSoftKeyboardDefault,
+} from "./settings-panel";
+import { createKeyboardToolbar } from "./keyboard-toolbar";
+import { fireNotification } from "./web-notifications";
+import {
+  attachPullToRefresh,
+  injectIosMeta,
+  refreshServiceWorker,
+  registerServiceWorker,
+} from "./pwa";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -148,11 +163,19 @@ function boot() {
   const backBtn = document.getElementById("back-btn")!;
   const sidebarEl = document.getElementById("sidebar")!;
   const sidebarToggleBtn = document.getElementById("sidebar-toggle-btn")!;
+  const procmgrBtn = document.getElementById("procmgr-btn")!;
+  const settingsBtn = document.getElementById("settings-btn")!;
+  const kbdBtn = document.getElementById("kbd-toggle-btn")!;
+  const sidebarScrim = document.getElementById("sidebar-scrim");
 
   // Swap emoji chrome for inline SVGs.
   sidebarToggleBtn.innerHTML = ICONS.sidebar;
   backBtn.innerHTML = ICONS.back;
   fsBtn.innerHTML = ICONS.fullscreen;
+  // procmgrBtn / settingsBtn / kbdBtn keep their unicode glyphs from
+  // the page shell — same approach as the existing back / fullscreen
+  // chevrons. They get a richer SVG only if a future polish pass adds
+  // matching icons to icons.ts.
 
   // ------------------------------------------------------------------
   // Store + side-car xterm instances
@@ -1094,6 +1117,168 @@ function boot() {
       sendMsg("telegramRequestState", {});
     }
     lastConnStatus = s.connection.status;
+  });
+
+  // ------------------------------------------------------------------
+  // Plan #13 — bridge-view parity + mobile UX
+  // ------------------------------------------------------------------
+
+  const hasAuthToken = new URLSearchParams(location.search).has("t");
+
+  // Process manager + settings overlays.
+  const procmgrView = createProcessManagerView({
+    store,
+    hostEl: document.body,
+    toggleBtn: procmgrBtn,
+  });
+  procmgrBtn.addEventListener("click", () => procmgrView.toggle());
+
+  const settingsView = createSettingsPanelView({
+    store,
+    hostEl: document.body,
+    toggleBtn: settingsBtn,
+    hasAuthToken,
+    onSoftKeyboardDefaultChange: (next) => {
+      kbdView.setVisible(next);
+    },
+  });
+  settingsBtn.addEventListener("click", () => settingsView.toggle());
+
+  // Soft-keyboard toolbar — routes encoded byte sequences into the
+  // focused terminal's stdin via the same path the dictation shim
+  // uses. The toolbar is hidden on desktop (toggleBtn is also hidden
+  // by CSS) and visible on coarse-pointer devices.
+  const kbdView = createKeyboardToolbar({
+    hostEl: document.body,
+    toggleBtn: kbdBtn,
+    onKey: (seq) => {
+      const sid = store.getState().focusedSurfaceId;
+      if (!sid) return;
+      sendMsg("stdin", { surfaceId: sid, data: seq });
+      // Re-focus the terminal so subsequent system-keyboard input
+      // continues to flow without an extra tap.
+      const ref = terms[sid];
+      if (ref?.term && ref.termEl) {
+        try {
+          focusXtermPreservingScroll(ref.term, ref.termEl);
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+  });
+  kbdBtn.addEventListener("click", () => kbdView.toggle());
+  if (getSoftKeyboardDefault()) kbdView.setVisible(true);
+
+  // Sidebar scrim closes the drawer when the user taps outside it
+  // (mobile drawer mode only — CSS hides the scrim on desktop).
+  if (sidebarScrim) {
+    sidebarScrim.addEventListener("click", () => {
+      if (!store.getState().sidebarVisible) return;
+      store.dispatch({ kind: "sidebar/visible", visible: false });
+      sendMsg("sidebarToggle", { visible: false });
+    });
+  }
+
+  // Touch gestures: swipe to switch workspace, edge-swipe to open
+  // drawer, pinch to zoom terminal font.
+  attachTouchGestures({
+    paneArea: container,
+    rootEl: document.body,
+    isTerminalElement: (el) => {
+      if (!el) return false;
+      // Pinch only when the user is on a terminal pane — sideband
+      // panels (HTML / SVG / canvas) own their own gestures.
+      return !!el.closest(".pane-term");
+    },
+    isDrawerOpen: () => store.getState().sidebarVisible,
+    onWorkspaceStep: (direction) => {
+      const s = store.getState();
+      const next = pickWorkspaceStep(
+        s.workspaces.map((w) => ({ id: w.id })),
+        s.activeWorkspaceId,
+        direction,
+      );
+      if (!next || next === s.activeWorkspaceId) return;
+      store.dispatch({ kind: "workspace/active", workspaceId: next });
+      store.dispatch({ kind: "fullscreen/exit" });
+      sendMsg("selectWorkspace", { workspaceId: next });
+      sendMsg("subscribeWorkspace", { workspaceId: next });
+    },
+    onDrawerToggle: (next) => {
+      const target = next === "open";
+      if (target === store.getState().sidebarVisible) return;
+      store.dispatch({ kind: "sidebar/visible", visible: target });
+      sendMsg("sidebarToggle", { visible: target });
+    },
+    onFontStep: (step) => {
+      if (!getPinchZoomEnabled()) return;
+      const sid = store.getState().focusedSurfaceId;
+      const ref = sid ? terms[sid] : null;
+      if (!ref?.term) return;
+      try {
+        const cur = ref.term.options.fontSize ?? 13;
+        const next = Math.min(22, Math.max(10, cur + step));
+        if (next === cur) return;
+        ref.term.options.fontSize = next;
+      } catch {
+        /* xterm option mutation rejected — silently skip */
+      }
+    },
+  });
+
+  // OS notifications + vibration on incoming protocol notifications.
+  // Watch the notifications array for growth; when a new entry
+  // arrives that wasn't seen last frame, surface it.
+  let lastNotifIds = new Set<string>();
+  store.subscribe((s) => {
+    const ids = s.sidebar.notifications.map((n) => n.id);
+    const next = new Set(ids);
+    for (const n of s.sidebar.notifications) {
+      if (lastNotifIds.has(n.id)) continue;
+      // Skip the initial snapshot — only fire on genuinely new
+      // notifications. We detect this by checking whether the prior
+      // set was empty (page just loaded or cleared).
+      if (lastNotifIds.size === 0 && s.sidebar.notifications.length > 1) {
+        continue;
+      }
+      fireNotification({
+        title: n.title || "τ-mux",
+        body: n.body || "",
+        tag: `tau-mux:${n.id}`,
+        severity: "info",
+        onClick: () => {
+          if (n.surfaceId) {
+            store.dispatch({ kind: "focus/set", surfaceId: n.surfaceId });
+            sendMsg("focusSurface", { surfaceId: n.surfaceId });
+          }
+        },
+      });
+    }
+    lastNotifIds = next;
+  });
+
+  // Pull-to-refresh forces an SW update probe + transport reconnect.
+  attachPullToRefresh({
+    rootEl: document.body,
+    onRefresh: () => {
+      void refreshServiceWorker();
+      // The transport reconnects automatically on close — we just
+      // close the current socket and let backoff re-open it.
+      try {
+        const ws = (transport as unknown as { ws?: { close?: () => void } }).ws;
+        ws?.close?.();
+      } catch {
+        /* no-op */
+      }
+    },
+  });
+
+  // PWA registration + iOS meta. Both are idempotent and safe on
+  // every page load. Run after a microtask so they don't block boot.
+  injectIosMeta();
+  Promise.resolve().then(() => {
+    void registerServiceWorker();
   });
 
   transport.connect();

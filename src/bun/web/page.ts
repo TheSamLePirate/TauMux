@@ -24,11 +24,28 @@ export function buildHtmlPage(): string {
   // Assemble via array join — xterm.js UMD contains backticks, ${} and
   // </script> strings, so template literal interpolation is unsafe here.
   const p: string[] = [];
-  p.push('<!DOCTYPE html><html lang="en"><head>');
+  p.push('<!DOCTYPE html><html lang="en">');
+  p.push("<head>");
   p.push('<meta charset="UTF-8">');
+  // PWA-friendly viewport — `viewport-fit=cover` so we fill the iOS
+  // safe-area, `interactive-widget=resizes-content` so the soft keyboard
+  // doesn't overlap pane content. We still pin scaling to defeat
+  // double-tap zoom on the terminal.
   p.push(
-    '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">',
   );
+  p.push('<meta name="theme-color" content="#181825">');
+  p.push('<meta name="color-scheme" content="dark">');
+  // PWA / install prompt support.
+  p.push('<link rel="manifest" href="/manifest.json">');
+  p.push('<link rel="icon" type="image/svg+xml" href="/icons/icon.svg">');
+  // iOS-specific (Safari ignores manifest theme + standalone hints).
+  p.push('<meta name="apple-mobile-web-app-capable" content="yes">');
+  p.push(
+    '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
+  );
+  p.push('<meta name="apple-mobile-web-app-title" content="τ-mux">');
+  p.push('<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">');
   p.push("<title>τ-mux Remote</title>");
   p.push("<style>");
   p.push(XTERM_CSS);
@@ -70,15 +87,19 @@ export function buildHtmlPage(): string {
 
 const APP_HTML = `\
 <div id="toolbar">
-  <button class="toolbar-btn" id="sidebar-toggle-btn" title="Toggle Sidebar">&#x2261;</button>
+  <button class="toolbar-btn" id="sidebar-toggle-btn" title="Toggle sidebar">&#x2261;</button>
   <button class="toolbar-btn" id="back-btn" title="Back to split view">&#x2190;</button>
   <select id="workspace-select"></select>
-  <span id="toolbar-title">τ-mux Remote</span>
+  <span id="toolbar-title">&#964;-mux Remote</span>
   <span class="toolbar-spacer"></span>
   <span id="client-count"></span>
+  <button class="toolbar-btn" id="kbd-toggle-btn" title="Toggle soft keyboard">&#x2328;</button>
+  <button class="toolbar-btn" id="procmgr-btn" title="Process manager (read-only)">&#x2630;</button>
+  <button class="toolbar-btn" id="settings-btn" title="Settings + about">&#x2699;</button>
   <button class="toolbar-btn" id="fullscreen-btn" title="Fullscreen">&#x26F6;</button>
   <div id="status-dot"></div>
 </div>
 <div id="sidebar" class="collapsed"></div>
 <div id="sidebar-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" title="Drag to resize · double-click to reset" tabindex="0"></div>
+<div id="sidebar-scrim"></div>
 <div id="pane-container"></div>`;

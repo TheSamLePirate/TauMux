@@ -942,3 +942,517 @@ body.sidebar-resizing {
   font: inherit; font-size: 11px; cursor: pointer;
 }
 .telegram-msg-retry-btn:hover { background: rgba(255,255,255,0.1); }
+
+/* ────────────────────────────────────────────────────────────────────
+ * Plan #13 — bridge-view parity + mobile UX
+ * The chrome below either renders as overlays (procmgr, settings) or
+ * adapts the sidebar to a phone-sized drawer at < 720 px viewports.
+ * ──────────────────────────────────────────────────────────────────── */
+
+/* ── Sidebar drawer scrim (mobile drawer mode) ─────────────────── */
+#sidebar-scrim {
+  display: none;
+  position: fixed;
+  inset: var(--ht-titlebar-height) 0 0 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 19;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ht-t-medium);
+}
+
+/* ── New toolbar buttons (procmgr / settings / kbd) ───────────── */
+#procmgr-btn,
+#settings-btn,
+#kbd-toggle-btn {
+  font-size: 16px;
+  line-height: 1;
+}
+.toolbar-btn.active {
+  background: var(--ht-accent-soft);
+  color: var(--ht-text-strong);
+  border-color: var(--ht-accent-strong);
+}
+
+/* The soft-keyboard button is mobile-only (coarse pointer). */
+@media (pointer: fine) {
+  #kbd-toggle-btn {
+    display: none;
+  }
+}
+
+/* ── Process manager overlay ──────────────────────────────────── */
+.wm-procmgr {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  animation: wm-fade-in 140ms ease-out;
+}
+@keyframes wm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.wm-procmgr-card {
+  width: min(960px, 100%);
+  max-height: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  background: var(--ht-bg-card);
+  border: 1px solid var(--ht-border-soft);
+  border-radius: var(--ht-radius-card-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.wm-procmgr-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ht-border-soft);
+  background: var(--ht-bg-card-raised);
+}
+.wm-procmgr-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ht-text-strong);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wm-procmgr-badge,
+.wm-settings-badge {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ht-text-muted);
+  border: 1px solid var(--ht-border-soft);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--ht-bg-card);
+}
+.wm-procmgr-totals {
+  font: 11px / 1 var(--ht-font-mono);
+  color: var(--ht-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.wm-procmgr-close,
+.wm-settings-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ht-text-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.wm-procmgr-close:hover,
+.wm-settings-close:hover {
+  background: var(--ht-bg-card);
+  color: var(--ht-sem-error);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+.wm-procmgr-close svg,
+.wm-settings-close svg {
+  width: 12px;
+  height: 12px;
+}
+.wm-procmgr-filter {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--ht-border-soft);
+}
+.wm-procmgr-filter input {
+  width: 100%;
+  font: 13px var(--ht-font-mono);
+  padding: 8px 12px;
+  border-radius: var(--ht-radius-control);
+  border: 1px solid var(--ht-border-soft);
+  background: var(--ht-bg-card-raised);
+  color: var(--ht-text-strong);
+  outline: none;
+  /* 16 px effective on iOS prevents the focus auto-zoom. */
+  font-size: max(13px, 16px);
+}
+.wm-procmgr-filter input:focus {
+  border-color: var(--ht-accent-strong);
+  box-shadow: 0 0 0 1px var(--ht-accent-soft);
+}
+.wm-procmgr-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+table.wm-procmgr-list {
+  width: 100%;
+  border-collapse: collapse;
+  font: 12px var(--ht-font-mono);
+}
+table.wm-procmgr-list thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--ht-bg-card-raised);
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ht-text-muted);
+  border-bottom: 1px solid var(--ht-border-soft);
+}
+table.wm-procmgr-list tbody td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--ht-border-soft);
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+table.wm-procmgr-list tbody tr.wm-row {
+  cursor: pointer;
+}
+table.wm-procmgr-list tbody tr.wm-row:hover td {
+  background: var(--ht-accent-soft);
+}
+.wm-col-pid { width: 60px; color: var(--ht-text-muted); }
+.wm-col-cpu { width: 60px; color: var(--ht-sem-success); text-align: right; }
+.wm-col-mem { width: 90px; color: var(--ht-sem-info); text-align: right; }
+.wm-col-cmd { color: var(--ht-text-strong); max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-col-surface { width: 180px; color: var(--ht-text-muted); }
+.wm-cmd { display: inline; }
+.wm-flag {
+  display: inline-block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  margin-right: 6px;
+  border-radius: 3px;
+  border: 1px solid var(--ht-border-soft);
+  background: var(--ht-bg-card-raised);
+  color: var(--ht-text-muted);
+  vertical-align: middle;
+}
+.wm-flag-shell { color: var(--ht-sem-info); border-color: rgba(99, 102, 241, 0.3); }
+.wm-flag-fg { color: var(--ht-accent-strong); border-color: var(--ht-accent-strong); }
+.wm-empty {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--ht-text-dim);
+  font-style: italic;
+}
+.wm-procmgr-footer {
+  padding: 8px 16px;
+  border-top: 1px solid var(--ht-border-soft);
+  background: var(--ht-bg-card-raised);
+  font-size: 11px;
+  color: var(--ht-text-muted);
+}
+
+/* ── Settings overlay (read-only mirror) ───────────────────────── */
+.wm-settings {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  animation: wm-fade-in 140ms ease-out;
+}
+.wm-settings-card {
+  width: min(640px, 100%);
+  max-height: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  background: var(--ht-bg-card);
+  border: 1px solid var(--ht-border-soft);
+  border-radius: var(--ht-radius-card-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.wm-settings-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ht-border-soft);
+  background: var(--ht-bg-card-raised);
+}
+.wm-settings-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ht-text-strong);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wm-settings-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ht-border-soft);
+}
+.wm-settings-pill {
+  font: 11px / 1 var(--ht-font-mono);
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--ht-border-soft);
+  background: var(--ht-bg-card-raised);
+  color: var(--ht-text-muted);
+}
+.wm-settings-pill.status-ok {
+  color: var(--ht-sem-success);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+.wm-settings-pill.status-warn {
+  color: var(--ht-sem-warning);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+.wm-settings-pill.status-err {
+  color: var(--ht-sem-error);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+.wm-settings-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ht-border-soft);
+  overflow-y: auto;
+}
+.wm-settings-section:last-child { border-bottom: none; }
+.wm-settings-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ht-text-muted);
+  margin-bottom: 10px;
+}
+.wm-settings-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 10px 0;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--ht-border-soft);
+}
+.wm-settings-row:last-child { border-bottom: none; }
+.wm-settings-row.disabled { opacity: 0.55; cursor: not-allowed; }
+.wm-settings-row-text { flex: 1; min-width: 0; }
+.wm-settings-row-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ht-text-strong);
+}
+.wm-settings-row-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ht-text-muted);
+  line-height: 1.45;
+}
+.wm-settings-toggle {
+  appearance: none;
+  width: 36px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--ht-bg-card-raised);
+  border: 1px solid var(--ht-border-soft);
+  position: relative;
+  cursor: pointer;
+  transition: background var(--ht-t-fast), border-color var(--ht-t-fast);
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.wm-settings-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ht-text-muted);
+  transition: transform var(--ht-t-fast), background var(--ht-t-fast);
+}
+.wm-settings-toggle:checked {
+  background: var(--ht-accent-soft);
+  border-color: var(--ht-accent-strong);
+}
+.wm-settings-toggle:checked::after {
+  transform: translateX(14px);
+  background: var(--ht-accent-strong);
+}
+.wm-settings-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.wm-settings-desc {
+  font-size: 12px;
+  color: var(--ht-text-muted);
+  line-height: 1.5;
+}
+
+/* ── Soft-keyboard toolbar ────────────────────────────────────── */
+.wm-kbd-toolbar {
+  position: fixed;
+  left: env(safe-area-inset-left);
+  right: env(safe-area-inset-right);
+  bottom: env(safe-area-inset-bottom);
+  z-index: 95;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 6px 8px;
+  background: rgba(20, 24, 30, 0.96);
+  border-top: 1px solid var(--ht-border-soft);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  scrollbar-width: none;
+}
+.wm-kbd-toolbar::-webkit-scrollbar { display: none; }
+.wm-kbd-key {
+  flex: 0 0 auto;
+  min-width: 38px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--ht-border-soft);
+  background: var(--ht-bg-card-raised);
+  color: var(--ht-text-strong);
+  font: 14px var(--ht-font-mono);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--ht-t-fast), border-color var(--ht-t-fast);
+}
+.wm-kbd-key:active {
+  background: var(--ht-accent-soft);
+  border-color: var(--ht-accent-strong);
+}
+.wm-kbd-key.wm-kbd-ctrl.active {
+  background: var(--ht-accent-soft);
+  border-color: var(--ht-accent-strong);
+  color: var(--ht-accent-strong);
+}
+body.wm-kbd-active #pane-container {
+  bottom: 50px; /* leave room for the toolbar over the panes */
+  transition: bottom var(--ht-t-fast);
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * Breakpoints
+ *
+ *   ≤ 720 px  — phone:   sidebar = drawer (overlay), denser chrome,
+ *                         no titlebar text, soft-keyboard always
+ *                         tappable
+ *   721..1024 — tablet:   sidebar = drawer with wider footprint
+ *   ≥ 1025 px — desktop:  current push-out layout
+ * ──────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 1024px) {
+  /* Tablet + phone: sidebar is an overlay drawer, never pushes panes. */
+  body.sidebar-open #pane-container {
+    left: 0;
+    /* Cancel the sidebar transition that the desktop branch sets. */
+    transition: none;
+  }
+  #sidebar {
+    transform: translateX(0);
+    transition: transform var(--ht-t-medium), opacity var(--ht-t-medium);
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.4);
+    z-index: 30;
+  }
+  #sidebar.collapsed {
+    transform: translateX(-100%);
+    width: var(--ht-sidebar-width);
+    opacity: 1;
+    padding: var(--ht-space-section) 0;
+    border-right: 1px solid var(--ht-border-soft);
+  }
+  #sidebar-resize-handle {
+    display: none !important;
+  }
+  body.sidebar-open #sidebar-scrim {
+    display: block;
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --ht-titlebar-height: 48px;
+    --ht-sidebar-width: min(82vw, 320px);
+    --ht-space-section: 12px;
+  }
+  #toolbar-title {
+    display: none;
+  }
+  #workspace-select {
+    /* iOS auto-zoom guard: 16 px minimum on form controls. */
+    font-size: max(12px, 16px);
+    padding: 8px 10px;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 60%;
+  }
+  #client-count {
+    display: none;
+  }
+  body {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  /* Larger tap targets — Apple HIG / Material both target 44 px. */
+  .toolbar-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .pane-bar-btn {
+    width: 32px;
+    height: 32px;
+  }
+  /* Sidebar widens to fit comfortable touch list rows. */
+  .sb-ws {
+    padding: 14px;
+    margin-bottom: 8px;
+  }
+  /* Settings + procmgr overlays go full-bleed on phones. */
+  .wm-settings,
+  .wm-procmgr {
+    padding: 0;
+  }
+  .wm-settings-card,
+  .wm-procmgr-card {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    border: none;
+  }
+  /* Drop seldom-needed columns from the procmgr table on a phone. */
+  .wm-col-mem,
+  .wm-col-pid {
+    display: none;
+  }
+}
+
+@media (min-width: 1025px) {
+  /* Desktop: explicit "drawer btn vanishes" toggle is unnecessary —
+   * sidebar push-out works as before. The toggle stays for users who
+   * prefer to hide the sidebar. */
+  #sidebar-scrim { display: none !important; }
+}

@@ -46,6 +46,9 @@ export const VENDOR_MAP: Record<string, string> = {
   "assets/web-client/client.js": "web-client/client.js",
   "assets/web-client/client.css": "web-client/client.css",
   "assets/web-client/tokens.css": "web-client/tokens.css",
+  "assets/web-client/sw.js": "web-client/sw.js",
+  "assets/web-client/manifest.json": "web-client/manifest.json",
+  "assets/web-client/icon.svg": "web-client/icon.svg",
 };
 
 function findProjectRoot(): string {

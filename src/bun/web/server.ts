@@ -17,6 +17,7 @@ import {
   NERD_FONT_REGULAR,
   NERD_FONT_BOLD,
   NOTIFICATION_SOUND_FINISH,
+  readAsset,
 } from "./asset-loader";
 import { buildHtmlPage, invalidatePageCache } from "./page";
 import {
@@ -204,6 +205,48 @@ export class WebServer {
           if (url.pathname.endsWith(".map")) {
             return new Response('{"version":3,"sources":[],"mappings":""}', {
               headers: { "content-type": "application/json" },
+            });
+          }
+
+          // ── PWA shell ────────────────────────────────────────
+          // Service workers must register from the same scope they
+          // serve, so /sw.js MUST live at the root and pre-auth.
+          // Manifest + icon are public — they don't expose terminal
+          // state, just chrome metadata.
+          if (url.pathname === "/sw.js") {
+            const sw = readAsset("assets/web-client/sw.js");
+            return new Response(sw, {
+              headers: {
+                "content-type": "application/javascript; charset=utf-8",
+                // `no-store` so the browser always re-fetches; the SW
+                // itself versions the cache so a fresh fetch picks up
+                // a new bundle's assets immediately.
+                "cache-control": "no-store",
+                "service-worker-allowed": "/",
+              },
+            });
+          }
+          if (url.pathname === "/manifest.json") {
+            const manifest = readAsset("assets/web-client/manifest.json");
+            return new Response(manifest, {
+              headers: {
+                "content-type": "application/manifest+json; charset=utf-8",
+                "cache-control": "public, max-age=600",
+              },
+            });
+          }
+          if (
+            url.pathname === "/icons/icon.svg" ||
+            url.pathname === "/icons/apple-touch-icon.png"
+          ) {
+            // Single SVG icon serves both manifest + iOS slots; iOS
+            // accepts SVG since 16.4 and falls back gracefully.
+            const svg = readAsset("assets/web-client/icon.svg");
+            return new Response(svg, {
+              headers: {
+                "content-type": "image/svg+xml",
+                "cache-control": "public, max-age=86400",
+              },
             });
           }
 

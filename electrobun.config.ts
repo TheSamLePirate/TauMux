@@ -11,7 +11,7 @@ export default {
     // surprises in CI / shell scripts.
     name: "tau-mux",
     identifier: "dev.hyperterm.canvas",
-    version: "0.2.16",
+    version: "0.2.17",
     description:
       "A hybrid terminal emulator with floating canvas overlays for images, charts, and interactive widgets.",
   },
@@ -25,7 +25,7 @@ export default {
       },
     },
     copy: {
-      "shareBin": "shareBin",
+      shareBin: "shareBin",
       "src/views/terminal/index.html": "views/terminal/index.html",
       "src/views/terminal/index.css": "views/terminal/index.css",
       "src/views/terminal/xterm.css": "views/terminal/xterm.css",
@@ -63,6 +63,12 @@ export default {
       "assets/web-client/client.js": "vendor/web-client/client.js",
       "assets/web-client/client.css": "vendor/web-client/client.css",
       "assets/web-client/tokens.css": "vendor/web-client/tokens.css",
+      // PWA shell — service worker, manifest, icon. Required for
+      // Add-to-Home-Screen + offline shell when the mirror is opened
+      // from a packaged build over the network.
+      "assets/web-client/sw.js": "vendor/web-client/sw.js",
+      "assets/web-client/manifest.json": "vendor/web-client/manifest.json",
+      "assets/web-client/icon.svg": "vendor/web-client/icon.svg",
     },
     mac: {
       icons: "icon.iconset",
