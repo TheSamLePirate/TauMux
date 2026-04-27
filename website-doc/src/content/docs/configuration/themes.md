@@ -99,4 +99,4 @@ We accept PRs that follow the established naming convention (`<family>-<flavor>`
 ## Read more
 
 - [Settings](/configuration/settings/)
-- [Source: `src/shared/settings.ts`](https://github.com/olivvein/tau-mux/blob/main/src/shared/settings.ts)
+- [Source: `src/shared/settings.ts`](https://github.com/TheSamLePirate/TauMux/blob/main/src/shared/settings.ts)

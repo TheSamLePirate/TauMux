@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/olivvein/tau-mux/commits/main).
+This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main).
 
 ## Unreleased
 

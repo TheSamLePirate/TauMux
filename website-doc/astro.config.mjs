@@ -13,12 +13,12 @@ export default defineConfig({
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/olivvein/tau-mux",
+          href: "https://github.com/TheSamLePirate/TauMux",
         },
       ],
       editLink: {
         baseUrl:
-          "https://github.com/olivvein/tau-mux/edit/main/website-doc/",
+          "https://github.com/TheSamLePirate/TauMux/edit/main/website-doc/",
       },
       lastUpdated: true,
       pagefind: true,

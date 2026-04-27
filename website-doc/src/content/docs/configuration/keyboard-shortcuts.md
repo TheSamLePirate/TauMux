@@ -66,4 +66,4 @@ The `id` / `description` / `category` fields are used by the command palette so 
 ## Read more
 
 - [Command palette](/features/command-palette/)
-- [Source: `src/views/terminal/keyboard-shortcuts.ts`](https://github.com/olivvein/tau-mux/blob/main/src/views/terminal/keyboard-shortcuts.ts)
+- [Source: `src/views/terminal/keyboard-shortcuts.ts`](https://github.com/TheSamLePirate/TauMux/blob/main/src/views/terminal/keyboard-shortcuts.ts)

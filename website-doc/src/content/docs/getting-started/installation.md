@@ -10,8 +10,8 @@ sidebar:
 ## From source (development)
 
 ```bash
-git clone https://github.com/olivvein/tau-mux.git
-cd tau-mux
+git clone https://github.com/TheSamLePirate/TauMux.git
+cd TauMux
 bun install
 bun start                     # dev build + launch
 ```
