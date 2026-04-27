@@ -139,7 +139,11 @@ stop landing on the floor.
 
 ## Commits
 
-(filled in after commit)
+- `1bf0052` — ask-user: webview modal for ht ask (Plan #10 commit C)
+  - 14 files, +1669 / -3
+  - 5 new files (ask-user-state, ask-user-modal, 2 tests, tracking)
+  - 9 modified files (types, bun index, webview index, css, sidebar,
+    web-client dispatcher, plus the version-bump trio)
 
 ## Retrospective
 
