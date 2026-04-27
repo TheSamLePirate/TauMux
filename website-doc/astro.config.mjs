@@ -1,7 +1,36 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
+const BASE = "/TauMux";
+
+// Prefix root-relative markdown links (`[x](/concepts/foo/)`) with the
+// configured base URL so they resolve correctly under `/TauMux/`. Astro
+// only auto-prefixes link components, not raw markdown links.
+function remarkPrefixBase() {
+  return (tree) => {
+    const visit = (node) => {
+      if (
+        node.type === "link" &&
+        typeof node.url === "string" &&
+        node.url.startsWith("/") &&
+        !node.url.startsWith("//") &&
+        !node.url.startsWith(`${BASE}/`)
+      ) {
+        node.url = BASE + node.url;
+      }
+      if (Array.isArray(node.children)) node.children.forEach(visit);
+    };
+    visit(tree);
+  };
+}
+
 export default defineConfig({
+  // GitHub Pages: served from https://thesamlepirate.github.io/TauMux/.
+  site: "https://thesamlepirate.github.io",
+  base: BASE,
+  markdown: {
+    remarkPlugins: [remarkPrefixBase],
+  },
   integrations: [
     starlight({
       title: "τ-mux",
