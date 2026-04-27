@@ -229,6 +229,12 @@ export class Sidebar {
    *  behaviour so tests + e2e fixtures keep rendering everything. */
   private cardOptions: WorkspaceCardOptions = DEFAULT_WORKSPACE_CARD_OPTIONS;
 
+  /** Plan #10 commit C: pending ask-user count by workspace id.
+   *  Pushed in by `setAskUserPending`; read in `buildCardHeader` to
+   *  render the "N ?" pill next to the pane-count badge. Empty
+   *  default means no badge, matching the pre-Plan-#10 layout. */
+  private askUserPendingByWorkspace = new Map<string, number>();
+
   /** Plan #06 §A — keyed reconciliation cache. The previous
    *  implementation did `listEl.innerHTML = ""` on every refresh,
    *  which tore down every workspace card and rebuilt it from
@@ -341,6 +347,16 @@ export class Sidebar {
   setWorkspaceCardOptions(options: WorkspaceCardOptions): void {
     this.cardOptions = options;
     this.container.setAttribute("data-ws-card-density", options.density);
+    if (this.workspaces.length > 0) this.renderWorkspaces();
+  }
+
+  /** Plan #10 commit C: pending ask-user count keyed by workspace id.
+   *  Index.ts's ask-user-state subscriber aggregates pending counts
+   *  per workspace and pushes the map; the workspace card renders the
+   *  cyan "?" pill next to the pane-count badge. Empty / zero entries
+   *  hide the pill. */
+  setAskUserPending(map: Map<string, number>): void {
+    this.askUserPendingByWorkspace = map;
     if (this.workspaces.length > 0) this.renderWorkspaces();
   }
 
@@ -998,6 +1014,18 @@ export class Sidebar {
       n.textContent = String(ws.surfaceTitles.length);
       badge.appendChild(n);
       header.appendChild(badge);
+    }
+
+    // Plan #10 commit C — pending ask-user pill. Cyan, sits next to
+    // the pane-count badge. Tells the user "this workspace has N
+    // open agent → user questions" so they know to switch to it.
+    const askPending = this.askUserPendingByWorkspace.get(ws.id) ?? 0;
+    if (askPending > 0) {
+      const pill = document.createElement("span");
+      pill.className = "workspace-ask-badge";
+      pill.title = `${askPending} pending agent question${askPending === 1 ? "" : "s"}`;
+      pill.textContent = `${askPending} ?`;
+      header.appendChild(pill);
     }
 
     // Actions: pin + close (hover-reveal for idle rows; sticky for active/pinned)

@@ -3043,6 +3043,130 @@ body.terminal-typing .panel {
   color: var(--text-main);
 }
 
+/* Plan #10 commit C — ask-user modal. Cloned from .prompt-overlay
+ * with a slightly darker backdrop and a higher z-index so it sits
+ * above the prompt-dialog tier (1800) and below settings (1900) /
+ * palette (2000). The sheet reuses .prompt-title / .prompt-message /
+ * .prompt-input / .prompt-btn classes so any theming work for the
+ * existing prompt-dialog automatically applies here. */
+.ask-user-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1850;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 96px;
+  background: rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.ask-user-overlay.visible {
+  opacity: 1;
+}
+
+.ask-user-sheet {
+  width: min(520px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.92);
+  border: 0.5px solid rgba(111, 233, 255, 0.58);
+  box-shadow: 0 32px 84px rgba(0, 0, 0, 0.62);
+}
+
+.ask-user-attribution {
+  color: var(--text-muted);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.ask-user-title {
+  margin: 0;
+}
+
+.ask-user-body {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.ask-user-codebox {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(10, 10, 13, 0.92);
+  border: 0.5px solid rgba(39, 39, 42, 0.96);
+  color: var(--text-strong);
+  font-family: var(--tau-font-mono, "SF Mono", "Fira Code", monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.ask-user-unsafe-banner {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.14);
+  color: rgba(252, 165, 165, 0.96);
+  border: 0.5px solid rgba(239, 68, 68, 0.42);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.ask-user-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ask-user-choices > .prompt-btn {
+  justify-content: flex-start;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 12px;
+  min-height: 34px;
+  padding: 0 14px;
+}
+
+.ask-user-actions {
+  margin-top: 4px;
+}
+
+.ask-user-btn-danger {
+  background: rgba(239, 68, 68, 0.92);
+  border-color: rgba(239, 68, 68, 0.92);
+  color: #18020a;
+  font-weight: 600;
+}
+
+/* Sidebar pending-question pill. Reuses the workspace-pane-badge
+ * sizing for visual continuity with the existing pane-count badge,
+ * but tinted cyan so it reads as a separate signal. */
+.workspace-ask-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 14px;
+  padding: 0 6px;
+  border-radius: 7px;
+  background: rgba(111, 233, 255, 0.18);
+  border: 0.5px solid rgba(111, 233, 255, 0.42);
+  color: rgba(111, 233, 255, 0.96);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .palette-overlay {
   position: fixed;
   inset: 0;

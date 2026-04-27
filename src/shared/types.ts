@@ -719,6 +719,21 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       };
       /** Request the current chat list + service status. */
       telegramRequestState: void;
+
+      // ── Plan #10 commit C: ask-user (webview → bun) ──
+      /** Resolve a pending agent → user question with the user's
+       *  answer. The bun-side queue's `resolved` subscriber fans out
+       *  the matching `askUserEvent` push to the webview + Telegram
+       *  edit-in-place; the webview shouldn't pre-empt either. */
+      askUserAnswer: { request_id: string; value: string };
+      /** Cancel a pending agent → user question. Optional `reason`
+       *  reaches the agent's stderr via the CLI. */
+      askUserCancel: { request_id: string; reason?: string };
+      /** Ask bun to broadcast the current pending list as a
+       *  `askUserEvent: kind=snapshot` push. The webview calls this
+       *  once on bootstrap (and after a reconnect) to seed the
+       *  modal's per-surface store from bun's authoritative state. */
+      askUserRequestSnapshot: void;
     };
   };
   webview: {

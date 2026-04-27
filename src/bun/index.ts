@@ -1103,6 +1103,22 @@ const bunMessageHandlers = {
         ...(payload.outputPath ? { outputPath: payload.outputPath } : {}),
       });
   },
+  // Plan #10 commit C — webview modal answers / cancels go straight
+  // to the same queue the socket-RPC handlers drive. Idempotent on
+  // unknown ids; the resolved subscriber handles fan-out (Telegram
+  // edit-in-place + webview push) so we don't pre-empt here.
+  askUserAnswer: (payload) => {
+    askUser.answer(payload.request_id, payload.value);
+  },
+  askUserCancel: (payload) => {
+    askUser.cancel(payload.request_id, payload.reason);
+  },
+  askUserRequestSnapshot: () => {
+    rpc.send("askUserEvent", {
+      kind: "snapshot",
+      pending: askUser.pending_list(),
+    });
+  },
 } satisfies BunMessageHandlers;
 
 const rpc = BrowserView.defineRPC<TauMuxRPC>({

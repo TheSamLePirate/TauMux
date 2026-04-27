@@ -23,6 +23,8 @@ import { showPromptDialog } from "./prompt-dialog";
 import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";
 import { PlanPanel } from "./plan-panel";
+import { AskUserState } from "./ask-user-state";
+import { installAskUserModal } from "./ask-user-modal";
 import { SurfaceDetailsPanel } from "./surface-details";
 import { showToast } from "./toast";
 import { registerAgentEvents } from "./agent-events";
@@ -70,6 +72,12 @@ const DEFAULT_FONT_SIZE = 13;
 const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 32;
 let typingFocusActive = false;
+
+// Plan #10 commit C — webview-side mirror of the bun ask-user queue.
+// Declared early so the rpc message handler closure can reference it
+// at module load. The modal is installed below, after surfaceManager
+// is constructed (modal needs surface attribution + active id).
+const askUserState = new AskUserState();
 
 const rpc = Electroview.defineRPC<TauMuxRPC>({
   handlers: {
@@ -237,6 +245,20 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       autoContinueAudit: (payload) => {
         planPanel.setAudit(payload.audit);
       },
+      // Plan #10 commit C — ask-user push channel. Bun emits shown /
+      // resolved transitions and (on demand) a snapshot. Forward each
+      // into the local store; the modal subscribes to the store and
+      // re-renders the head request for the active surface, the
+      // sidebar badge reads pending counts.
+      askUserEvent: (payload) => {
+        if (payload.kind === "shown") {
+          askUserState.pushShown(payload.request);
+        } else if (payload.kind === "resolved") {
+          askUserState.pushResolved(payload.request_id);
+        } else if (payload.kind === "snapshot") {
+          askUserState.seedSnapshot(payload.pending);
+        }
+      },
     },
     requests: {
       readScreen: (params) => {
@@ -267,6 +289,46 @@ surfaceManager.setTerminalEffectsEnabled(loadTerminalEffectsEnabled());
 (
   window as unknown as { __tauSurfaceManager: SurfaceManager }
 ).__tauSurfaceManager = surfaceManager;
+
+// Plan #10 commit C — install the ask-user modal. The state is
+// already populated via the askUserEvent rpc handler above; the
+// modal reads the head request for the focused surface and renders.
+// Snapshot seed: ask bun for any pending requests it has from before
+// this webview attached (e.g. webview reload mid-question).
+const askUserModalHandle = installAskUserModal({
+  state: askUserState,
+  onAnswer: (request_id, value) => {
+    rpc.send("askUserAnswer", { request_id, value });
+  },
+  onCancel: (request_id, reason) => {
+    rpc.send("askUserCancel", {
+      request_id,
+      ...(reason ? { reason } : {}),
+    });
+  },
+  getActiveSurfaceId: () => surfaceManager.getActiveSurfaceId(),
+  getAttribution: (surface_id) => {
+    const ref = surfaceManager.getSurfaceDetailsRef(surface_id);
+    return {
+      workspace: ref?.workspaceName ?? "",
+      surface: ref?.title ?? "",
+    };
+  },
+});
+rpc.send("askUserRequestSnapshot");
+// Sidebar badge: when the per-surface pending count changes, push a
+// per-workspace aggregation into the sidebar so the workspace card
+// can show a "1 question pending" pill.
+askUserState.subscribe(() => {
+  const map = new Map<string, number>();
+  const ws = surfaceManager.getWorkspaceState();
+  for (const w of ws.workspaces) {
+    let n = 0;
+    for (const sid of w.surfaceIds) n += askUserState.getPendingCount(sid);
+    if (n > 0) map.set(w.id, n);
+  }
+  surfaceManager.getSidebar().setAskUserPending(map);
+});
 
 let currentSettings: AppSettings | null = null;
 let variantController: VariantController | null = null;
@@ -1785,6 +1847,14 @@ document.addEventListener("keydown", (e) => {
       settingsPanel.hide();
       surfaceManager.showBrowserWebviews();
     }
+    return;
+  }
+
+  // Plan #10 commit C — ask-user modal owns its own keyboard
+  // (Esc → cancel, Enter → submit, two-step click for confirm-cmd).
+  // When it's visible, swallow everything else so the bindings array
+  // and xterm don't see keystrokes meant for the modal.
+  if (askUserModalHandle.isVisible()) {
     return;
   }
 

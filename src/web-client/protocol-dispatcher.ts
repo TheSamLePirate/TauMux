@@ -239,6 +239,14 @@ export function createProtocolDispatcher(
         if (Array.isArray(p.audit))
           setAutoContinueAudit?.(p.audit as AutoContinueAuditEntry[]);
         break;
+      // Plan #10 commit C — bun broadcasts ask-user shown / resolved
+      // for the webview modal. The web mirror has no modal UI yet
+      // (Plan #13 covers web parity); we silently absorb both frames
+      // so they don't trip the unknown-message log on every question
+      // that crosses the wire.
+      case "askUserShown":
+      case "askUserResolved":
+        break;
     }
   };
 }
