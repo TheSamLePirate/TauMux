@@ -68,6 +68,10 @@ jobs:
   build-and-upload:
     name: Build (${{ matrix.label }})
     needs: create-release
+    # fail-fast: false so a Windows breakage doesn't kill macOS + Linux.
+    # continue-on-error: per-row so the run is "green if at least the
+    # required platforms succeed". Windows is best-effort until the
+    # upstream electrobun installer's tar-on-Windows path bug is fixed.
     strategy:
       fail-fast: false
       matrix:
@@ -75,20 +79,24 @@ jobs:
           - os: macos-14
             label: macOS arm64
             shell: bash
+            build-cmd: bun run package:mac    # build:stable + post-package (display-name patch + DMG repack — also retries hdiutil)
             with-cli: true
-            with-post-package: true
+            allow-fail: false
           - os: ubuntu-latest
             label: Linux x64
             shell: bash
+            build-cmd: bun run build:stable
             with-cli: true
-            with-post-package: false
+            allow-fail: false
           - os: windows-latest
             label: Windows x64
             shell: bash
-            with-cli: false        # bun --compile windows target needs bun >=1.2; skip until verified
-            with-post-package: false
+            build-cmd: bun run build:stable
+            with-cli: false                   # bun --compile windows target unverified
+            allow-fail: true                  # upstream electrobun installer: tar fails on `D:\…` paths
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    continue-on-error: ${{ matrix.allow-fail }}
     defaults:
       run:
         shell: ${{ matrix.shell }}
@@ -107,11 +115,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build .app / bundle (env=stable)
-        run: bun run build:stable
-
-      - name: Patch CFBundleDisplayName + repack DMG (macOS only)
-        if: matrix.with-post-package
-        run: bun scripts/post-package.ts
+        run: ${{ matrix.build-cmd }}
 
       - name: Build standalone `ht` CLI
         if: matrix.with-cli
