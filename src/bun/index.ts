@@ -6,11 +6,14 @@ import {
   Utils,
 } from "electrobun/bun";
 // Internal Electrobun native bridge used to resize the root BrowserView and
-// expose a true native window frame around the webview.
+// expose a true native window frame around the webview. Imported from the
+// universal `dist/` path (rather than `dist-macos-arm64/`) so `tsc --noEmit`
+// resolves it on any host — the platform-specific dist is created lazily by
+// electrobun's runtime, but the TypeScript source is identical.
 import {
   native,
   toCString,
-} from "../../node_modules/electrobun/dist-macos-arm64/api/bun/proc/native";
+} from "../../node_modules/electrobun/dist/api/bun/proc/native";
 import { fileURLToPath } from "node:url";
 import { tmpdir as osTmpdir } from "node:os";
 import { dirname, join } from "node:path";
