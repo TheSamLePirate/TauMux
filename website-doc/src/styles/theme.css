@@ -1,0 +1,64 @@
+/*
+ * τ-mux docs brand overrides.
+ * Pulls accent + background tones from the project's Obsidian default theme
+ * so the site visually rhymes with the app itself.
+ */
+
+:root {
+  --sl-font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --sl-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
+    monospace;
+}
+
+/* Dark mode (default) */
+:root,
+:root[data-theme="dark"] {
+  --sl-color-accent-low: #1d2433;
+  --sl-color-accent: #4a7ad6;
+  --sl-color-accent-high: #b6c9f0;
+  --sl-color-white: #f5f7fa;
+  --sl-color-gray-1: #e2e6ee;
+  --sl-color-gray-2: #b9bfca;
+  --sl-color-gray-3: #818897;
+  --sl-color-gray-4: #4d5363;
+  --sl-color-gray-5: #2e3340;
+  --sl-color-gray-6: #1d212b;
+  --sl-color-black: #0e1116;
+}
+
+/* Light mode */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #d8e4fa;
+  --sl-color-accent: #2f5fc4;
+  --sl-color-accent-high: #1c3a7a;
+  --sl-color-white: #0e1116;
+  --sl-color-gray-1: #1d212b;
+  --sl-color-gray-2: #3a4051;
+  --sl-color-gray-3: #5a6175;
+  --sl-color-gray-4: #8a93a6;
+  --sl-color-gray-5: #d3d8e3;
+  --sl-color-gray-6: #eef1f6;
+  --sl-color-black: #ffffff;
+}
+
+/* Slightly tighter content rhythm */
+.sl-markdown-content :is(h2, h3) {
+  letter-spacing: -0.01em;
+}
+
+/* Code blocks: pull the corner radius back to match Starlight defaults
+ * (expressiveCode override already does this, this is just belt-and-braces) */
+.expressive-code .frame {
+  border-radius: 0.5rem;
+}
+
+/* Inline code: subtle accent tint */
+.sl-markdown-content :not(pre) > code {
+  background: color-mix(
+    in srgb,
+    var(--sl-color-accent) 12%,
+    transparent
+  );
+  border: 1px solid color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
+}

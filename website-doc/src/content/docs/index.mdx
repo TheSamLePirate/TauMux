@@ -1,0 +1,72 @@
+---
+title: τ-mux
+description: A hybrid terminal emulator with floating canvas overlays, live process metadata, a scriptable CLI, and a built-in browser. Built on Electrobun + Bun.
+template: splash
+hero:
+  title: τ-mux
+  tagline: A hybrid terminal where xterm.js coexists with floating canvases, a 1 Hz process observer, and a scriptable CLI.
+  actions:
+    - text: Get started
+      link: /getting-started/introduction/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/olivvein/tau-mux
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+## What it is
+
+τ-mux is a desktop terminal emulator that keeps the PTY text layer untouched while layering floating canvases, live process telemetry, and structured channels for scripts on top of it. It is keyboard-driven, mouse-friendly, and entirely scriptable from the shell via the `ht` CLI.
+
+<CardGrid>
+  <Card title="Terminal multiplexer" icon="laptop">
+    Workspaces, tiling splits, draggable dividers, drag-and-drop panes, workspace colors. xterm.js with `Bun.spawn` PTYs — no node-pty.
+  </Card>
+  <Card title="Canvas panels" icon="puzzle">
+    Floating SVG, HTML, image, and canvas2d overlays driven by extra file descriptors (fd 3/4/5). Independent DOM elements — draggable, resizable, interactive.
+  </Card>
+  <Card title="Live process metadata" icon="magnifier">
+    1 Hz `ps` + `lsof` observer surfaces cwd, ports, CPU%, RSS, and full argv for every descendant of every shell. Chips, sidebar, and CLI all feed from one pipeline.
+  </Card>
+  <Card title="`ht` CLI" icon="seti:powershell">
+    Spawn panes, send keys, manipulate layouts, open ports in a browser, send signals, inspect trees. Ships as a standalone binary inside the .app.
+  </Card>
+  <Card title="Built-in browser" icon="open-book">
+    WebKit panes alongside terminals with `⌘⇧L`. Address bar, smart URL detection, and 40+ scriptable commands via `ht browser`.
+  </Card>
+  <Card title="Web mirror" icon="rocket">
+    The entire native UI mirrored over WebSocket to anything on the LAN. Token auth, origin checks, resume-on-reconnect.
+  </Card>
+</CardGrid>
+
+## Where to go next
+
+<CardGrid>
+  <Card title="Install τ-mux" icon="download">
+    [Build from source or install the bundled binary →](/getting-started/installation/)
+  </Card>
+  <Card title="Learn the architecture" icon="setting">
+    [PTY, sideband channels, and metadata in one diagram →](/concepts/architecture/)
+  </Card>
+  <Card title="Drive it from a shell" icon="seti:powershell">
+    [Every `ht` command, grouped by domain →](/cli/overview/)
+  </Card>
+  <Card title="Render structured content" icon="pencil">
+    [The fd 3/4/5 sideband protocol with Python + TypeScript clients →](/sideband/overview/)
+  </Card>
+</CardGrid>
+
+## Stack
+
+- **Runtime** — [Bun](https://bun.sh) 1.3+
+- **Framework** — [Electrobun](https://electrobun.dev) 1.16+
+- **Terminal** — [xterm.js](https://xtermjs.org) 5.3
+- **PTY** — `Bun.spawn` with `terminal` option (no node-pty)
+- **Process metadata** — `ps` + `lsof` (no tmux, no shell integration)
+- **Default theme** — Obsidian (10 built-in presets)
+
+License: MIT.
