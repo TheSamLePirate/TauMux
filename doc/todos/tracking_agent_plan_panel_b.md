@@ -297,7 +297,9 @@ no demand surfaced and the smart-key dispatcher already renders
 
 ## Commits
 
-- (pending) — plan: panel UI + auto-continue engine + LLM provider (Plan #09 commit B)
+- `2d2532f` — plan: panel UI + auto-continue engine + LLM provider (Plan #09 commit B)
+  - 22 files changed; 2506 insertions, 5 deletions
+  - 7 new files (engine, shared renderer, native panel, mirror panel, 2 tests, tracking) + 15 modified (settings, types, wiring, CSS)
 
 ## Retrospective
 
