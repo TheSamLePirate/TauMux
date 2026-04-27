@@ -1,7 +1,7 @@
 name: Release
 
 # Two ways to ship a release:
-#   - Push a tag matching `v*` (e.g. `git tag v0.2.28 && git push --tags`).
+#   - Push a tag matching `v*` (e.g. `git tag v0.2.29 && git push --tags`).
 #   - Run this workflow manually from the Actions UI with a `tag` input
 #     pointing at an already-pushed tag.
 on:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to release (e.g. v0.2.28)"
+        description: "Existing tag to release (e.g. v0.2.29)"
         required: true
 
 permissions:
@@ -22,26 +22,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-release:
-    name: Build .app + DMG + CLI, publish release
-    # macos-14 is arm64. The build produces an arm64-only .dmg.
-    # For Intel Mac coverage, expand to a matrix later.
-    runs-on: macos-14
-    timeout-minutes: 30
+  # ──────────────────────────────────────────────────────────────────
+  # Create the release page first (idempotent). Per-platform jobs then
+  # upload assets to it in parallel without racing on creation.
+  # ──────────────────────────────────────────────────────────────────
+  create-release:
+    name: Create release page
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.tag.outputs.name }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # `gh release create --generate-notes` needs full history
-          # to enumerate commits since the previous tag.
+          # `--generate-notes` walks history back to the previous tag.
           fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
 
       - name: Resolve tag name
         id: tag
@@ -52,24 +47,7 @@ jobs:
             echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build .app + DMG (stable, with display-name patch)
-        run: bun run package:mac
-
-      - name: Build standalone `ht` CLI
-        run: bun run build:cli
-
-      - name: Verify artifacts
-        run: |
-          ls -lh artifacts/
-          ls -lh build/ht-cli || true
-          test -f artifacts/stable-macos-arm64-tau-mux.dmg
-          test -f artifacts/stable-macos-arm64-tau-mux.app.tar.zst
-          test -f build/ht-cli
-
-      - name: Create or update release
+      - name: Create release if missing
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -79,9 +57,106 @@ jobs:
               --title "τ-mux $TAG" \
               --generate-notes \
               --verify-tag
+          else
+            echo "Release $TAG already exists — proceeding to upload assets."
           fi
-          gh release upload "$TAG" --clobber \
-            artifacts/stable-macos-arm64-tau-mux.dmg \
-            artifacts/stable-macos-arm64-tau-mux.app.tar.zst \
-            artifacts/stable-macos-arm64-update.json \
-            build/ht-cli
+
+  # ──────────────────────────────────────────────────────────────────
+  # Build per-OS and upload artifacts to the release. fail-fast: false
+  # so a Linux failure doesn't block macOS / Windows uploads.
+  # ──────────────────────────────────────────────────────────────────
+  build-and-upload:
+    name: Build (${{ matrix.label }})
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            label: macOS arm64
+            shell: bash
+            with-cli: true
+            with-post-package: true
+          - os: ubuntu-latest
+            label: Linux x64
+            shell: bash
+            with-cli: true
+            with-post-package: false
+          - os: windows-latest
+            label: Windows x64
+            shell: bash
+            with-cli: false        # bun --compile windows target needs bun >=1.2; skip until verified
+            with-post-package: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build .app / bundle (env=stable)
+        run: bun run build:stable
+
+      - name: Patch CFBundleDisplayName + repack DMG (macOS only)
+        if: matrix.with-post-package
+        run: bun scripts/post-package.ts
+
+      - name: Build standalone `ht` CLI
+        if: matrix.with-cli
+        run: bun run build:cli
+
+      - name: Show artifacts directory
+        run: |
+          echo "::group::artifacts/"
+          ls -lh artifacts/ || true
+          echo "::endgroup::"
+          echo "::group::build/"
+          ls -lh build/ || true
+          echo "::endgroup::"
+
+      - name: Upload assets to release (macOS / Linux)
+        if: matrix.os != 'windows-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.create-release.outputs.tag }}"
+          # Upload everything electrobun produced for this platform,
+          # plus the standalone CLI when it was built. --clobber lets
+          # re-runs overwrite stale assets.
+          ASSETS=()
+          for f in artifacts/*; do [ -f "$f" ] && ASSETS+=("$f"); done
+          if [ -f build/ht-cli ]; then
+            # Tag the CLI with platform/arch so multi-OS releases don't collide.
+            cp build/ht-cli "build/ht-cli-${{ runner.os }}-${{ runner.arch }}"
+            ASSETS+=("build/ht-cli-${{ runner.os }}-${{ runner.arch }}")
+          fi
+          gh release upload "$TAG" --clobber "${ASSETS[@]}"
+
+      - name: Upload assets to release (Windows)
+        if: matrix.os == 'windows-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $TAG = "${{ needs.create-release.outputs.tag }}"
+          $assets = @()
+          if (Test-Path artifacts) {
+            Get-ChildItem -Path artifacts -File | ForEach-Object { $assets += $_.FullName }
+          }
+          if ($assets.Count -gt 0) {
+            gh release upload $TAG --clobber @assets
+          } else {
+            Write-Host "No assets produced for Windows — skipping upload."
+          }
