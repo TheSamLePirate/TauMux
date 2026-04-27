@@ -10924,6 +10924,391 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   display: none;
 }
 
+/* ── Smart status-key v2 renderers ──
+ * Compact, monochrome chrome that lives inside `.tau-status-kv` pills
+ * (bar context) or `.tau-ht-block` containers (sidebar card context).
+ * §11 design audits: no dotted borders, no decorative gradients. */
+
+/* Inline icon glyph for `--icon` flag. */
+.tau-ht-icon {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--tau-text-mute);
+}
+
+/* Inline code chip. */
+.tau-ht-code {
+  font-family: var(--tau-font-mono);
+  font-size: 10.5px;
+  background: var(--tau-panel-hi);
+  border-radius: var(--tau-r-chip);
+  padding: 1px 5px;
+  color: var(--tau-text);
+}
+
+/* Bool / yes-no pill. */
+.tau-ht-bool .tau-ht-bool-value {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.tau-ht-bool.is-true .tau-ht-bool-value {
+  color: var(--tau-ok);
+}
+.tau-ht-bool.is-false .tau-ht-bool-value {
+  color: var(--tau-text-mute);
+}
+
+/* Status pill — colored dot beside the message. */
+.tau-ht-status-pill .tau-ht-status-dot {
+  width: 6px;
+  height: 6px;
+  display: inline-block;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+
+/* Standalone dot-with-label. */
+.tau-ht-dot-wrap .tau-ht-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+
+/* Badge chip (icon + text). */
+.tau-ht-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--tau-panel-hi);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-chip);
+  padding: 1px 5px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--tau-text);
+}
+.tau-ht-badge-icon {
+  font-size: 10px;
+  color: var(--tau-text-mute);
+}
+.tau-ht-badge-text {
+  font-family: var(--tau-font-mono);
+}
+
+/* Tags. */
+.tau-ht-tags-wrap {
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.tau-ht-tag {
+  display: inline-block;
+  background: var(--tau-panel-hi);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-chip);
+  padding: 0 5px;
+  font-size: 9.5px;
+  font-family: var(--tau-font-mono);
+  color: var(--tau-text-dim);
+  margin-right: 3px;
+  letter-spacing: 0.02em;
+}
+.tau-ht-tag-more {
+  color: var(--tau-text-mute);
+}
+
+/* Rating stars. */
+.tau-ht-rating-stars {
+  display: inline-flex;
+  gap: 1px;
+}
+.tau-ht-rating-star {
+  font-size: 11px;
+  color: var(--tau-text-faint);
+  line-height: 1;
+}
+.tau-ht-rating-star.is-filled {
+  color: var(--tau-warn);
+}
+.tau-ht-rating-value {
+  margin-left: 4px;
+  font-size: 9.5px;
+  color: var(--tau-text-mute);
+}
+
+/* Vertical bar / histogram (svg uses currentColor). */
+.tau-vbar {
+  color: var(--tau-cyan);
+  display: inline-block;
+  vertical-align: middle;
+}
+.tau-ht-vbar .tau-vbar {
+  display: block;
+  color: currentColor;
+}
+
+/* Gauge — half-circle arc. */
+.tau-gauge {
+  color: var(--tau-cyan);
+  display: inline-block;
+  vertical-align: middle;
+}
+.tau-ht-gauge-inline .tau-gauge {
+  display: inline-block;
+}
+.tau-ht-gauge .tau-gauge {
+  display: block;
+  margin: 0 auto;
+}
+.tau-ht-gauge-readout {
+  text-align: center;
+  font-family: var(--tau-font-mono);
+}
+.tau-ht-gauge-ok {
+  color: var(--tau-ok);
+}
+.tau-ht-gauge-warn {
+  color: var(--tau-warn);
+}
+.tau-ht-gauge-err {
+  color: var(--tau-err);
+}
+
+/* Heatmap strip. */
+.tau-heatmap {
+  display: inline-block;
+  vertical-align: middle;
+}
+.tau-ht-heatmap .tau-heatmap {
+  display: block;
+  width: 100%;
+}
+
+/* Dot graph (discrete dot row). */
+.tau-ht-dotgraph-dots {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+.tau-ht-dotgraph-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tau-text-faint);
+  display: inline-block;
+}
+.tau-ht-dotgraph-dot.is-low {
+  background: var(--tau-cyan-soft);
+}
+.tau-ht-dotgraph-dot.is-mid {
+  background: var(--tau-cyan);
+}
+.tau-ht-dotgraph-dot.is-on {
+  background: var(--tau-warn);
+}
+
+/* Pie / donut. */
+.tau-pie {
+  display: inline-block;
+  vertical-align: middle;
+}
+.tau-ht-pie .tau-pie {
+  display: block;
+}
+.tau-ht-pie-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tau-ht-pie-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+}
+.tau-ht-pie-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tau-ht-pie-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+.tau-ht-pie-legend-label {
+  flex: 1 1 auto;
+  color: var(--tau-text);
+  font-family: var(--tau-font-mono);
+}
+.tau-ht-pie-legend-value {
+  color: var(--tau-text-mute);
+  font-family: var(--tau-font-mono);
+  font-size: 9.5px;
+}
+
+/* Color swatch. */
+.tau-ht-color-swatch {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  border-radius: 3px;
+  border: 0.5px solid var(--tau-edge);
+  vertical-align: middle;
+}
+.tau-ht-color-hex {
+  font-family: var(--tau-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+/* Keyboard chord. */
+.tau-ht-kbd-wrap {
+  align-items: center;
+}
+.tau-ht-kbd {
+  display: inline-block;
+  background: var(--tau-panel-hi);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-chip);
+  padding: 0 4px;
+  font-family: var(--tau-font-mono);
+  font-size: 10px;
+  color: var(--tau-text);
+  margin: 0 1px;
+}
+.tau-ht-kbd-sep {
+  color: var(--tau-text-mute);
+  font-size: 9.5px;
+  margin: 0 1px;
+}
+
+/* File path chip. */
+.tau-ht-file-name {
+  font-family: var(--tau-font-mono);
+  color: var(--tau-cyan);
+  font-size: 10.5px;
+}
+
+/* Image. */
+.tau-ht-image-inline {
+  height: 18px;
+  max-width: 60px;
+  width: auto;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.tau-ht-image {
+  display: block;
+  max-width: 100%;
+  max-height: 120px;
+  width: auto;
+  height: auto;
+  border-radius: 4px;
+  object-fit: contain;
+  background: var(--tau-panel-hi);
+}
+
+/* Block KV list. */
+.tau-ht-kv-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, auto) 1fr;
+  column-gap: 8px;
+  row-gap: 1px;
+  font-family: var(--tau-font-mono);
+  font-size: 10.5px;
+}
+.tau-ht-kv-key {
+  margin: 0;
+  color: var(--tau-text-mute);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.tau-ht-kv-value {
+  margin: 0;
+  color: var(--tau-text);
+  word-break: break-word;
+}
+
+/* JSON pretty-printed. */
+.tau-ht-json-body {
+  margin: 0;
+  padding: 6px 8px;
+  background: var(--tau-panel-hi);
+  border-radius: var(--tau-r-chip);
+  font-family: var(--tau-font-mono);
+  font-size: 10px;
+  color: var(--tau-text);
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 180px;
+}
+
+/* List items. */
+.tau-ht-list-items {
+  list-style: disc inside;
+  margin: 0;
+  padding: 0 0 0 4px;
+  font-size: 10.5px;
+  color: var(--tau-text);
+}
+.tau-ht-list-item {
+  line-height: 1.4;
+}
+
+/* Markdown subset. */
+.tau-ht-md-body {
+  font-size: 11px;
+  color: var(--tau-text);
+  line-height: 1.4;
+}
+.tau-ht-md-body p {
+  margin: 0 0 6px 0;
+}
+.tau-ht-md-bold {
+  font-weight: 700;
+  color: var(--tau-text);
+}
+.tau-ht-md-italic {
+  font-style: italic;
+  color: var(--tau-text-dim);
+}
+.tau-ht-md-code {
+  font-family: var(--tau-font-mono);
+  background: var(--tau-panel-hi);
+  border-radius: 2px;
+  padding: 0 3px;
+  font-size: 10px;
+  color: var(--tau-cyan);
+}
+
+/* Block image container. */
+.tau-ht-image-block {
+  align-items: stretch;
+}
+
+/* Per-state colors used by status / dot / array-state. Adds info +
+ * warn variants to the existing done/active/waiting/err/neutral. */
+.tau-ht-state-info {
+  color: var(--tau-cyan);
+}
+.tau-ht-state-warn {
+  color: var(--tau-warn);
+}
+
 /* ────────────────────────────────────────────────────────────────────
  * Plan #09 commit B — sidebar plan panel.
  * Sits between the notifications zone and the workspace list.

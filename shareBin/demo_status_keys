@@ -1,0 +1,216 @@
+#!/usr/bin/env bun
+/**
+ * τ-mux — demo_status_keys
+ *
+ * Exercise every renderer in the smart status-key DSL (Plan #02 v2):
+ *
+ *   numeric:  text · longtext · code · num · count · pct · bytes · ms
+ *             duration · currency · rating
+ *   time:     time · eta · date · clock
+ *   state:    bool · status · dot · badge
+ *   chart:    bar · vbar · gauge · lineGraph · sparkline · area
+ *             histogram · heatmap · dotGraph · pie · donut
+ *   data:     array · kv · json · list · tags
+ *   rich:     link · image · md · color · kbd · file
+ *
+ * Each call goes through `ht set-status` so the entries appear in:
+ *   1. the sidebar workspace card (block layouts where applicable)
+ *   2. the bottom status bar via `ht-all` (always inline)
+ *   3. the Settings → Layout → Discovered ht keys list
+ *
+ * Pass `--clear` to remove every demo key. Pass `--live` to keep the
+ * line-graph / vbar / area renderers ticking with random samples
+ * until you Ctrl-C — useful for visual smoke-testing.
+ *
+ * Usage:
+ *   shareBin/demo_status_keys
+ *   shareBin/demo_status_keys --live
+ *   shareBin/demo_status_keys --clear
+ */
+
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
+
+const HT = resolve(import.meta.dir, "..", "bin", "ht");
+
+interface DemoEntry {
+  key: string;
+  value: string;
+  color?: string;
+  icon?: string;
+  /** Optional updater for `--live` mode. */
+  tick?: () => string;
+}
+
+const DEMOS: DemoEntry[] = [
+  // numeric
+  { key: "build_text", value: "passing" },
+  { key: "build_text_ok", value: "passing", color: "ok" },
+  {
+    key: "deploy_longtext",
+    value:
+      "Rolling out canary 12% — 3 of 24 nodes at v0.2.4, no errors yet. " +
+      "Watching p99 latency for 90 seconds before promoting to 50%.",
+  },
+  { key: "errcode_code", value: "TS2304: Cannot find name 'Foo'" },
+  { key: "rss_num", value: "12345678" },
+  { key: "downloads_count", value: "12500" },
+  { key: "cpu_pct", value: "73" },
+  { key: "memfree_pct_ok", value: "92" },
+  { key: "diskUsage_bytes", value: "1572864" },
+  { key: "latency_ms", value: "4321" },
+  { key: "uptime_duration", value: "9425" },
+  { key: "spend_currency", value: "42.50|EUR" },
+  { key: "nps_rating", value: "4|5" },
+
+  // time
+  { key: "lastBuild_time", value: String(Date.now() - 6 * 60_000) },
+  { key: "deploy_eta", value: String(Date.now() + 12 * 60_000) },
+  { key: "release_date", value: "2026-04-26T12:00:00Z" },
+  { key: "now_clock", value: String(Date.now()) },
+
+  // state
+  { key: "dirty_bool", value: "true" },
+  { key: "ci_status", value: "ok:All passed" },
+  { key: "agent_dot_warn", value: "running" },
+  { key: "version_badge", value: "v0.2.4", icon: "⚙" },
+
+  // charts
+  { key: "disk_bar", value: "30|60|GB" },
+  {
+    key: "hits_vbar",
+    value: "12,18,9,21,14,11,5,17,22,16,4,9",
+    tick: () =>
+      Array.from({ length: 12 }, () => Math.round(Math.random() * 24)).join(","),
+  },
+  { key: "battery_gauge_warn", value: "25|100|%" },
+  {
+    key: "latency_hist_lineGraph",
+    value: "23,55,77,55,44,22,77,88,66,40,28,30",
+    tick: () =>
+      Array.from({ length: 24 }, () =>
+        Math.round(20 + Math.random() * 80),
+      ).join(","),
+  },
+  { key: "rps_sparkline", value: "1,3,2,5,8,3,5,4,2,7" },
+  {
+    key: "traffic_area",
+    value: "1,5,3,9,7,12,10,15,9,13",
+    tick: () =>
+      Array.from({ length: 16 }, () => Math.round(Math.random() * 20)).join(","),
+  },
+  { key: "build_histogram", value: "12,8,15,9,21,14,11" },
+  {
+    key: "activity_heatmap",
+    value: "0.05,0.2,0.4,0.6,0.8,1.0,0.7,0.3,0.1,0.5,0.9,0.6",
+  },
+  {
+    key: "commits_dotGraph",
+    value: "0,0.2,0.5,0.8,1,0.4,0.1,0,0.6,0.9,0.3",
+  },
+  { key: "traffic_pie", value: "search:60,direct:25,referral:15" },
+  { key: "share_donut", value: "human:42,agent:38,mixed:20" },
+
+  // data
+  {
+    key: "plan_array",
+    value: JSON.stringify([
+      ["P1: explore", "done"],
+      ["P2: edit", "active"],
+      ["P3: commit", "waiting"],
+      ["P4: ship", "blocked"],
+    ]),
+  },
+  {
+    key: "git_kv",
+    value: JSON.stringify({
+      branch: "main",
+      ahead: 3,
+      behind: 0,
+      dirty: false,
+      remote: "origin",
+    }),
+  },
+  {
+    key: "payload_json",
+    value: JSON.stringify(
+      { method: "ping", params: { id: 1 }, timeout: 5000 },
+      null,
+      0,
+    ),
+  },
+  {
+    key: "todo_list",
+    value: "Refactor parser, Add tests, Update docs, Bump version",
+  },
+  { key: "topics_tags", value: "ts bun electron statusbar dsl render" },
+
+  // rich
+  {
+    key: "dashboard_link",
+    value: "Live metrics|https://grafana.example.com/d/api-latency",
+  },
+  // 1×1 cyan PNG so the demo always works offline.
+  {
+    key: "logo_image",
+    value:
+      "tau|data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lpgAAAABJRU5ErkJggg==",
+  },
+  {
+    key: "notes_md",
+    value:
+      "**Status:** smart-key v2 ready. *Run* `bun test` to verify, then " +
+      "[review the docs](https://example.com/x).",
+  },
+  { key: "brand_color", value: "#6fe9ff" },
+  { key: "save_kbd", value: "Cmd+Shift+S" },
+  { key: "focus_file", value: "/Users/o/repo/src/views/terminal/index.ts" },
+
+  // hidden — visible only in the bottom bar's `ht-all`
+  { key: "_gc_count_num", value: "42" },
+  { key: "_internal_pct_warn", value: "57" },
+];
+
+function runHt(args: string[]): void {
+  const res = spawnSync(HT, args, { stdio: "inherit" });
+  if (res.status !== 0) {
+    process.stderr.write(`[demo_status_keys] ht ${args.join(" ")} failed\n`);
+  }
+}
+
+function setEntry(e: DemoEntry): void {
+  const args = ["set-status", e.key, e.value];
+  if (e.icon) args.push("--icon", e.icon);
+  if (e.color) args.push("--color", e.color);
+  runHt(args);
+}
+
+function main(): void {
+  const argv = process.argv.slice(2);
+  if (argv.includes("--clear")) {
+    for (const e of DEMOS) runHt(["clear-status", e.key]);
+    process.stdout.write(`Cleared ${DEMOS.length} demo keys.\n`);
+    return;
+  }
+
+  for (const e of DEMOS) setEntry(e);
+  process.stdout.write(
+    `Set ${DEMOS.length} demo status keys. Open the sidebar workspace ` +
+      `card or enable "ht: all statuses" in the bottom bar.\n` +
+      `Run with --clear to remove. Run with --live to animate.\n`,
+  );
+
+  if (argv.includes("--live")) {
+    process.stdout.write("Live mode — Ctrl-C to stop.\n");
+    const tickable = DEMOS.filter((e) => typeof e.tick === "function");
+    const tick = () => {
+      for (const e of tickable) {
+        if (!e.tick) continue;
+        setEntry({ ...e, value: e.tick() });
+      }
+    };
+    setInterval(tick, 1500);
+  }
+}
+
+main();

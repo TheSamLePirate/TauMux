@@ -186,43 +186,148 @@ Status is **attributed to the caller's workspace automatically** — inside a τ
 
 The key name is more than a label — its suffix tells τ-mux *how* to render the body. The parser is right-to-left and falls back gracefully when the body doesn't match the expected grammar (you'll see a plain text chip instead of a broken render).
 
-| Suffix       | Body grammar                                | Renders as                                            |
-| ------------ | ------------------------------------------- | ----------------------------------------------------- |
-| `_text`      | raw string (default — no suffix needed)     | label/value pill                                      |
-| `_longtext`  | raw string                                  | block in the sidebar; truncated chip in the bottom bar |
-| `_num`       | parseable number                            | `42` / `3.5k` / `1.2M` (auto-formatted)               |
-| `_pct`       | `0..100` or `0..1`                          | meter bar with percentage value                        |
-| `_lineGraph` | comma list of numbers                       | sparkline (inline in bar; full chart with min/max in card) |
-| `_array`     | JSON array of arrays — `[[label, state], …]` | vertical list with state-coloured chips per row       |
-| `_link`      | `<label>\|<url>` or bare `<url>` (http(s) only) | clickable anchor opened in the system browser    |
-| `_time`      | epoch ms / epoch s / ISO-8601               | "5m ago"-style relative time                          |
-| `_eta`       | future epoch / ISO                          | "in 2h"-style countdown                                |
+**Numeric / scalar**
 
-Suffix chains compose: `cpu_hist_lineGraph_warn` is a line graph rendered in the warn colour. Recognised semantic tokens (`ok`, `warn`, `err`, `info`) are pulled from the very tail; renderer suffixes are stripped after that. Unknown tokens fold back into the display label, so `foo_unknown_pct` reads as "foo unknown" with a percentage.
+| Suffix       | Body grammar                       | Renders as                                            |
+| ------------ | ---------------------------------- | ----------------------------------------------------- |
+| `_text`      | raw string (default — no suffix)   | label/value pill                                      |
+| `_longtext`  | raw string                         | block in the sidebar; truncated chip in the bar      |
+| `_code`      | raw string                         | inline `<code>` chip (mono font, panel-hi background) |
+| `_num`       | parseable number                   | `42` / `3.5k` / `1.2M` auto-formatted                 |
+| `_count`     | integer                            | rounded count with k/M suffix                         |
+| `_pct`       | `0..100` or `0..1`                 | meter bar with percentage value                       |
+| `_bytes`     | int (bytes)                        | `1572864` → `1.5 MB`                                  |
+| `_ms`        | int (ms)                           | `4321` → `4.32 s`                                     |
+| `_duration`  | int (seconds)                      | `125` → `2m 5s`                                       |
+| `_currency`  | `<value>` or `<value>\|<unit>`     | `42.5\|EUR` → `€42.50`                                |
+| `_rating`    | `<value>` or `<value>\|<max>`      | star row (filled / outline) + numeric readout         |
+
+**Time**
+
+| Suffix    | Body grammar                       | Renders as                  |
+| --------- | ---------------------------------- | --------------------------- |
+| `_time`   | epoch ms / epoch s / ISO-8601      | "5m ago" relative           |
+| `_eta`    | future epoch / ISO                 | "in 2h" countdown           |
+| `_date`   | epoch / ISO                        | `YYYY-MM-DD`                |
+| `_clock`  | epoch / ISO                        | `HH:MM:SS`                  |
+
+**State**
+
+| Suffix     | Body grammar                                  | Renders as                                       |
+| ---------- | --------------------------------------------- | ------------------------------------------------ |
+| `_bool`    | `true / false / yes / no / 1 / 0 / on / off`  | "yes" / "no" pill (green / dim)                  |
+| `_status`  | `<state>:<message>` or `<state>` only         | state-class pill — done/active/waiting/err/info  |
+| `_dot`     | `<state>` (running/done/err/etc.)             | colored dot + label                              |
+| `_badge`   | raw string                                    | small chip (icon + text), border-soft            |
+
+**Charts**
+
+| Suffix       | Body grammar                                  | Renders as                                                   |
+| ------------ | --------------------------------------------- | ------------------------------------------------------------ |
+| `_bar`       | `<value>` or `<value>\|<max>\|<unit>`         | meter bar, value/max readout                                 |
+| `_vbar`      | comma list of numbers                         | vertical bar chart (mini in bar, full svg in card)           |
+| `_gauge`     | `<value>` or `<value>\|<max>\|<unit>`         | half-circle gauge with semantic colour                       |
+| `_lineGraph` | comma list                                    | sparkline inline; full chart + min/max/last meta in card     |
+| `_sparkline` | comma list                                    | inline sparkline only                                        |
+| `_area`      | comma list                                    | area chart (filled polygon + line)                           |
+| `_histogram` | comma list                                    | vertical bars (alias of vbar in card layout)                 |
+| `_heatmap`   | comma list                                    | colour-graded strip (cool→warm)                              |
+| `_dotGraph`  | comma list                                    | discrete dot row, off/low/mid/on buckets                     |
+| `_pie`       | JSON `{label:n,…}` / `[[l,n],…]` / `a:3,b:7` | pie chart with palette + legend                              |
+| `_donut`     | same as `_pie`                                | donut variant of pie                                         |
+
+**Data**
+
+| Suffix    | Body grammar                                  | Renders as                                       |
+| --------- | --------------------------------------------- | ------------------------------------------------ |
+| `_array`  | JSON array of arrays — `[[label, state], …]`  | vertical list with state-coloured chips          |
+| `_kv`     | JSON object — one row per key                 | `<dl>` grid in card (key/value column)           |
+| `_json`   | any valid JSON                                | pretty-printed in `<pre>` block                  |
+| `_list`   | comma- or newline-separated items             | bullet list                                      |
+| `_tags`   | whitespace/comma-separated items              | tag chips (with `+N` overflow indicator)         |
+
+**Rich content**
+
+| Suffix    | Body grammar                                  | Renders as                                       |
+| --------- | --------------------------------------------- | ------------------------------------------------ |
+| `_link`   | `<label>\|<url>` or bare `<url>` (http(s))    | clickable anchor (opens in system browser)       |
+| `_image`  | `<src>` or `<alt>\|<src>` (http(s) / data URI)| inline image (chip) / block image (card)         |
+| `_md`     | markdown subset                               | bold / italic / code / `[label](url)`            |
+| `_color`  | hex `#rgb`/`#rrggbb`, `rgb()`, `hsl()`, name  | colour swatch + hex code                         |
+| `_kbd`    | `Cmd+Shift+P`-style chord                     | one `<kbd>` per key with `+` separators          |
+| `_file`   | filesystem path                               | basename chip (full path on `title=` tooltip)    |
+
+##### Composition + modifiers
+
+Suffix chains compose right-to-left and the **leftmost** matched renderer is the primary one. `cpu_hist_lineGraph_warn` is a line graph rendered in the warn colour; the chain is `[lineGraph]` and the semantic is `warn`.
+
+Recognised semantic tokens — `ok`, `warn`, `err`, `info` — are pulled from the very tail; renderer suffixes are stripped after that. Unknown tokens fold back into the display label, so `foo_unknown_pct` reads as "foo unknown" with a percentage.
+
+`--color` / `--icon` flags on the CLI override the parsed semantic colour and prepend an icon glyph to renderers that have an icon slot (badge, status). Colour keywords accepted: `cyan` / `agent` / `amber` / `ok` / `green` / `warn` / `yellow` / `err` / `red` / `info` / `blue`, plus any literal CSS colour.
 
 A leading underscore (`_internal_pct`) hides the entry from the sidebar workspace card while still exposing it to the bottom status bar — useful for private metrics that shouldn't crowd the card.
 
+##### Worked examples
+
 ```bash
-# Live CPU bar — bar goes red over 80% automatically
+# Live CPU bar — turns warn over 50%, err over 80% automatically
 ht set-status cpu_pct 73
 
-# Same key with explicit semantic — overrides the value-driven threshold
+# Explicit semantic — overrides the value-driven threshold
 ht set-status cpu_pct_ok 95
+
+# Memory bar with custom max + unit
+ht set-status mem_bar "1024|2048|MB"
+
+# Vertical bar histogram of build durations
+ht set-status build_durations_vbar "12,18,9,21,14,11"
+
+# Half-circle gauge with semantic
+ht set-status battery_gauge_warn "25"
 
 # Multi-step plan rendered as a checklist in the sidebar card
 ht set-status plan_array '[["P1: explore","done"],["P2: edit","active"],["P3: commit","waiting"]]'
 
+# JSON kv grid in the sidebar card
+ht set-status git_kv '{"branch":"main","ahead":3,"dirty":false}'
+
 # Sparkline of the last n samples
 ht set-status latency_hist_lineGraph "23,55,77,55,44,22,77,88"
 
-# Clickable link to a dashboard
-ht set-status dashboard_link "Live metrics|https://grafana.internal/d/api"
+# Pie chart of traffic sources
+ht set-status traffic_pie "search:60,direct:25,referral:15"
+
+# Boolean pill
+ht set-status dirty_bool "true"
+
+# Status with state + message
+ht set-status ci_status "ok:All passed"
+
+# File path chip with tooltip on hover
+ht set-status focus_file "/Users/o/repo/src/main.ts"
+
+# Markdown note with bold + link
+ht set-status notes_md "**Update:** [docs](https://example.com/x) ready for review"
+
+# Currency with unit
+ht set-status spend_currency "12.34|EUR"
+
+# Star rating
+ht set-status nps_rating "4|5"
+
+# Keyboard chord
+ht set-status save_kbd "Cmd+Shift+S"
+
+# Colour swatch
+ht set-status brand_color "#6fe9ff"
 
 # Hidden-from-card metric, visible only in the bottom bar
 ht set-status _gc_count_num 42
 ```
 
-The same renderer dispatcher serves both the sidebar card (block layout for line graphs / arrays / longtext) and the bottom status bar (always inline) — so the same key produces consistent visuals everywhere it appears.
+The same renderer dispatcher serves both the sidebar card (block layout for line graphs / arrays / kv / json / pie / gauge / longtext / md / image) and the bottom status bar (always inline) — so the same key produces consistent visuals everywhere it appears.
+
+For a live walk-through of every renderer, run `shareBin/demo_status_keys` from inside any τ-mux shell.
 
 ### Progress Bars
 Display a global progress bar for long-running tasks within a workspace.
