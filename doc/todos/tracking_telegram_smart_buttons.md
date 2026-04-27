@@ -1,8 +1,8 @@
 # Tracking — Plan 08: Telegram smart buttons
 
 **Plan**: [`plan_telegram_smart_buttons.md`](plan_telegram_smart_buttons.md)
-**Status**: done (v1: OK / Continue / Stop)
-**Status changed**: 2026-04-26
+**Status**: done (v1.1: OK / No / Continue / Cancel — see follow-up below)
+**Status changed**: 2026-04-27
 **Owner**: Claude (Opus 4.7, 1M context)
 **Branch**: `main`
 
@@ -168,3 +168,78 @@ Carried over to follow-ups:
 - `ht notify --buttons claude|pi|default` per-call override
 - Project-scoped button sets (Claude vs pi vs default), routed
   via the existing claude-integration / pi-extensions hooks
+
+## Follow-up — v1.1 button-action fixes (2026-04-27)
+
+User report: pressing "Stop" did nothing on the actual surface,
+"Continue" was sending Ctrl+J (LF) instead of the real Enter key,
+and the button set was missing a "No" affordance.
+
+### Root cause
+
+`KEY_MAP` in `src/bun/rpc-handlers/shared.ts` only contained
+nine entries (enter / tab / escape / backspace / delete / arrows).
+The Stop dispatch in `src/bun/index.ts` called
+`surface.send_key {key:"ctrl+c"}`, but `KEY_MAP["ctrl+c"]` was
+`undefined`, so the handler's `if (id && seq)` guard silently
+no-op'd. The bug was structural — visible only by reading both
+files together.
+
+The `\n` Continue dispatch was an honest miscoding: in TTYs,
+`\n` is Ctrl+J, not Enter. Enter is `\r` (CR).
+
+### Fix
+
+1. **`src/bun/rpc-handlers/shared.ts`** — extended `KEY_MAP` with
+   every Ctrl-letter mapping (`ctrl+a`..`ctrl+z`, `ctrl+\`, `ctrl+]`)
+   plus `home / end / pageup / pagedown / space / esc / return`.
+   `ctrl+c` → `\x03` is the load-bearing one.
+2. **`src/bun/telegram-button-dispatch.ts`** (new) — extracted the
+   per-action dispatch as a pure function so it's unit-testable
+   without the heavy `src/bun/index.ts` module (which reads
+   `Resources/version.json` at import time).
+3. **`src/bun/index.ts`** — `sendTelegramNotificationWithButtons`
+   now ships a 4-up grid (OK / No on row 1, Continue / Cancel on
+   row 2). `handleTelegramCallback` delegates to the pure
+   dispatcher. New action semantics:
+   - `ok` → `surface.send_key {key:"enter"}` (CR — not LF), then
+     `notification.dismiss`. Surface-less links still dismiss.
+   - `no` (new) → `surface.send_key {key:"down"}`, schedule
+     `surface.send_key {key:"enter"}` 200 ms later, then
+     `notification.dismiss`. Pattern: a Y/N picker where the
+     cursor defaults to "Yes".
+   - `continue` → `surface.send_text {text:"Continue"}` then
+     `surface.send_key {key:"enter"}` (was: send_text "\n" — fixed).
+   - `cancel` (renamed from `stop`) → `surface.send_key
+     {key:"ctrl+c"}` — now actually fires because `KEY_MAP` has
+     the entry. Legacy `stop` payloads remain aliased so existing
+     `notification_links` rows keep working.
+4. **`tests/telegram-callback.test.ts`** — 10 new cases covering
+   each action's dispatched call sequence + KEY_MAP coverage:
+   `ctrl+c` is `\x03`, `enter` is `\r`, `return` is `\r`. Existing
+   15 transport-level cases unchanged.
+
+### Verification
+
+| Run                                       | Result                              |
+| ----------------------------------------- | ----------------------------------- |
+| `bun run typecheck`                       | clean                               |
+| `bun test tests/telegram-callback.test.ts` | 25/25 pass (was 15)                |
+| `bun test` (full suite)                   | 1430/1430 pass, 108356 expect() calls |
+| `bun run bump:patch`                      | 0.2.19 → 0.2.20                     |
+
+### Deviations from the original spec
+
+- The plan's `stop` is renamed to `cancel` in the outgoing
+  callback_data so the wire payload reflects the user-visible
+  label. The dispatcher accepts both, so day-old DMs that
+  predate the rename still work until they age out of the
+  24-hour `notification_links` cutoff.
+- Plan listed an `ok` button as a no-keystroke acknowledgement.
+  The user wants OK to mean "yes, proceed" in a Y/N TUI prompt,
+  so OK now sends Enter. The "ack-only" semantics are gone.
+- The 200 ms delay on `no` is hard-coded — tunable later if a
+  TUI redraw turns out to need more time. Rationale: this is
+  the timing the user requested verbatim.
+
+Plan #08 is now closed at v1.1.

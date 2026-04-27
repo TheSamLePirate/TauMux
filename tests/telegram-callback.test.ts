@@ -399,3 +399,198 @@ async function waitFor(
     await Bun.sleep(5);
   }
 }
+
+// ── notification-button dispatch (Plan #08, fixed in 0.2.20) ─────────
+
+describe("dispatchTelegramNotificationButton", () => {
+  async function loadDispatcher() {
+    const mod = await import("../src/bun/telegram-button-dispatch");
+    return mod.dispatchTelegramNotificationButton;
+  }
+
+  interface Capture {
+    method: string;
+    params: Record<string, unknown>;
+  }
+
+  function makeRecorder() {
+    const calls: Capture[] = [];
+    const timers: Array<{ ms: number; cb: () => void }> = [];
+    return {
+      calls,
+      timers,
+      dispatch: (method: string, params: Record<string, unknown>) => {
+        calls.push({ method, params });
+      },
+      setTimer: (cb: () => void, ms: number) => {
+        timers.push({ ms, cb });
+      },
+    };
+  }
+
+  test("OK → Enter key (CR, not LF) + dismiss", async () => {
+    const dispatcher = await loadDispatcher();
+    const r = makeRecorder();
+    dispatcher({
+      action: "ok",
+      surfaceId: "surface:1",
+      notificationId: "notif:42",
+      dispatch: r.dispatch,
+      setTimer: r.setTimer,
+    });
+    expect(r.calls).toEqual([
+      {
+        method: "surface.send_key",
+        params: { surface_id: "surface:1", key: "enter" },
+      },
+      { method: "notification.dismiss", params: { id: "notif:42" } },
+    ]);
+  });
+
+  test("OK with no surface still dismisses the notification", async () => {
+    const dispatcher = await loadDispatcher();
+    const r = makeRecorder();
+    dispatcher({
+      action: "ok",
+      surfaceId: null,
+      notificationId: "notif:42",
+      dispatch: r.dispatch,
+      setTimer: r.setTimer,
+    });
+    expect(r.calls).toEqual([
+      { method: "notification.dismiss", params: { id: "notif:42" } },
+    ]);
+  });
+
+  test("No → Down then a deferred Enter (200 ms) + dismiss", async () => {
+    const dispatcher = await loadDispatcher();
+    const r = makeRecorder();
+    dispatcher({
+      action: "no",
+      surfaceId: "surface:1",
+      notificationId: "notif:42",
+      dispatch: r.dispatch,
+      setTimer: r.setTimer,
+    });
+    // Synchronous emissions: Down, then dismiss.
+    expect(r.calls).toEqual([
+      {
+        method: "surface.send_key",
+        params: { surface_id: "surface:1", key: "down" },
+      },
+      { method: "notification.dismiss", params: { id: "notif:42" } },
+    ]);
+    // The deferred Enter is queued at exactly 200 ms.
+    expect(r.timers.length).toBe(1);
+    expect(r.timers[0]!.ms).toBe(200);
+    // Fire the timer; the recorder picks up the Enter.
+    r.timers[0]!.cb();
+    expect(r.calls[r.calls.length - 1]).toEqual({
+      method: "surface.send_key",
+      params: { surface_id: "surface:1", key: "enter" },
+    });
+  });
+
+  test("Continue → types literal 'Continue' + Enter", async () => {
+    const dispatcher = await loadDispatcher();
+    const r = makeRecorder();
+    dispatcher({
+      action: "continue",
+      surfaceId: "surface:1",
+      notificationId: "notif:42",
+      dispatch: r.dispatch,
+      setTimer: r.setTimer,
+    });
+    expect(r.calls).toEqual([
+      {
+        method: "surface.send_text",
+        params: { surface_id: "surface:1", text: "Continue" },
+      },
+      {
+        method: "surface.send_key",
+        params: { surface_id: "surface:1", key: "enter" },
+      },
+    ]);
+  });
+
+  test("Cancel → real Ctrl+C", async () => {
+    const dispatcher = await loadDispatcher();
+    const r = makeRecorder();
+    dispatcher({
+      action: "cancel",
+      surfaceId: "surface:1",
+      notificationId: "notif:42",
+      dispatch: r.dispatch,
+      setTimer: r.setTimer,
+    });
+    expect(r.calls).toEqual([
+      {
+        method: "surface.send_key",
+        params: { surface_id: "surface:1", key: "ctrl+c" },
+      },
+    ]);
+  });
+
+  test("legacy `stop` action remains aliased to ctrl+c", async () => {
+    // Old notifications persisted with `stop` callback_data must keep
+    // working until they age out of `notification_links`.
+    const dispatcher = await loadDispatcher();
+    const r = makeRecorder();
+    dispatcher({
+      action: "stop",
+      surfaceId: "surface:1",
+      notificationId: "notif:42",
+      dispatch: r.dispatch,
+      setTimer: r.setTimer,
+    });
+    expect(r.calls).toEqual([
+      {
+        method: "surface.send_key",
+        params: { surface_id: "surface:1", key: "ctrl+c" },
+      },
+    ]);
+  });
+
+  test("Cancel with no surface is a no-op", async () => {
+    const dispatcher = await loadDispatcher();
+    const r = makeRecorder();
+    dispatcher({
+      action: "cancel",
+      surfaceId: null,
+      notificationId: "notif:42",
+      dispatch: r.dispatch,
+      setTimer: r.setTimer,
+    });
+    expect(r.calls).toEqual([]);
+  });
+
+  test("unknown action logs and emits nothing", async () => {
+    const dispatcher = await loadDispatcher();
+    const r = makeRecorder();
+    dispatcher({
+      action: "wat",
+      surfaceId: "surface:1",
+      notificationId: "notif:42",
+      dispatch: r.dispatch,
+      setTimer: r.setTimer,
+    });
+    expect(r.calls).toEqual([]);
+  });
+});
+
+// ── KEY_MAP carries the ctrl-modifier sequences ──────────────────────
+
+describe("KEY_MAP — ctrl-modifier coverage", () => {
+  test("ctrl+c maps to ASCII 0x03 (was missing pre-fix; broke Cancel)", async () => {
+    const { KEY_MAP } = await import("../src/bun/rpc-handlers/shared");
+    expect(KEY_MAP["ctrl+c"]).toBe("\x03");
+    expect(KEY_MAP["ctrl+d"]).toBe("\x04");
+    expect(KEY_MAP["ctrl+z"]).toBe("\x1a");
+  });
+
+  test("enter is CR (\\r), not LF (\\n)", async () => {
+    const { KEY_MAP } = await import("../src/bun/rpc-handlers/shared");
+    expect(KEY_MAP["enter"]).toBe("\r");
+    expect(KEY_MAP["return"]).toBe("\r");
+  });
+});

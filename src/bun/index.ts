@@ -74,6 +74,7 @@ import { HealthRegistry } from "./health";
 import { PlanStore } from "./plan-store";
 import { AutoContinueEngine } from "./auto-continue-engine";
 import { AskUserQueue } from "./ask-user-queue";
+import { dispatchTelegramNotificationButton } from "./telegram-button-dispatch";
 import {
   buildButtonsForKind,
   formatQuestionForTelegram,
@@ -1452,8 +1453,14 @@ async function sendTelegramAndBroadcast(
 /** Plan #08 — same as sendTelegramAndBroadcast but attaches inline
  *  keyboard buttons + persists a notification_links row so the
  *  inbound callback_query handler can recover the τ-mux origin
- *  later. The buttons are fixed for v1 (OK / Continue / Stop);
- *  custom button sets land in a follow-up. */
+ *  later. Buttons (4-up grid):
+ *    - OK     → press Enter on the focused prompt
+ *    - No     → arrow-down + 200 ms + Enter (declines a Y/N where
+ *               the default is Yes)
+ *    - Continue → type the literal word "Continue" + Enter
+ *    - Cancel → real Ctrl+C (SIGINT) into the surface
+ *  All actions resolve through the existing socket handlers, so the
+ *  same allow-list / audit pipeline applies. */
 async function sendTelegramNotificationWithButtons(opts: {
   chatId: string;
   text: string;
@@ -1463,12 +1470,16 @@ async function sendTelegramNotificationWithButtons(opts: {
   const svc = telegramService;
   if (!svc) return;
   // Compact `<action>|<id>` payload — Telegram caps callback_data at
-  // 64 bytes; notification ids stay well under.
+  // 64 bytes; notification ids stay well under. Two rows of two so
+  // the buttons stay tappable on a phone screen.
   const buttons = [
     [
       { text: "OK", callback_data: `ok|${opts.notificationId}` },
+      { text: "No", callback_data: `no|${opts.notificationId}` },
+    ],
+    [
       { text: "Continue", callback_data: `continue|${opts.notificationId}` },
-      { text: "Stop", callback_data: `stop|${opts.notificationId}` },
+      { text: "Cancel", callback_data: `cancel|${opts.notificationId}` },
     ],
   ];
   try {
@@ -1727,23 +1738,17 @@ async function handleTelegramCallback(info: {
     `[telegram] callback action=${action} from=${info.fromName}(${info.fromUserId}) notif=${link.notificationId} surface=${link.surfaceId ?? "(none)"}`,
   );
   try {
-    if (action === "ok") {
-      socketHandler("notification.dismiss", { id: link.notificationId });
-    } else if (action === "continue") {
-      if (!link.surfaceId) return;
-      socketHandler("surface.send_text", {
-        surface_id: link.surfaceId,
-        text: "\n",
-      });
-    } else if (action === "stop") {
-      if (!link.surfaceId) return;
-      socketHandler("surface.send_key", {
-        surface_id: link.surfaceId,
-        key: "ctrl+c",
-      });
-    } else {
-      console.warn(`[telegram] callback action unknown: ${action}`);
-    }
+    dispatchTelegramNotificationButton({
+      action,
+      surfaceId: link.surfaceId,
+      notificationId: link.notificationId,
+      dispatch: (method, params) => {
+        socketHandler(method, params);
+      },
+      setTimer: (cb, ms) => {
+        setTimeout(cb, ms);
+      },
+    });
   } catch (err) {
     console.warn(
       `[telegram] callback dispatch failed: ${(err as Error).message}`,
