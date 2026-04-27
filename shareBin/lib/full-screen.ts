@@ -193,6 +193,97 @@ export function attachFullScreen(opts: AttachOptions): AttachHandle {
   };
 }
 
+// ── Close-button overlay ─────────────────────────────────────
+
+const CLOSE_BTN_W = 36;
+const CLOSE_BTN_H = 36;
+const CLOSE_BTN_MARGIN = 10;
+
+function closeBtnHtml(): string {
+  return `<div class="fs-close-btn"><span>×</span></div>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; cursor: pointer; }
+  .fs-close-btn {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(17, 17, 27, 0.78);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(243, 139, 168, 0.42);
+    border-radius: 8px;
+    color: #f38ba8;
+    font: 700 22px/1 ui-monospace, "SF Mono", monospace;
+    transition: background 120ms ease, transform 120ms ease, color 120ms ease;
+    user-select: none;
+  }
+  .fs-close-btn:hover { background: rgba(243, 139, 168, 0.32); color: #fff; transform: scale(1.06); }
+  .fs-close-btn:active { transform: scale(0.94); }
+</style>`;
+}
+
+export interface CloseButtonHandle {
+  /** Reposition the button — call when the host pane resizes. */
+  reposition(viewport: FullScreenSize): void;
+  /** Remove the button. The full-screen helper does this on exit;
+   *  callers can use it for early teardown. */
+  destroy(): void;
+}
+
+/** Mount a small interactive HTML close-button overlay anchored to
+ *  the top-right of the host pane. Clicking it invokes `onClose`.
+ *
+ *  Fixed (chromeless) panels expose no UI close button — the
+ *  overlay restores that affordance without forcing the underlying
+ *  panel into `position: "float"` (which would also drag the title
+ *  bar / drag handle into view). */
+export function mountCloseButton(
+  ownerPanelId: string,
+  initialViewport: FullScreenSize,
+  onClose: () => void,
+): CloseButtonHandle {
+  const id = `${ownerPanelId}_close`;
+  const place = (vp: FullScreenSize) => ({
+    x: Math.max(0, vp.width - CLOSE_BTN_W - CLOSE_BTN_MARGIN),
+    y: CLOSE_BTN_MARGIN,
+  });
+
+  const initial = place(initialViewport);
+  ht.sendMeta({
+    id,
+    type: "html",
+    position: "fixed",
+    x: initial.x,
+    y: initial.y,
+    width: CLOSE_BTN_W,
+    height: CLOSE_BTN_H,
+    draggable: false,
+    resizable: false,
+    interactive: true,
+    zIndex: 10000,
+    borderRadius: 8,
+    data: closeBtnHtml(),
+  });
+
+  ht.onEvent((event) => {
+    if (event.id !== id) return;
+    if (event.event === "click" || event.event === "mousedown") onClose();
+  });
+
+  return {
+    reposition(viewport): void {
+      const pos = place(viewport);
+      ht.update(id, { x: pos.x, y: pos.y });
+    },
+    destroy(): void {
+      try {
+        ht.clear(id);
+      } catch {
+        /* fd may already be closed */
+      }
+    },
+  };
+}
+
 export interface FullScreenHtmlOptions {
   /** Build the HTML markup for the supplied viewport size. */
   render: (size: FullScreenSize) => string;
@@ -200,6 +291,10 @@ export interface FullScreenHtmlOptions {
    *  is full-pane so most `show_*` scripts want clicks for sorting,
    *  filtering, scrolling, etc. */
   interactive?: boolean;
+  /** Show the floating close-button overlay in the top-right
+   *  corner. Default true. Disable when the panel itself renders
+   *  its own close affordance. */
+  showCloseButton?: boolean;
   /** Fires for every panel event except `close`. */
   onEvent?: (event: TauMuxEvent) => void;
   /** Fires once just before the process exits. */
@@ -247,6 +342,8 @@ export function fullScreenHtml(opts: FullScreenHtmlOptions): FullScreenHtml {
     });
   }
 
+  let closeBtn: CloseButtonHandle | null = null;
+
   // Install the lifecycle BEFORE writing the panel meta — see the
   // file-level note. This means `attachFullScreen`'s onResize hook
   // is ready when the post-creation resize event arrives.
@@ -257,9 +354,13 @@ export function fullScreenHtml(opts: FullScreenHtmlOptions): FullScreenHtml {
       size = next;
       lastHtml = opts.render(next);
       pushUpdate();
+      closeBtn?.reposition(next);
     },
     onEvent: opts.onEvent,
-    onExit: opts.onExit,
+    onExit: () => {
+      closeBtn?.destroy();
+      opts.onExit?.();
+    },
   });
 
   // Now create the panel. The webview will emit a `__terminal__`
@@ -280,6 +381,13 @@ export function fullScreenHtml(opts: FullScreenHtmlOptions): FullScreenHtml {
     byteLength: new TextEncoder().encode(lastHtml).byteLength,
   });
   ht.sendData(lastHtml);
+
+  // Mount the close-button overlay AFTER the main panel so it
+  // stacks on top in the natural creation order (zIndex still wins
+  // if anything else slips in between).
+  if (opts.showCloseButton !== false) {
+    closeBtn = mountCloseButton(id, size, () => handle.exit());
+  }
 
   return {
     id,

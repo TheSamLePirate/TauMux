@@ -27,7 +27,12 @@
  */
 
 import { ht } from "./hyperterm";
-import { attachFullScreen, viewportSize } from "./lib/full-screen";
+import {
+  attachFullScreen,
+  mountCloseButton,
+  viewportSize,
+  type CloseButtonHandle,
+} from "./lib/full-screen";
 import { parseArgs } from "./lib/cli";
 
 let parsed;
@@ -141,6 +146,7 @@ let panelCreated = false;
 let latestFrame: Uint8Array | null = null;
 let sending = false;
 let capturedCount = 0;
+let closeBtn: CloseButtonHandle | null = null;
 
 // `attachFullScreen` installs the listeners (terminal resize,
 // SIGINT/SIGTERM/SIGHUP, error, close) and gives us `size()` and
@@ -150,14 +156,22 @@ const handle = attachFullScreen({
   panelId: PANEL_ID,
   initialSize: viewportSize(),
   onResize: (size) => {
-    if (!panelCreated) return;
-    // The image renderer uses object-fit: contain, so the JPEG
-    // letterboxes automatically — we just resize the panel and
-    // the next frame fills the new dimensions.
-    ht.update(PANEL_ID, { x: 0, y: 0, width: size.width, height: size.height });
+    if (panelCreated) {
+      // The image renderer uses object-fit: contain, so the JPEG
+      // letterboxes automatically — we just resize the panel and
+      // the next frame fills the new dimensions.
+      ht.update(PANEL_ID, {
+        x: 0,
+        y: 0,
+        width: size.width,
+        height: size.height,
+      });
+    }
+    closeBtn?.reposition(size);
   },
   onExit: () => {
     if (sendTimer) clearInterval(sendTimer);
+    closeBtn?.destroy();
     try {
       ffmpeg.kill();
     } catch {
@@ -173,6 +187,11 @@ const handle = attachFullScreen({
     }
   },
 });
+
+// Spawn the close-button overlay up front so the user can bail
+// even before the first frame arrives (e.g., if ffmpeg fails or
+// the camera permission dialog is open).
+closeBtn = mountCloseButton(PANEL_ID, handle.size(), () => handle.exit());
 
 // ── Frame extraction (MJPEG: SOI 0xFFD8 → EOI 0xFFD9) ──
 
