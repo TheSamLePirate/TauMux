@@ -29,9 +29,25 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-const HT = resolve(import.meta.dir, "..", "bin", "ht");
+/** Prefer the repo's `bin/ht` (matches the running τ-mux build), fall
+ *  back to a `ht` resolved via `PATH` when the script is launched from
+ *  somewhere other than a checkout (e.g. an installed dotfile). */
+function locateHt(): string {
+  const repoBin = resolve(import.meta.dir, "..", "bin", "ht");
+  if (existsSync(repoBin)) return repoBin;
+  const which = spawnSync("which", ["ht"], { encoding: "utf-8" });
+  const path = which.stdout.trim();
+  if (path) return path;
+  process.stderr.write(
+    "[demo_status_keys] could not locate `ht` — install it via the τ-mux app menu or run from the repo.\n",
+  );
+  process.exit(1);
+}
+
+const HT = locateHt();
 
 interface DemoEntry {
   key: string;
@@ -171,31 +187,64 @@ const DEMOS: DemoEntry[] = [
   { key: "_internal_pct_warn", value: "57" },
 ];
 
-function runHt(args: string[]): void {
-  const res = spawnSync(HT, args, { stdio: "inherit" });
-  if (res.status !== 0) {
-    process.stderr.write(`[demo_status_keys] ht ${args.join(" ")} failed\n`);
+let firstFailureLogged = false;
+
+function runHt(args: string[]): boolean {
+  const res = spawnSync(HT, args, { encoding: "utf-8" });
+  if (res.error) {
+    process.stderr.write(
+      `[demo_status_keys] spawn ${HT} failed: ${res.error.message}\n`,
+    );
+    return false;
   }
+  if (res.status === 0) return true;
+  // Surface the *first* failure with full context so the user can see
+  // why (no socket, allow-list, etc.). Subsequent failures stay
+  // compact so the log isn't overwhelmed.
+  const stderr = (res.stderr ?? "").trim();
+  const stdout = (res.stdout ?? "").trim();
+  if (!firstFailureLogged) {
+    firstFailureLogged = true;
+    process.stderr.write(
+      `[demo_status_keys] ht ${args.join(" ")} → exit ${res.status}\n`,
+    );
+    if (stderr) process.stderr.write(`  stderr: ${stderr}\n`);
+    if (stdout) process.stderr.write(`  stdout: ${stdout}\n`);
+    process.stderr.write(
+      `  (subsequent failures collapsed to one line each)\n`,
+    );
+  } else {
+    process.stderr.write(
+      `[demo_status_keys] ht ${args[0]} ${args[1]} → exit ${res.status}${stderr ? ` (${stderr.split("\n")[0]})` : ""}\n`,
+    );
+  }
+  return false;
 }
 
-function setEntry(e: DemoEntry): void {
+function setEntry(e: DemoEntry): boolean {
   const args = ["set-status", e.key, e.value];
   if (e.icon) args.push("--icon", e.icon);
   if (e.color) args.push("--color", e.color);
-  runHt(args);
+  return runHt(args);
 }
 
 function main(): void {
   const argv = process.argv.slice(2);
+  process.stdout.write(`[demo_status_keys] using ${HT}\n`);
+
   if (argv.includes("--clear")) {
-    for (const e of DEMOS) runHt(["clear-status", e.key]);
-    process.stdout.write(`Cleared ${DEMOS.length} demo keys.\n`);
+    let ok = 0;
+    for (const e of DEMOS) if (runHt(["clear-status", e.key])) ok++;
+    process.stdout.write(
+      `Cleared ${ok}/${DEMOS.length} demo keys.${ok === DEMOS.length ? "" : " (some clears failed — see above)"}\n`,
+    );
     return;
   }
 
-  for (const e of DEMOS) setEntry(e);
+  let ok = 0;
+  for (const e of DEMOS) if (setEntry(e)) ok++;
   process.stdout.write(
-    `Set ${DEMOS.length} demo status keys. Open the sidebar workspace ` +
+    `Set ${ok}/${DEMOS.length} demo status keys. Open the sidebar workspace ` +
       `card or enable "ht: all statuses" in the bottom bar.\n` +
       `Run with --clear to remove. Run with --live to animate.\n`,
   );
