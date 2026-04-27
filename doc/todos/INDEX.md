@@ -15,7 +15,7 @@ steps, files to touch, tests, risks, effort.
 | 07 | [Telegram resilience: crash must not break ht/notifications](plan_telegram_resilience.md) | `src/bun/telegram-service.ts`, `app-context.ts`, `socket-server.ts` | M      |
 | 08 | [Telegram smart buttons on turn-end notifications](plan_telegram_smart_buttons.md) ✅ shipped (v1.1 — OK / No / Continue / Cancel; ctrl+\* added to KEY_MAP) | `src/bun/telegram-service.ts`, `src/bun/telegram-button-dispatch.ts`, `src/bun/rpc-handlers/shared.ts`, `claude-integration/`, `pi-extensions/` | M      |
 | 09 | [Plan panel in τ-mux: agent plan + auto-continue](plan_agent_plan_panel.md) | new pane kind, `agent-panel.ts`, sideband | L      |
-| 10 | [User-request panel in τ-mux (agent asks user via UI)](plan_user_request_panel.md) | `prompt-dialog.ts`, agent runtime, telegram | M      |
+| 10 | [User-request panel in τ-mux (agent asks user via UI)](plan_user_request_panel.md) ✅ shipped (commit C — webview modal for all four kinds + sidebar pending pill) | `prompt-dialog.ts`, agent runtime, telegram | M      |
 | 11 | [OSC 9;4 progress reporting passthrough](plan_osc_progress.md) | xterm.js parser hook, status surface | M      |
 | 12 | [Terminal scroll-to-top regression](plan_terminal_scroll_fix.md) | `surface-manager.ts`, xterm wiring | S      |
 | 13 | [Web mirror parity with bridge view + mobile/touch UI](plan_web_mirror_parity.md) | `src/bun/web/`, `src/web-client/` | L      |
@@ -81,8 +81,8 @@ files stay in `doc/todos/` — they are part of the project's memory.
 
 ## Status
 
-Most plans are still **proposed, not started**. Two are fully closed
-and tracked retrospectively in `tracking_*.md`:
+Most plans are still **proposed, not started**. Three are fully
+closed and tracked retrospectively in `tracking_*.md`:
 
 - **#02 Smart status-key system** — closed at commit C (2026-04-27).
   Catalogue covers 38 renderers across 6 families (numeric · time ·
@@ -99,6 +99,17 @@ and tracked retrospectively in `tracking_*.md`:
   through `surface.send_text` + `surface.send_key`. Cancel-fix added
   the `ctrl+*` family to `KEY_MAP`. Tracking:
   [`tracking_telegram_smart_buttons.md`](tracking_telegram_smart_buttons.md).
+- **#10 User-request panel** — closed at commit C (2026-04-28).
+  Backend queue + `ht ask` CLI (commit A) · Telegram fan-out for all
+  four kinds with edit-in-place audit trail (commit B) · webview
+  modal for `yesno` / `choice` / `text` / `confirm-command` plus a
+  sidebar pending pill (commit C). Tracking:
+  [`tracking_user_request_panel.md`](tracking_user_request_panel.md)
+  (commit A) ·
+  [`tracking_user_request_panel_b.md`](tracking_user_request_panel_b.md)
+  (commit B) ·
+  [`tracking_user_request_panel_c.md`](tracking_user_request_panel_c.md)
+  (commit C).
 
 Other plans remain open; the first agent to start each one creates
 the matching `tracking_*.md` and updates the row above with a status
