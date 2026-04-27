@@ -298,7 +298,9 @@ columns updated post-commit so this file is the canonical record.
 
 ## Commits
 
-- (pending) — web-mirror: bridge-view parity + mobile/touch UX
+- `ea00e27` — web-mirror: bridge-view parity + mobile/touch UX (Plan #13)
+  - 24 files changed; 3694 insertions, 14 deletions
+  - 8 new modules + 4 test files + 470 lines of CSS + page/server/build/config wiring
 
 ## Retrospective
 
