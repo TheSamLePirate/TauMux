@@ -32,17 +32,43 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-/** Prefer the repo's `bin/ht` (matches the running τ-mux build), fall
- *  back to a `ht` resolved via `PATH` when the script is launched from
- *  somewhere other than a checkout (e.g. an installed dotfile). */
+/** Locate the `ht` binary across every layout τ-mux ships in:
+ *
+ *   1. **Packaged .app** — script lives at
+ *      `<App>/Contents/Resources/app/shareBin/`; the standalone
+ *      Mach-O `ht` that the post-build hook produces is at
+ *      `<App>/Contents/MacOS/ht`. There is no `bin/` here.
+ *   2. **Dev checkout** — script lives at `<repo>/shareBin/`; the
+ *      bun-shebanged `ht` lives at `<repo>/bin/ht`.
+ *   3. **Installed dotfile / weird PATH layout** — fall back to
+ *      whatever `which ht` resolves to.
+ *
+ *  Returning a single absolute path keeps `spawnSync` deterministic
+ *  regardless of cwd. */
 function locateHt(): string {
-  const repoBin = resolve(import.meta.dir, "..", "bin", "ht");
-  if (existsSync(repoBin)) return repoBin;
+  const here = import.meta.dir;
+  const candidates: string[] = [];
+
+  // (1) Packaged .app — walk up from `Contents/Resources/app/shareBin`
+  // to `Contents/MacOS/ht`. Three levels up lands on `Contents/`.
+  if (here.includes("Contents/Resources/app")) {
+    candidates.push(resolve(here, "..", "..", "..", "MacOS", "ht"));
+  }
+  // (2) Dev checkout — `<repo>/shareBin/..` is the repo root.
+  candidates.push(resolve(here, "..", "bin", "ht"));
+
+  for (const c of candidates) if (existsSync(c)) return c;
+
+  // (3) PATH lookup as a last resort.
   const which = spawnSync("which", ["ht"], { encoding: "utf-8" });
   const path = which.stdout.trim();
   if (path) return path;
+
   process.stderr.write(
-    "[demo_status_keys] could not locate `ht` — install it via the τ-mux app menu or run from the repo.\n",
+    "[demo_status_keys] could not locate `ht`.\n" +
+      `  tried: ${candidates.join(", ")}\n` +
+      "  also tried `which ht` — not found.\n" +
+      "  Install the CLI via the τ-mux app menu, or run from the repo checkout.\n",
   );
   process.exit(1);
 }
