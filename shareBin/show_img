@@ -2,92 +2,142 @@
 /**
  * τ-mux — show_img
  *
- * Display an image file as a floating sideband panel. Ports the
- * previous Python implementation per Plan #05 (no python in
- * shareBin) — same interface, same MAX_BYTES guard, same event
- * print loop.
+ * Display an image file as a full-pane sideband panel. The panel
+ * is pinned to the host pane, follows terminal resizes, and exits
+ * the moment the user closes it.
+ *
+ * Aspect ratio is preserved — the image is drawn centered on a
+ * dark backdrop with `object-fit: contain` so resizing the pane
+ * never distorts it.
  *
  * Usage:
  *   show_img <image_path>
- *   show_img --x 200 --y 100 <image_path>
- *   show_img --no-wait <image_path>     # exit after creating the panel
  */
 
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { ht } from "./hyperterm";
+import {
+  CATPPUCCIN,
+  fullScreenHtml,
+  type FullScreenSize,
+} from "./lib/full-screen";
+import { escapeHtml } from "./lib/escape";
 
 if (!ht.available) {
   console.error("show_img: not running inside τ-mux.");
-  process.exit(0);
-}
-
-ht.onError((code, message, ref) => {
-  console.error(
-    `[hyperterm error] ${code}: ${message}${ref ? ` (ref=${ref})` : ""}`,
-  );
-});
-
-const argv = process.argv.slice(2);
-const flags = { noWait: false };
-let x = 100;
-let y = 80;
-let path = "";
-for (let i = 0; i < argv.length; i++) {
-  const a = argv[i]!;
-  if (a === "--no-wait") flags.noWait = true;
-  else if (a === "--x") x = parseInt(argv[++i] ?? "100", 10);
-  else if (a === "--y") y = parseInt(argv[++i] ?? "80", 10);
-  else if (!path) path = a;
-}
-
-if (!path) {
-  console.error("Usage: show_img [--x N --y N] [--no-wait] <image_path>");
   process.exit(1);
 }
 
-// Guard against absurdly large images — the binary is read fully
-// into memory before being pushed over fd4. 50 MB matches the
+const argv = process.argv.slice(2);
+const path = argv.find((a) => !a.startsWith("--")) ?? "";
+
+if (!path) {
+  console.error("Usage: show_img <image_path>");
+  process.exit(1);
+}
+
+// Guard against absurdly large images — embedded as a data: URI
+// so the whole payload sits in the panel HTML. 50 MB matches the
 // previous Python implementation's cap.
 const MAX_BYTES = 50 * 1024 * 1024;
 let size: number;
 try {
   size = statSync(path).size;
 } catch (err) {
-  console.error(`Cannot stat ${path}: ${(err as Error).message}`);
+  console.error(`show_img: cannot stat ${path}: ${(err as Error).message}`);
   process.exit(1);
 }
 if (size > MAX_BYTES) {
   console.error(
-    `Refusing to display ${path}: ${size} bytes exceeds ${MAX_BYTES} byte cap.`,
+    `show_img: refusing to display ${path} — ${size} bytes exceeds ${MAX_BYTES} byte cap.`,
   );
   process.exit(1);
 }
 
-const panelId = await ht.showImage(path, { x, y, timeout: 20_000 });
-console.log(`Displayed image: ${path} (id=${panelId})`);
-if (flags.noWait) {
-  process.exit(0);
+const ext = path.split(".").pop()?.toLowerCase() ?? "png";
+const mimeMap: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  bmp: "image/bmp",
+};
+const mime = mimeMap[ext] ?? "image/png";
+
+let bytes: Buffer;
+try {
+  bytes = readFileSync(path);
+} catch (err) {
+  console.error(`show_img: cannot read ${path}: ${(err as Error).message}`);
+  process.exit(1);
 }
-console.log("Drag, resize, or close the panel. Press Ctrl+C to clear.");
+const dataUri = `data:${mime};base64,${bytes.toString("base64")}`;
+const titleLabel = escapeHtml(path);
+const sizeLabel = formatBytes(size);
 
-// Mirror the Python event-print loop so anyone watching the calling
-// shell sees the same telemetry on drag / resize / close.
-ht.onEvent((event) => {
-  if (event.id !== panelId) return;
-  let line = `  Event: ${event.event}`;
-  if (typeof event.x === "number" && typeof event.y === "number") {
-    line += ` x=${event.x} y=${event.y}`;
-  }
-  if (typeof event.width === "number" && typeof event.height === "number") {
-    line += ` w=${event.width} h=${event.height}`;
-  }
-  console.log(line);
-});
+function renderPage(_size: FullScreenSize): string {
+  return `<div class="im-shell">
+  <header class="im-header">
+    <span class="im-tag">IMAGE</span>
+    <span class="im-title">${titleLabel}</span>
+    <span class="im-spacer"></span>
+    <span class="im-meta">${mime} · ${sizeLabel}</span>
+  </header>
+  <div class="im-frame">
+    <img src="${dataUri}" alt="${titleLabel}"/>
+  </div>
+</div>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: ${CATPPUCCIN.crust}; color: ${CATPPUCCIN.text}; font-family: ui-monospace, "SF Mono", "JetBrains Mono", monospace; font-size: 12.5px; overflow: hidden; }
+.im-shell { display: flex; flex-direction: column; width: 100%; height: 100%; }
+.im-header {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 18px;
+  border-bottom: 1px solid ${CATPPUCCIN.surface0};
+  background: ${CATPPUCCIN.mantle};
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+}
+.im-tag { color: ${CATPPUCCIN.pink}; font-weight: 700; text-transform: uppercase; }
+.im-title { color: ${CATPPUCCIN.text}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.im-spacer { flex: 1 1 auto; }
+.im-meta { color: ${CATPPUCCIN.overlay1}; font-variant-numeric: tabular-nums; }
+.im-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  background:
+    linear-gradient(45deg, ${CATPPUCCIN.crust} 25%, transparent 25%),
+    linear-gradient(-45deg, ${CATPPUCCIN.crust} 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, ${CATPPUCCIN.crust} 75%),
+    linear-gradient(-45deg, transparent 75%, ${CATPPUCCIN.crust} 75%);
+  background-color: ${CATPPUCCIN.mantle};
+  background-size: 18px 18px;
+  background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: hidden;
+}
+.im-frame img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.45));
+}
+</style>`;
+}
 
-process.on("SIGINT", () => {
-  ht.clear(panelId);
-  console.log("\nCleared.");
-  process.exit(0);
-});
+fullScreenHtml({ render: renderPage });
 
-await ht.waitForClose(panelId).catch(() => {});
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
+}

@@ -2,66 +2,42 @@
 /**
  * τ-mux — show_yaml
  *
- * Render YAML as a collapsible tree in a sideband panel by parsing
- * to a JS value and reusing the JSON tree renderer. The bundled
- * parser is a minimal subset (mappings, sequences, scalars) — for
- * complex YAML (anchors, tags, flow style) pipe through `yq -o
- * json | show_json` instead.
+ * Render YAML as a collapsible tree in a full-pane sideband panel
+ * by parsing to a JS value and reusing the JSON tree renderer. The
+ * bundled parser is a minimal subset (mappings, sequences,
+ * scalars) — for complex YAML (anchors, tags, flow style) pipe
+ * through `yq -o json | show_json` instead.
  *
  * Usage:
- *   show_yaml config.yaml                    # render a file
- *   curl ... | show_yaml                     # read piped stdin
- *   show_yaml --depth 4 config.yaml          # default-expanded depth
+ *   show_yaml config.yaml
+ *   curl ... | show_yaml
+ *   show_yaml --depth 4 config.yaml
  *
- * Flags identical to show_json (--depth / --inline / --x / --y /
- * --width / --no-wait).
+ * Flags:
+ *   --depth N          containers shallower than N start expanded (default 2)
  */
 
-import { readFileSync } from "node:fs";
-import { ht } from "./hyperterm";
+import {
+  CATPPUCCIN,
+  fullScreenHtml,
+  fullScreenPage,
+} from "./lib/full-screen";
 import { parseYaml } from "./lib/yaml";
 import { renderJsonTree } from "./lib/json-tree";
 import { escapeHtml } from "./lib/escape";
-
-if (!ht.available) {
-  console.error("show_yaml: not running inside τ-mux.");
-  process.exit(1);
-}
+import { readInput } from "./lib/cli";
 
 const argv = process.argv.slice(2);
-const flags = { inline: false, noWait: false };
-let depth = 2;
-let x = 100;
-let y = 100;
-let width = 520;
-let path = "";
-for (let i = 0; i < argv.length; i++) {
-  const a = argv[i]!;
-  if (a === "--inline") flags.inline = true;
-  else if (a === "--no-wait") flags.noWait = true;
-  else if (a === "--depth") depth = parseInt(argv[++i] ?? "2", 10);
-  else if (a === "--x") x = parseInt(argv[++i] ?? "100", 10);
-  else if (a === "--y") y = parseInt(argv[++i] ?? "100", 10);
-  else if (a === "--width") width = parseInt(argv[++i] ?? "520", 10);
-  else if (!path) path = a;
+const depthIdx = argv.indexOf("--depth");
+const depth =
+  depthIdx !== -1 && argv[depthIdx + 1] ? parseInt(argv[depthIdx + 1]!, 10) : 2;
+const path = argv.find((a) => !a.startsWith("--") && !isDepthValue(a)) ?? "";
+
+function isDepthValue(a: string): boolean {
+  return depthIdx !== -1 && argv[depthIdx + 1] === a;
 }
 
-let raw: string;
-if (path) {
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch (err) {
-    console.error(`show_yaml: cannot read ${path}: ${(err as Error).message}`);
-    process.exit(1);
-  }
-} else if (!process.stdin.isTTY) {
-  raw = readFileSync(0, "utf8");
-} else {
-  console.error(
-    "show_yaml: no input — pass a file path or pipe YAML into stdin",
-  );
-  process.exit(1);
-}
+const raw = readInput(path, { utility: "show_yaml", expecting: "YAML" });
 
 let value: unknown;
 try {
@@ -75,84 +51,57 @@ try {
 }
 
 const tree = renderJsonTree(value, { openDepth: depth });
-const title = path ? escapeHtml(path) : "stdin";
-const html = `<div class="yt-pane">
-  <header><span class="yt-source">${title}</span><span class="yt-tag">YAML</span></header>
-  <div class="yt-scroll">${tree}</div>
-</div>
-<style>
-  body { margin: 0; }
-  .yt-pane {
-    font-family: ui-monospace, SF Mono, "JetBrains Mono", monospace;
-    font-size: 12px;
-    color: #d6d8dc;
-    background: rgba(20, 24, 30, 0.96);
-    padding: 12px 14px;
-    border-radius: 10px;
-    height: 100%;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-  }
-  .yt-pane header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    padding-bottom: 6px;
-    margin-bottom: 8px;
-    font-size: 11px;
-    letter-spacing: 0.04em;
-    color: #66c0f4;
-  }
-  .yt-tag {
-    color: #f9e2af;
-    font-weight: 600;
-  }
-  .yt-scroll { overflow: auto; flex: 1 1 auto; min-height: 0; }
-  /* Reuse the colour-coded JSON tree styles from show_json */
-  .jt-leaf { padding: 1px 0; line-height: 1.5; }
-  .jt-key { color: #f5c2e7; }
-  .jt-val[data-type="string"] { color: #a6e3a1; }
-  .jt-val[data-type="number"] { color: #fab387; }
-  .jt-val[data-type="boolean"] { color: #cba6f7; }
-  .jt-val[data-type="null"] { color: #6c7086; font-style: italic; }
-  .jt-val[data-type="unknown"] { color: #f38ba8; }
-  details summary {
-    cursor: pointer;
-    list-style: none;
-    padding: 1px 0;
-    line-height: 1.5;
-  }
-  details summary::-webkit-details-marker { display: none; }
-  details summary::before {
-    content: "▸";
-    display: inline-block;
-    width: 12px;
-    color: #6c7086;
-    transition: transform 120ms;
-  }
-  details[open] summary::before {
-    transform: rotate(90deg);
-  }
-  .jt-bracket { color: #6c7086; }
-  details > .jt-children {
-    padding-left: 16px;
-    border-left: 1px solid rgba(255,255,255,0.04);
-    margin-left: 5px;
-  }
-</style>`;
+const titleLabel = path ? escapeHtml(path) : "stdin";
 
-const panelId = ht.showHtml(html, {
-  position: flags.inline ? "inline" : "float",
-  x,
-  y,
-  width,
-  height: 480,
-  draggable: true,
-  resizable: true,
+fullScreenHtml({
+  render: () =>
+    fullScreenPage({
+      tag: { label: "YAML", color: CATPPUCCIN.yellow },
+      title: titleLabel,
+      subtitle: describe(value),
+      body: tree,
+      // Reuse the JSON tree CSS — the YAML parser produces the
+      // same shape of value tree.
+      extraCss: `
+.jt-leaf { padding: 1px 0; line-height: 1.55; font-size: 12.5px; }
+.jt-key { color: ${CATPPUCCIN.pink}; }
+.jt-val[data-type="string"] { color: ${CATPPUCCIN.green}; }
+.jt-val[data-type="number"] { color: ${CATPPUCCIN.peach}; }
+.jt-val[data-type="boolean"] { color: ${CATPPUCCIN.mauve}; }
+.jt-val[data-type="null"] { color: ${CATPPUCCIN.overlay0}; font-style: italic; }
+.jt-val[data-type="unknown"] { color: ${CATPPUCCIN.red}; }
+.jt-bracket { color: ${CATPPUCCIN.overlay0}; }
+details summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 1px 0;
+  line-height: 1.55;
+  font-size: 12.5px;
+}
+details summary::-webkit-details-marker { display: none; }
+details summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 14px;
+  color: ${CATPPUCCIN.overlay0};
+  transition: transform 120ms;
+}
+details[open] summary::before { transform: rotate(90deg); }
+details > .jt-children {
+  padding-left: 18px;
+  border-left: 1px solid ${CATPPUCCIN.surface0};
+  margin-left: 6px;
+}
+.jt-err { color: ${CATPPUCCIN.red}; font-style: italic; }
+`,
+    }),
 });
 
-if (!flags.noWait) {
-  await ht.waitForClose(panelId).catch(() => {});
+function describe(v: unknown): string {
+  if (Array.isArray(v)) return `array · ${v.length} item${v.length === 1 ? "" : "s"}`;
+  if (v && typeof v === "object")
+    return `mapping · ${Object.keys(v as object).length} key${
+      Object.keys(v as object).length === 1 ? "" : "s"
+    }`;
+  return typeof v;
 }

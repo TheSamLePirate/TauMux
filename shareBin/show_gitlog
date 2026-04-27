@@ -3,9 +3,12 @@
  * τ-mux — show_gitlog
  *
  * Render a git repository's commit log as a branch-graph table in
- * a sideband panel. Spawns `git log --pretty=format:<…>` in the
- * target directory, parses the result with `lib/git-log.ts`, then
- * lays out a railroad-style graph.
+ * a full-pane sideband panel. Spawns `git log --pretty=format:<…>`
+ * in the target directory, parses the result with
+ * `lib/git-log.ts`, then lays out a railroad-style graph.
+ *
+ * The panel is pinned to the host pane, follows terminal resizes,
+ * and exits when the user closes it.
  *
  * Usage:
  *   show_gitlog                              # current dir, default 50 commits
@@ -15,11 +18,14 @@
  * Flags:
  *   --max N            number of commits (default 50)
  *   --branches         pass --all to git log (every branch)
- *   --inline / --x / --y / --width / --height / --no-wait
  */
 
 import { spawnSync } from "node:child_process";
-import { ht } from "./hyperterm";
+import {
+  CATPPUCCIN,
+  fullScreenHtml,
+  fullScreenPage,
+} from "./lib/full-screen";
 import {
   GITLOG_FORMAT,
   type GraphRow,
@@ -28,18 +34,12 @@ import {
   parseGitLog,
 } from "./lib/git-log";
 import { escapeHtml } from "./lib/escape";
-import { PANEL_FLAGS, parseArgs } from "./lib/cli";
-
-if (!ht.available) {
-  console.error("show_gitlog: not running inside τ-mux.");
-  process.exit(1);
-}
+import { parseArgs } from "./lib/cli";
 
 let parsed;
 try {
   parsed = parseArgs(process.argv.slice(2), {
     schema: [
-      ...PANEL_FLAGS,
       { name: "max", long: "max", kind: "number", default: 50 },
       { name: "branches", long: "branches", kind: "boolean", default: false },
     ] as const,
@@ -77,112 +77,69 @@ if (commits.length === 0) {
 }
 
 const graph = layoutGraph(commits);
-const width = Math.max(graphWidth(graph), 1);
-
-const rowsHtml = graph.map((row) => renderRow(row, width)).join("");
+const railWidth = Math.max(graphWidth(graph), 1);
+const rowsHtml = graph.map((row) => renderRow(row, railWidth)).join("");
 const repoLabel = escapeHtml(repoPath);
 
-// Width override — gitlog needs more horizontal room than the
-// generic 520 default.
-const panelWidth = flags.width === 520 ? 880 : flags.width;
-const panelHeight = flags.height === 480 ? 540 : flags.height;
-
-const html = `<div class="gl-pane">
-  <header><span class="gl-tag">git log</span><span class="gl-repo">${repoLabel}</span><span class="gl-count">${commits.length} commits</span></header>
-  <div class="gl-scroll">
-    <table class="gl-table">
-      <thead><tr>
-        <th class="gl-col-graph">graph</th>
-        <th class="gl-col-sha">sha</th>
-        <th class="gl-col-msg">subject</th>
-        <th class="gl-col-author">author</th>
-        <th class="gl-col-date">date</th>
-      </tr></thead>
-      <tbody>${rowsHtml}</tbody>
-    </table>
-  </div>
-</div>
-<style>
-  body { margin: 0; }
-  .gl-pane {
-    font-family: ui-monospace, SF Mono, "JetBrains Mono", monospace;
-    font-size: 11.5px;
-    color: #d6d8dc;
-    background: rgba(20, 24, 30, 0.97);
-    border-radius: 10px;
-    height: 100%;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-  }
-  .gl-pane header {
-    display: flex;
-    gap: 14px;
-    align-items: baseline;
-    padding: 10px 14px 8px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    font-size: 11px;
-    letter-spacing: 0.04em;
-    color: #66c0f4;
-  }
-  .gl-tag { color: #f9e2af; font-weight: 600; }
-  .gl-repo { color: #cdd0d3; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .gl-count { color: #6c7086; font-variant-numeric: tabular-nums; }
-  .gl-scroll { overflow: auto; flex: 1 1 auto; min-height: 0; }
-  table.gl-table { width: 100%; border-collapse: collapse; }
-  table.gl-table thead th {
-    position: sticky; top: 0;
-    background: rgba(20, 24, 30, 0.99);
-    color: #ecedef;
-    text-align: left;
-    padding: 6px 12px;
-    font-size: 10.5px;
-    font-weight: 600;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-  }
-  table.gl-table tbody td {
-    padding: 4px 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.025);
-    line-height: 1.4;
-    vertical-align: top;
-  }
-  table.gl-table tbody tr:hover td {
-    background: rgba(102, 192, 244, 0.06);
-  }
-  .gl-graph { font-family: monospace; line-height: 1; padding: 6px 8px; white-space: nowrap; }
-  .gl-rail { display: inline-block; width: 12px; text-align: center; }
-  .gl-rail-active { color: #fab387; }
-  .gl-rail-passive { color: #6c7086; }
-  .gl-rail-merge { color: #f5c2e7; }
-  .gl-sha { color: #94e2d5; }
-  .gl-msg { color: #ecedef; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .gl-author { color: #b4befe; }
-  .gl-date { color: #9aa0a6; font-variant-numeric: tabular-nums; }
-</style>`;
-
-const panelId = ht.showHtml(html, {
-  position: flags.inline ? "inline" : "float",
-  x: flags.x,
-  y: flags.y,
-  width: panelWidth,
-  height: panelHeight,
-  draggable: true,
-  resizable: true,
-});
-
-if (!flags.noWait) {
-  await ht.waitForClose(panelId).catch(() => {});
+fullScreenHtml({
+  render: () =>
+    fullScreenPage({
+      tag: { label: "GIT LOG", color: CATPPUCCIN.lavender },
+      title: repoLabel,
+      subtitle: `${commits.length} commit${commits.length === 1 ? "" : "s"}${flags.branches ? " · all branches" : ""}`,
+      body: `<table class="gl-table">
+        <thead><tr>
+          <th class="gl-col-graph">graph</th>
+          <th class="gl-col-sha">sha</th>
+          <th class="gl-col-msg">subject</th>
+          <th class="gl-col-author">author</th>
+          <th class="gl-col-date">date</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>`,
+      extraCss: `
+.fs-body { padding: 0; }
+table.gl-table { width: 100%; border-collapse: collapse; }
+table.gl-table thead th {
+  position: sticky; top: 0;
+  background: ${CATPPUCCIN.mantle};
+  color: ${CATPPUCCIN.text};
+  text-align: left;
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  border-bottom: 1px solid ${CATPPUCCIN.surface1};
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
-
-// ── Renderers ────────────────────────────────────────────────
+table.gl-table tbody td {
+  padding: 5px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.025);
+  line-height: 1.5;
+  vertical-align: top;
+  font-size: 12px;
+}
+table.gl-table tbody tr:hover td { background: rgba(137, 180, 250, 0.08); }
+.gl-graph { font-family: monospace; line-height: 1; padding: 6px 8px; white-space: nowrap; }
+.gl-rail { display: inline-block; width: 12px; text-align: center; }
+.gl-rail-active { color: ${CATPPUCCIN.peach}; }
+.gl-rail-passive { color: ${CATPPUCCIN.overlay0}; }
+.gl-rail-merge { color: ${CATPPUCCIN.pink}; }
+.gl-sha { color: ${CATPPUCCIN.teal}; font-family: ui-monospace, monospace; }
+.gl-msg { color: ${CATPPUCCIN.text}; max-width: 600px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gl-author { color: ${CATPPUCCIN.lavender}; }
+.gl-date { color: ${CATPPUCCIN.overlay1}; font-variant-numeric: tabular-nums; white-space: nowrap; }
+`,
+    }),
+});
 
 function renderRow(row: GraphRow, width: number): string {
   const c = row.commit;
-  const graph = renderGraph(row, width);
+  const graphHtml = renderGraph(row, width);
   const date = formatDate(c.date);
   return [
     "<tr>",
-    `<td class="gl-graph">${graph}</td>`,
+    `<td class="gl-graph">${graphHtml}</td>`,
     `<td class="gl-sha">${escapeHtml(c.short)}</td>`,
     `<td class="gl-msg" title="${escapeHtml(c.subject)}">${escapeHtml(c.subject)}</td>`,
     `<td class="gl-author">${escapeHtml(c.author)}</td>`,
@@ -207,7 +164,6 @@ function renderGraph(row: GraphRow, width: number): string {
 }
 
 function formatDate(iso: string): string {
-  // ISO-8601 → "yyyy-mm-dd HH:MM" (drop the timezone for compactness).
   const m = iso.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
   return m ? `${m[1]} ${m[2]}` : iso;
 }

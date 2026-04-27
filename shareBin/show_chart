@@ -2,13 +2,15 @@
 /**
  * τ-mux — show_chart
  *
- * Render a CSV / TSV column as a line / bar / scatter chart.
+ * Render a CSV / TSV column as a line / bar / scatter chart in a
+ * full-pane sideband panel. The SVG is re-rendered at the new
+ * dimensions every time the host pane resizes, so the plot grows
+ * with the terminal instead of being stretched.
  *
  * Usage:
  *   show_chart data.csv                          # default: line, x=0, y=1
  *   show_chart --kind bar --y 1,2,3 data.csv
  *   ps -A o pcpu,rss | show_chart --tsv          # streamed input
- *   show_chart --x 0 --y 2,3 --kind scatter sales.csv
  *
  * Flags:
  *   --kind line|bar|scatter      chart kind (default line)
@@ -17,27 +19,25 @@
  *   --csv / --tsv                separator override (default auto)
  *   --no-header                  treat row 0 as data, not labels
  *   --title "..."                title rendered above the chart
- *   --inline / --x / --y / --width / --height / --no-wait
  */
 
-import { ht } from "./hyperterm";
+import {
+  CATPPUCCIN,
+  fullScreenHtml,
+  fullScreenPage,
+  type FullScreenSize,
+} from "./lib/full-screen";
 import { parseCsv } from "./lib/csv";
 import { type ChartKind, renderChart } from "./lib/chart";
 import { escapeHtml } from "./lib/escape";
-import { PANEL_FLAGS, parseArgs, readInput } from "./lib/cli";
-
-if (!ht.available) {
-  console.error("show_chart: not running inside τ-mux.");
-  process.exit(1);
-}
+import { parseArgs, readInput } from "./lib/cli";
 
 let parsed;
 try {
   parsed = parseArgs(process.argv.slice(2), {
     schema: [
-      ...PANEL_FLAGS,
       { name: "kind", long: "kind", kind: "string", default: "line" },
-      { name: "xCol", long: "x-col", kind: "number", default: 0 },
+      { name: "xCol", long: "x", kind: "number", default: 0 },
       { name: "yCols", long: "y", kind: "string", default: "1" },
       { name: "tsv", long: "tsv", kind: "boolean", default: false },
       { name: "csv", long: "csv", kind: "boolean", default: false },
@@ -51,21 +51,16 @@ try {
 }
 
 const { positional, flags } = parsed;
-// Override the default 520 width — charts breathe better wider.
-const width = flags.width === 520 ? 760 : flags.width;
-const height = flags.height === 480 ? 400 : flags.height;
 
 if (!["line", "bar", "scatter"].includes(flags.kind)) {
-  console.error(`show_chart: invalid --kind "${flags.kind}" (use line, bar, or scatter)`);
+  console.error(
+    `show_chart: invalid --kind "${flags.kind}" (use line, bar, or scatter)`,
+  );
   process.exit(1);
 }
 
 const path = positional[0] ?? "";
-const raw = readInput(path, {
-  utility: "show_chart",
-  expecting: "CSV/TSV",
-});
-
+const raw = readInput(path, { utility: "show_chart", expecting: "CSV/TSV" });
 const sep: "," | "\t" | "auto" = flags.tsv ? "\t" : flags.csv ? "," : "auto";
 const rows = parseCsv(raw, { sep });
 
@@ -74,64 +69,45 @@ const yCols = flags.yCols
   .map((s) => Number(s.trim()))
   .filter((n) => Number.isFinite(n));
 if (yCols.length === 0) {
-  console.error('show_chart: --y must contain at least one column index (e.g., "1" or "1,2,3")');
+  console.error(
+    'show_chart: --y must contain at least one column index (e.g. "1" or "1,2,3")',
+  );
   process.exit(1);
 }
 
-const svg = renderChart(rows, {
-  kind: flags.kind as ChartKind,
-  xCol: flags.xCol,
-  yCols,
-  hasHeader: !flags.noHeader,
-  width,
-  height,
-  title: flags.title || undefined,
-});
+const titleLabel = path ? escapeHtml(path) : "stdin";
+const subtitle = `${rows.length - (flags.noHeader ? 0 : 1)} rows · ${yCols.length} series`;
 
-const title = path ? escapeHtml(path) : "stdin";
-const html = `<div class="ch-pane">
-  <header><span class="ch-tag">${flags.kind.toUpperCase()}</span><span class="ch-source">${title}</span></header>
-  <div class="ch-frame">${svg}</div>
-</div>
-<style>
-  body { margin: 0; }
-  .ch-pane {
-    font-family: ui-monospace, SF Mono, "JetBrains Mono", monospace;
-    color: #d6d8dc;
-    background: rgba(20, 24, 30, 0.97);
-    padding: 10px 14px;
-    border-radius: 10px;
-    height: 100%;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    font-size: 11px;
-  }
-  .ch-pane header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    padding-bottom: 6px;
-    letter-spacing: 0.04em;
-  }
-  .ch-tag { color: #66c0f4; font-weight: 600; }
-  .ch-source { color: #9aa0a6; }
-  .ch-frame { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
-  .ch-frame svg { max-width: 100%; max-height: 100%; }
-</style>`;
+// Chrome takes a small slice off the top — `fullScreenPage` renders
+// a header bar and the body has 16 px of vertical padding. Subtract
+// both from the chart's effective drawing area so the SVG fills the
+// panel exactly without overflowing into a scrollbar.
+const HEADER_H = 41;
+const BODY_PAD = 16;
 
-const panelId = ht.showHtml(html, {
-  position: flags.inline ? "inline" : "float",
-  x: flags.x,
-  y: flags.y,
-  width,
-  height,
-  draggable: true,
-  resizable: true,
-});
-
-if (!flags.noWait) {
-  await ht.waitForClose(panelId).catch(() => {});
+function renderPage(size: FullScreenSize): string {
+  const w = Math.max(280, size.width - BODY_PAD * 2);
+  const h = Math.max(200, size.height - HEADER_H - BODY_PAD * 2);
+  const svg = renderChart(rows, {
+    kind: flags.kind as ChartKind,
+    xCol: flags.xCol,
+    yCols,
+    hasHeader: !flags.noHeader,
+    width: w,
+    height: h,
+    title: flags.title || undefined,
+  });
+  return fullScreenPage({
+    tag: { label: flags.kind.toUpperCase(), color: CATPPUCCIN.sky },
+    title: titleLabel,
+    subtitle,
+    body: `<div class="ch-frame">${svg}</div>`,
+    extraCss: `
+.fs-body { padding: ${BODY_PAD}px; }
+.ch-frame { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.ch-frame svg { display: block; max-width: 100%; max-height: 100%; }
+`,
+  });
 }
+
+fullScreenHtml({ render: renderPage });

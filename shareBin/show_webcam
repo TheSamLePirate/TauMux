@@ -2,39 +2,43 @@
 /**
  * τ-mux — show_webcam
  *
- * Open the system webcam in an interactive HTML panel via
- * `getUserMedia`. The panel runs entirely in the webview — bun
- * just ships the markup. The user grants camera permission inside
- * the webview the first time the panel runs.
+ * Stream the system webcam as a full-pane sideband image panel via
+ * ffmpeg + AVFoundation (macOS) / V4L2 (Linux). Frames are pushed
+ * as MJPEG over fd4 at the requested output framerate; the image
+ * letterboxes inside the panel (the built-in `image` renderer uses
+ * `object-fit: contain`) so resizing the terminal preserves the
+ * camera aspect ratio.
+ *
+ * The `getUserMedia` approach used by older versions doesn't work
+ * in the bundled webview (camera permission is never granted to
+ * the embedded webview); ffmpeg goes through the OS-level Camera
+ * permission instead, which the user can grant once and reuse.
  *
  * Usage:
- *   show_webcam                                 # default 480x360
- *   show_webcam --width 640 --height 480
- *   show_webcam --device "FaceTime HD Camera"   # device label match
- *   show_webcam --mirror                        # mirror horizontally (selfie view)
+ *   show_webcam                                 # default camera (index 0)
+ *   show_webcam --list                          # list available cameras
+ *   show_webcam --camera 1                      # camera by index
+ *   show_webcam --size 1280x720                 # capture resolution
+ *   show_webcam --fps 30 --fps-out 15           # capture / output framerate
  *
- * Flags:
- *   --device "..."        prefer a device whose label includes this
- *                          substring (default: first available)
- *   --mirror              flip the preview horizontally
- *   --inline / --x / --y / --width / --height / --no-wait
+ * Quit:
+ *   - press q or Ctrl-C while the panel is active
+ *   - or send SIGINT/SIGTERM to the script
  */
 
 import { ht } from "./hyperterm";
-import { PANEL_FLAGS, parseArgs } from "./lib/cli";
-
-if (!ht.available) {
-  console.error("show_webcam: not running inside τ-mux.");
-  process.exit(1);
-}
+import { attachFullScreen, viewportSize } from "./lib/full-screen";
+import { parseArgs } from "./lib/cli";
 
 let parsed;
 try {
   parsed = parseArgs(process.argv.slice(2), {
     schema: [
-      ...PANEL_FLAGS,
-      { name: "device", long: "device", kind: "string", default: "" },
-      { name: "mirror", long: "mirror", kind: "boolean", default: false },
+      { name: "list", long: "list", kind: "boolean", default: false },
+      { name: "camera", long: "camera", kind: "string", default: "0" },
+      { name: "size", long: "size", kind: "string", default: "640x480" },
+      { name: "fps", long: "fps", kind: "string", default: "30" },
+      { name: "fpsOut", long: "fps-out", kind: "string", default: "" },
     ] as const,
   });
 } catch (err) {
@@ -43,158 +47,279 @@ try {
 }
 
 const { flags } = parsed;
-const width = flags.width === 520 ? 480 : flags.width;
-const height = flags.height === 480 ? 360 : flags.height;
-const deviceMatch = JSON.stringify(flags.device);
-const mirror = flags.mirror ? "scaleX(-1)" : "none";
+const fpsOut = parseInt(flags.fpsOut || flags.fps, 10);
+const minFrameInterval = Math.max(15, Math.round(1000 / Math.max(1, fpsOut)));
 
-// The panel script handles permission prompts, device picking,
-// errors, and a single "snapshot" button that downloads the current
-// frame. It runs once when the panel mounts; the page is destroyed
-// when the user closes the panel.
-const html = `<div class="wc-pane">
-  <header>
-    <span class="wc-tag">webcam</span>
-    <span class="wc-status" id="wc-status">requesting…</span>
-    <button id="wc-snap" type="button">snapshot</button>
-  </header>
-  <div class="wc-frame">
-    <video id="wc-video" autoplay playsinline muted></video>
-  </div>
-</div>
-<style>
-  body { margin: 0; }
-  .wc-pane {
-    font-family: ui-monospace, SF Mono, "JetBrains Mono", monospace;
-    font-size: 11px;
-    color: #d6d8dc;
-    background: rgba(20, 24, 30, 0.97);
-    border-radius: 10px;
-    height: 100%;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-  }
-  .wc-pane header {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    padding: 8px 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    letter-spacing: 0.04em;
-  }
-  .wc-tag { color: #66c0f4; font-weight: 600; }
-  .wc-status { color: #9aa0a6; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .wc-pane button {
-    background: rgba(102, 192, 244, 0.18);
-    color: #66c0f4;
-    border: 1px solid rgba(102, 192, 244, 0.4);
-    border-radius: 6px;
-    padding: 4px 10px;
-    font: inherit;
-    cursor: pointer;
-  }
-  .wc-pane button:hover { background: rgba(102, 192, 244, 0.28); }
-  .wc-frame {
-    flex: 1 1 auto;
-    background: #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-  #wc-video {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    transform: ${mirror};
-  }
-</style>
-<script>
-(async () => {
-  const status = document.getElementById("wc-status");
-  const video = document.getElementById("wc-video");
-  const snap = document.getElementById("wc-snap");
-  const wantedLabel = ${deviceMatch};
-  let stream = null;
+// ── --list works without τ-mux so users can discover cameras ──
 
-  function setStatus(text) {
-    if (status) status.textContent = text;
-  }
+if (flags.list) {
+  console.log("Listing available cameras (via ffmpeg AVFoundation)…\n");
+  const proc = Bun.spawn(
+    ["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+    { stderr: "pipe", stdout: "pipe" },
+  );
+  const stderrText = await new Response(proc.stderr).text();
+  await proc.exited;
 
-  function pickDeviceId(devices) {
-    const cams = devices.filter((d) => d.kind === "videoinput");
-    if (cams.length === 0) return null;
-    if (wantedLabel) {
-      const m = cams.find((d) =>
-        d.label && d.label.toLowerCase().includes(wantedLabel.toLowerCase()),
-      );
-      if (m) return m.deviceId;
+  let inVideo = false;
+  for (const line of stderrText.split("\n")) {
+    if (line.includes("AVFoundation video devices:")) {
+      inVideo = true;
+      console.log("Video devices:");
+      continue;
     }
-    return cams[0].deviceId;
+    if (line.includes("AVFoundation audio devices:")) break;
+    if (inVideo && line.includes("]")) {
+      const match = line.match(/\[(\d+)\]\s+(.+)/);
+      if (match) console.log(`  ${match[1]}: ${match[2]}`);
+    }
   }
+  console.log("\nUsage: show_webcam --camera <index>");
+  process.exit(0);
+}
 
+if (!ht.available) {
+  console.error(
+    "show_webcam: not running inside τ-mux.\n" +
+      "Run it inside the τ-mux terminal emulator. Use --list to see cameras.",
+  );
+  process.exit(1);
+}
+
+// ── Spawn ffmpeg ──
+
+const ffmpeg = Bun.spawn(
+  [
+    "ffmpeg",
+    "-f",
+    "avfoundation",
+    "-framerate",
+    flags.fps,
+    "-video_size",
+    flags.size,
+    "-i",
+    `${flags.camera}:none`,
+    "-f",
+    "image2pipe",
+    "-vcodec",
+    "mjpeg",
+    "-q:v",
+    "5",
+    "-an",
+    "pipe:1",
+  ],
+  { stdout: "pipe", stderr: "pipe" },
+);
+
+// Capture stderr so we can replay the tail when ffmpeg dies before
+// emitting any frames (camera permission denied, device busy, …).
+// Without this the script just sits with a black panel forever.
+const stderrBuf: string[] = [];
+const stderrDrained = (async () => {
+  const r = ffmpeg.stderr.getReader();
+  const d = new TextDecoder();
   try {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error("getUserMedia not available in this webview");
-    }
-    // Initial permission grant — without this the device labels are
-    // empty, so we can't pick by name.
-    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    if (wantedLabel) {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const id = pickDeviceId(devices);
-      if (id) {
-        stream.getTracks().forEach((t) => t.stop());
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: id } },
-          audio: false,
-        });
+    while (true) {
+      const { value, done } = await r.read();
+      if (done) break;
+      stderrBuf.push(d.decode(value, { stream: true }));
+      let total = stderrBuf.reduce((n, s) => n + s.length, 0);
+      while (total > 32768 && stderrBuf.length > 1) {
+        total -= stderrBuf.shift()!.length;
       }
     }
-    video.srcObject = stream;
-    const track = stream.getVideoTracks()[0];
-    setStatus(track ? track.label || "live" : "live");
-  } catch (err) {
-    setStatus("error: " + (err && err.message ? err.message : String(err)));
+  } catch {
+    /* stream ended */
   }
-
-  snap.addEventListener("click", () => {
-    if (!video.videoWidth) return;
-    const c = document.createElement("canvas");
-    c.width = video.videoWidth;
-    c.height = video.videoHeight;
-    const ctx = c.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
-    const url = c.toDataURL("image/png");
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "webcam-" + Date.now() + ".png";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  });
-
-  window.addEventListener("beforeunload", () => {
-    if (stream) stream.getTracks().forEach((t) => t.stop());
-  });
 })();
-</script>`;
 
-// `interactive: true` forwards mouse/keyboard events to the panel
-// so the snapshot button stays clickable.
-const panelId = ht.showHtml(html, {
-  position: flags.inline ? "inline" : "float",
-  x: flags.x,
-  y: flags.y,
-  width,
-  height,
-  draggable: true,
-  resizable: true,
-  interactive: true,
+// ── Panel lifecycle via the shared full-screen helper ──
+
+const PANEL_ID = `webcam_${process.pid}_${Date.now().toString(36)}`;
+
+let panelCreated = false;
+let latestFrame: Uint8Array | null = null;
+let sending = false;
+let capturedCount = 0;
+
+// `attachFullScreen` installs the listeners (terminal resize,
+// SIGINT/SIGTERM/SIGHUP, error, close) and gives us `size()` and
+// `exit()`. We register it BEFORE spawning the panel so the
+// post-creation `__terminal__` resize event is captured.
+const handle = attachFullScreen({
+  panelId: PANEL_ID,
+  initialSize: viewportSize(),
+  onResize: (size) => {
+    if (!panelCreated) return;
+    // The image renderer uses object-fit: contain, so the JPEG
+    // letterboxes automatically — we just resize the panel and
+    // the next frame fills the new dimensions.
+    ht.update(PANEL_ID, { x: 0, y: 0, width: size.width, height: size.height });
+  },
+  onExit: () => {
+    if (sendTimer) clearInterval(sendTimer);
+    try {
+      ffmpeg.kill();
+    } catch {
+      /* already gone */
+    }
+    if (stdinRaw) {
+      try {
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+      } catch {
+        /* ignore */
+      }
+    }
+  },
 });
 
-if (!flags.noWait) {
-  await ht.waitForClose(panelId).catch(() => {});
+// ── Frame extraction (MJPEG: SOI 0xFFD8 → EOI 0xFFD9) ──
+
+function findJpegStart(buf: Uint8Array, start: number): number {
+  for (let i = start; i < buf.length - 1; i++) {
+    if (buf[i] === 0xff && buf[i + 1] === 0xd8) return i;
+  }
+  return -1;
 }
+
+function findJpegEnd(buf: Uint8Array, start: number): number {
+  for (let i = start + 2; i < buf.length - 1; i++) {
+    if (buf[i] === 0xff && buf[i + 1] === 0xd9) return i + 2;
+  }
+  return -1;
+}
+
+// ── Timed sender — coalesces captured frames to the output rate ──
+
+const sendTimer = setInterval(() => {
+  if (!latestFrame || sending) return;
+  sending = true;
+  const frame = latestFrame;
+  latestFrame = null;
+
+  try {
+    const size = handle.size();
+    if (!panelCreated) {
+      ht.sendMeta({
+        id: PANEL_ID,
+        type: "image",
+        format: "jpeg",
+        position: "fixed",
+        x: 0,
+        y: 0,
+        width: size.width,
+        height: size.height,
+        draggable: false,
+        resizable: false,
+        interactive: false,
+        borderRadius: 0,
+        timeout: 30000,
+        byteLength: frame.byteLength,
+      });
+      ht.sendData(frame);
+      panelCreated = true;
+    } else {
+      // `update` with raw bytes routes through the panel's `data`
+      // channel and replaces the JPEG. Width/height stay sticky from
+      // the last resize so we don't need to repeat them.
+      ht.update(PANEL_ID, { data: frame, timeout: 30000 });
+    }
+  } finally {
+    sending = false;
+  }
+}, minFrameInterval);
+
+// ── Stdin: q / Ctrl-C exit ──
+//
+// Fixed panels carry no UI chrome → no close button. While the
+// webcam is on screen the user's keystrokes go through xterm into
+// our stdin (we are the foreground PTY process). Putting stdin in
+// raw mode lets a single 'q' or Ctrl-C trigger a clean exit.
+
+let stdinRaw = false;
+if (process.stdin.isTTY) {
+  try {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    stdinRaw = true;
+    process.stdin.on("data", (chunk: Buffer) => {
+      for (const byte of chunk) {
+        if (byte === 0x71 || byte === 0x51 /* q / Q */ || byte === 0x03 /* ^C */) {
+          handle.exit();
+        }
+      }
+    });
+  } catch {
+    /* not interactive — rely on signals */
+  }
+}
+
+// ── ffmpeg stdout reader: extract JPEG frames into latestFrame ──
+
+const reader = ffmpeg.stdout.getReader();
+let buffer = new Uint8Array(0);
+
+(async () => {
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      if (buffer.length === 0) {
+        buffer = value;
+      } else {
+        const next = new Uint8Array(buffer.length + value.length);
+        next.set(buffer);
+        next.set(value, buffer.length);
+        buffer = next;
+      }
+
+      let lastCompleteFrame: Uint8Array | null = null;
+
+      while (true) {
+        const soi = findJpegStart(buffer, 0);
+        if (soi === -1) {
+          buffer = new Uint8Array(0);
+          break;
+        }
+        if (soi > 0) buffer = buffer.slice(soi);
+        const eoi = findJpegEnd(buffer, 0);
+        if (eoi === -1) break;
+        lastCompleteFrame = buffer.slice(0, eoi);
+        buffer = buffer.slice(eoi);
+        capturedCount++;
+      }
+
+      if (lastCompleteFrame) latestFrame = lastCompleteFrame;
+    }
+  } catch {
+    /* stream ended */
+  }
+})();
+
+// ── ffmpeg exit: surface cause when no frames were captured ──
+
+ffmpeg.exited.then(async () => {
+  // If frames did flow, ffmpeg exiting just means EOF on the input
+  // — fine, tear down.
+  if (capturedCount > 0) {
+    handle.exit("ffmpeg exited");
+    return;
+  }
+  // Zero frames → drain the stderr tail (give it 500 ms in case
+  // the error landed after the stdout pipe closed) and print it so
+  // the user can act on the cause.
+  await Promise.race([
+    stderrDrained,
+    new Promise((r) => setTimeout(r, 500)),
+  ]);
+  const tail = stderrBuf.join("").slice(-2000);
+  process.stderr.write(
+    `\n[show_webcam] ffmpeg produced no frames. stderr tail:\n${tail}\n` +
+      "\nHints: run `show_webcam --list` to verify the camera index, " +
+      "and grant Camera access in System Settings → Privacy & Security " +
+      "→ Camera to the app running τ-mux.\n",
+  );
+  handle.exit("ffmpeg exited with no frames");
+});

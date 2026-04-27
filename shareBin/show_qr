@@ -3,7 +3,9 @@
  * τ-mux — show_qr
  *
  * Encode a string as a QR code and display the resulting SVG in a
- * sideband panel.
+ * full-pane sideband panel. The QR is centered and resized to fit
+ * the available space — resizing the terminal grows / shrinks the
+ * code.
  *
  * Usage:
  *   show_qr "https://example.com"          # text from argv
@@ -16,32 +18,26 @@
  *   --scale N           pixels per QR module (default 6)
  *   --margin N          quiet-zone modules (default 2)
  *   --dark / --light    foreground / background colour
- *   --inline            position panel inline at the cursor
- *   --x N --y N         explicit position
- *   --width N           panel pixel width (panel chrome only;
- *                        the SVG sizes itself)
- *   --no-wait           exit after creating the panel
  */
 
-import { ht } from "./hyperterm";
+import {
+  CATPPUCCIN,
+  fullScreenHtml,
+  fullScreenPage,
+  type FullScreenSize,
+} from "./lib/full-screen";
 import {
   type ErrorCorrectionLevel,
   encodeQr,
   qrToSvg,
 } from "./lib/qr";
 import { escapeHtml } from "./lib/escape";
-import { PANEL_FLAGS, parseArgs, readInput } from "./lib/cli";
-
-if (!ht.available) {
-  console.error("show_qr: not running inside τ-mux.");
-  process.exit(1);
-}
+import { parseArgs, readInput } from "./lib/cli";
 
 let parsed;
 try {
   parsed = parseArgs(process.argv.slice(2), {
     schema: [
-      ...PANEL_FLAGS,
       { name: "ec", long: "ec", kind: "string", default: "M" },
       { name: "scale", long: "scale", kind: "number", default: 6 },
       { name: "margin", long: "margin", kind: "number", default: 2 },
@@ -56,10 +52,6 @@ try {
 
 const { positional, flags } = parsed;
 
-// Two input modes:
-//   - positional arg → encode the literal string (URLs / tokens)
-//   - piped stdin    → encode the piped text
-// We prefer the positional arg so `show_qr "$(cat file)"` works.
 let payload: string;
 if (positional.length > 0) {
   payload = positional.join(" ");
@@ -90,68 +82,47 @@ try {
   process.exit(1);
 }
 
-const preview = payload.length > 64 ? `${payload.slice(0, 61)}...` : payload;
+const preview = payload.length > 80 ? `${payload.slice(0, 77)}…` : payload;
 
-const html = `<div class="qr-pane">
-  <header><span class="qr-tag">QR / ${ec}</span><span class="qr-text">${escapeHtml(preview)}</span></header>
-  <div class="qr-frame">${svg}</div>
-</div>
-<style>
-  body { margin: 0; }
-  .qr-pane {
-    font-family: ui-monospace, SF Mono, "JetBrains Mono", monospace;
-    font-size: 11px;
-    color: #d6d8dc;
-    background: rgba(20, 24, 30, 0.97);
-    padding: 10px 14px 14px;
-    border-radius: 10px;
-    height: 100%;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .qr-pane header {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: baseline;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    padding-bottom: 6px;
-    letter-spacing: 0.04em;
-  }
-  .qr-tag { color: #f9e2af; font-weight: 600; }
-  .qr-text {
-    color: #9aa0a6;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .qr-frame {
-    flex: 1 1 auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #ffffff;
-    border-radius: 6px;
-    padding: 12px;
-    overflow: hidden;
-  }
-  .qr-frame svg { max-width: 100%; max-height: 100%; height: auto; }
-</style>`;
-
-const panelId = ht.showHtml(html, {
-  position: flags.inline ? "inline" : "float",
-  x: flags.x,
-  y: flags.y,
-  width: flags.width,
-  height: flags.height,
-  draggable: true,
-  resizable: true,
-});
-
-if (!flags.noWait) {
-  await ht.waitForClose(panelId).catch(() => {});
+function renderPage(_size: FullScreenSize): string {
+  return fullScreenPage({
+    tag: { label: `QR · ${ec}`, color: CATPPUCCIN.yellow },
+    title: escapeHtml(preview),
+    subtitle: `${payload.length} char${payload.length === 1 ? "" : "s"}`,
+    body: `<div class="qr-frame">${svg}</div><div class="qr-payload">${escapeHtml(payload)}</div>`,
+    extraCss: `
+.fs-body { padding: 24px; display: flex; flex-direction: column; gap: 18px; align-items: center; min-height: 0; }
+.qr-frame {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${flags.light};
+  padding: 24px;
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+  min-height: 0;
+  width: min(100%, 80vh);
+  aspect-ratio: 1 / 1;
 }
+.qr-frame svg { display: block; width: 100%; height: 100%; }
+.qr-payload {
+  flex: 0 0 auto;
+  max-width: 100%;
+  max-height: 5em;
+  overflow: auto;
+  word-break: break-all;
+  font-size: 11px;
+  color: ${CATPPUCCIN.subtext0};
+  text-align: center;
+  line-height: 1.5;
+  padding: 6px 12px;
+  background: ${CATPPUCCIN.mantle};
+  border-radius: 6px;
+  border: 1px solid ${CATPPUCCIN.surface0};
+}
+`,
+  });
+}
+
+fullScreenHtml({ render: renderPage });

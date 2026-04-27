@@ -2,84 +2,72 @@
 /**
  * τ-mux — show_html
  *
- * Display a chunk of HTML in a sideband panel. The thinnest of
- * thin wrappers — reads the input, calls `ht.showHtml(...)`, and
- * waits for close. Useful for dropping any pre-rendered HTML
- * fragment a script generates without re-implementing the panel
- * scaffolding.
+ * Display a chunk of HTML in a full-pane sideband panel. The
+ * panel is pinned to the host pane, follows terminal resizes, and
+ * exits the moment the user closes it.
  *
  * Usage:
- *   show_html page.html                        # render a file
- *   echo "<h1>hi</h1>" | show_html             # piped stdin
- *   bun render.ts | show_html --inline         # cursor-anchored
+ *   show_html page.html                   # render a file
+ *   echo "<h1>hi</h1>" | show_html        # piped stdin
+ *   bun render.ts | show_html             # output of any tool
  *
- * Flags:
- *   --inline                  position panel inline at the cursor
- *   --x N --y N               explicit position (float panels)
- *   --width N --height N      explicit dimensions (defaults
- *                              520 × 360 for floats; ignored for
- *                              inline panels which size to content)
- *   --no-wait                 exit after creating the panel
- *
- * Note: HTML from fd4 is rendered without sandbox per
- * `doc/system-canvas-panels.md` — the contract is "fd4 content is
- * trusted because the user spawned the producer". Don't pipe
- * untrusted HTML through this without sanitising first.
+ * Note: HTML from fd4 is rendered without sandboxing per
+ * `doc/system-canvas-panels.md` — fd4 content is trusted because
+ * the user spawned the producer. Don't pipe untrusted HTML through
+ * this without sanitising first.
  */
 
-import { readFileSync } from "node:fs";
-import { ht } from "./hyperterm";
+import {
+  BASE_CSS,
+  CATPPUCCIN,
+  fullScreenHtml,
+  type FullScreenSize,
+} from "./lib/full-screen";
+import { PANEL_FLAGS, parseArgs, readInput } from "./lib/cli";
+import { escapeHtml } from "./lib/escape";
 
-if (!ht.available) {
-  console.error("show_html: not running inside τ-mux.");
+let parsed;
+try {
+  parsed = parseArgs(process.argv.slice(2), {
+    schema: [...PANEL_FLAGS] as const,
+  });
+} catch (err) {
+  console.error(`show_html: ${(err as Error).message}`);
   process.exit(1);
 }
 
-const argv = process.argv.slice(2);
-const flags = { inline: false, noWait: false };
-let x = 100;
-let y = 100;
-let width = 520;
-let height = 360;
-let path = "";
-for (let i = 0; i < argv.length; i++) {
-  const a = argv[i]!;
-  if (a === "--inline") flags.inline = true;
-  else if (a === "--no-wait") flags.noWait = true;
-  else if (a === "--x") x = parseInt(argv[++i] ?? "100", 10);
-  else if (a === "--y") y = parseInt(argv[++i] ?? "100", 10);
-  else if (a === "--width") width = parseInt(argv[++i] ?? "520", 10);
-  else if (a === "--height") height = parseInt(argv[++i] ?? "360", 10);
-  else if (!path) path = a;
+const { positional } = parsed;
+const path = positional[0] ?? "";
+const html = readInput(path, { utility: "show_html", expecting: "HTML" });
+const titleLabel = path ? escapeHtml(path) : "stdin";
+
+// Wrap the user-supplied markup in our standard chrome so the
+// panel still gets the dark background, scrollbars, and a header
+// bar even when the input HTML doesn't ship its own. The user's
+// markup goes inside an iframe-equivalent scrolling body.
+function renderPage(_size: FullScreenSize): string {
+  return `<div class="sh-shell">
+  <header class="sh-header"><span class="sh-tag">HTML</span><span class="sh-title">${titleLabel}</span></header>
+  <div class="sh-body">${html}</div>
+</div>
+<style>
+${BASE_CSS}
+.sh-shell { display: flex; flex-direction: column; width: 100%; height: 100%; }
+.sh-header {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 18px;
+  border-bottom: 1px solid ${CATPPUCCIN.surface0};
+  background: ${CATPPUCCIN.mantle};
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+}
+.sh-tag { color: ${CATPPUCCIN.blue}; font-weight: 700; text-transform: uppercase; }
+.sh-title { color: ${CATPPUCCIN.text}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sh-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+</style>`;
 }
 
-let html: string;
-if (path) {
-  try {
-    html = readFileSync(path, "utf8");
-  } catch (err) {
-    console.error(`show_html: cannot read ${path}: ${(err as Error).message}`);
-    process.exit(1);
-  }
-} else if (!process.stdin.isTTY) {
-  html = readFileSync(0, "utf8");
-} else {
-  console.error(
-    "show_html: no input — pass a file path or pipe HTML into stdin",
-  );
-  process.exit(1);
-}
-
-const panelId = ht.showHtml(html, {
-  position: flags.inline ? "inline" : "float",
-  x,
-  y,
-  width,
-  height,
-  draggable: true,
-  resizable: true,
-});
-
-if (!flags.noWait) {
-  await ht.waitForClose(panelId).catch(() => {});
-}
+fullScreenHtml({ render: renderPage });
