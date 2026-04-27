@@ -25,6 +25,7 @@ import {
   createNotificationStore,
   registerNotification,
 } from "./rpc-handlers/notification";
+import type { Notification } from "./rpc-handlers/types";
 import { registerAgent } from "./rpc-handlers/agent";
 import { registerBrowserPage } from "./rpc-handlers/browser-page";
 import { registerBrowserCookies } from "./rpc-handlers/browser-cookies";
@@ -89,6 +90,11 @@ export interface RpcHandlerOptions {
    *  the queue holds pending agent → user questions. Optional in
    *  test fixtures. */
   askUser?: AskUserQueue;
+  /** Plan #09 commit B — fired by the notification handler after
+   *  every `notification.create`. The host wires this to the auto-
+   *  continue engine so turn-end notifications drive a continue/wait
+   *  decision without polling. Optional in tests. */
+  onNotificationCreate?: (notification: Notification) => void;
 }
 
 export function createRpcHandler(
@@ -119,7 +125,10 @@ export function createRpcHandler(
     browserHistory,
     pendingBrowserEvals,
     cookieStore,
-    notifications: createNotificationStore(),
+    notifications: {
+      ...createNotificationStore(),
+      onCreate: options.onNotificationCreate,
+    },
     panelRegistry: options.panelRegistry,
     piAgentManager: options.piAgentManager,
     shutdown: options.shutdown,

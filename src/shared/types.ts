@@ -437,6 +437,31 @@ export interface Plan {
   updatedAt: number;
 }
 
+// ── Plan #09 commit B: auto-continue audit ring ─────────────────────
+// One entry per decision the auto-continue engine made. Pushed to the
+// webview + web mirror via the `autoContinueAudit` envelope so the
+// sidebar can show a rolling history; capped at 50 entries in memory
+// (engine-side AUDIT_CAP).
+export interface AutoContinueAuditEntry {
+  /** Wall-clock ms when the decision landed. */
+  at: number;
+  /** Surface that fired the turn-end notification. */
+  surfaceId: string;
+  /** Optional agent id from the plan, when known. */
+  agentId?: string;
+  /** Outcome the engine produced — `fired` actually sent the
+   *  instruction, `dry-run` logged it, `skipped` waited (cooldown,
+   *  loop, heuristic, etc). */
+  outcome: "fired" | "dry-run" | "skipped";
+  /** One-sentence reason for the outcome — surfaced verbatim in the
+   *  sidebar audit log. */
+  reason: string;
+  /** Engine mode at decision time. */
+  engine: "off" | "heuristic" | "model" | "hybrid";
+  /** Whether an LLM call participated in the decision. */
+  modelConsulted: boolean;
+}
+
 // webview.messages = what webview RECEIVES from bun
 
 export interface TauMuxRPC extends ElectrobunRPCSchema {
@@ -777,6 +802,12 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       // the webview's plan panel can render without polling. The wire
       // shape is the same `Plan[]` callers receive from `plan.list`.
       restorePlans: { plans: Plan[] };
+
+      // Plan #09 commit B — auto-continue audit ring. Debounced (100 ms)
+      // so a flurry of decisions during a busy turn doesn't spam the
+      // webview. Each entry is a single decision the engine made;
+      // newest last, capped at 50 in memory.
+      autoContinueAudit: { audit: AutoContinueAuditEntry[] };
 
       // Plan #10 — pending agent → user questions. The future modal
       // panel listens on this channel. `kind: "shown"` covers add +

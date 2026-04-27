@@ -10923,3 +10923,167 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 .status-entry-block .status-entry-value {
   display: none;
 }
+
+/* ────────────────────────────────────────────────────────────────────
+ * Plan #09 commit B — sidebar plan panel.
+ * Sits between the notifications zone and the workspace list.
+ * Hidden when there are no plans + no audit entries.
+ * ──────────────────────────────────────────────────────────────────── */
+.sidebar-plan-panel {
+  width: calc(var(--sidebar-width) - 20px);
+  margin: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+}
+.sidebar-plan-panel.hidden {
+  display: none;
+}
+.spp-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tau-text-mute, rgba(255, 255, 255, 0.55));
+  padding: 2px 4px 0;
+}
+.spp-section-subtitle {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tau-text-mute, rgba(255, 255, 255, 0.45));
+  padding: 8px 4px 4px;
+}
+.spp-empty {
+  font-size: 11px;
+  color: var(--tau-text-mute, rgba(255, 255, 255, 0.4));
+  padding: 6px 8px;
+  font-style: italic;
+}
+
+/* Plan card */
+.spp-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: 8px;
+  border: 1px solid var(--tau-border-soft, rgba(255, 255, 255, 0.08));
+  background: var(--tau-bg-card, rgba(255, 255, 255, 0.03));
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+.spp-card:hover {
+  background: var(--tau-bg-card-raised, rgba(255, 255, 255, 0.06));
+  border-color: var(--tau-cyan, #66c0f4);
+}
+.spp-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+}
+.spp-card-ws {
+  color: var(--tau-text-strong, #ecedef);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+.spp-card-agent {
+  color: var(--tau-cyan, #66c0f4);
+  font-family: var(--tau-font-mono, ui-monospace, monospace);
+  font-size: 10px;
+}
+.spp-card-summary {
+  margin-left: auto;
+  color: var(--tau-text-mute, rgba(255, 255, 255, 0.55));
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.spp-card-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.spp-step {
+  display: grid;
+  grid-template-columns: 14px 36px 1fr;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.spp-step-icon {
+  text-align: center;
+  font-size: 10px;
+}
+.spp-step-id {
+  color: var(--tau-text-mute, rgba(255, 255, 255, 0.55));
+  font-family: var(--tau-font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.spp-step-title {
+  color: var(--tau-text-strong, #ecedef);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spp-step-done .spp-step-icon { color: var(--tau-ok, #4ade80); }
+.spp-step-done .spp-step-title { color: var(--tau-text-mute, rgba(255, 255, 255, 0.55)); text-decoration: line-through; }
+.spp-step-active .spp-step-icon { color: var(--tau-cyan, #66c0f4); }
+.spp-step-active .spp-step-title { color: var(--tau-text-strong, #ecedef); font-weight: 500; }
+.spp-step-waiting .spp-step-icon { color: var(--tau-text-mute, rgba(255, 255, 255, 0.4)); }
+.spp-step-err .spp-step-icon { color: var(--tau-err, #f87171); }
+.spp-step-err .spp-step-title { color: var(--tau-err, #f87171); }
+
+/* Audit log */
+.spp-audit {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.spp-audit.hidden {
+  display: none;
+}
+.spp-audit-row {
+  display: grid;
+  grid-template-columns: 60px 90px 1fr;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 10px;
+  padding: 2px 4px;
+  font-family: var(--tau-font-mono, ui-monospace, monospace);
+  color: var(--tau-text-mute, rgba(255, 255, 255, 0.6));
+}
+.spp-audit-outcome {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  font-size: 9px;
+}
+.spp-audit-fired .spp-audit-outcome { color: var(--tau-ok, #4ade80); }
+.spp-audit-dryrun .spp-audit-outcome { color: var(--tau-cyan, #66c0f4); }
+.spp-audit-skipped .spp-audit-outcome { color: var(--tau-text-mute, rgba(255, 255, 255, 0.45)); }
+.spp-audit-engine {
+  color: var(--tau-text-mute, rgba(255, 255, 255, 0.4));
+}
+.spp-audit-reason {
+  color: var(--tau-text-strong, #ecedef);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

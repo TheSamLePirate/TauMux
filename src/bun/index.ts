@@ -72,6 +72,7 @@ import {
 } from "./audits";
 import { HealthRegistry } from "./health";
 import { PlanStore } from "./plan-store";
+import { AutoContinueEngine } from "./auto-continue-engine";
 import { AskUserQueue } from "./ask-user-queue";
 import {
   buildButtonsForKind,
@@ -2490,6 +2491,100 @@ function rebuildAudits(): void {
   });
 }
 
+// Plan #09 commit B — auto-continue engine. Wired into the
+// `notification.create` hook so every turn-end notification can
+// produce a continue/wait decision. The engine reads its config
+// fresh on every dispatch (so a Settings flip applies without a
+// restart) and pushes audit entries on every decision; we
+// rebroadcast the audit ring so the future panel UI can render it.
+const autoContinue = new AutoContinueEngine({
+  getSettings: () => settingsManager.get().autoContinue,
+  sendText: (surfaceId, text) => {
+    try {
+      sessions.writeStdin(surfaceId, text);
+    } catch (err) {
+      console.warn(
+        `[auto-continue] sendText to ${surfaceId} failed: ${(err as Error).message}`,
+      );
+    }
+  },
+});
+let autoContinueAuditTimer: ReturnType<typeof setTimeout> | null = null;
+autoContinue.subscribeAudit((audit) => {
+  if (autoContinueAuditTimer) return;
+  autoContinueAuditTimer = setTimeout(() => {
+    autoContinueAuditTimer = null;
+    rpc.send("autoContinueAudit", { audit });
+    app.webServer?.broadcast({ type: "autoContinueAudit", audit });
+  }, 100);
+});
+
+/** Locate the plan that the auto-continue engine should consult for
+ *  a notification arriving on `surfaceId`. We walk every workspace,
+ *  pick the one that owns the surface, and return the most recently
+ *  updated plan registered for that workspace. Returns null when no
+ *  plan is registered (the heuristic then falls into its "no plan"
+ *  branch and chooses to wait). */
+function lookupPlanForSurface(surfaceId: string) {
+  const state = app.getAppState();
+  const owning = state.workspaces.find((ws) =>
+    ws.surfaceIds.includes(surfaceId),
+  );
+  if (!owning) return null;
+  const candidates = plans
+    .list()
+    .filter((p) => p.workspaceId === owning.id)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  return candidates[0] ?? null;
+}
+
+/** Pull a few trailing lines from the surface so the heuristic /
+ *  model can spot trailing questions or error markers. We cap at
+ *  3 KiB regardless of history depth — a long agent run can grow
+ *  the buffer to many MB and the heuristic only cares about the
+ *  last N lines. */
+function lookupSurfaceTail(surfaceId: string): string[] {
+  let history: string;
+  try {
+    history = sessions.getOutputHistory(surfaceId) ?? "";
+  } catch {
+    return [];
+  }
+  if (!history) return [];
+  const slice = history.length > 3072 ? history.slice(-3072) : history;
+  return slice
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ""))
+    .slice(-12);
+}
+
+function dispatchAutoContinueForNotification(notification: {
+  surfaceId?: string;
+  title: string;
+  body: string;
+}): void {
+  const surfaceId = notification.surfaceId;
+  if (!surfaceId) return;
+  const plan = lookupPlanForSurface(surfaceId);
+  const surfaceTail = lookupSurfaceTail(surfaceId);
+  const notificationText = [notification.title, notification.body]
+    .filter((t) => t && t.length > 0)
+    .join(" — ");
+  void autoContinue
+    .dispatch({
+      surfaceId,
+      agentId: plan?.agentId,
+      plan,
+      surfaceTail,
+      notificationText,
+    })
+    .catch((err) => {
+      console.warn(
+        `[auto-continue] dispatch failed for ${surfaceId}: ${(err as Error).message}`,
+      );
+    });
+}
+
 const socketHandler = createRpcHandler(
   sessions,
   () => app.getAppState(),
@@ -2520,6 +2615,7 @@ const socketHandler = createRpcHandler(
     health,
     plans,
     askUser,
+    onNotificationCreate: (n) => dispatchAutoContinueForNotification(n),
   },
 );
 const socketServer = new SocketServer(socketPath, socketHandler);

@@ -55,6 +55,7 @@ import {
   refreshServiceWorker,
   registerServiceWorker,
 } from "./pwa";
+import { createPlanPanelMirror } from "./plan-panel-mirror";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -244,6 +245,21 @@ function boot() {
     onBinaryFrame: (id, data) => renderPanelData(id, data, true),
   });
   const sendMsg = transport.send;
+  // Plan #09 commit B — read-only plan + auto-continue widget. Mounts
+  // into the sidebar zone the moment the page boots so a fresh
+  // connection's `plansSnapshot` finds a host element to paint into.
+  const planPanelMirror = createPlanPanelMirror({
+    hostEl: sidebarEl,
+    onSelectWorkspace: (workspaceId) => {
+      const state = store.getState();
+      if (workspaceId === state.activeWorkspaceId) return;
+      store.dispatch({ kind: "workspace/active", workspaceId });
+      store.dispatch({ kind: "fullscreen/exit" });
+      sendMsg("selectWorkspace", { workspaceId });
+      sendMsg("subscribeWorkspace", { workspaceId });
+    },
+  });
+
   handleServerMessage = createProtocolDispatcher({
     store,
     writeOutput: (surfaceId, data, reset) => {
@@ -253,6 +269,8 @@ function boot() {
       ref.term.write(data);
     },
     subscribeSurface: (surfaceId) => sendMsg("subscribeSurface", { surfaceId }),
+    setPlans: (plans) => planPanelMirror.setPlans(plans),
+    setAutoContinueAudit: (audit) => planPanelMirror.setAudit(audit),
   });
 
   // ------------------------------------------------------------------

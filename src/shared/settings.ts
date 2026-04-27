@@ -187,6 +187,54 @@ export interface AppSettings {
    *  via the bound surface; opting in routes their attention to
    *  the user's phone. */
   telegramAskUserEnabled: boolean;
+
+  /** Plan #09 commit B: auto-continue engine policy. The host
+   *  watches for "agent turn end" signals (today: every notification
+   *  arrival routed via the surfaceId hook); for each, it consults
+   *  the auto-continue heuristic + optionally an LLM. When the
+   *  decision is `continue`, the host writes `Continue <step>\n`
+   *  into the source surface so the agent advances without the
+   *  user having to nudge it.
+   *
+   *  Off by default — the dispatch sends keystrokes on the user's
+   *  machine; opting in is a deliberate trust call. Even after
+   *  opt-in, `dryRun: true` (default) only logs the decision so
+   *  the user can audit the heuristic before letting it act. */
+  autoContinue: AutoContinueSettings;
+}
+
+/** Plan #09 commit B — auto-continue engine settings. */
+export interface AutoContinueSettings {
+  /** `off`        — engine disabled, never decides anything.
+   *  `heuristic`  — pure decision tree (no model call).
+   *  `model`      — every turn-end consults the configured LLM.
+   *  `hybrid`     — heuristic first; only call model when the
+   *                 heuristic returns "wait" with an ambiguous
+   *                 reason (no plan published, or no clear next
+   *                 step). Saves tokens vs always-on `model`. */
+  engine: "off" | "heuristic" | "model" | "hybrid";
+  /** When true, the host logs the decision to the sidebar but does
+   *  not actually send the instruction to the surface. Default
+   *  true so a fresh opt-in stays observable. */
+  dryRun: boolean;
+  /** Minimum ms between auto-sends to the same surface. */
+  cooldownMs: number;
+  /** Per-surface cap on consecutive auto-continues without an
+   *  intervening user input. Beyond this, the engine pauses and
+   *  surfaces a "looped" warning. */
+  maxConsecutive: number;
+  /** Provider for the model engine. `anthropic` calls the Claude API
+   *  directly. Reserved for future expansion (`local` for
+   *  llama.cpp / ollama). */
+  modelProvider: "anthropic";
+  /** Model id passed to the provider. Default Haiku 4.5 — the
+   *  fastest current Anthropic model and the right tradeoff for a
+   *  one-shot continue-or-wait classifier. */
+  modelName: string;
+  /** Environment variable name the engine reads for the API key.
+   *  Keeps the key out of `settings.json` even when the rest of the
+   *  config travels with the user. */
+  modelApiKeyEnv: string;
 }
 
 export interface ThemePreset {
@@ -692,6 +740,21 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   telegramNotificationsEnabled: false,
   telegramNotificationButtonsEnabled: false,
   telegramAskUserEnabled: false,
+
+  // Plan #09 commit B — auto-continue is OFF + dryRun ON by
+  // default. Two safety layers so a fresh install can't surprise
+  // the user: opt-in flips engine !== "off"; even then dryRun
+  // logs the decision instead of acting until the user ticks it
+  // off. cooldownMs and maxConsecutive both pulled from the plan.
+  autoContinue: {
+    engine: "off",
+    dryRun: true,
+    cooldownMs: 3000,
+    maxConsecutive: 5,
+    modelProvider: "anthropic",
+    modelName: "claude-haiku-4-5-20251001",
+    modelApiKeyEnv: "ANTHROPIC_API_KEY",
+  },
 };
 
 function clamp(v: number, min: number, max: number): number {
@@ -851,6 +914,50 @@ export function validateSettings(s: AppSettings): AppSettings {
           (k): k is string => typeof k === "string" && k.length > 0,
         ) as string[])
       : [],
+    autoContinue: validateAutoContinue(s.autoContinue),
+  };
+}
+
+/** Pure: bring an `autoContinue` settings record into a known-good
+ *  shape. Unknown engine values fall back to "off" (the safe
+ *  default); cooldown / max are clamped to reasonable bounds. */
+export function validateAutoContinue(
+  raw: AutoContinueSettings | undefined | null,
+): AutoContinueSettings {
+  const def = DEFAULT_SETTINGS.autoContinue;
+  if (!raw || typeof raw !== "object") return { ...def };
+  const engine =
+    raw.engine === "heuristic" ||
+    raw.engine === "model" ||
+    raw.engine === "hybrid"
+      ? raw.engine
+      : "off";
+  const cooldownMs =
+    typeof raw.cooldownMs === "number" && Number.isFinite(raw.cooldownMs)
+      ? clamp(Math.round(raw.cooldownMs), 0, 60_000)
+      : def.cooldownMs;
+  const maxConsecutive =
+    typeof raw.maxConsecutive === "number" &&
+    Number.isFinite(raw.maxConsecutive)
+      ? clamp(Math.round(raw.maxConsecutive), 1, 50)
+      : def.maxConsecutive;
+  const modelName =
+    typeof raw.modelName === "string" && raw.modelName.trim().length > 0
+      ? raw.modelName.trim()
+      : def.modelName;
+  const modelApiKeyEnv =
+    typeof raw.modelApiKeyEnv === "string" &&
+    raw.modelApiKeyEnv.trim().length > 0
+      ? raw.modelApiKeyEnv.trim()
+      : def.modelApiKeyEnv;
+  return {
+    engine,
+    dryRun: typeof raw.dryRun === "boolean" ? raw.dryRun : def.dryRun,
+    cooldownMs,
+    maxConsecutive,
+    modelProvider: "anthropic",
+    modelName,
+    modelApiKeyEnv,
   };
 }
 

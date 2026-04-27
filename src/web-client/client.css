@@ -1456,3 +1456,156 @@ body.wm-kbd-active #pane-container {
    * prefer to hide the sidebar. */
   #sidebar-scrim { display: none !important; }
 }
+
+/* ────────────────────────────────────────────────────────────────────
+ * Plan #09 commit B — sidebar plan panel mirror.
+ * Same shape as the native widget; lives at the top of the sidebar
+ * column so it is visible the moment a plan lands.
+ * ──────────────────────────────────────────────────────────────────── */
+.sb-plan-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 12px;
+  border-bottom: 1px solid var(--ht-border-soft);
+}
+.sb-plan-panel.hidden { display: none; }
+.sb-plan-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ht-text-muted);
+}
+.sb-plan-empty {
+  font-size: 12px;
+  color: var(--ht-text-dim);
+  font-style: italic;
+  padding: 6px 8px;
+}
+.sb-plan-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.spp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: var(--ht-radius-card);
+  border: 1px solid var(--ht-border-soft);
+  background: var(--ht-bg-card);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  appearance: none;
+  width: 100%;
+}
+.spp-card:hover {
+  background: var(--ht-bg-card-raised);
+  border-color: var(--ht-accent-strong);
+}
+.spp-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+}
+.spp-card-ws {
+  color: var(--ht-text-strong);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+.spp-card-agent {
+  color: var(--ht-sem-info);
+  font-family: var(--ht-font-mono);
+  font-size: 10px;
+}
+.spp-card-summary {
+  margin-left: auto;
+  color: var(--ht-text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.spp-card-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.spp-step {
+  display: grid;
+  grid-template-columns: 14px 36px 1fr;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.spp-step-icon { text-align: center; font-size: 10px; }
+.spp-step-id {
+  color: var(--ht-text-muted);
+  font-family: var(--ht-font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.spp-step-title {
+  color: var(--ht-text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spp-step-done .spp-step-icon { color: var(--ht-sem-success); }
+.spp-step-done .spp-step-title { color: var(--ht-text-muted); text-decoration: line-through; }
+.spp-step-active .spp-step-icon { color: var(--ht-sem-info); }
+.spp-step-active .spp-step-title { color: var(--ht-text-strong); font-weight: 500; }
+.spp-step-waiting .spp-step-icon { color: var(--ht-text-dim); }
+.spp-step-err .spp-step-icon { color: var(--ht-sem-error); }
+.spp-step-err .spp-step-title { color: var(--ht-sem-error); }
+
+.sb-plan-audit {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sb-plan-audit.hidden { display: none; }
+.sb-plan-audit-title {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ht-text-muted);
+  padding: 8px 4px 4px;
+}
+.spp-audit-row {
+  display: grid;
+  grid-template-columns: 60px 90px 1fr;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 10px;
+  padding: 2px 4px;
+  font-family: var(--ht-font-mono);
+  color: var(--ht-text-muted);
+}
+.spp-audit-outcome {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  font-size: 9px;
+}
+.spp-audit-fired .spp-audit-outcome { color: var(--ht-sem-success); }
+.spp-audit-dryrun .spp-audit-outcome { color: var(--ht-sem-info); }
+.spp-audit-skipped .spp-audit-outcome { color: var(--ht-text-muted); }
+.spp-audit-engine { color: var(--ht-text-dim); }
+.spp-audit-reason {
+  color: var(--ht-text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

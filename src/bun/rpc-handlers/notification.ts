@@ -39,6 +39,16 @@ export function registerNotification(
       while (notifications.list.length > MAX_NOTIFICATIONS) {
         notifications.list.shift();
       }
+      // Plan #09 commit B — fire the per-process onCreate hook so
+      // the auto-continue engine (or any future bun-side observer)
+      // sees turn-end notifications without polling. Errors in the
+      // subscriber are swallowed so a buggy hook can't fail the
+      // notification flow.
+      try {
+        notifications.onCreate?.(n);
+      } catch {
+        /* don't let a buggy hook break notification.create */
+      }
       dispatch("notification", {
         surfaceId: surfaceId ?? null,
         latest: {

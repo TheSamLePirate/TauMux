@@ -22,6 +22,7 @@ import type { VariantId } from "./variants/types";
 import { showPromptDialog } from "./prompt-dialog";
 import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";
+import { PlanPanel } from "./plan-panel";
 import { SurfaceDetailsPanel } from "./surface-details";
 import { showToast } from "./toast";
 import { registerAgentEvents } from "./agent-events";
@@ -225,6 +226,17 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
           surfaceDetailsPanel.refresh();
         }
       },
+      // Plan #09 — agent plans: setPlans is keyed-render so unchanged
+      // plans don't blow away the visible cards.
+      restorePlans: (payload) => {
+        planPanel.setPlans(payload.plans);
+      },
+      // Plan #09 commit B — auto-continue audit ring. We render the
+      // last few entries inline under the plan cards so the user
+      // sees why the engine did or didn't fire.
+      autoContinueAudit: (payload) => {
+        planPanel.setAudit(payload.audit);
+      },
     },
     requests: {
       readScreen: (params) => {
@@ -272,6 +284,17 @@ const settingsPanel = new SettingsPanel(
     onRevealLogFile: () => rpc.send("revealLogFile"),
   },
 );
+
+// Plan #09 commit B — sidebar plan widget. Mounted directly into
+// the sidebar's host element so it renders before the workspace
+// list. The widget hides itself when there are no plans + no
+// audit entries to surface.
+const planPanel = new PlanPanel({
+  onSelectWorkspace: (workspaceId) => {
+    surfaceManager.selectWorkspaceById(workspaceId);
+  },
+});
+sidebarEl.appendChild(planPanel.getElement());
 
 function applySettings(settings: AppSettings): void {
   currentSettings = settings;

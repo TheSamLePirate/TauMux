@@ -54,6 +54,11 @@ export interface Notification {
 export interface NotificationStore {
   list: Notification[];
   counter: number;
+  /** Optional hook fired after `notification.create` pushes a new
+   *  entry. Plan #09 commit B uses this to drive the auto-continue
+   *  engine on every turn-end notification — the existing dispatch
+   *  channel goes to the webview, not back to the bun process. */
+  onCreate?: (notification: Notification) => void;
 }
 
 /** Everything a handler module needs to serve requests. Populated once

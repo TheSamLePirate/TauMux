@@ -1681,6 +1681,15 @@ export class SurfaceManager {
     );
   }
 
+  /** Public sibling of `switchToWorkspace(index)` keyed by id —
+   *  used by the Plan panel (and any future sidebar widget) to
+   *  promote a non-active workspace without reaching into private
+   *  state. No-op when the id is unknown. */
+  selectWorkspaceById(id: string): void {
+    const idx = this.workspaces.findIndex((w) => w.id === id);
+    if (idx !== -1) this.switchToWorkspace(idx);
+  }
+
   private switchToWorkspace(index: number): void {
     this.paneDrag.cancel();
     this.activeWorkspaceIndex = index;

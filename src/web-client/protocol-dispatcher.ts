@@ -17,6 +17,7 @@
  */
 
 import type { Store } from "./store";
+import type { AutoContinueAuditEntry, Plan } from "../shared/types";
 import { playNotificationSound } from "./sounds";
 
 export interface ProtocolDispatcherDeps {
@@ -29,6 +30,13 @@ export interface ProtocolDispatcherDeps {
    *  after receiving `surfaceCreated` so the new pane starts filling
    *  in immediately. */
   subscribeSurface: (surfaceId: string) => void;
+  /** Plan #09 commit B — drop the latest plan snapshot into the
+   *  sidebar plan panel. The mirror is read-only; the bun side is
+   *  authoritative. */
+  setPlans?: (plans: Plan[]) => void;
+  /** Plan #09 commit B — feed the audit ring into the panel so the
+   *  mirror sees auto-continue activity. */
+  setAutoContinueAudit?: (audit: AutoContinueAuditEntry[]) => void;
 }
 
 /** eslint-disable: server payloads are untyped at the boundary. */
@@ -38,7 +46,13 @@ type Payload = any;
 export function createProtocolDispatcher(
   deps: ProtocolDispatcherDeps,
 ): (type: string, payload: Payload) => void {
-  const { store, writeOutput, subscribeSurface } = deps;
+  const {
+    store,
+    writeOutput,
+    subscribeSurface,
+    setPlans,
+    setAutoContinueAudit,
+  } = deps;
 
   return (type, p) => {
     switch (type) {
@@ -213,6 +227,17 @@ export function createProtocolDispatcher(
             store.dispatch({ kind: "telegram/glow-incoming" });
           }
         }
+        break;
+      // Plan #09 commit B — agent plans + auto-continue audit ring
+      // mirror over to the read-only sidebar widget. The mirror does
+      // not store these in AppState; the panel renders directly from
+      // the latest snapshot.
+      case "plansSnapshot":
+        if (Array.isArray(p.plans)) setPlans?.(p.plans as Plan[]);
+        break;
+      case "autoContinueAudit":
+        if (Array.isArray(p.audit))
+          setAutoContinueAudit?.(p.audit as AutoContinueAuditEntry[]);
         break;
     }
   };
