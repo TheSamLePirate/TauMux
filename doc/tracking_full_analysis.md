@@ -162,4 +162,23 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 
 **Deviations / issues:** none.
 
+**Commit:** `5e1ecf8` (bump 0.2.45 → 0.2.46).
+
+---
+
+### Step 9 — I1, M2, M3: README + CLAUDE.md doc refresh
+
+**What:** Refreshed test counts, added the missing CLI subsections to the README, and added recently-introduced files / panels to the project layout block and architecture diagram.
+
+**Files:**
+- `README.md` — test counts updated to 1500+ / 100 files (was 748 / 666 / 54 / 44); added CLI subsections for `ht plan`, `ht autocontinue`, `ht ask`, `ht telegram`; added `PlanPanel`, `AskUserModal`, `TelegramPaneView` to the architecture ASCII; added `plan-store.ts`, `auto-continue-engine.ts`, `auto-continue-host.ts`, `telegram-service.ts`, `telegram-db.ts`, `plan-panel.ts`, `ask-user-modal.ts`, `ask-user-state.ts`, `telegram-pane.ts`, `variants/controller.ts` to the project layout block; expanded the rpc-handlers list to include `plan / telegram / audit / auto-continue / ask-user / __test`.
+- `CLAUDE.md` — test count updated to 1500+ / 100 files (was 801 / 58).
+
+**Verification:**
+- `bun run typecheck` — clean.
+- `bun test tests/` — 1501 / 1501 pass.
+
+**Deviations / issues:**
+- The commit also picks up the pre-existing in-flight README edits (the "Just a personal project" hero block and the `HT_WORKSPACE_ID` env-var clarification). They are cohesive with this docs refresh — both clarify reality versus an older, smaller version of the project — so bundling them in keeps the working tree clean rather than splitting hairs across two PRs. The website-doc modifications stay uncommitted; they're handled in step 10.
+
 **Commit:** filled in below.

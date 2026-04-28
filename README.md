@@ -22,6 +22,25 @@
   <img src="assets/images/App_screenshot.png" alt="τ-mux in action — Pi Agent pane, Claude Code split, agent plan panel in the sidebar, file tree, and live status keys at the bottom." width="100%" />
 </p>
 
+<div align="center">
+
+```
+   ╭───────────────────────────────────────────────────────────╮
+   │                                                           │
+   │   I liked cmux.            I love vibe coding.            │
+   │                                                           │
+   │   So I tried to make a vibe-coded clone —                 │
+   │   as professional as vibe coding can get.                 │
+   │                                                           │
+   │                  "Just a personal project."               │
+   │                                                           │
+   ╰───────────────────────────────────────────────────────────╯
+```
+
+<sub>inspired by <a href="https://cmux.com/"><code>cmux.com</code></a> · built in the open · vibes welcome</sub>
+
+</div>
+
 Scripts running inside the terminal can stream structured content (images, charts, interactive widgets) through extra file descriptors, while the main process continuously observes cwd / pid / ports / CPU / RSS for every descendant of every shell and ships those observations into the UI and any attached CLI.
 
 ## Table of contents
@@ -97,9 +116,12 @@ The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`.
                                    ▼
 ┌──────────────────── Electrobun webview (src/views/terminal/) ───────────────────────┐
 │                                                                                      │
-│  SurfaceManager (workspaces + PaneLayout + xterm.js + browser instances)              │
+│  SurfaceManager (workspaces + PaneLayout + xterm.js + browser + agent + telegram)    │
 │     ├── per-pane chips row  (fg command, cwd, port badges — click to open)           │
 │     ├── Sidebar (workspaces + fg command + port chips + status pills)                │
+│     ├── PlanPanel (multi-step agent plans + auto-continue audit ring)                 │
+│     ├── AskUserModal (agent → human question dialog with telegram fan-out)            │
+│     ├── TelegramPaneView (chat pane: picker, status pill, composer)                   │
 │     ├── ProcessManagerPanel (⌘⌥P overlay, CPU/MEM, kill)                              │
 │     ├── PanelManager (floating canvas overlays)                                       │
 │     ├── TerminalEffects (GPU ripple + bloom)                                          │
@@ -199,6 +221,38 @@ ht kill 3000 --signal SIGKILL
 # tmux compat
 ht capture-pane --lines 50           # alias for read-screen
 
+# Plan — multi-step agent plans surfaced in the sidebar widget
+ht plan list                                   # all active plans
+ht plan get --json '{"plan":"id"}'             # one plan
+ht plan set --json '{...}'                     # create or replace
+ht plan update --json '{...}'                  # patch one step
+ht plan complete --json '{"plan":"id"}'        # mark complete
+ht plan clear                                  # clear plans for the workspace
+
+# Autocontinue — agent run-on engine (see also website docs/cli/autocontinue)
+ht autocontinue status                # current settings + audit ring
+ht autocontinue audit                 # last decisions
+ht autocontinue set --engine off|heuristic|model
+ht autocontinue fire --surface S      # force one decision
+ht autocontinue pause --surface S
+ht autocontinue resume --surface S
+
+# Ask user — agent → human question modal (see website docs/cli/ask-user)
+ht ask yes-no "Deploy to prod?"
+ht ask choice "Pick a target" --choices a,b,c
+ht ask text "Branch name?"
+ht ask confirm-command "rm -rf node_modules"
+ht ask pending                        # list unresolved questions
+ht ask answer <id> --json '{...}'
+ht ask cancel <id>
+
+# Telegram bridge (see CLAUDE.md and website docs/cli/telegram)
+ht telegram status
+ht telegram chats
+ht telegram read --chat <id> --limit 20
+ht telegram send --chat <id> "hello from ht"
+ht telegram restart                   # reload token + restart long-poll
+
 # Browser (see Browser Panes section below)
 ht browser open https://example.com
 ht browser open-split https://example.com
@@ -222,8 +276,8 @@ Every command honors `--surface <id>` to target a specific pane; if omitted, the
 | Variable | Purpose |
 |----------|---------|
 | `HT_SOCKET_PATH` | Override `/tmp/hyperterm.sock` |
-| `HT_SURFACE` | Auto-set per spawned shell (the CLI reads this for default `--surface`) |
-| `HT_WORKSPACE_ID`, `HT_SURFACE_ID` | Legacy aliases documented in `ht --help` |
+| `HT_SURFACE` | Auto-set per spawned shell — CLI uses it as default `--surface`; the server resolves the owning workspace from it for workspace-scoped commands (`ht plan`, `ht set-status`, `ht log`, `ht notify`) |
+| `HT_WORKSPACE_ID` | Optional override for `--workspace`. **Not** auto-set — export it manually if you want a non-pane shell to default to a workspace |
 | `HYPERTERM_WEB_PORT` | Overrides the `webMirrorPort` setting and forces auto-start |
 | `HYPERTERM_DEBUG` | Enables debug logs in the Python / TS client libs |
 
@@ -480,7 +534,12 @@ src/
     event-writer.ts             # fd 5 JSONL event writer (incl. system errors)
     socket-server.ts            # Unix socket JSON-RPC server
     rpc-handler.ts              # Dispatcher that merges per-domain handlers
-    rpc-handlers/               # system / workspace / surface / sidebar / pane / notification / agent / browser-*
+    rpc-handlers/               # system / workspace / surface / sidebar / pane / notification / agent / browser-* / plan / telegram / audit / auto-continue / ask-user / __test
+    plan-store.ts               # In-memory agent plan registry (subscribed → broadcast)
+    auto-continue-engine.ts     # Heuristic + model-driven engine for agent run-on
+    auto-continue-host.ts       # Notification → engine dispatcher; wires audit ring
+    telegram-service.ts         # Long-poll bot service + dedup + offset persist
+    telegram-db.ts              # SQLite log for telegram messages
       shared.ts                 # METHOD_SCHEMAS + validateParams + geometry helpers
     surface-metadata.ts         # Poller + ps/lsof parsers + diff + emit
     settings-manager.ts         # Load/save + debounced persist
@@ -519,6 +578,11 @@ src/
     agent-panel*.ts             # Pi agent panel: utils / messages / model / response / dialogs / slash
     agent-events.ts             # ht-agent-* CustomEvent → RPC bridge
     browser-events.ts           # ht-browser-* CustomEvent → RPC bridge
+    plan-panel.ts               # Multi-step agent plan widget + audit ring (sidebar)
+    ask-user-modal.ts           # Agent → human question modal (yes-no/choice/text/confirm-command)
+    ask-user-state.ts           # Pure projection used by AskUserModal
+    telegram-pane.ts            # Telegram chat pane: picker, status pill, composer
+    variants/controller.ts      # τ-mux §9 layout variant orchestrator (bridge / cockpit / atlas)
     socket-actions.ts           # Socket API action dispatch table
   web-client/                   # Web-mirror client (built into assets/web-client/client.js)
     main.ts                     # Entry; composes transport + views
@@ -545,8 +609,8 @@ doc/
   system-webview-ui.md
   system-process-metadata.md    # Full spec for the metadata pipeline
   system-browser-pane.md        # Browser pane: architecture, API, automation, settings
-tests/                          # 748 tests across 54 files (bun test)
-tests-e2e/                      # 43 Playwright web-mirror specs (bun run test:e2e)
+tests/                          # 1500+ tests across 100 files (bun test)
+tests-e2e/                      # 10 Playwright web-mirror specs (bun run test:e2e)
 pi-extensions/
   ht-notify-summary/            # pi coding-agent extension: sidebar pill + ht notify
 claude-integration/
@@ -561,7 +625,7 @@ claude-integration/
 bun install                # dependencies
 bun start                  # dev: build + launch once
 bun dev                    # dev: build + launch with watch
-bun test                   # unit + integration suite (666 tests across 44 files, ~9s)
+bun test                   # unit + integration suite (1500+ tests across 100 files, ~10s)
 bun run test:e2e           # Playwright web-mirror e2e (43 tests)
 bun run test:all           # both
 bun run typecheck          # TypeScript check
