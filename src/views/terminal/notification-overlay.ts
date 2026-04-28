@@ -370,6 +370,15 @@ export class NotificationOverlay {
     this.stacks.clear();
   }
 
+  /** Tear down the overlay manager: cancels every per-card auto-dismiss
+   *  timer and removes every overlay DOM node. After destroy, `show()`
+   *  is gated by the disabled-options path (callers should also stop
+   *  pointing notifications at us). Safe to call from `pagehide`. */
+  destroy(): void {
+    this.dismissAll();
+    this.options = { ...this.options, enabled: false };
+  }
+
   /** Forget a surface's stack entirely (e.g. surface closed). */
   forgetSurface(surfaceId: string): void {
     this.stacks.get(surfaceId)?.destroy();

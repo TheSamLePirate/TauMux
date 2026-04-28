@@ -79,6 +79,23 @@ let typingFocusActive = false;
 // is constructed (modal needs surface attribution + active id).
 const askUserState = new AskUserState();
 
+// N15 / I11 / I12 — central pagehide registry. Modules that own
+// observers, intervals, long-lived listeners, or timer-bearing UI
+// components push their inverse onto this array at construction time.
+// The single `pagehide` listener below runs them all on webview
+// teardown so a strict-leak audit is boring rather than a scavenger
+// hunt. Failures in one disposer never block the rest.
+const lifecycleDisposers: Array<() => void> = [];
+window.addEventListener("pagehide", () => {
+  for (const dispose of lifecycleDisposers) {
+    try {
+      dispose();
+    } catch {
+      /* never let one disposer fail the rest */
+    }
+  }
+});
+
 const rpc = Electroview.defineRPC<TauMuxRPC>({
   handlers: {
     messages: {
@@ -337,6 +354,7 @@ try {
       }
     },
   });
+  lifecycleDisposers.push(() => askUserModalHandle.destroy());
   // Sidebar badge: when the per-surface pending count changes, push a
   // per-workspace aggregation into the sidebar so the workspace card
   // can show a "1 question pending" pill.
@@ -385,6 +403,7 @@ const planPanel = new PlanPanel({
   },
 });
 sidebarEl.appendChild(planPanel.getElement());
+lifecycleDisposers.push(() => planPanel.destroy());
 
 /** Fire `action` once the named CSS transition on `el` completes,
  *  with a safety-net fallback in case the transition doesn't fire
@@ -700,18 +719,7 @@ function handleResize() {
 
 const resizeObserver = new ResizeObserver(handleResize);
 resizeObserver.observe(terminalContainerEl);
-// Disconnect the observer on navigation away / webview reload. Not
-// strictly needed in the happy path (the webview is long-lived), but
-// prevents duplicate observers if this module ever re-executes, and
-// matches the discipline we apply elsewhere (PanelManager, browser
-// pane listeners).
-window.addEventListener("pagehide", () => {
-  try {
-    resizeObserver.disconnect();
-  } catch {
-    /* ignore */
-  }
-});
+lifecycleDisposers.push(() => resizeObserver.disconnect());
 mountTitlebarIcons();
 mountStatusBar();
 
@@ -2163,6 +2171,7 @@ const notificationOverlay = new NotificationOverlay({
     surfaceManager.setSidebarVisible(true);
   },
 });
+lifecycleDisposers.push(() => notificationOverlay.destroy());
 
 const dispatchSocketAction = createSocketActionDispatcher({
   surfaceManager,

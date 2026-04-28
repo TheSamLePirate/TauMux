@@ -236,6 +236,42 @@ describe("NotificationOverlay (DOM)", () => {
     await Bun.sleep(50);
     expect(dismissed).toEqual([]);
   });
+
+  // I12 — destroy() must remove every card DOM node, cancel every
+  // auto-dismiss timer, and stop responding to follow-up `show()` calls.
+  test("destroy removes every card DOM node", async () => {
+    const { NotificationOverlay } = await loadOverlay();
+    const overlay = new NotificationOverlay(noopHooks());
+    overlay.show(host, basePayload({ id: "n:1" }));
+    overlay.show(host, basePayload({ id: "n:2" }));
+    expect(host.querySelectorAll(".tau-notif-overlay-card").length).toBe(2);
+    overlay.destroy();
+    expect(host.querySelectorAll(".tau-notif-overlay-card").length).toBe(0);
+    expect(host.querySelector(".tau-notif-overlay-stack")).toBeNull();
+  });
+
+  test("destroy cancels pending auto-dismiss timers (no late dismiss)", async () => {
+    const { NotificationOverlay } = await loadOverlay();
+    const dismissed: string[] = [];
+    const overlay = new NotificationOverlay({
+      ...noopHooks(),
+      onCardDismiss: ({ id }) => dismissed.push(id),
+    });
+    overlay.setOptions({ autoDismissMs: 30 });
+    overlay.show(host, basePayload({ id: "n:1" }));
+    overlay.destroy();
+    await Bun.sleep(80);
+    // No card → no late dismiss callback should have fired.
+    expect(dismissed).toEqual([]);
+  });
+
+  test("destroy ignores follow-up show calls", async () => {
+    const { NotificationOverlay } = await loadOverlay();
+    const overlay = new NotificationOverlay(noopHooks());
+    overlay.destroy();
+    overlay.show(host, basePayload({ id: "n:after" }));
+    expect(host.querySelector(".tau-notif-overlay-card")).toBeNull();
+  });
 });
 
 // ── helpers ───────────────────────────────────────────────────

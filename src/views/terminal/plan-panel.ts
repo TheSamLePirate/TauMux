@@ -28,6 +28,7 @@ export class PlanPanel {
   private callbacks: PlanPanelCallbacks;
   private plans: Plan[] = [];
   private audit: AutoContinueAuditEntry[] = [];
+  private destroyed = false;
 
   constructor(callbacks: PlanPanelCallbacks) {
     this.callbacks = callbacks;
@@ -51,6 +52,7 @@ export class PlanPanel {
     // how many cards are rendered. Cards carry their workspaceId in
     // a data-attr so we don't need closures per row.
     this.rootEl.addEventListener("click", (e) => {
+      if (this.destroyed) return;
       const target = (e.target as HTMLElement).closest(
         "[data-plan-workspace]",
       ) as HTMLElement | null;
@@ -67,13 +69,28 @@ export class PlanPanel {
   }
 
   setPlans(plans: readonly Plan[]): void {
+    if (this.destroyed) return;
     this.plans = [...plans];
     this.repaint();
   }
 
   setAudit(audit: readonly AutoContinueAuditEntry[]): void {
+    if (this.destroyed) return;
     this.audit = [...audit];
     this.repaint();
+  }
+
+  /** Detach from the DOM and stop responding to further state changes.
+   *  Idempotent. After destroy, `setPlans` / `setAudit` are no-ops so a
+   *  late-arriving RPC envelope can't repaint a torn-down node. */
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.plans = [];
+    this.audit = [];
+    this.plansZoneEl.innerHTML = "";
+    this.auditZoneEl.innerHTML = "";
+    this.rootEl.remove();
   }
 
   private repaint(): void {
