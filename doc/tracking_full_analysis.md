@@ -141,4 +141,25 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 **Deviations / issues:**
 - No dedicated test exists for the controller (the variants module is exercised via the design report). Adding one would require a happy-dom harness; deferred. The boot path is now strictly more lenient than before — any path that worked before still works, and a path that previously crashed now stays inert.
 
+**Commit:** `8b88af3` (bump 0.2.44 → 0.2.45).
+
+---
+
+### Step 8 — M12: τ-mux Help menu entry
+
+**What:** Added a "τ-mux Documentation" menu item to both the app submenu (under the τ-mux name) and the Help menu, pointing at `https://thesamlepirate.github.io/TauMux/`. The existing "Electrobun Documentation" entry stays — kept as a useful link to the framework docs but no longer the only "Help" target.
+
+**Files:**
+- `src/bun/native-menus.ts:6–8` — exported `TAU_MUX_DOCS_URL`.
+- `src/bun/native-menus.ts:26–30` — added `openTauMuxDocs` action constant.
+- `src/bun/native-menus.ts:62–66, :208–212` — new menu items (placed first in each submenu).
+- `src/bun/index.ts:51–58` — imported `TAU_MUX_DOCS_URL`.
+- `src/bun/index.ts:2138–2140` — added action case using `Utils.openExternal`.
+
+**Verification:**
+- `bun run typecheck` — clean.
+- `bun test tests/native-menus.test.ts tests/menu-events.test.ts` — 8 / 8 pass (existing tests don't enumerate menu order, so adding an item didn't regress them).
+
+**Deviations / issues:** none.
+
 **Commit:** filled in below.

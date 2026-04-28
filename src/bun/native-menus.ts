@@ -3,6 +3,7 @@ import type { NativeContextMenuRequest } from "../shared/types";
 import { WORKSPACE_COLOR_OPTIONS } from "../shared/workspace-colors";
 
 export const APP_NAME = "τ-mux";
+export const TAU_MUX_DOCS_URL = "https://thesamlepirate.github.io/TauMux/";
 export const ELECTROBUN_DOCS_URL =
   "https://www.electrobun.dev/docs/apis/bun/BrowserWindow";
 
@@ -24,6 +25,7 @@ export const MENU_ACTIONS = {
   pasteClipboard: "edit.paste-clipboard",
   selectAll: "edit.select-all",
   openElectrobunDocs: "help.open-electrobun-docs",
+  openTauMuxDocs: "help.open-taumux-docs",
   openSettings: "view.open-settings",
   openProjectReadme: "help.open-project-readme",
   setWorkspaceColor: "workspace.set-color",
@@ -58,6 +60,10 @@ export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
           action: MENU_ACTIONS.revealLogFile,
         },
         { type: "divider" },
+        {
+          label: "τ-mux Documentation",
+          action: MENU_ACTIONS.openTauMuxDocs,
+        },
         {
           label: "Project README",
           action: MENU_ACTIONS.openProjectReadme,
@@ -205,6 +211,10 @@ export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
     {
       label: "Help",
       submenu: [
+        {
+          label: "τ-mux Documentation",
+          action: MENU_ACTIONS.openTauMuxDocs,
+        },
         {
           label: "Project README",
           action: MENU_ACTIONS.openProjectReadme,

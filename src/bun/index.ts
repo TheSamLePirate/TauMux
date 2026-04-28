@@ -54,6 +54,7 @@ import {
   ELECTROBUN_DOCS_URL,
   formatWindowTitle,
   MENU_ACTIONS,
+  TAU_MUX_DOCS_URL,
 } from "./native-menus";
 import { normalizeMenuActionEvent } from "./menu-events";
 import { SettingsManager } from "./settings-manager";
@@ -2133,6 +2134,9 @@ function handleMenuAction(event: { action: string; data?: unknown }): void {
       break;
     case MENU_ACTIONS.openElectrobunDocs:
       Utils.openExternal(ELECTROBUN_DOCS_URL);
+      break;
+    case MENU_ACTIONS.openTauMuxDocs:
+      Utils.openExternal(TAU_MUX_DOCS_URL);
       break;
     case MENU_ACTIONS.openSettings:
       sendWebviewAction("openSettings");
