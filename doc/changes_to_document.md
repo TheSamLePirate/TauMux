@@ -2,6 +2,11 @@
 
 Pending updates to fold into `website-doc/` on the next user-driven docs sweep.
 
+## 0.2.58 — PR #8 (E.1 surface RPC startup-race)
+
+- New `surface.wait_ready` RPC + `ht wait-ready [--surface S] [--timeout-ms N]` CLI command. Returns the surface metadata snapshot once it lands, or null on timeout (default 2 s). Use to synchronize automation that races the post-spawn metadata poll.
+- `surface.kill_port` and `surface.open_port` no longer throw "no metadata yet — try again in a second" on first-tick race. They poll the cache for up to 2 s before failing with `surface metadata unavailable after 2000ms — pane may have crashed`. Naive scripts no longer need a retry loop. Add the new method + CLI verb to website-doc API + CLI references.
+
 ## 0.2.57 — PR #7 (C.3, C.4 mirror polish)
 
 - Web mirror: the agent-plans widget no longer stays hidden forever on a fresh connection. After the first `plansSnapshot` arrives (even an empty one) it now shows a "No active agent plans" placeholder, so users discover it exists before any agent posts a plan.

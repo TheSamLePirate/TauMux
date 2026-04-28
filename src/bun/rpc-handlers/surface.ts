@@ -3,11 +3,40 @@ import { promisify } from "node:util";
 import { join, isAbsolute, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync, mkdirSync, unlinkSync } from "node:fs";
+import type { SurfaceMetadata } from "../../shared/types";
+import type { SurfaceMetadataPoller } from "../surface-metadata";
 import type { Handler, HandlerDeps } from "./types";
 import { KEY_MAP, resolveSurfaceId } from "./shared";
 import { getMainWindowId } from "../accessory-mode";
 
 const execFileAsync = promisify(execFile);
+
+/** E.1 — startup-race grace window. Surface metadata methods used to
+ *  throw "no metadata yet — try again in a second" if they fired
+ *  before the first poll completed. Naive callers (CLI / scripts)
+ *  paid the same retry tax on every cold start. We now poll the
+ *  cache for up to this many ms before giving up; the metadata
+ *  poller itself runs at 1 Hz so a single tick almost always lands
+ *  inside the window. */
+const SURFACE_METADATA_WAIT_MS = 2000;
+const METADATA_POLL_INTERVAL_MS = 100;
+
+async function waitForSurfaceMetadata(
+  surfaceId: string,
+  poller: SurfaceMetadataPoller | undefined,
+  maxMs: number = SURFACE_METADATA_WAIT_MS,
+): Promise<SurfaceMetadata | null> {
+  if (!poller) return null;
+  const immediate = poller.getSnapshot(surfaceId);
+  if (immediate) return immediate;
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    await new Promise<void>((r) => setTimeout(r, METADATA_POLL_INTERVAL_MS));
+    const snap = poller.getSnapshot(surfaceId);
+    if (snap) return snap;
+  }
+  return null;
+}
 
 interface SurfaceRect {
   x: number;
@@ -41,6 +70,25 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
       const id = resolveSurfaceId(params, getState().focusedSurfaceId);
       if (!id) return null;
       return metadataPoller?.getSnapshot(id) ?? null;
+    },
+
+    /** E.1 — explicit synchronization point for sophisticated callers
+     *  that want to block until surface metadata is observable, rather
+     *  than racing the bootstrap and retrying on failure. Returns the
+     *  fresh metadata when ready, or null on timeout. The internal
+     *  queue used by `surface.kill_port` / `surface.open_port` makes
+     *  this redundant for naive scripts; this method exists so callers
+     *  who DO care about timing can pin the moment without polling
+     *  themselves. */
+    "surface.wait_ready": async (params) => {
+      const id = resolveSurfaceId(params, getState().focusedSurfaceId);
+      if (!id) return null;
+      const rawTimeout = Number(params["timeout_ms"]);
+      const timeout =
+        Number.isFinite(rawTimeout) && rawTimeout > 0
+          ? Math.min(rawTimeout, 30_000)
+          : SURFACE_METADATA_WAIT_MS;
+      return await waitForSurfaceMetadata(id, metadataPoller, timeout);
     },
 
     "surface.kill_pid": (params) => {
@@ -98,15 +146,19 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
       return { pid, signal };
     },
 
-    "surface.kill_port": (params) => {
+    "surface.kill_port": async (params) => {
       const id = resolveSurfaceId(params, getState().focusedSurfaceId);
       const port = Number(params["port"]);
       if (!Number.isFinite(port) || port <= 0) {
         throw new Error("port required");
       }
       if (!id) throw new Error("no surface");
-      const meta = metadataPoller?.getSnapshot(id);
-      if (!meta) throw new Error("no metadata yet — try again in a second");
+      const meta = await waitForSurfaceMetadata(id, metadataPoller);
+      if (!meta) {
+        throw new Error(
+          `surface metadata unavailable after ${SURFACE_METADATA_WAIT_MS}ms — pane may have crashed`,
+        );
+      }
       const entry = meta.listeningPorts.find((p) => p.port === port);
       if (!entry) {
         throw new Error(`no process listening on :${port} in this surface`);
@@ -125,14 +177,18 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
       return { pid: entry.pid, port, signal };
     },
 
-    "surface.open_port": (params) => {
+    "surface.open_port": async (params) => {
       const id = resolveSurfaceId(params, getState().focusedSurfaceId);
       let port = Number(params["port"]);
 
       if (!Number.isFinite(port) || port <= 0) {
         if (!id) throw new Error("no surface");
-        const meta = metadataPoller?.getSnapshot(id);
-        if (!meta) throw new Error("no metadata yet — try again in a second");
+        const meta = await waitForSurfaceMetadata(id, metadataPoller);
+        if (!meta) {
+          throw new Error(
+            `surface metadata unavailable after ${SURFACE_METADATA_WAIT_MS}ms — pane may have crashed`,
+          );
+        }
         const uniquePorts = [
           ...new Set(meta.listeningPorts.map((p) => p.port)),
         ].sort((a, b) => a - b);

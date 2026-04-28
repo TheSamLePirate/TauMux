@@ -431,6 +431,18 @@ function mapCommand(): RpcCall {
         },
       };
 
+    case "wait-ready":
+    case "wait_ready":
+      return {
+        method: "surface.wait_ready",
+        params: {
+          surface_id: flags["surface"] || process.env["HT_SURFACE"] || undefined,
+          timeout_ms: flags["timeout-ms"] || flags["timeout_ms"]
+            ? Number(flags["timeout-ms"] || flags["timeout_ms"])
+            : undefined,
+        },
+      };
+
     case "open":
       return {
         method: "surface.open_port",
@@ -2143,6 +2155,11 @@ Notifications:
 
 Live Metadata (reads from polled surface state):
   metadata [--surface S]                Summary: pid, fg, cwd, counts
+  wait-ready [--surface S] [--timeout-ms N]
+                                        Block until surface metadata is
+                                        observable (or timeout, default 2000 ms).
+                                        Use to synchronize automation that races
+                                        the post-spawn metadata poll.
   cwd [--surface S]                     Print cwd of foreground process
   ps [--surface S]                      Process tree rooted at the shell
   ports [--surface S]                   Listening TCP ports for tree pids

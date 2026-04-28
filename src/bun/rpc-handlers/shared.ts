@@ -173,6 +173,11 @@ export const METHOD_SCHEMAS: Record<string, MethodSchema> = {
     surface: { type: "string", maxLength: 128 },
     port: { type: "number", required: true, integer: true, min: 1, max: 65535 },
   },
+  "surface.wait_ready": {
+    surface_id: { type: "string", maxLength: 128 },
+    surface: { type: "string", maxLength: 128 },
+    timeout_ms: { type: "number", integer: true, min: 1, max: 30000 },
+  },
   "workspace.create": {
     cwd: { type: "string", maxLength: 4096 },
     name: { type: "string", maxLength: 256 },

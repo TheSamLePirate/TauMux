@@ -523,7 +523,7 @@ All methods accept an optional `surface_id` in their params; if omitted, the ser
 
 **`workspace.*`** — `list`, `current`, `create`, `select`, `close`, `rename`, `next`, `previous`.
 
-**`surface.*`** — `list`, `split`, `close`, `focus`, `send_text`, `send_key`, `read_text`, **`metadata`**, **`open_port`**, **`kill_port`**, **`kill_pid`**, **`screenshot`** (macOS only).
+**`surface.*`** — `list`, `split`, `close`, `focus`, `send_text`, `send_key`, `read_text`, **`metadata`**, **`wait_ready`**, **`open_port`**, **`kill_port`**, **`kill_pid`**, **`screenshot`** (macOS only).
 
 **`sidebar.*`** — `set_status`, `clear_status`, `set_progress`, `clear_progress`, `log`.
 
