@@ -72,4 +72,22 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 
 **Deviations / issues:** none.
 
+**Commit:** `9720724` (bump 0.2.41 → 0.2.42).
+
+---
+
+### Step 4 — B3: missing web-mirror envelope types
+
+**What:** The mirror server emitted **eight** envelope types that weren't declared in `ServerMessage` in `src/shared/web-protocol.ts` — five flagged in the original audit (`telegramState`, `telegramMessage`, `telegramHistory`, `plansSnapshot`, `autoContinueAudit`) plus three more I caught while wiring this fix (`telegramSurfaceCreated`, `askUserShown`, `askUserResolved`). Each is already broadcast (`src/bun/index.ts:127, :144, :159, :1424, :1465, :1475, :2582, :2735`) and dispatched (`src/web-client/protocol-dispatcher.ts:197–248`), so the fix is purely contractual: import the wire types from `src/shared/types.ts` and add the corresponding `Envelope<"...", ...Payload>` branches.
+
+**Files:**
+- `src/shared/web-protocol.ts` — added 8 payload interfaces and 8 union members; pulled in 7 wire types from `./types`.
+
+**Verification:**
+- `bun run typecheck` — clean (the dispatcher still compiles because it casts `unknown` payloads explicitly; with the union now broader, future strict-narrowing migrations become possible without changing the wire).
+- `bun test tests/web-protocol.test.ts tests/web-server.test.ts tests/web-client-store.test.ts` — 35 / 35 pass.
+
+**Deviations / issues:**
+- The audit said "five missing types"; reality was eight. The `askUserShown` / `askUserResolved` pair is currently absorbed silently by the dispatcher (Plan #13 will add the modal to the mirror) — the contract entry doesn't change behavior but does mean the future modal can switch-exhaust on the union safely.
+
 **Commit:** filled in below.

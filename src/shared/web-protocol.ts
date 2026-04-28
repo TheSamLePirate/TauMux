@@ -10,9 +10,16 @@
 // `v`, `seq`, and a `type`.
 
 import type {
+  AskUserRequest,
+  AskUserResponse,
+  AutoContinueAuditEntry,
   PaneNode,
+  Plan,
   SurfaceMetadata,
   SidebandContentMessage,
+  TelegramChatWire,
+  TelegramStatusWire,
+  TelegramWireMessage,
 } from "./types";
 
 export const WEB_PROTOCOL_VERSION = 2;
@@ -220,6 +227,49 @@ export interface NativeViewportPayload {
   height: number;
 }
 
+// ── Envelope payloads added in the addendum to doc/full_analysis.md
+// (issue B3). Each was already broadcast by `src/bun/index.ts` and
+// handled by `src/web-client/protocol-dispatcher.ts`, but missing from
+// the `ServerMessage` union — leaving the wire contract narrower than
+// reality. Reusing the wire types from `src/shared/types.ts` (the
+// Electrobun-side contract) keeps mirror + native in sync.
+export interface TelegramSurfaceCreatedPayload {
+  surfaceId: string;
+}
+
+export interface TelegramStatePayload {
+  status: TelegramStatusWire;
+  chats: TelegramChatWire[];
+}
+
+export interface TelegramMessagePayload {
+  surfaceId?: string;
+  message: TelegramWireMessage;
+}
+
+export interface TelegramHistoryPayload {
+  chatId: string;
+  messages: TelegramWireMessage[];
+  isLatest: boolean;
+}
+
+export interface PlansSnapshotPayload {
+  plans: Plan[];
+}
+
+export interface AutoContinueAuditPayload {
+  audit: AutoContinueAuditEntry[];
+}
+
+export interface AskUserShownPayload {
+  request: AskUserRequest;
+}
+
+export interface AskUserResolvedPayload {
+  request_id: string;
+  response: AskUserResponse;
+}
+
 export type ServerMessage =
   | Envelope<"hello", HelloPayload>
   | Envelope<"snapshot", Snapshot>
@@ -241,7 +291,15 @@ export type ServerMessage =
   | Envelope<"notificationClear", Record<string, never>>
   | Envelope<"sidebarState", SidebarStatePayload>
   | Envelope<"sidebarAction", SidebarActionPayload>
-  | Envelope<"nativeViewport", NativeViewportPayload>;
+  | Envelope<"nativeViewport", NativeViewportPayload>
+  | Envelope<"telegramSurfaceCreated", TelegramSurfaceCreatedPayload>
+  | Envelope<"telegramState", TelegramStatePayload>
+  | Envelope<"telegramMessage", TelegramMessagePayload>
+  | Envelope<"telegramHistory", TelegramHistoryPayload>
+  | Envelope<"plansSnapshot", PlansSnapshotPayload>
+  | Envelope<"autoContinueAudit", AutoContinueAuditPayload>
+  | Envelope<"askUserShown", AskUserShownPayload>
+  | Envelope<"askUserResolved", AskUserResolvedPayload>;
 
 export type ServerMessageType = ServerMessage["type"];
 
