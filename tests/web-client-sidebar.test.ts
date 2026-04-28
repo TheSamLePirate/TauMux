@@ -317,6 +317,7 @@ describe("createSidebarView event wiring", () => {
       logs: [{ level: "info", message: "hi" }],
     });
     view.render(store.getState());
+    expect(store.getState().sidebar.logs.length).toBe(1);
     const btn = sidebarEl.querySelector(
       "[data-action='clear-logs']",
     ) as HTMLElement;
@@ -326,6 +327,8 @@ describe("createSidebarView event wiring", () => {
       ([type]: [unknown]) => type === "clearLogs",
     );
     expect(clearNetworkCalls.length).toBe(0);
+    // … but the reducer must actually empty the buffered logs.
+    expect(store.getState().sidebar.logs).toEqual([]);
   });
 
   test("dismiss button removes the entry + emits dismissNotification", async () => {

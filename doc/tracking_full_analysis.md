@@ -54,4 +54,22 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 
 **Deviations / issues:** none.
 
+**Commit:** `7c2a0b7` (bump 0.2.40 → 0.2.41).
+
+---
+
+### Step 3 — B2: `__clearLogs` reducer wiring
+
+**What:** The web-mirror "clear logs" button dispatches `{ kind: "sidebar/action", action: "__clearLogs" }`, but the reducer's `sidebar/action` block had no branch for it. The action fell through and `state.sidebar.logs` kept its entries — the next render rehydrated whatever the click had visually wiped. Added an early-return branch (workspace-agnostic, since `sidebar.logs` is a flat array, not workspace-keyed) so the reducer empties `logs` before the `wsId` guard.
+
+**Files:**
+- `src/web-client/store.ts:414–424` — early `__clearLogs` branch inside `case "sidebar/action"`.
+- `tests/web-client-sidebar.test.ts:315–333` — extended the existing client-side-only assertion to also verify `state.sidebar.logs === []` after the click.
+
+**Verification:**
+- `bun run typecheck` — clean.
+- `bun test tests/web-client-sidebar.test.ts tests/web-client-store.test.ts` — 43 / 43 pass; the strengthened assertion exercises the new branch.
+
+**Deviations / issues:** none.
+
 **Commit:** filled in below.

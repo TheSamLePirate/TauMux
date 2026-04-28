@@ -412,6 +412,16 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, sidebarVisible: action.visible };
 
     case "sidebar/action": {
+      // `__clearLogs` is workspace-agnostic — logs aren't keyed by
+      // workspace in the state shape — so handle it before the wsId
+      // guard below, which would otherwise drop the action when no
+      // workspace is active.
+      if (action.action === "__clearLogs") {
+        return {
+          ...state,
+          sidebar: { ...state.sidebar, logs: [] },
+        };
+      }
       const wsIdRaw = action.payload["workspaceId"];
       const wsId =
         (typeof wsIdRaw === "string" && wsIdRaw) ||
