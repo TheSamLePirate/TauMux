@@ -123,4 +123,22 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 
 **Deviations / issues:** finding retracted as a false positive. Recorded the retraction in the source plan so future readers don't chase it.
 
-**Commit:** filled in below (docs-only).
+**Commit:** `0ca347c` (no version bump — docs-only retraction).
+
+---
+
+### Step 7 — M9: variants controller soft-fail on missing `#tau-status-bar`
+
+**What:** Replaced the constructor's hard `throw` with an inert-and-retry path. The controller now stays in a `ready = false` state if `#tau-status-bar` isn't in the DOM yet. Every subsequent `refresh()` retries `tryInit()`; as soon as the bar mounts, the active variant is entered for real. `setVariant()` still persists the user's choice through `updateSettings` even while inert, so a quick variant change during boot isn't lost.
+
+**Files:**
+- `src/views/terminal/variants/controller.ts` — full restructure: added `ready`, `tryInit()`, made `current` and `ctx` nullable, made `refresh()` and `setVariant()` defensive when not ready. The boot-time warn fires only once (module-level `warnedOnce` flag) so a slow boot isn't drowned in noise.
+
+**Verification:**
+- `bun run typecheck` — clean.
+- `bun test tests/` — 1501 / 1501 pass.
+
+**Deviations / issues:**
+- No dedicated test exists for the controller (the variants module is exercised via the design report). Adding one would require a happy-dom harness; deferred. The boot path is now strictly more lenient than before — any path that worked before still works, and a path that previously crashed now stays inert.
+
+**Commit:** filled in below.
