@@ -48,6 +48,10 @@ Full reference: [`ht telegram`](/cli/telegram/).
 
 When enabled in settings, every notification created via `ht notify` (or by integrations like Claude Code's `ht-bridge`) is also sent as a Telegram message to the configured chat. Useful for "build done" or "tests failed" pings while you're away from the desk.
 
+## Ask-user routing
+
+When **Settings → Telegram → Route ht ask to Telegram** is on, every queued [ask-user](/features/ask-user/) question is also sent to allow-listed chats with kind-appropriate buttons (`Yes` / `No`, one button per choice, `force_reply` for free text, two-step ack → run for `confirm-command`). On resolution the original message is **edited in place** with a strike-through title and a footer like `✓ answered: yes` — the chat history reads as a clean audit log of every prompt and its answer.
+
 ## Source files
 
 - `src/bun/telegram-service.ts` — long-poll bot service.

@@ -10,6 +10,7 @@ This page summarizes user-facing changes. The full commit log is on [GitHub](htt
 ## Unreleased
 
 - Documentation website launched (this site).
+- Ask-user (Plan #10): structured agent → human question protocol with `ht ask {yesno|choice|text|confirm-command}`. Answers via in-app webview modal, sibling CLI (`ht ask answer`), or Telegram inline buttons / force-reply. Per-surface FIFO queue, sidebar pending pill, edit-in-place audit trail in Telegram.
 
 ## 0.2.x
 

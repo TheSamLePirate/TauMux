@@ -70,6 +70,7 @@ In streaming mode, the server emits `{"id":"<your-id>","event":<payload>}` frame
 | [notification](/api/notification/) | create, list, clear, dismiss |
 | [browser](/api/browser/) | open, navigate, click, fill, wait, snapshot, eval, console_list, errors_list, history, … (40+) |
 | [telegram](/api/telegram/) | list_chats, read, send, status, settings |
+| [agent](/api/agent/) | ask_user, ask_pending, ask_answer, ask_cancel |
 
 ## Discoverability
 
