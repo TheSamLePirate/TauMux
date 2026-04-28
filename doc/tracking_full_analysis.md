@@ -227,4 +227,26 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 
 **Deviations / issues:** none.
 
+**Commit:** `ae776ea` (bump 0.2.48 → 0.2.49).
+
+---
+
+### Step 12 — N1, N2: web-mirror polish
+
+**What:** Two small operability improvements.
+
+- **N1** — WebSocket `close` handler now logs `code`, `reason`, and `wasClean` before reconnecting. A 1008 (policy / wrong token) versus a 1011 (server error) versus a 1006 (transport drop) used to look identical in the console.
+- **N2** — protocol dispatcher gained a `default` case that warns once per unknown message type. Future protocol additions (a new envelope handled by an updated server but not the deployed client) used to silently drop; now they show up clearly in the mirror's console.
+
+**Files:**
+- `src/web-client/transport.ts:95–117` — typed close handler, console.warn with code/reason/clean.
+- `src/web-client/protocol-dispatcher.ts:250–262` — default case + module-level `warnedUnknownTypes` Set.
+
+**Verification:**
+- `bun run typecheck` — clean (caught one bug along the way: my first default-case used a stale `msg` reference; fixed to use the dispatcher's `type` parameter).
+- `bun test tests/` — 1501 / 1501 pass.
+
+**Deviations / issues:**
+- Skipped N3 (drag pointer-capture) and N4 (FIFO buffer for sideband binary frames) for this pass — both are real but each is a meatier UX/state-machine change that warrants its own focused diff with manual testing. They remain in `doc/full_analysis.md` for a future sweep.
+
 **Commit:** filled in below.

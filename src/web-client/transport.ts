@@ -92,7 +92,17 @@ export function createTransport(deps: TransportDeps): Transport {
       handleTextFrame(event.data);
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event: CloseEvent) => {
+      // Surface the close reason in the console so operators can tell
+      // a 1008 (policy violation, e.g. wrong token) from a 1011 (server
+      // error) from a 1006 (transport-level abort). Dropped frames look
+      // identical to the user without this. Issue N1 in
+      // doc/full_analysis.md.
+      const reason = event.reason ? ` reason="${event.reason}"` : "";
+      const wasClean = event.wasClean ? " clean" : "";
+      console.warn(
+        `[mirror] ws closed code=${event.code}${reason}${wasClean}; reconnecting in ${reconnectDelay}ms`,
+      );
       store.dispatch({
         kind: "connection/status",
         status: "disconnected",

@@ -247,6 +247,19 @@ export function createProtocolDispatcher(
       case "askUserShown":
       case "askUserResolved":
         break;
+      default: {
+        // Issue N2 in doc/full_analysis.md — the dispatcher used to
+        // silently drop unknown message types, which made it hard to
+        // diagnose protocol drift after a server upgrade. Warn once
+        // per type so a noisy stream doesn't flood the console.
+        if (!warnedUnknownTypes.has(type)) {
+          warnedUnknownTypes.add(type);
+          console.warn(`[mirror] unknown server message type: ${type}`);
+        }
+        break;
+      }
     }
   };
 }
+
+const warnedUnknownTypes = new Set<string>();
