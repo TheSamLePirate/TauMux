@@ -249,4 +249,46 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 **Deviations / issues:**
 - Skipped N3 (drag pointer-capture) and N4 (FIFO buffer for sideband binary frames) for this pass — both are real but each is a meatier UX/state-machine change that warrants its own focused diff with manual testing. They remain in `doc/full_analysis.md` for a future sweep.
 
-**Commit:** filled in below.
+**Commit:** `62a53f2` (bump 0.2.49 → 0.2.50).
+
+---
+
+## Summary
+
+12 steps, 12 commits, version `0.2.39` → `0.2.50`. Build is green (`bun run typecheck` clean, `bun test` 1501 / 1501 in ~10 s).
+
+| # | Severity | Issue | Commit | Bump |
+|---|----------|-------|--------|------|
+| 1 | BROKEN | B4 + B5 socket collision (probe-before-unlink) | `a6daa1d` | 0.2.40 |
+| 2 | BROKEN | B1 ⌘0 keyboard collision | `7c2a0b7` | 0.2.41 |
+| 3 | BROKEN | B2 `__clearLogs` reducer wiring | `9720724` | 0.2.42 |
+| 4 | BROKEN | B3 missing web-mirror envelope types | `d4d2e04` | 0.2.43 |
+| 5 | MISSING | M1 orphan `need-human.mp3` | `51f8ab5` | 0.2.44 |
+| 6 | (retracted) | M6 `system.shutdown` wiring (already correct) | `0ca347c` | — (docs only) |
+| 7 | MISSING | M9 variants controller soft-fail | `8b88af3` | 0.2.45 |
+| 8 | MISSING | M12 τ-mux Help menu entry | `5e1ecf8` | 0.2.46 |
+| 9 | INCOHERENT | I1 / M2 / M3 README + CLAUDE.md doc refresh | `df45179` | 0.2.47 |
+| 10 | INCOHERENT | I2 website version examples + bump-script extension | `888c8be` | 0.2.48 |
+| 11 | INCOHERENT | I4 / I5 / I13 telegram + locale robustness | `ae776ea` | 0.2.49 |
+| 12 | NIT | N1 / N2 web-mirror close logging + unknown-type warn | `62a53f2` | 0.2.50 |
+
+### Deferred to future passes (recorded in `doc/full_analysis.md`)
+
+- **B4 second half** — auto-pick a separate `configDir` when running under `electrobun dev`. Skipped because dev-detection is brittle without a canonical env signal; the probe-based refusal already prevents the silent data loss and points users at the env-var override.
+- **M7** — IME composition position. Real user-visible bug for non-Latin input but requires xterm.js internals work + a proper visual repro; held for a focused diff.
+- **M8** — `audit.fix` ergonomics (return structured error vs. throw). Audit handler is still being shaped (Plan #11 territory); revisit when the consumer surface stabilises.
+- **M10** — `surface.ts` startup-race retry queue / `surface.wait_ready`. Larger API change; needs RFC.
+- **M11** — pi-agent JSON-over-stdout vs. fd 3/4/5 sideband. Architectural decision; deferred.
+- **I3** — website tech-stack version-range loosening. One-line edit; landed informally with the README docs refresh in step 9.
+- **I6** — flip `webMirrorBind` default to `127.0.0.1`. Behavior change for existing users; needs a settings migration story.
+- **I7, I8** — already retracted in `doc/full_analysis.md`.
+- **I9** — "Restore previous bloom" UI button.
+- **I10** — `readScreen` legacy request/response convention; doc-only, pending Plan #14 RPC migration.
+- **I11, I12** — lifecycle teardowns on `pagehide`. Cluster of small fixes, defer until the next cleanup sweep so they all land in one place.
+- **I14** — settings-panel theme picker self-feedback.
+- **N3, N4** — drag pointer-capture + FIFO buffer for sideband frames. UX/state-machine work; per-fix manual testing required.
+- **N5–N18** — see `doc/full_analysis.md` § NIT table. None of them block functionality.
+
+### Working-tree note
+
+The pre-existing in-flight edits in `bin/ht`, several `doc/*.md` files, three `src/bun/rpc-handlers/*` files, `tests/rpc-handler.test.ts`, and a few website-doc files were left alone except where they overlapped this work (the README and `website-doc/src/content/docs/{cli,api}/system.md` got bundled into the appropriate doc commits because the changes were cohesive). They remain a separate body of work for whoever picks them up next.
