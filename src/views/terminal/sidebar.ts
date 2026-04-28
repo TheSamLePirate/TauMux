@@ -1399,7 +1399,10 @@ export class Sidebar {
     const widthPct = Math.min(100, Math.max(0, (capped / 400) * 100));
     const fill = document.createElement("span");
     fill.className = "workspace-cpu-bar-fill";
-    fill.style.width = `${widthPct.toFixed(1)}%`;
+    // Phase 4 perf pass: set transform: scaleX(...) instead of width%
+    // so the 1 Hz cpu-bar update is GPU-composited rather than
+    // layout-triggering. Matches the new CSS rule's transform anim.
+    fill.style.transform = `scaleX(${(widthPct / 100).toFixed(3)})`;
     fill.style.background = accent;
     barWrap.appendChild(fill);
 
@@ -1619,7 +1622,10 @@ export class Sidebar {
     wrap.className = "workspace-progress";
     const fill = document.createElement("div");
     fill.className = "progress-fill";
-    fill.style.width = `${Math.round((ws.progress?.value ?? 0) * 100)}%`;
+    // Phase 4 perf pass: transform: scaleX(0..1) instead of width%
+    // for GPU-composited progress animation (was width-anim before).
+    const progressV = Math.max(0, Math.min(1, ws.progress?.value ?? 0));
+    fill.style.transform = `scaleX(${progressV.toFixed(3)})`;
     wrap.appendChild(fill);
 
     const label = document.createElement("span");

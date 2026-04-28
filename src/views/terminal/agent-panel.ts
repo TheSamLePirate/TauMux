@@ -1216,12 +1216,14 @@ function syncFooter(view: AgentPaneView): void {
 
   const pct = sessionStats?.contextUsage?.percent;
   if (pct != null) {
-    contextMeterFill.style.width = `${Math.min(100, pct)}%`;
+    // Phase 4 perf pass: transform: scaleX(...) instead of width%
+    // so the meter fill animates on the compositor, not via layout.
+    contextMeterFill.style.transform = `scaleX(${Math.min(1, pct / 100).toFixed(3)})`;
     contextMeterFill.style.background =
       pct > 80 ? "#f87171" : pct > 50 ? "#f59e0b" : "var(--accent-primary)";
     contextMeterLabel.textContent = `${pct}%`;
   } else {
-    contextMeterFill.style.width = "0%";
+    contextMeterFill.style.transform = "scaleX(0)";
     contextMeterLabel.textContent = "";
   }
 }

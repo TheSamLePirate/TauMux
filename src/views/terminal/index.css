@@ -7228,9 +7228,13 @@ body::after {
 /* ── Streaming indicator bar ── */
 .agent-streaming-bar {
   position: relative; height: 2px; flex-shrink: 0; overflow: hidden;
-  transition: opacity 0.2s, height 0.2s;
+  /* Phase 4 perf pass: was `transition: opacity 0.2s, height 0.2s`.
+   * Height was the layout-trigger half. Replaced with transform:scaleY
+   * for the show/hide transition; opacity stays for the fade. */
+  transform-origin: top center;
+  transition: opacity 0.2s, transform 0.2s;
 }
-.agent-streaming-bar-hidden { opacity: 0; height: 0; }
+.agent-streaming-bar-hidden { opacity: 0; transform: scaleY(0); }
 .agent-streaming-bar-glow {
   position: absolute; inset: 0;
   background: linear-gradient(90deg, transparent 0%, var(--accent-primary) 25%, var(--accent-secondary) 50%, var(--accent-primary) 75%, transparent 100%);
@@ -7535,8 +7539,14 @@ body::after {
 }
 .agent-context-fill {
   position: absolute; left: 0; top: 0; height: 100%; border-radius: 2px;
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
   background: var(--accent-primary);
-  transition: width 0.5s ease, background 0.5s;
+  /* Phase 4 perf pass: transform animates on the compositor; was
+   * `width 0.5s ease, background 0.5s` which forced layout per frame
+   * during context-meter updates. */
+  transition: transform 0.5s ease, background 0.5s;
   box-shadow: 0 0 4px rgba(111, 233, 255,0.2);
 }
 .agent-context-label {
@@ -8604,12 +8614,21 @@ body::after {
   left: 0;
   top: 0;
   bottom: 0;
+  /* Phase 4 perf pass: was `width: <pct>%; transition: width 220ms`.
+   * Width animation is layout-triggering — the entire workspace card
+   * relayouts on each frame of the 1 Hz cpu-bar update. Switched to
+   * a fixed 100% width + `transform: scaleX(...)` so the animation is
+   * GPU-composited only. JS now sets `style.transform` instead of
+   * `style.width`. */
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
   background: var(--workspace-accent);
   opacity: 0.56;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.15),
     0 0 6px 0 color-mix(in srgb, var(--workspace-accent) 40%, transparent);
-  transition: width 220ms ease-out;
+  transition: transform 220ms ease-out;
 }
 
 #sidebar.sidebar-v2 .workspace-item.active .workspace-cpu-bar-fill {
@@ -8890,13 +8909,18 @@ body::after {
 
 #sidebar.sidebar-v2 .workspace-progress .progress-fill {
   height: 100%;
+  /* Phase 4 perf pass: GPU-composited transform: scaleX in place of
+   * width animation. Same visual; no layout reflow per frame. */
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
   background: linear-gradient(
     90deg,
     var(--workspace-accent),
     color-mix(in srgb, var(--workspace-accent) 50%, var(--accent-primary))
   );
   box-shadow: 0 0 6px 0 color-mix(in srgb, var(--workspace-accent) 48%, transparent);
-  transition: width 240ms ease-out;
+  transition: transform 240ms ease-out;
 }
 
 #sidebar.sidebar-v2 .workspace-progress .progress-inline-label {
