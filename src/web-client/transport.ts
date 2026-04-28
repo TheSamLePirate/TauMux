@@ -43,6 +43,46 @@ export function createTransport(deps: TransportDeps): Transport {
   let ws: WebSocket | null = null;
   let reconnectDelay = 1000;
 
+  // D.4 — capture the auth token from the page URL once at module load
+  // and remember it for the lifetime of the page. Reconnects read from
+  // this variable rather than `location.search`, so we can safely scrub
+  // the token out of the URL after the first successful connect (see
+  // `scrubTokenFromUrl` below). Without this, a script that logs
+  // `window.location` or an analytics call that captures the URL would
+  // leak the token; with it, the URL bar shows just `/` after the
+  // initial handshake.
+  const capturedAuthToken = (() => {
+    try {
+      return new URLSearchParams(location.search).get("t") || null;
+    } catch {
+      return null;
+    }
+  })();
+  let urlScrubbed = false;
+
+  function scrubTokenFromUrl(): void {
+    if (urlScrubbed) return;
+    urlScrubbed = true;
+    try {
+      const url = new URL(location.href);
+      if (!url.searchParams.has("t")) return;
+      url.searchParams.delete("t");
+      const search = url.searchParams.toString();
+      const next =
+        url.pathname + (search ? `?${search}` : "") + (url.hash || "");
+      // replaceState swaps the URL without a navigation, so the page
+      // doesn't reload and the WebSocket stays open. We pass the
+      // current state so a future history.state read still sees what
+      // it expects.
+      history.replaceState(history.state, "", next);
+    } catch {
+      /* In some embedded contexts replaceState can throw (about:blank,
+       * sandboxed iframes). The token reuse path doesn't depend on the
+       * URL bar, so a failed scrub is non-fatal — we just leave the
+       * URL alone. */
+    }
+  }
+
   function send(type: string, payload: Record<string, unknown>): void {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const s = store.getState();
@@ -60,20 +100,16 @@ export function createTransport(deps: TransportDeps): Transport {
   function connect(): void {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const { sessionId, lastSeenSeq } = store.getState().connection;
-    // Preserve the auth token from the page URL (if present). Without
-    // this, loading `/?t=abc` would serve the page with the token on
-    // the HTTP request but then build a tokenless `ws://host/` URL,
-    // which the server rejects with 401. We also honor Authorization:
-    // Bearer headers on the HTTP fetch — those survive automatically —
-    // but the query-string path is the one browsers hit from a plain
-    // link, so it's the one that needs preserving here.
-    const pageT = new URLSearchParams(location.search).get("t");
+    // Preserve the auth token across reconnects (see `capturedAuthToken`
+    // above). Without this, loading `/?t=abc` would serve the page with
+    // the token on the HTTP request but then build a tokenless
+    // `ws://host/` URL, which the server rejects with 401.
     const params = new URLSearchParams();
     if (sessionId && lastSeenSeq >= 0) {
       params.set("resume", sessionId);
       params.set("seq", String(lastSeenSeq));
     }
-    if (pageT) params.set("t", pageT);
+    if (capturedAuthToken) params.set("t", capturedAuthToken);
     const qs = params.toString() ? `?${params.toString()}` : "";
     ws = new WebSocket(proto + "//" + location.host + "/" + qs);
     ws.binaryType = "arraybuffer";
@@ -82,6 +118,15 @@ export function createTransport(deps: TransportDeps): Transport {
     ws.onopen = () => {
       reconnectDelay = 1000;
       store.dispatch({ kind: "connection/status", status: "connected" });
+      // D.4 — once the first connection succeeds, scrub the token out of
+      // the page URL. Subsequent reconnects use the captured value, so
+      // the URL bar can safely lose the secret. We do this AFTER the
+      // first successful open so a 401 (token rejected) leaves the
+      // token visible in the URL — easier to debug than a silently
+      // empty URL bar paired with a "connection failed" error.
+      if (!urlScrubbed) {
+        scrubTokenFromUrl();
+      }
     };
 
     ws.onmessage = (event: MessageEvent) => {

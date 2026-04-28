@@ -2,6 +2,10 @@
 
 Pending updates to fold into `website-doc/` on the next user-driven docs sweep.
 
+## 0.2.59 — PR #10 (D.4 auth token scrub)
+
+- Web mirror: the `?t=…` auth token in the page URL is captured at module load and removed from `window.location` via `history.replaceState` after the first successful WebSocket open. Reconnects keep authenticating (the token survives in module scope). On 401 / connection failure the URL is intentionally left intact so the failure is debuggable. No public API change; security hardening only.
+
 ## 0.2.58 — PR #8 (E.1 surface RPC startup-race)
 
 - New `surface.wait_ready` RPC + `ht wait-ready [--surface S] [--timeout-ms N]` CLI command. Returns the surface metadata snapshot once it lands, or null on timeout (default 2 s). Use to synchronize automation that races the post-spawn metadata poll.
