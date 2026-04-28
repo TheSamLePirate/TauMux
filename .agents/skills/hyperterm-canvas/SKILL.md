@@ -1,11 +1,11 @@
 ---
 name: hyperterm-canvas
-description: Operate τ-mux through the `ht` CLI. Manage workspaces, terminal panes, browser panes, sidebar status, notifications, process metadata, browser automation, and the Telegram bridge. Use when running long-lived processes in panes, automating browser interactions, orchestrating multi-pane workflows, inspecting live process state, surfacing status to the user through the τ-mux UI, or sending/reading Telegram messages from a script.
+description: Operate τ-mux through the `ht` CLI. Manage workspaces, terminal panes, browser panes, agent panes, sideband canvas panels, sidebar status, notifications, live process metadata, full browser automation, the Telegram bridge, multi-step agent plans, the auto-continue engine, and structured human-in-the-loop questions (`ht ask`). Use when running long-lived processes in panes, automating browser interactions, orchestrating multi-pane workflows, inspecting live process state, surfacing status to the user through the τ-mux UI, sending/reading Telegram messages from a script, publishing or driving an agent plan, or asking the user a structured question (yes/no, choice, text, confirm-command).
 ---
 
 # τ-mux — Complete `ht` CLI Skill
 
-This skill covers every capability of the `ht` command line interface — terminal panes, browser panes, workspace management, sidebar state, notifications, live process metadata, full browser automation, and the Telegram bridge.
+This skill covers every capability of the `ht` command line interface — terminal panes, browser panes, agent panes, sideband canvas panels, workspace management, sidebar state, notifications, live process metadata, script-runner surfaces, full browser automation, the Telegram bridge, multi-step agent plans, the auto-continue engine, and structured human-in-the-loop questions (`ht ask`).
 
 ## Prerequisites
 
@@ -33,6 +33,15 @@ ht capabilities --json               # all available RPC methods
 ht tree                              # workspace → surface → pid tree
 ```
 
+### Shutdown
+
+```bash
+ht shutdown                          # graceful exit: flush settings,
+                                      # layout.json, cookies, history
+```
+
+The `shutdown` RPC runs the same teardown as ⌘Q — flushes the pending layout sync, persists settings/history/cookies, tears down sessions, then exits. Useful for scripted cleanup at the end of a test run or automation flow.
+
 ### Workspaces
 
 ```bash
@@ -44,6 +53,8 @@ ht close-workspace --workspace ws:2
 ht next-workspace
 ht previous-workspace
 ```
+
+New workspaces with colliding auto-names (e.g. multiple zsh shells) automatically get a `" 2"`, `" 3"`, … suffix so the sidebar stays readable.
 
 ---
 
@@ -78,9 +89,38 @@ ht read-screen --surface surface:2 --scrollback  # full scrollback buffer
 ht capture-pane --lines 50                       # tmux alias
 ```
 
+### Screenshot a pane (macOS only)
+
+```bash
+ht screenshot                            # focused pane → /tmp/ht-screenshot-<id>-<ts>.png
+ht screenshot --surface surface:2        # specific pane
+ht screenshot --output ~/Desktop/build.png
+ht screenshot --full-window              # whole app window, no cropping
+```
+
+Captures the window via `screencapture -l <CGWindowID>`, then crops to the surface using `sips --cropOffset` (surface rect × devicePixelRatio). Prints the resulting PNG path on stdout.
+
+### Surface titles
+
+Programs emitting OSC 0/2 title escapes (vim, htop, ssh, tmux, …) automatically update the pane title in the sidebar and pane header. Explicit user renames via `rename-surface` lock the title — subsequent OSC escapes are ignored for the life of that surface.
+
 ---
 
-## Part 3 — Sidebar Status, Progress & Logs
+## Part 3 — Script Runner
+
+Spawn a command in a new surface tagged with a script key. The sidebar tracks running vs. errored state, matching the behaviour of launching a `package.json` script from the UI.
+
+```bash
+ht run-script --cwd ~/project --command "npm run dev"
+ht run-script --cwd ~/project --command "bun test" --script-key "tests:unit"
+ht run-script --cwd ~/project --command "make" --workspace ws:2
+```
+
+Returns `{ ok: true, scriptKey }`. Two concurrent `run-script` calls land in their own surfaces.
+
+---
+
+## Part 4 — Sidebar Status, Progress & Logs
 
 Use these to surface state from long-running processes. The user sees pills, progress bars, and logs in the sidebar without having to read terminal output.
 
@@ -91,6 +131,10 @@ ht set-status build "compiling" --icon hammer --color "#ff9500"
 ht set-status deploy "v1.2.3"
 ht clear-status build
 ```
+
+Status pills are capped at **32 per workspace**; the oldest is evicted on overflow. Use consistent keys per tool so updates replace rather than accumulate. They render in the sidebar as two-line rows (icon + uppercase key on top, value below).
+
+**Workspace attribution.** `ht set-status` (and `clear-status`, `set-progress`, `clear-progress`, `log`) automatically forward `HT_SURFACE` from the shell's env; the Bun handler resolves it to the owning workspace. Scripts running in any pane write to their own workspace card, not the currently-selected one. Explicit `--workspace <id>` still takes precedence.
 
 ### Progress bars
 
@@ -108,7 +152,7 @@ ht log --level error --source build "Compilation failed"
 ht log --level success -- "All 42 tests passed"
 ```
 
-Levels: `info`, `progress`, `success`, `warning`, `error`.
+Levels: `info`, `progress`, `success`, `warning`, `error`. Log entries are capped at **200 per workspace** and auto-scroll into view — unless the user has scrolled up to read older entries, in which case their scroll position is preserved.
 
 ### Notifications
 
@@ -118,11 +162,26 @@ ht list-notifications
 ht clear-notifications
 ```
 
+Notification list is bounded at **500 entries** process-wide. Emitted notifications carry a `surface_id` (from `HT_SURFACE`), which enables three behaviors in the sidebar:
+
+- Clicking a notification focuses the workspace + pane that emitted it.
+- Focusing the source pane by any means stops that notification's glow.
+- The pulsing glow runs until the user clicks, dismisses with `×`, or focuses the source.
+
+A short `assets/audio/finish.mp3` plays on arrival (both native webview and web mirror). Playback is best-effort; browser autoplay policies may block it until after user interaction. The user can toggle the cue (**Settings → General → Notification Sound**, or the **Mute / Unmute Notification Sound** command-palette entry) and adjust volume via the companion slider; the web mirror keeps its own mute + volume preference in `localStorage`.
+
+Dismiss a single notification (no CLI shortcut yet — use raw JSON-RPC):
+
+```bash
+echo '{"id":"1","method":"notification.dismiss","params":{"id":"notif:42"}}' \
+  | nc -U /tmp/hyperterm.sock
+```
+
 ---
 
-## Part 4 — Live Process Metadata
+## Part 5 — Live Process Metadata
 
-Every shell's process tree is polled at 1 Hz. These commands read from the cached snapshot.
+Every shell's process tree is polled at 1 Hz (slows to 3 Hz when the window is hidden; snaps back to 1 Hz instantly on focus return). These commands read from the cached snapshot.
 
 ```bash
 ht metadata                          # summary: pid, fg command, cwd, git, counts
@@ -131,6 +190,8 @@ ht ps                                # process tree (PID PPID COMMAND, * = fg)
 ht ports                             # listening TCP ports (PORT PROTO ADDR PID CMD)
 ht git                               # branch, upstream, ahead/behind, dirty, +/-
 ```
+
+If `ps`, `lsof`, or `git` are missing from PATH, the related chips stay empty and a one-shot console warning is logged — the polling loop keeps running.
 
 ### Open a port in the system browser
 
@@ -155,7 +216,22 @@ ht ports --json | jq '.[].port'
 
 ---
 
-## Part 5 — Browser Panes
+## Part 6 — Sideband Canvas Panels
+
+Scripts that speak the sideband protocol (fd 3/4/5) render floating canvas overlays on top of terminal panes — images, SVG, HTML, interactive canvas2d widgets, custom renderer types. The panel registry lets you observe which panels are live per surface.
+
+```bash
+ht panels                            # active panels on the focused surface
+ht panels --surface surface:3        # specific surface
+ht list-panels                       # alias
+ht panels --json                     # machine-readable descriptors
+```
+
+Each descriptor carries `id`, `type` (`image`/`svg`/`html`/`canvas2d`/custom), `position` (`inline`/`float`/`overlay`/`fixed`), `width`, `height`, `createdAt`, `updatedAt`. Useful for scripts that want to wait for a panel to be rendered, or audit what a sideband-producer has left behind.
+
+---
+
+## Part 7 — Browser Panes
 
 Browser panes embed a WebKit browser alongside terminal panes. They share the same workspace and layout system.
 
@@ -189,9 +265,11 @@ ht browser list                                   # all browser surfaces
 ht browser browser:1 close
 ```
 
+Navigation failures (bad URL, DNS error, connection refused, etc.) render an inline error overlay over the webview with the failure code. The overlay clears on the next navigation attempt.
+
 ---
 
-## Part 6 — Browser Automation (DOM Interaction)
+## Part 8 — Browser Automation (DOM Interaction)
 
 All DOM commands use CSS selectors. They inject JavaScript into the browser pane.
 
@@ -232,7 +310,7 @@ ht browser browser:1 highlight "#checkout"                 # red outline 3s
 
 ---
 
-## Part 7 — Browser Automation (Waiting)
+## Part 9 — Browser Automation (Waiting)
 
 Block until a condition is met. Critical for reliable automation.
 
@@ -250,7 +328,7 @@ Returns `true` on success, `timeout` on failure.
 
 ---
 
-## Part 8 — Browser Automation (Inspection)
+## Part 10 — Browser Automation (Inspection)
 
 ### Structured getters
 
@@ -284,7 +362,7 @@ Returns a JSON tree with `role`, `name`, `text`, `ref` (for interactive elements
 
 ---
 
-## Part 9 — Browser JavaScript & Style Injection
+## Part 11 — Browser JavaScript & Style Injection
 
 ```bash
 ht browser browser:1 eval "document.title"                 # fire-and-forget eval
@@ -294,7 +372,7 @@ ht browser browser:1 addstyle "body { font-size: 20px }"   # inject CSS
 
 ---
 
-## Part 10 — Browser Console & Error Capture
+## Part 12 — Browser Console & Error Capture
 
 Console messages and JS errors are captured automatically via a preload script.
 
@@ -307,18 +385,60 @@ ht browser browser:1 errors clear              # clear
 
 ---
 
-## Part 11 — Browser History & DevTools
+## Part 13 — Browser History, Cookies & DevTools
+
+### History
 
 ```bash
 ht browser history                             # all visited URLs
 ht browser history clear                       # wipe history
+```
+
+### Cookies
+
+```bash
+ht browser-cookie-list                          # all stored cookies
+ht browser-cookie-list example.com              # per-domain
+ht browser-cookie-get https://example.com/path  # cookies matching URL
+ht browser-cookie-set sid xyz --domain example.com --path / --secure true
+ht browser-cookie-delete example.com sid
+ht browser-cookie-clear example.com             # per-domain wipe
+ht browser-cookie-clear                         # nuke everything
+ht browser-cookie-import cookies.json --format json
+ht browser-cookie-export --format netscape
+ht browser-cookie-capture --surface browser:1   # snapshot the live page's cookies
+```
+
+Corrupt `cookies.json`, `browser-history.json`, and `settings.json` are moved aside to a `.bak` file at load time — users see a console warning instead of silently losing state. Write failures log once per transition into the failing state.
+
+### DevTools & find
+
+```bash
 ht browser browser:1 devtools                  # toggle WebKit inspector
 ht browser browser:1 find-in-page "search"     # find text in page
 ```
 
 ---
 
-## Part 12 — Telegram Bridge
+## Part 14 — Agent Panes
+
+Agent panes run a `pi --mode rpc` subprocess as a virtual surface. The agent participates in the pane layout like any other surface.
+
+```bash
+ht agent new                                   # new agent in a new workspace
+ht agent split horizontal                      # split focused pane with an agent
+ht agent split vertical
+ht agent list                                  # live agents (id only)
+ht agent count                                 # number of live agents
+ht agent close agent-1                         # close by agent id
+ht agent close --surface agent-1               # same, via flag
+```
+
+Agents require the `pi` binary on PATH. If it's missing, `ht agent new` succeeds at the RPC layer but the agent subprocess fails to start (check the app's stderr).
+
+---
+
+## Part 15 — Telegram Bridge
 
 A long-poll bot service inside the app mirrors a Telegram chat into a first-class pane. The CLI reads + writes the same chat history. Configure the bot in **Settings → Telegram** (token + allowed user IDs) — this skill assumes that's done.
 
@@ -351,21 +471,19 @@ The `chat_id` resolution order: `--chat` → `$HT_TELEGRAM_CHAT` → most-recent
 
 ### Default chat via env
 
-Set once in your shell config so scripts skip the lookup:
-
 ```bash
 export HT_TELEGRAM_CHAT=8446656662
 ```
 
 ### Notes
 
-- Outbound is rate-limited to 1 msg/sec per chat (3-burst). Failing sends still appear in history with a "failed" badge in the UI.
+- Outbound is rate-limited to 1 msg/sec per chat (3-burst). Failed sends still appear in history with a "failed" badge in the UI.
 - A 409 in `ht telegram status` means another `getUpdates` consumer is running — usually a stray app instance.
 - Setting **Forward Notifications** in Settings → Telegram makes every `ht notify` (and any sidebar notification) DM all allowed user IDs.
 
 ---
 
-## Part 13 — Surface Targeting
+## Part 16 — Surface Targeting
 
 ### Terminal surfaces
 
@@ -385,6 +503,226 @@ ht browser browser:2 click "#btn"                # positional
 ht browser --surface browser:2 click "#btn"      # flag
 ht browser click "#btn"                           # target focused browser
 ```
+
+### Agent surfaces
+
+Agent ids look like `agent-1`, `agent-2`, …
+
+```bash
+ht agent close agent-2
+```
+
+---
+
+## Part 17 — Agent Plans (`ht plan`)
+
+Publish a multi-step plan that surfaces in the τ-mux **plan panel** (sidebar widget). The agent owns the plan; the panel renders it. Each plan is keyed by `(workspaceId, agentId?)` so multiple agents in the same workspace stay isolated.
+
+### Step states
+
+| State | Glyph | Meaning |
+|---|---|---|
+| `done` | `✓` | Step finished. |
+| `active` | `●` | Step in progress (one per plan, conventionally). |
+| `waiting` | `○` | Not yet started. |
+| `err` | `✗` | Step failed. |
+
+### Set / replace the plan
+
+```bash
+ht plan set --workspace "$HT_WORKSPACE_ID" --agent claude:1 --json '[
+  {"id":"M1","title":"Explore","state":"done"},
+  {"id":"M2","title":"Implement","state":"active"},
+  {"id":"M3","title":"Test","state":"waiting"},
+  {"id":"M4","title":"Commit","state":"waiting"}
+]'
+```
+
+`--workspace` is required (or set `HT_WORKSPACE_ID`). `--agent` is optional. The full step array is required; `state` defaults to `waiting` if omitted.
+
+### Patch one step
+
+```bash
+ht plan update M2 --workspace "$HT_WORKSPACE_ID" --state done
+ht plan update M3 --workspace "$HT_WORKSPACE_ID" --state active
+ht plan update M2 --workspace "$HT_WORKSPACE_ID" --title "Implement fix v2"
+```
+
+### Mark all done / clear
+
+```bash
+ht plan complete --workspace "$HT_WORKSPACE_ID"   # mark every step done
+ht plan clear    --workspace "$HT_WORKSPACE_ID"   # drop the plan
+```
+
+### List plans
+
+```bash
+ht plan list                                        # human-readable
+ht plan list --json                                 # raw JSON
+```
+
+### Status-key bridge
+
+`ht set-status` keys whose name contains "plan" and whose value is a JSON array of `{id, title, state}` objects are **automatically mirrored** into the plan panel. Agents already publishing checklists via the smart status-key system light up the plan panel for free:
+
+```bash
+ht set-status build_plan '[{"id":"compile","title":"Compile","state":"active"}]'
+# → both the sidebar smart-key renderer AND the plan panel update.
+```
+
+The bridge derives the plan's `agentId` from the surface (`status:<surfaceId>`).
+
+---
+
+## Part 18 — Auto-continue (`ht autocontinue`)
+
+The auto-continue engine reads the published plan + the last few lines of the surface on every turn-end notification and decides whether to send `Continue` automatically. **Off by default; even after opt-in, default to dry-run.** The CLI exposes everything the Settings panel exposes plus per-surface controls.
+
+### Engine modes
+
+- `off` — never decide.
+- `heuristic` — pure decision tree, no model call.
+- `model` — every turn-end consults the LLM (Anthropic Haiku 4.5 by default).
+- `hybrid` — heuristic first; only call the model when the heuristic returns an ambiguous wait.
+
+### Status
+
+```bash
+ht autocontinue status
+# engine          heuristic
+# dryRun          true
+# cooldownMs      3000
+# maxConsecutive  5
+# model           anthropic/claude-haiku-4-5-20251001
+# apiKeyEnv       ANTHROPIC_API_KEY
+# paused          (none)
+```
+
+### Audit log
+
+```bash
+ht autocontinue audit                                # last 20 (default)
+ht autocontinue audit --limit 5
+ht autocontinue audit --json
+# 14:02:11  fired      surface:1  next plan step: M3
+# 14:02:18  skipped    surface:1  cooldown — 1842ms remaining
+# 14:02:33  paused     surface:1  manual pause via ht/UI
+```
+
+| Outcome | Meaning |
+|---|---|
+| `fired` | Engine sent `Continue` (or the model's instruction). |
+| `dry-run` | Would have fired but `dryRun` is on — instruction logged only. |
+| `skipped` | Heuristic / cooldown / runaway / paused gate said wait. |
+| `paused` | Administrative event from `ht autocontinue pause`. |
+| `resumed` | Administrative event from `ht autocontinue resume`. |
+
+### Configure
+
+```bash
+ht autocontinue set --engine heuristic
+ht autocontinue set --engine hybrid --dry-run false
+ht autocontinue set --cooldown 5000 --max 10
+ht autocontinue set --model claude-sonnet-4-6 --api-key-env MY_CLAUDE_KEY
+```
+
+Validation: cooldown clamped 0–60000, max 1–50, engine restricted to `off|heuristic|model|hybrid`. Engine reads config fresh on every dispatch — changes apply immediately.
+
+### Manual fire / pause / resume
+
+```bash
+ht autocontinue fire surface:1                       # force a decision now
+ht autocontinue pause surface:1                      # stop auto-continue here
+ht autocontinue resume surface:1                     # resume + reset runaway counter
+```
+
+`fire` still respects every gate (cooldown, runaway, paused, dry-run, engine off). Manual pause does **not** clear on user input — only `resume` does.
+
+### Recipes
+
+```bash
+# Enable in dry-run, then go live after watching the audit
+ht autocontinue set --engine heuristic --dry-run true
+# … exercise turns, watch `ht autocontinue audit` …
+ht autocontinue set --dry-run false
+
+# Pause every surface during a long build
+for s in $(ht list-surfaces --json | jq -r '.[].id'); do
+  ht autocontinue pause "$s"
+done
+```
+
+---
+
+## Part 19 — Ask the User (`ht ask`)
+
+Block on a structured question routed to the τ-mux modal (or sibling shell, or Telegram). The agent invokes one of four kinds and **blocks** on stdout until the user answers, cancels, or the optional `--timeout` elapses.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Answered. Stdout carries the answer (`yes` / `no` / choice id / typed text / `run`). |
+| `2` | Timed out. |
+| `3` | Cancelled (Esc, Cancel button, sibling `ht ask cancel`, `/cancel` in Telegram). |
+
+### yesno
+
+```bash
+answer=$(ht ask yesno --title "Run install?" --body "Lockfile changed")
+if [ "$answer" = "yes" ]; then npm install; fi
+```
+
+### choice
+
+```bash
+branch=$(ht ask choice --title "Branch" --choices main,dev,feature/x)
+git checkout "$branch"
+```
+
+`--choices` accepts `id,id,…` or `id:label,id:label,…` for friendly display labels.
+
+### text
+
+```bash
+msg=$(ht ask text --title "Commit message" --default "wip")
+git commit -m "$msg"
+```
+
+Empty submit is refused (the input shakes). Stdout is the typed value.
+
+### confirm-command
+
+```bash
+ht ask confirm-command \
+  --title "Run command" \
+  --body "rm -rf ./build" \
+  --unsafe
+# Stdout: "run" if accepted; exits 3 on cancel.
+```
+
+`--unsafe` flips the modal into the destructive treatment (red banner + `[Run]` in red). Two deliberate clicks are required; Enter intentionally does not submit.
+
+### Common flags
+
+| Flag | Purpose |
+|---|---|
+| `--title <s>` | One-line prompt (required). |
+| `--body <s>` | Multi-line body, plain text. |
+| `--agent-id <s>` | Attribution shown in the modal header (e.g. `claude:1`). |
+| `--surface <id>` | Override the originating surface (defaults to `HT_SURFACE`). |
+| `--timeout <ms>` | Auto-cancel after this many ms; exits 2. |
+
+### Inspect / answer / cancel from a sibling shell
+
+```bash
+ht ask pending                                       # list open questions
+ht ask answer req:1 yes                              # resolve from outside
+ht ask cancel req:1 --reason "user is afk"           # cancel from outside
+```
+
+Useful for scripting tests or driving the answering side from a remote shell. Telegram routing (when enabled in Settings) fan-outs questions to allow-listed chats with kind-appropriate buttons.
 
 ---
 
@@ -428,8 +766,8 @@ ht browser browser:1 get title
 ht new-workspace --cwd ~/project
 ht browser open-split https://github.com/user/repo/pulls
 
-# Start build in the terminal
-ht send "npm run build\n"
+# Start build via script-runner so the sidebar tracks it
+ht run-script --cwd ~/project --command "npm run build" --script-key "build"
 ht set-progress 0.0 --label "Building..."
 
 # Monitor and update
@@ -473,6 +811,35 @@ else
 fi
 ```
 
+### Recipe: Run the crazyShell Reviewer
+
+```bash
+# One-shot expert review report into code_reviews/
+bun run review:agent
+
+# Continuous polling review loop for new commits
+bun run review:agent:watch --poll-seconds=900
+```
+
+The repository-local reviewer is proposition-only: it inspects the repo with Hermes, consults `DEV_RULES.md` + `doc/`, and writes a dated markdown report with the reference commit into `code_reviews/`. If the run mutates anything outside `code_reviews/`, it fails hard instead of saving a warning report. See `doc/code-review-agent.md` for the report format and watch-loop behavior.
+
+### Recipe: Watch a port and auto-open
+
+```bash
+# Wait for any port to appear
+while true; do
+  PORTS=$(ht ports --json 2>/dev/null)
+  COUNT=$(echo "$PORTS" | jq 'length' 2>/dev/null || echo "0")
+  if [ "$COUNT" -gt "0" ]; then
+    PORT=$(echo "$PORTS" | jq -r '.[0].port')
+    ht browser open-split "http://localhost:$PORT"
+    ht log "Auto-opened browser for :$PORT"
+    break
+  fi
+  sleep 1
+done
+```
+
 ### Recipe: Notify Telegram from a long build
 
 ```bash
@@ -498,21 +865,31 @@ if echo "$OUTPUT" | grep -q "fail"; then
 fi
 ```
 
-### Recipe: Watch a port and auto-open
+### Recipe: Wait for a sideband panel to render
 
 ```bash
-# Wait for any port to appear
+# Kick off a script that produces an SVG panel
+ht run-script --cwd ~/demo --command "python3 plot.py" --script-key "plot"
+
+# Poll until the panel is live
 while true; do
-  PORTS=$(ht ports --json 2>/dev/null)
-  COUNT=$(echo "$PORTS" | jq 'length' 2>/dev/null || echo "0")
-  if [ "$COUNT" -gt "0" ]; then
-    PORT=$(echo "$PORTS" | jq -r '.[0].port')
-    ht browser open-split "http://localhost:$PORT"
-    ht log "Auto-opened browser for :$PORT"
+  PANEL=$(ht panels --json | jq -r '.[] | select(.type == "svg") | .id' | head -1)
+  if [ -n "$PANEL" ]; then
+    ht log --level success "Plot rendered: $PANEL"
     break
   fi
-  sleep 1
+  sleep 0.5
 done
+```
+
+### Recipe: Clean scripted shutdown
+
+```bash
+# Run a batch of operations, then cleanly quit the app
+ht run-script --cwd ~/project --command "bun run build" --script-key "build"
+sleep 30
+ht notify --title "Nightly build" --body "Complete"
+ht shutdown                                   # flushes layout, settings, cookies
 ```
 
 ---
@@ -527,6 +904,8 @@ ht tree --json
 ht metadata --json
 ht list-surfaces --json
 ht ports --json
+ht panels --json
+ht agent list --json
 ht browser list --json
 ```
 
@@ -534,24 +913,28 @@ ht browser list --json
 
 ## Important Notes
 
-- `ht` has a 5-second timeout — if a response doesn't arrive, it exits
-- Browser `get`, `is`, and `wait` commands are async (JS eval roundtrip) — may take a few hundred ms
-- `wait` returns `"true"` or `"timeout"` — check the result
-- Sidebar status keys are arbitrary strings — use consistent keys per tool
-- `\n` in `ht send` is a carriage return (Enter), not a newline
-- `ht open` without a port errors if zero or multiple ports are detected — use explicit port
-- For `new-split`, use `right` or `down` for predictable behavior
-- Browser surfaces use `browser:N` IDs, terminal surfaces use `surface:N` IDs
-- Telegram surfaces use `tg:N:<rand>` IDs — but the CLI never asks for a surface id, only a `--chat`
-- `ht telegram send` reads stdin when no positional text is given — useful for piping command output as a message body
-- `HT_TELEGRAM_CHAT` overrides the most-recent-chat fallback for `ht telegram send` and `ht telegram read`
+- `ht` has a **5-second timeout** — if a response doesn't arrive, it exits with code 1 and a clear error. Previously it exited 0 silently; scripts that relied on that bug will now see failures.
+- Browser `get`, `is`, and `wait` commands are async (JS eval roundtrip) — may take a few hundred ms.
+- `wait` returns `"true"` or `"timeout"` — check the result.
+- Sidebar status keys are arbitrary strings — use consistent keys per tool.
+- `\n` in `ht send` is a carriage return (Enter), not a newline.
+- `ht open` without a port errors if zero or multiple ports are detected — use explicit port.
+- For `new-split`, use `right` or `down` for predictable behavior.
+- Surface-id prefixes: terminals use `surface:N`, browsers use `browser:N`, agents use `agent-N` (hyphen, not colon), Telegram uses `tg:N:<rand>`.
+- `ht agent new` + `ht shutdown` require the bun main process and will not work against a web-mirror-only connection.
+- `ht telegram send` reads stdin when no positional text is given — `make 2>&1 | ht telegram send` works.
+- `HT_TELEGRAM_CHAT` overrides the most-recent-chat fallback for `ht telegram send` and `ht telegram read`.
+- `ht plan set` requires `--workspace` (or `HT_WORKSPACE_ID`); the steps array is a JSON string parsed by the CLI before forwarding.
+- `ht autocontinue` is **off by default** (engine=off) and starts in **dry-run** when first enabled — every decision is logged to the audit ring without sending text. Flip `Dry run` off in Settings → Auto-continue or via `ht autocontinue set --dry-run false` once you trust what you see.
+- `ht ask` blocks until the user answers/cancels/timeouts. Always check the exit code: `0` = answered, `2` = timeout, `3` = cancelled. Stdout carries the answer when exit is `0`.
+- `ht ask` runs from inside any τ-mux pane will inherit `HT_SURFACE` automatically; from a remote shell pass `--surface surface:N` explicitly.
 
 ---
 
 ## Complete Command Reference
 
 ### System
-`ping`, `version`, `identify`, `capabilities`, `tree`
+`ping`, `version`, `identify`, `capabilities`, `tree`, `shutdown`
 
 ### Workspaces
 `list-workspaces`, `current-workspace`, `new-workspace`, `select-workspace`, `close-workspace`, `rename-workspace`, `next-workspace`, `previous-workspace`
@@ -560,7 +943,7 @@ ht browser list --json
 `list-surfaces`, `new-split`, `close-surface`, `focus-surface`, `list-panes`
 
 ### I/O
-`send`, `send-key`, `read-screen`, `capture-pane`
+`send`, `send-key`, `read-screen`, `capture-pane`, `screenshot`
 
 ### Sidebar
 `set-status`, `clear-status`, `set-progress`, `clear-progress`, `log`
@@ -571,8 +954,29 @@ ht browser list --json
 ### Metadata
 `metadata`, `cwd`, `ps`, `ports`, `git`, `open`, `kill`
 
+### Sideband panels
+`panels`, `list-panels`
+
+### Script runner
+`run-script`
+
+### Agents
+`agent new`, `agent split`, `agent list`, `agent count`, `agent close`
+
 ### Browser
 `browser open`, `browser open-split`, `browser navigate`, `browser back`, `browser forward`, `browser reload`, `browser url`, `browser identify`, `browser list`, `browser close`, `browser wait`, `browser click`, `browser dblclick`, `browser hover`, `browser focus`, `browser check`, `browser uncheck`, `browser scroll-into-view`, `browser type`, `browser fill`, `browser press`, `browser select`, `browser scroll`, `browser highlight`, `browser snapshot`, `browser get`, `browser is`, `browser eval`, `browser addscript`, `browser addstyle`, `browser console`, `browser errors`, `browser devtools`, `browser find-in-page`, `browser history`
 
+### Browser cookies
+`browser-cookie-list`, `browser-cookie-get`, `browser-cookie-set`, `browser-cookie-delete`, `browser-cookie-clear`, `browser-cookie-import`, `browser-cookie-export`, `browser-cookie-capture`
+
 ### Telegram
 `telegram status`, `telegram chats`, `telegram read`, `telegram send`
+
+### Agent plans (Plan #09)
+`plan list`, `plan set`, `plan update`, `plan complete`, `plan clear`
+
+### Auto-continue (Plan #09)
+`autocontinue status`, `autocontinue audit`, `autocontinue set`, `autocontinue fire`, `autocontinue pause`, `autocontinue resume`
+
+### Ask the user (Plan #10)
+`ask yesno`, `ask choice`, `ask text`, `ask confirm-command`, `ask pending`, `ask answer`, `ask cancel`

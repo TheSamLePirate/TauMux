@@ -1,11 +1,11 @@
 ---
 name: hyperterm-canvas
-description: Operate τ-mux through the `ht` CLI. Manage workspaces, terminal panes, browser panes, agent panes, sideband canvas panels, sidebar status, notifications, live process metadata, full browser automation, and the Telegram bridge. Use when running long-lived processes in panes, automating browser interactions, orchestrating multi-pane workflows, inspecting live process state, surfacing status to the user through the τ-mux UI, or sending/reading Telegram messages from a script.
+description: Operate τ-mux through the `ht` CLI. Manage workspaces, terminal panes, browser panes, agent panes, sideband canvas panels, sidebar status, notifications, live process metadata, full browser automation, the Telegram bridge, multi-step agent plans, the auto-continue engine, and structured human-in-the-loop questions (`ht ask`). Use when running long-lived processes in panes, automating browser interactions, orchestrating multi-pane workflows, inspecting live process state, surfacing status to the user through the τ-mux UI, sending/reading Telegram messages from a script, publishing or driving an agent plan, or asking the user a structured question (yes/no, choice, text, confirm-command).
 ---
 
 # τ-mux — Complete `ht` CLI Skill
 
-This skill covers every capability of the `ht` command line interface — terminal panes, browser panes, agent panes, sideband canvas panels, workspace management, sidebar state, notifications, live process metadata, script-runner surfaces, full browser automation, and the Telegram bridge.
+This skill covers every capability of the `ht` command line interface — terminal panes, browser panes, agent panes, sideband canvas panels, workspace management, sidebar state, notifications, live process metadata, script-runner surfaces, full browser automation, the Telegram bridge, multi-step agent plans, the auto-continue engine, and structured human-in-the-loop questions (`ht ask`).
 
 ## Prerequisites
 
@@ -514,6 +514,218 @@ ht agent close agent-2
 
 ---
 
+## Part 17 — Agent Plans (`ht plan`)
+
+Publish a multi-step plan that surfaces in the τ-mux **plan panel** (sidebar widget). The agent owns the plan; the panel renders it. Each plan is keyed by `(workspaceId, agentId?)` so multiple agents in the same workspace stay isolated.
+
+### Step states
+
+| State | Glyph | Meaning |
+|---|---|---|
+| `done` | `✓` | Step finished. |
+| `active` | `●` | Step in progress (one per plan, conventionally). |
+| `waiting` | `○` | Not yet started. |
+| `err` | `✗` | Step failed. |
+
+### Set / replace the plan
+
+```bash
+ht plan set --workspace "$HT_WORKSPACE_ID" --agent claude:1 --json '[
+  {"id":"M1","title":"Explore","state":"done"},
+  {"id":"M2","title":"Implement","state":"active"},
+  {"id":"M3","title":"Test","state":"waiting"},
+  {"id":"M4","title":"Commit","state":"waiting"}
+]'
+```
+
+`--workspace` is required (or set `HT_WORKSPACE_ID`). `--agent` is optional. The full step array is required; `state` defaults to `waiting` if omitted.
+
+### Patch one step
+
+```bash
+ht plan update M2 --workspace "$HT_WORKSPACE_ID" --state done
+ht plan update M3 --workspace "$HT_WORKSPACE_ID" --state active
+ht plan update M2 --workspace "$HT_WORKSPACE_ID" --title "Implement fix v2"
+```
+
+### Mark all done / clear
+
+```bash
+ht plan complete --workspace "$HT_WORKSPACE_ID"   # mark every step done
+ht plan clear    --workspace "$HT_WORKSPACE_ID"   # drop the plan
+```
+
+### List plans
+
+```bash
+ht plan list                                        # human-readable
+ht plan list --json                                 # raw JSON
+```
+
+### Status-key bridge
+
+`ht set-status` keys whose name contains "plan" and whose value is a JSON array of `{id, title, state}` objects are **automatically mirrored** into the plan panel. Agents already publishing checklists via the smart status-key system light up the plan panel for free:
+
+```bash
+ht set-status build_plan '[{"id":"compile","title":"Compile","state":"active"}]'
+# → both the sidebar smart-key renderer AND the plan panel update.
+```
+
+The bridge derives the plan's `agentId` from the surface (`status:<surfaceId>`).
+
+---
+
+## Part 18 — Auto-continue (`ht autocontinue`)
+
+The auto-continue engine reads the published plan + the last few lines of the surface on every turn-end notification and decides whether to send `Continue` automatically. **Off by default; even after opt-in, default to dry-run.** The CLI exposes everything the Settings panel exposes plus per-surface controls.
+
+### Engine modes
+
+- `off` — never decide.
+- `heuristic` — pure decision tree, no model call.
+- `model` — every turn-end consults the LLM (Anthropic Haiku 4.5 by default).
+- `hybrid` — heuristic first; only call the model when the heuristic returns an ambiguous wait.
+
+### Status
+
+```bash
+ht autocontinue status
+# engine          heuristic
+# dryRun          true
+# cooldownMs      3000
+# maxConsecutive  5
+# model           anthropic/claude-haiku-4-5-20251001
+# apiKeyEnv       ANTHROPIC_API_KEY
+# paused          (none)
+```
+
+### Audit log
+
+```bash
+ht autocontinue audit                                # last 20 (default)
+ht autocontinue audit --limit 5
+ht autocontinue audit --json
+# 14:02:11  fired      surface:1  next plan step: M3
+# 14:02:18  skipped    surface:1  cooldown — 1842ms remaining
+# 14:02:33  paused     surface:1  manual pause via ht/UI
+```
+
+| Outcome | Meaning |
+|---|---|
+| `fired` | Engine sent `Continue` (or the model's instruction). |
+| `dry-run` | Would have fired but `dryRun` is on — instruction logged only. |
+| `skipped` | Heuristic / cooldown / runaway / paused gate said wait. |
+| `paused` | Administrative event from `ht autocontinue pause`. |
+| `resumed` | Administrative event from `ht autocontinue resume`. |
+
+### Configure
+
+```bash
+ht autocontinue set --engine heuristic
+ht autocontinue set --engine hybrid --dry-run false
+ht autocontinue set --cooldown 5000 --max 10
+ht autocontinue set --model claude-sonnet-4-6 --api-key-env MY_CLAUDE_KEY
+```
+
+Validation: cooldown clamped 0–60000, max 1–50, engine restricted to `off|heuristic|model|hybrid`. Engine reads config fresh on every dispatch — changes apply immediately.
+
+### Manual fire / pause / resume
+
+```bash
+ht autocontinue fire surface:1                       # force a decision now
+ht autocontinue pause surface:1                      # stop auto-continue here
+ht autocontinue resume surface:1                     # resume + reset runaway counter
+```
+
+`fire` still respects every gate (cooldown, runaway, paused, dry-run, engine off). Manual pause does **not** clear on user input — only `resume` does.
+
+### Recipes
+
+```bash
+# Enable in dry-run, then go live after watching the audit
+ht autocontinue set --engine heuristic --dry-run true
+# … exercise turns, watch `ht autocontinue audit` …
+ht autocontinue set --dry-run false
+
+# Pause every surface during a long build
+for s in $(ht list-surfaces --json | jq -r '.[].id'); do
+  ht autocontinue pause "$s"
+done
+```
+
+---
+
+## Part 19 — Ask the User (`ht ask`)
+
+Block on a structured question routed to the τ-mux modal (or sibling shell, or Telegram). The agent invokes one of four kinds and **blocks** on stdout until the user answers, cancels, or the optional `--timeout` elapses.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Answered. Stdout carries the answer (`yes` / `no` / choice id / typed text / `run`). |
+| `2` | Timed out. |
+| `3` | Cancelled (Esc, Cancel button, sibling `ht ask cancel`, `/cancel` in Telegram). |
+
+### yesno
+
+```bash
+answer=$(ht ask yesno --title "Run install?" --body "Lockfile changed")
+if [ "$answer" = "yes" ]; then npm install; fi
+```
+
+### choice
+
+```bash
+branch=$(ht ask choice --title "Branch" --choices main,dev,feature/x)
+git checkout "$branch"
+```
+
+`--choices` accepts `id,id,…` or `id:label,id:label,…` for friendly display labels.
+
+### text
+
+```bash
+msg=$(ht ask text --title "Commit message" --default "wip")
+git commit -m "$msg"
+```
+
+Empty submit is refused (the input shakes). Stdout is the typed value.
+
+### confirm-command
+
+```bash
+ht ask confirm-command \
+  --title "Run command" \
+  --body "rm -rf ./build" \
+  --unsafe
+# Stdout: "run" if accepted; exits 3 on cancel.
+```
+
+`--unsafe` flips the modal into the destructive treatment (red banner + `[Run]` in red). Two deliberate clicks are required; Enter intentionally does not submit.
+
+### Common flags
+
+| Flag | Purpose |
+|---|---|
+| `--title <s>` | One-line prompt (required). |
+| `--body <s>` | Multi-line body, plain text. |
+| `--agent-id <s>` | Attribution shown in the modal header (e.g. `claude:1`). |
+| `--surface <id>` | Override the originating surface (defaults to `HT_SURFACE`). |
+| `--timeout <ms>` | Auto-cancel after this many ms; exits 2. |
+
+### Inspect / answer / cancel from a sibling shell
+
+```bash
+ht ask pending                                       # list open questions
+ht ask answer req:1 yes                              # resolve from outside
+ht ask cancel req:1 --reason "user is afk"           # cancel from outside
+```
+
+Useful for scripting tests or driving the answering side from a remote shell. Telegram routing (when enabled in Settings) fan-outs questions to allow-listed chats with kind-appropriate buttons.
+
+---
+
 ## Workflow Recipes
 
 ### Recipe: Dev server + browser preview
@@ -712,6 +924,10 @@ ht browser list --json
 - `ht agent new` + `ht shutdown` require the bun main process and will not work against a web-mirror-only connection.
 - `ht telegram send` reads stdin when no positional text is given — `make 2>&1 | ht telegram send` works.
 - `HT_TELEGRAM_CHAT` overrides the most-recent-chat fallback for `ht telegram send` and `ht telegram read`.
+- `ht plan set` requires `--workspace` (or `HT_WORKSPACE_ID`); the steps array is a JSON string parsed by the CLI before forwarding.
+- `ht autocontinue` is **off by default** (engine=off) and starts in **dry-run** when first enabled — every decision is logged to the audit ring without sending text. Flip `Dry run` off in Settings → Auto-continue or via `ht autocontinue set --dry-run false` once you trust what you see.
+- `ht ask` blocks until the user answers/cancels/timeouts. Always check the exit code: `0` = answered, `2` = timeout, `3` = cancelled. Stdout carries the answer when exit is `0`.
+- `ht ask` runs from inside any τ-mux pane will inherit `HT_SURFACE` automatically; from a remote shell pass `--surface surface:N` explicitly.
 
 ---
 
@@ -755,3 +971,12 @@ ht browser list --json
 
 ### Telegram
 `telegram status`, `telegram chats`, `telegram read`, `telegram send`
+
+### Agent plans (Plan #09)
+`plan list`, `plan set`, `plan update`, `plan complete`, `plan clear`
+
+### Auto-continue (Plan #09)
+`autocontinue status`, `autocontinue audit`, `autocontinue set`, `autocontinue fire`, `autocontinue pause`, `autocontinue resume`
+
+### Ask the user (Plan #10)
+`ask yesno`, `ask choice`, `ask text`, `ask confirm-command`, `ask pending`, `ask answer`, `ask cancel`

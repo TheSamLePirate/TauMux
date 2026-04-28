@@ -82,6 +82,9 @@ ht <command> --help       # per-command help
 - [Process & ports](/cli/process-and-ports/) — metadata, ps, cwd, git, ports, open, kill
 - [Browser](/cli/browser/) — 40+ commands for built-in browser automation
 - [Telegram](/cli/telegram/) — status, chats, read, send
+- [Ask-user](/cli/ask-user/) — yesno, choice, text, confirm-command (block on a structured question)
+- [Plan](/cli/plan/) — set, update, complete, clear, list (publish multi-step agent plans)
+- [Auto-continue](/cli/autocontinue/) — status, audit, set, fire, pause, resume (engine that auto-sends `Continue` on turn-end)
 
 ## tmux compat
 
