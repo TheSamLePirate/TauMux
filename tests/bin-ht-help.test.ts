@@ -61,6 +61,28 @@ describe("bin/ht --help", () => {
   });
 });
 
+describe("bin/ht browser help", () => {
+  test("exits 0 and prints the browser usage block", async () => {
+    const r = await runHt(["browser", "help"]);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("Browser (use: ht browser");
+    // Sanity-check a representative subcommand from each section.
+    expect(r.stdout).toContain("navigate");
+    expect(r.stdout).toContain("click");
+    expect(r.stdout).toContain("fill");
+    // No RPC error from a missing socket should leak through.
+    expect(r.stderr).not.toContain("Unknown browser subcommand");
+  });
+
+  test("--help and -h are aliases for help", async () => {
+    for (const flag of ["--help", "-h"]) {
+      const r = await runHt(["browser", flag]);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toContain("Browser (use: ht browser");
+    }
+  });
+});
+
 describe("bin/ht doctor (offline)", () => {
   test("reports the configured socket path even when unreachable", async () => {
     const r = await runHt(["doctor"]);

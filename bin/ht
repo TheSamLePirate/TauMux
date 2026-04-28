@@ -9,6 +9,63 @@ import { readFileSync } from "node:fs";
 
 const SOCKET_PATH = process.env["HT_SOCKET_PATH"] || "/tmp/hyperterm.sock";
 
+/** Shared browser-help block. Used by the global `ht --help` banner
+ *  (interpolated into `printHelp`), by `ht browser help`, and by the
+ *  `--help` / `-h` short-circuit inside `mapBrowserSubcommand`. Hoisted
+ *  to the top of the file because all three call sites can fire before
+ *  any later top-level statement runs (TDZ). */
+const BROWSER_HELP = `Browser (use: ht browser [surface] <subcommand> [args...]):
+  ht browser open [url]                     Open browser split (or navigate if surface given)
+  ht browser open-split [url]               Split browser alongside current pane
+  ht browser [S] navigate <url>             Navigate to URL
+  ht browser [S] back|forward|reload        Navigation
+  ht browser [S] url                        Print current URL
+  ht browser [S] identify                   Show browser surface metadata
+
+  ht browser [S] wait --selector|--text|--url-contains|--load-state|--function [--timeout-ms N]
+
+  ht browser [S] click <sel>                Click element
+  ht browser [S] dblclick|hover|focus <sel> Mouse actions
+  ht browser [S] check|uncheck <sel>        Checkbox toggle
+  ht browser [S] scroll-into-view <sel>     Scroll element into view
+  ht browser [S] type <sel> <text>          Type text into element
+  ht browser [S] fill <sel> [text]          Fill input (empty = clear)
+  ht browser [S] press|keydown|keyup <key>  Keyboard events
+  ht browser [S] select <sel> <value>       Select dropdown option
+  ht browser [S] scroll [--dx N] [--dy N]   Scroll page or element
+  ht browser [S] highlight <sel>            Highlight element (3s)
+
+  ht browser [S] snapshot [--selector sel] [--max-depth N]
+  ht browser [S] get <title|url|text|html|value|attr|count|box|styles> [sel]
+  ht browser [S] is <visible|enabled|checked> <sel>
+
+  ht browser [S] eval <script>              Execute JavaScript
+  ht browser [S] addscript <script>         Inject JavaScript
+  ht browser [S] addstyle <css>             Inject CSS
+
+  ht browser [S] console [list|clear]       Page console messages
+  ht browser [S] errors [list|clear]        Page errors
+
+  ht browser [S] devtools                   Toggle developer tools
+  ht browser [S] find-in-page <query>       Find text in page
+  ht browser history [clear]                Browser history
+  ht browser list                           List all browser surfaces
+  ht browser [S] close                      Close browser surface
+
+  Cookie Management (use: ht browser-cookie-<cmd>):
+  browser-cookie-list [domain]              List stored cookies
+  browser-cookie-get <url>                  Get cookies matching a URL
+  browser-cookie-set <name> <value> --domain <d> [--path /] [--secure true]
+  browser-cookie-delete <domain> <name>     Delete a specific cookie
+  browser-cookie-clear [domain]             Clear cookies (all or per-domain)
+  browser-cookie-import <file> [--format json|netscape]  Import cookie file
+  browser-cookie-export [--format json|netscape]         Export all cookies
+  browser-cookie-capture [--surface S]      Capture cookies from current page
+
+  [S] = optional --surface browser:N or positional browser:N
+
+  Legacy aliases: browser-open, browser-split, browser-navigate, etc.`;
+
 const args = process.argv.slice(2);
 const command = args[0];
 
@@ -67,6 +124,14 @@ interface RpcCall {
  *   ht browser --surface browser:2 click "#btn"
  */
 function mapBrowserSubcommand(): RpcCall {
+  // `--help` / `-h` get consumed by parseFlags as flags, so they never
+  // appear as a positional subcommand. Catch them up-front before the
+  // identify-fallback branch turns "no subcommand" into an RPC call.
+  if (flags["help"] === "true" || flags["h"] === "true") {
+    console.log(BROWSER_HELP);
+    process.exit(0);
+  }
+
   // Parse: positional[0] might be a surface ref or a subcommand
   let surfaceId: string | undefined = flags["surface"];
   let sub: string;
@@ -221,6 +286,13 @@ function mapBrowserSubcommand(): RpcCall {
     // List
     case "list":
       return { method: "browser.list", params: {} };
+
+    case "help":
+      // The `default` branch tells users to run `ht browser help`, so
+      // that command must actually work. Print the same browser section
+      // surfaced by `ht --help`, then exit cleanly without making an RPC.
+      console.log(BROWSER_HELP);
+      process.exit(0);
 
     default:
       console.error(`Unknown browser subcommand: ${sub}`);
@@ -2080,57 +2152,7 @@ Live Metadata (reads from polled surface state):
   kill PORT [--signal SIG] [--surface S] Send SIG (default SIGTERM) to the pid
                                         bound to PORT
 
-Browser (use: ht browser [surface] <subcommand> [args...]):
-  ht browser open [url]                     Open browser split (or navigate if surface given)
-  ht browser open-split [url]               Split browser alongside current pane
-  ht browser [S] navigate <url>             Navigate to URL
-  ht browser [S] back|forward|reload        Navigation
-  ht browser [S] url                        Print current URL
-  ht browser [S] identify                   Show browser surface metadata
-
-  ht browser [S] wait --selector|--text|--url-contains|--load-state|--function [--timeout-ms N]
-
-  ht browser [S] click <sel>                Click element
-  ht browser [S] dblclick|hover|focus <sel> Mouse actions
-  ht browser [S] check|uncheck <sel>        Checkbox toggle
-  ht browser [S] scroll-into-view <sel>     Scroll element into view
-  ht browser [S] type <sel> <text>          Type text into element
-  ht browser [S] fill <sel> [text]          Fill input (empty = clear)
-  ht browser [S] press|keydown|keyup <key>  Keyboard events
-  ht browser [S] select <sel> <value>       Select dropdown option
-  ht browser [S] scroll [--dx N] [--dy N]   Scroll page or element
-  ht browser [S] highlight <sel>            Highlight element (3s)
-
-  ht browser [S] snapshot [--selector sel] [--max-depth N]
-  ht browser [S] get <title|url|text|html|value|attr|count|box|styles> [sel]
-  ht browser [S] is <visible|enabled|checked> <sel>
-
-  ht browser [S] eval <script>              Execute JavaScript
-  ht browser [S] addscript <script>         Inject JavaScript
-  ht browser [S] addstyle <css>             Inject CSS
-
-  ht browser [S] console [list|clear]       Page console messages
-  ht browser [S] errors [list|clear]        Page errors
-
-  ht browser [S] devtools                   Toggle developer tools
-  ht browser [S] find-in-page <query>       Find text in page
-  ht browser history [clear]                Browser history
-  ht browser list                           List all browser surfaces
-  ht browser [S] close                      Close browser surface
-
-  Cookie Management (use: ht browser-cookie-<cmd>):
-  browser-cookie-list [domain]              List stored cookies
-  browser-cookie-get <url>                  Get cookies matching a URL
-  browser-cookie-set <name> <value> --domain <d> [--path /] [--secure true]
-  browser-cookie-delete <domain> <name>     Delete a specific cookie
-  browser-cookie-clear [domain]             Clear cookies (all or per-domain)
-  browser-cookie-import <file> [--format json|netscape]  Import cookie file
-  browser-cookie-export [--format json|netscape]         Export all cookies
-  browser-cookie-capture [--surface S]      Capture cookies from current page
-
-  [S] = optional --surface browser:N or positional browser:N
-
-  Legacy aliases: browser-open, browser-split, browser-navigate, etc.
+${BROWSER_HELP}
 
 Sideband panels:
   panels [--surface S]                  List active sideband panels on a surface

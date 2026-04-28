@@ -12,7 +12,8 @@
 
 | PR # | Cluster / item | Status | Commit | Notes |
 |------|----------------|--------|--------|-------|
-| 1 | Cluster A — N8, N9, N10, N11, N12, N13, N16, N17, M4 | landed | (pending) | bumped 0.2.50 → 0.2.51. All 1501 tests pass; typecheck clean. |
+| 1 | Cluster A — N8, N9, N10, N11, N12, N13, N16, N17, M4 | landed | d0c7391 | bumped 0.2.50 → 0.2.51. All 1501 tests pass; typecheck clean. |
+| 2 | A.1 — M5 `ht browser help` subcommand | landed | (pending) | bumped 0.2.51 → 0.2.52. Extracted shared `BROWSER_HELP` constant; added `case "help"` + `--help`/`-h` flag short-circuit; 1503 tests pass. **Deviation:** had to hoist `BROWSER_HELP` to top of file (TDZ — main runs printHelp before later top-level statements). |
 
 ## Deviations from plan
 
