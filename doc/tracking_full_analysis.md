@@ -37,4 +37,21 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 - **Did not auto-pick a separate `configDir` for dev mode** (the original B4 second-half suggestion). Auto-detection of "am I running under `electrobun dev`?" is brittle (no canonical env signal across packaged/source/CI), and the probe-based refusal already prevents the silent data loss. Users get an explicit error pointing at the env-var override, which is more honest than magic. Listed as a deferred design choice.
 - ESLint `no-require-imports` fired during the new test edit (forbade `require("fs")`); fixed by adding `writeFileSync` to the existing top-of-file `import { ... } from "fs"`. Unrelated to the bug fix.
 
-**Commit:** filled in below after `bun run bump:patch`.
+**Commit:** `a6daa1d` (bump 0.2.39 → 0.2.40).
+
+---
+
+### Step 2 — B1: ⌘0 keyboard shortcut collision
+
+**What:** Added a `when` guard to the `font.reset` binding so it skips browser and telegram panes. The colliding `browser.zoom-reset` already had the inverse guard. Both now coexist cleanly: terminal/agent panes get font reset, browser/telegram panes get zoom reset.
+
+**Files:**
+- `src/views/terminal/index.ts:1819–1828` — added `when: (ctx) => ctx.activeSurfaceType !== "browser" && ctx.activeSurfaceType !== "telegram"` plus an explanatory comment.
+
+**Verification:**
+- `bun run typecheck` — clean.
+- `bun test tests/` — 1501 / 1501 pass (no test regression; no dedicated test for the binding table — the contract is "one binding per chord+context").
+
+**Deviations / issues:** none.
+
+**Commit:** filled in below.

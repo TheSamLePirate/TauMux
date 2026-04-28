@@ -1819,6 +1819,12 @@ const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
     id: "font.reset",
     description: "Reset font size",
     category: "View",
+    // Skip browser panes: `browser.zoom-reset` claims ⌘0 there. Without
+    // this guard the dispatcher would still match the browser entry first,
+    // but being explicit keeps the table self-documenting.
+    when: (ctx) =>
+      ctx.activeSurfaceType !== "browser" &&
+      ctx.activeSurfaceType !== "telegram",
     match: keyMatch({ key: "0", meta: true, shift: false }),
     action: () => resetFontSize(),
   },
