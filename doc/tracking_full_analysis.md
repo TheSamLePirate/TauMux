@@ -90,4 +90,23 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 **Deviations / issues:**
 - The audit said "five missing types"; reality was eight. The `askUserShown` / `askUserResolved` pair is currently absorbed silently by the dispatcher (Plan #13 will add the modal to the mirror) — the contract entry doesn't change behavior but does mean the future modal can switch-exhaust on the union safely.
 
+**Commit:** `d4d2e04` (bump 0.2.42 → 0.2.43).
+
+---
+
+### Step 5 — M1: orphan audio asset `need-human.mp3`
+
+**What:** Deleted `assets/audio/need-human.mp3`. The file existed on disk but had no copy rule in `electrobun.config.ts`, no `VENDOR_MAP` entry in `src/bun/web/asset-loader.ts`, no HTTP route in `src/bun/web/server.ts`, and no caller anywhere in the source tree. The only related symbol is `notifyHumanInput` on the auto-continue engine — but that's a counter resetter (it clears the consecutive-runs gauge when the user types), not an alert trigger. No feature exists today that would play this sound.
+
+**Decision:** delete now, re-add later if the feature lands. Per CLAUDE.md "Don't add features beyond what the task requires", carrying half-feature binary assets in the working tree is misleading.
+
+**Files:**
+- `assets/audio/need-human.mp3` — removed.
+
+**Verification:**
+- `bun run typecheck` — clean.
+- `bun test tests/` — 1501 / 1501 pass.
+
+**Deviations / issues:** none — git history retains the file, so re-adding is a single `git checkout HEAD~1 -- assets/audio/need-human.mp3` if the feature lands.
+
 **Commit:** filled in below.
