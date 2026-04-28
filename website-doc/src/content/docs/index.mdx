@@ -5,6 +5,9 @@ template: splash
 hero:
   title: τ-mux
   tagline: A hybrid terminal where xterm.js coexists with floating canvases, a 1 Hz process observer, and a scriptable CLI.
+  image:
+    file: ../../../../assets/images/IconTau.png
+    alt: τ-mux logo — a glowing cyan tau on a dark background
   actions:
     - text: Get started
       link: /TauMux/getting-started/introduction/
@@ -17,10 +20,19 @@ hero:
 ---
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
+import { Image } from "astro:assets";
+import appScreenshot from "../../../../assets/images/App_screenshot.png";
 
 ## What it is
 
 τ-mux is a desktop terminal emulator that keeps the PTY text layer untouched while layering floating canvases, live process telemetry, and structured channels for scripts on top of it. It is keyboard-driven, mouse-friendly, and entirely scriptable from the shell via the `ht` CLI.
+
+<Image
+  src={appScreenshot}
+  alt="τ-mux running with a Pi Agent pane, Claude Code split, agent plan panel in the sidebar, file tree, and live status keys at the bottom."
+  class="tau-screenshot"
+  loading="eager"
+/>
 
 <CardGrid>
   <Card title="Terminal multiplexer" icon="laptop">

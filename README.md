@@ -1,14 +1,28 @@
-# τ-mux
+<p align="center">
+  <img src="assets/images/IconTau.png" alt="τ-mux logo — glowing cyan tau on a dark background" width="160" />
+</p>
 
-A hybrid terminal emulator where a traditional PTY text layer (xterm.js) coexists with floating canvas overlays and a live, cross-pane view of every process your shells spawn. Scripts running inside the terminal can stream structured content (images, charts, interactive widgets) through extra file descriptors, while the main process continuously observes cwd / pid / ports / CPU / RSS for every descendant of every shell and ships those observations into the UI and any attached CLI. Built on [Electrobun](https://electrobun.dev) + [Bun](https://bun.sh).
+<h1 align="center">τ-mux</h1>
 
-📖 **Documentation:** <https://thesamlepirate.github.io/TauMux/>
-&nbsp;·&nbsp;
-[Install](https://thesamlepirate.github.io/TauMux/getting-started/installation/)
-&nbsp;·&nbsp;
-[`ht` CLI reference](https://thesamlepirate.github.io/TauMux/cli/overview/)
-&nbsp;·&nbsp;
-[Sideband protocol](https://thesamlepirate.github.io/TauMux/sideband/overview/)
+<p align="center">
+  <em>A hybrid terminal emulator where a traditional PTY text layer (xterm.js) coexists with floating canvas overlays, a live cross-pane process observer, and a scriptable CLI. Built on <a href="https://electrobun.dev">Electrobun</a> + <a href="https://bun.sh">Bun</a>.</em>
+</p>
+
+<p align="center">
+  📖 <a href="https://thesamlepirate.github.io/TauMux/"><strong>Documentation</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://thesamlepirate.github.io/TauMux/getting-started/installation/">Install</a>
+  &nbsp;·&nbsp;
+  <a href="https://thesamlepirate.github.io/TauMux/cli/overview/"><code>ht</code> CLI reference</a>
+  &nbsp;·&nbsp;
+  <a href="https://thesamlepirate.github.io/TauMux/sideband/overview/">Sideband protocol</a>
+</p>
+
+<p align="center">
+  <img src="assets/images/App_screenshot.png" alt="τ-mux in action — Pi Agent pane, Claude Code split, agent plan panel in the sidebar, file tree, and live status keys at the bottom." width="100%" />
+</p>
+
+Scripts running inside the terminal can stream structured content (images, charts, interactive widgets) through extra file descriptors, while the main process continuously observes cwd / pid / ports / CPU / RSS for every descendant of every shell and ships those observations into the UI and any attached CLI.
 
 ## Table of contents
 

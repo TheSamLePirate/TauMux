@@ -1,7 +1,12 @@
 /*
  * τ-mux docs brand overrides.
- * Pulls accent + background tones from the project's Obsidian default theme
- * so the site visually rhymes with the app itself.
+ *
+ * Pulls accent + background tones from the project's Obsidian default
+ * theme so the site visually rhymes with the app itself. The cyan
+ * palette is sourced verbatim from `src/views/terminal/index.css`
+ * (`--tau-cyan: #6fe9ff` and friends), and the bloom drop-shadows
+ * mirror the WebGL bloom pass the app runs over identity-critical
+ * chrome (focused-pane glow, status accents).
  */
 
 :root {
@@ -9,14 +14,23 @@
     Roboto, "Helvetica Neue", Arial, sans-serif;
   --sl-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
     monospace;
+
+  /* App-sourced cyan palette — kept as separate tokens so the bloom
+   * effects below can reference them without re-deriving each shadow
+   * stack. */
+  --tau-cyan: #6fe9ff;
+  --tau-cyan-soft: #33b8d6;
+  --tau-cyan-dim: rgba(111, 233, 255, 0.18);
+  --tau-cyan-glow: rgba(111, 233, 255, 0.55);
+  --tau-amber: #ffc56b;
 }
 
-/* Dark mode (default) */
+/* Dark mode (default) — mirrors the app's Obsidian theme. */
 :root,
 :root[data-theme="dark"] {
-  --sl-color-accent-low: #1d2433;
-  --sl-color-accent: #4a7ad6;
-  --sl-color-accent-high: #b6c9f0;
+  --sl-color-accent-low: rgba(111, 233, 255, 0.14);
+  --sl-color-accent: #6fe9ff;
+  --sl-color-accent-high: #b6f0ff;
   --sl-color-white: #f5f7fa;
   --sl-color-gray-1: #e2e6ee;
   --sl-color-gray-2: #b9bfca;
@@ -27,11 +41,11 @@
   --sl-color-black: #0e1116;
 }
 
-/* Light mode */
+/* Light mode — desaturated cyan so contrast stays AAA on white. */
 :root[data-theme="light"] {
-  --sl-color-accent-low: #d8e4fa;
-  --sl-color-accent: #2f5fc4;
-  --sl-color-accent-high: #1c3a7a;
+  --sl-color-accent-low: rgba(51, 184, 214, 0.14);
+  --sl-color-accent: #178fa9;
+  --sl-color-accent-high: #0a4f5e;
   --sl-color-white: #0e1116;
   --sl-color-gray-1: #1d212b;
   --sl-color-gray-2: #3a4051;
@@ -42,23 +56,77 @@
   --sl-color-black: #ffffff;
 }
 
-/* Slightly tighter content rhythm */
+/* Tighter content rhythm. */
 .sl-markdown-content :is(h2, h3) {
   letter-spacing: -0.01em;
 }
 
-/* Code blocks: pull the corner radius back to match Starlight defaults
- * (expressiveCode override already does this, this is just belt-and-braces) */
+/* Bloom: hero title on the splash page picks up the same drop-shadow
+ * stack the app uses on its focused-pane chrome. The shadow only
+ * lands in dark mode where the cyan reads as a glow against the
+ * Obsidian-style background. */
+:root[data-theme="dark"] .hero h1 {
+  text-shadow:
+    0 0 6px var(--tau-cyan-glow),
+    0 0 18px rgba(111, 233, 255, 0.32);
+}
+
+/* Bloom: site-title pill. The version pill picks up the cyan tint via
+ * the accent variables; its border + colour shift is enough on its
+ * own. The site-title text gets a soft glow so the τ-mux wordmark
+ * matches the IconTau bloom in the assets. */
+:root[data-theme="dark"] .site-title {
+  text-shadow: 0 0 8px rgba(111, 233, 255, 0.28);
+}
+
+/* Hero icon — the IconTau PNG already ships its own bloom, but the
+ * Astro hero wraps it in a container we can give a soft halo so it
+ * reads as part of the page rather than pasted on. */
+:root[data-theme="dark"] .hero img {
+  filter:
+    drop-shadow(0 0 18px rgba(111, 233, 255, 0.35))
+    drop-shadow(0 0 6px rgba(111, 233, 255, 0.25));
+}
+
+/* Light mode keeps the icon clean — the source PNG's own glow reads
+ * fine against white. */
+:root[data-theme="light"] .hero img {
+  filter: drop-shadow(0 0 12px rgba(23, 143, 169, 0.18));
+}
+
+/* Code blocks: corner radius matches Starlight default. */
 .expressive-code .frame {
   border-radius: 0.5rem;
 }
 
-/* Inline code: subtle accent tint */
+/* Inline code: subtle accent tint. */
 .sl-markdown-content :not(pre) > code {
-  background: color-mix(
-    in srgb,
-    var(--sl-color-accent) 12%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--sl-color-accent) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
+}
+
+/* App-screenshot framing: rounded corners + cyan border-glow that
+ * mimics the focused-pane treatment in τ-mux. Applies to any image
+ * with the `tau-screenshot` class so we can opt-in per page. */
+.tau-screenshot {
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--sl-color-accent) 30%, transparent);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 12px 36px -12px rgba(0, 0, 0, 0.55),
+    0 0 28px -8px var(--tau-cyan-dim);
+  margin: 1.5rem auto;
+  display: block;
+}
+
+:root[data-theme="light"] .tau-screenshot {
+  box-shadow:
+    0 12px 36px -12px rgba(15, 25, 40, 0.18),
+    0 0 24px -8px rgba(23, 143, 169, 0.14);
+}
+
+/* Site-title row from SiteTitle.astro override gets a slightly
+ * brighter version pill in dark mode so the cyan accent pops. */
+:root[data-theme="dark"] .site-title-version {
+  box-shadow: 0 0 10px -2px rgba(111, 233, 255, 0.4);
 }
