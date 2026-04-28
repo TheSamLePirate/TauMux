@@ -26,6 +26,81 @@ async function loadSettingsPanel() {
   return { ...mod, DEFAULT_SETTINGS, THEME_PRESETS };
 }
 
+describe("SettingsPanel — Restore previous bloom (I9)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  test("button visible when migrated && legacyBloomIntensity > 0 && bloomIntensity === 0", async () => {
+    const { SettingsPanel, DEFAULT_SETTINGS } = await loadSettingsPanel();
+    const partials: Record<string, unknown>[] = [];
+    const panel = new SettingsPanel((p) =>
+      partials.push(p as Record<string, unknown>),
+    );
+    panel.show({
+      ...DEFAULT_SETTINGS,
+      bloomIntensity: 0,
+      bloomMigratedToTau: true,
+      legacyBloomIntensity: 0.6,
+    });
+    // Switch to Effects.
+    const effectsBtn = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".settings-nav-item"),
+    ).find((b) => b.textContent?.includes("Effects"));
+    effectsBtn!.click();
+
+    const btn = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".settings-reset-btn"),
+    ).find((b) => b.textContent?.startsWith("Restore previous bloom"));
+    expect(btn).toBeDefined();
+    expect(btn!.textContent).toContain("0.60");
+
+    btn!.click();
+    expect(partials.length).toBeGreaterThanOrEqual(1);
+    expect(partials[0]).toEqual({ bloomIntensity: 0.6 });
+  });
+
+  test("button hidden when bloomIntensity is non-zero (user already nudged it)", async () => {
+    const { SettingsPanel, DEFAULT_SETTINGS } = await loadSettingsPanel();
+    const panel = new SettingsPanel(() => {});
+    panel.show({
+      ...DEFAULT_SETTINGS,
+      bloomIntensity: 0.4,
+      bloomMigratedToTau: true,
+      legacyBloomIntensity: 0.6,
+    });
+    const effectsBtn = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".settings-nav-item"),
+    ).find((b) => b.textContent?.includes("Effects"));
+    effectsBtn!.click();
+
+    const btn = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".settings-reset-btn"),
+    ).find((b) => b.textContent?.startsWith("Restore previous bloom"));
+    expect(btn).toBeUndefined();
+  });
+
+  test("button hidden when no migration has happened", async () => {
+    const { SettingsPanel, DEFAULT_SETTINGS } = await loadSettingsPanel();
+    const panel = new SettingsPanel(() => {});
+    panel.show({
+      ...DEFAULT_SETTINGS,
+      bloomIntensity: 0,
+      bloomMigratedToTau: false,
+      legacyBloomIntensity: 0,
+    });
+    const effectsBtn = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".settings-nav-item"),
+    ).find((b) => b.textContent?.includes("Effects"));
+    effectsBtn!.click();
+
+    const btn = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".settings-reset-btn"),
+    ).find((b) => b.textContent?.startsWith("Restore previous bloom"));
+    expect(btn).toBeUndefined();
+  });
+});
+
 describe("SettingsPanel — theme preset feedback (I14)", () => {
   beforeEach(() => {
     document.body.innerHTML = "";

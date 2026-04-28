@@ -940,6 +940,24 @@ export class SettingsPanel {
           `fresh installs; set it to ${s.legacyBloomIntensity.toFixed(2)} ` +
           `to restore your previous look.`,
       );
+
+      // I9 — one-click restore. Only meaningful when the slider is at
+      // 0 (the user hasn't already nudged it). Once they pick *any*
+      // non-zero value the migration is effectively resolved and the
+      // button hides — no point letting it overwrite a user's
+      // intentional choice.
+      if (s.bloomIntensity === 0) {
+        const restoreBtn = document.createElement("button");
+        restoreBtn.className = "settings-reset-btn";
+        restoreBtn.textContent = `Restore previous bloom (${s.legacyBloomIntensity.toFixed(2)})`;
+        restoreBtn.addEventListener("click", () => {
+          const target = s.legacyBloomIntensity;
+          this.settings = { ...this.settings, bloomIntensity: target };
+          this.emit({ bloomIntensity: target });
+          this.renderActiveSection();
+        });
+        c.appendChild(restoreBtn);
+      }
     }
   }
 

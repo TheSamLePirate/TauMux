@@ -2,6 +2,11 @@
 
 Pending updates to fold into `website-doc/` on the next user-driven docs sweep.
 
+## 0.2.57 — PR #7 (C.3, C.4 mirror polish)
+
+- Web mirror: the agent-plans widget no longer stays hidden forever on a fresh connection. After the first `plansSnapshot` arrives (even an empty one) it now shows a "No active agent plans" placeholder, so users discover it exists before any agent posts a plan.
+- Settings → Effects: a "Restore previous bloom (X.XX)" button appears when the user was migrated from the legacy bloom slider AND has not yet picked a non-zero intensity. One click sets `bloomIntensity` to the snapshotted `legacyBloomIntensity`. Reflect in the Effects section of the website-doc settings page.
+
 ## 0.2.56 — PR #6 (D.1 pointer capture, D.2 FIFO)
 
 - Web mirror panel drag/resize gestures migrated to Pointer Events with `setPointerCapture` so a fast off-screen flick can no longer leave a panel "stuck" mid-drag (the browser now guarantees an end event). User-visible only as a stability fix; no API change.

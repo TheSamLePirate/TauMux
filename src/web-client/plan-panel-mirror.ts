@@ -35,6 +35,13 @@ export function createPlanPanelMirror(
   const { hostEl, onSelectWorkspace } = deps;
   let plans: Plan[] = [];
   let audit: AutoContinueAuditEntry[] = [];
+  // C.3 — keep the panel hidden during the brief window between page
+  // load and the first plansSnapshot envelope, so a fresh connection
+  // doesn't flash the "No active agent plans" empty state for one tick
+  // before the real list arrives. Flipped once `setPlans` is called the
+  // first time (even with an empty array — the server explicitly told
+  // us "no plans" rather than "haven't sent yet").
+  let receivedInitialSnapshot = false;
 
   const root = document.createElement("div");
   root.className = "sb-plan-panel hidden";
@@ -64,7 +71,10 @@ export function createPlanPanelMirror(
   });
 
   function repaint(): void {
-    if (plans.length === 0 && audit.length === 0) {
+    // Only the pre-first-snapshot empty case stays hidden — once the
+    // server has spoken, even an empty list means "no plans right now"
+    // and the user benefits from seeing the panel exists.
+    if (!receivedInitialSnapshot && plans.length === 0 && audit.length === 0) {
       root.classList.add("hidden");
       return;
     }
@@ -89,6 +99,7 @@ export function createPlanPanelMirror(
   return {
     setPlans(next) {
       plans = [...next];
+      receivedInitialSnapshot = true;
       repaint();
     },
     setAudit(next) {
