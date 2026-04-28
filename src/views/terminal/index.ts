@@ -1085,7 +1085,8 @@ function buildPaletteCommands(): PaletteCommand[] {
       id: "browser-split",
       category: "Browser",
       label: "Open Browser Split",
-      description: "Split a built-in browser pane alongside the current pane.",
+      description:
+        "Creates a new browser pane to the right of the focused pane.",
       shortcut: "\u2318\u21e7L",
       action: () =>
         rpc.send("splitBrowserSurface", { direction: "horizontal" }),
@@ -1094,28 +1095,31 @@ function buildPaletteCommands(): PaletteCommand[] {
       id: "browser-new",
       category: "Browser",
       label: "New Browser Workspace",
-      description: "Open a new workspace with a browser pane.",
+      description:
+        "Opens a fresh workspace containing a single browser pane (does not affect the current workspace).",
       action: () => rpc.send("createBrowserSurface", {}),
     },
     {
       id: "agent-new",
       category: "Agent",
       label: "New Agent Workspace",
-      description: "Open a pi coding agent in a new workspace.",
+      description:
+        "Opens a fresh workspace containing a pi coding agent pane (does not affect the current workspace).",
       action: () => rpc.send("createAgentSurface", {}),
     },
     {
       id: "agent-split-right",
       category: "Agent",
       label: "Split Agent Right",
-      description: "Split a pi coding agent alongside the current pane.",
+      description:
+        "Creates a new pi coding agent pane to the right of the focused pane.",
       action: () => rpc.send("splitAgentSurface", { direction: "horizontal" }),
     },
     {
       id: "agent-split-down",
       category: "Agent",
       label: "Split Agent Down",
-      description: "Split a pi coding agent below the current pane.",
+      description: "Creates a new pi coding agent pane below the focused pane.",
       action: () => rpc.send("splitAgentSurface", { direction: "vertical" }),
     },
     {

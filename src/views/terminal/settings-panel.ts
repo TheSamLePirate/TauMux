@@ -774,9 +774,25 @@ export class SettingsPanel {
       card.appendChild(label);
 
       card.addEventListener("click", () => {
-        this.emit(presetToPartial(preset));
-        // Re-render to update active state
-        setTimeout(() => this.renderActiveSection(), 20);
+        const partial = presetToPartial(preset);
+        // I14 — emit dispatches the partial through the parent's
+        // updateSettings pipeline; that path is asynchronous, so
+        // `this.settings` won't reflect the new preset on the next
+        // tick. Apply the partial locally so the immediate re-render
+        // can mark the clicked card "active" and refresh swatches
+        // without waiting for the bun roundtrip. The authoritative
+        // updateSettings push that follows is idempotent — re-applying
+        // the same fields is a no-op visually.
+        this.settings = {
+          ...this.settings,
+          ...partial,
+          ansiColors: {
+            ...this.settings.ansiColors,
+            ...(partial.ansiColors ?? {}),
+          },
+        };
+        this.emit(partial);
+        this.renderActiveSection();
       });
 
       presetsWrap.appendChild(card);

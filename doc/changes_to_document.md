@@ -2,6 +2,11 @@
 
 Pending updates to fold into `website-doc/` on the next user-driven docs sweep.
 
+## 0.2.55 — PR #5 (C.1, C.2 UX polish)
+
+- Theme preset cards in Settings → Theme now move the active-card border on the same tick as the click (no need to close & reopen the panel).
+- Command palette descriptions for Open Browser Split / New Browser Workspace / Split Agent Right / Split Agent Down now make the "creates a new pane" semantics explicit. Update website-doc command-palette page if it lists these.
+
 ## 0.2.53 — PR #3 (A.2 dev configDir)
 
 - `bun start`, `bun run dev`, and `bun run build:dev` now set `HT_CONFIG_DIR=$HOME/Library/Application Support/hyperterm-canvas-dev`. The dev runtime no longer shares socket / settings / cookies / browser-history with an installed τ-mux on the same machine. Mention in the website-doc dev section if applicable.
