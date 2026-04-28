@@ -20,6 +20,7 @@ export class Panel {
   private onEvent: (e: PanelEvent) => void;
   private hasContent = false;
   private currentTypeCssClass: string | null = null;
+  private contentRect: DOMRect | null = null;
 
   constructor(
     meta: SidebandContentMessage,
@@ -211,14 +212,15 @@ export class Panel {
     let startY = 0;
     let startLeft = 0;
     let startTop = 0;
+    let lastDx = 0;
+    let lastDy = 0;
 
     const onMouseMove = (e: MouseEvent) => {
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      const newLeft = startLeft + dx;
-      const newTop = startTop + dy;
-      this.el.style.left = `${newLeft}px`;
-      this.el.style.top = `${newTop}px`;
+      lastDx = dx;
+      lastDy = dy;
+      this.el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
     };
 
     const onMouseUp = () => {
@@ -226,8 +228,11 @@ export class Panel {
       document.removeEventListener("mouseup", onMouseUp);
       this.dragHandle.style.cursor = "grab";
       this.el.classList.remove("panel-dragging");
-      this.meta.x = parseInt(this.el.style.left) || 0;
-      this.meta.y = parseInt(this.el.style.top) || 0;
+      this.el.style.transform = "";
+      this.meta.x = Math.round(startLeft + lastDx);
+      this.meta.y = Math.round(startTop + lastDy);
+      this.el.style.left = `${this.meta.x}px`;
+      this.el.style.top = `${this.meta.y}px`;
       this.onEvent({
         id: this.id,
         event: "dragend",
@@ -256,17 +261,33 @@ export class Panel {
     let startY = 0;
     let startW = 0;
     let startH = 0;
+    let pendingW = 0;
+    let pendingH = 0;
+    let resizeFrame: number | null = null;
 
     const onMouseMove = (e: MouseEvent) => {
-      const newW = Math.max(120, startW + (e.clientX - startX));
-      const newH = Math.max(72, startH + (e.clientY - startY));
-      this.el.style.width = `${newW}px`;
-      this.el.style.height = `${newH}px`;
+      pendingW = Math.max(120, startW + (e.clientX - startX));
+      pendingH = Math.max(72, startH + (e.clientY - startY));
+      if (resizeFrame !== null) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = null;
+        this.el.style.width = `${pendingW}px`;
+        this.el.style.height = `${pendingH}px`;
+        this.contentRect = null;
+      });
     };
 
     const onMouseUp = () => {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      if (resizeFrame !== null) {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = null;
+      }
+      if (pendingW > 0 && pendingH > 0) {
+        this.el.style.width = `${pendingW}px`;
+        this.el.style.height = `${pendingH}px`;
+      }
       this.el.classList.remove("panel-resizing");
       this.meta.width = parseInt(this.el.style.width);
       this.meta.height = parseInt(this.el.style.height);
@@ -317,7 +338,11 @@ export class Panel {
   }
 
   private handleContentEvent = (e: MouseEvent): void => {
-    const rect = this.contentEl.getBoundingClientRect();
+    if (e.type === "mouseenter" || e.type === "mousedown") {
+      this.contentRect = this.contentEl.getBoundingClientRect();
+    }
+    const rect = this.contentRect ?? this.contentEl.getBoundingClientRect();
+    if (e.type === "mouseleave") this.contentRect = null;
     // Listeners are only attached for the six pointer event types below,
     // so e.type is always a PanelPointerEventName at runtime.
     this.onEvent({
@@ -347,6 +372,7 @@ export class Panel {
 
   private handleWheel = (e: WheelEvent): void => {
     const rect = this.contentEl.getBoundingClientRect();
+    this.contentRect = rect;
     this.onEvent({
       id: this.id,
       event: "wheel",

@@ -102,6 +102,12 @@ export interface AgentPanelState {
   messages: ChatMessage[];
   currentText: string;
   currentThinking: string;
+  /** rAF frame ids for in-flight stream/thinking render schedules.
+   *  Codex perf-pass merge: agent text/thinking deltas pour in faster
+   *  than the screen refreshes; rendering each delta synchronously
+   *  thrashed the DOM. We coalesce to one render per rAF. */
+  streamRenderFrame: number | null;
+  thinkingRenderFrame: number | null;
   isStreaming: boolean;
   isCompacting: boolean;
   model: AgentModelSummary | null;
@@ -550,6 +556,8 @@ export function createAgentPaneView(
     messages: [],
     currentText: "",
     currentThinking: "",
+    streamRenderFrame: null,
+    thinkingRenderFrame: null,
     isStreaming: false,
     isCompacting: false,
     model: null,
@@ -684,10 +692,10 @@ export function agentPanelHandleEvent(
       const dt = d["type"] as string;
       if (dt === "text_delta") {
         s.currentText += d["delta"] as string;
-        renderStream(view);
+        scheduleStreamRender(view);
       } else if (dt === "thinking_delta") {
         s.currentThinking += d["delta"] as string;
-        renderThinkingStream(view);
+        scheduleThinkingRender(view);
       } else if (dt === "done" || dt === "error") {
         flushStreaming(view);
       }
@@ -1120,6 +1128,7 @@ async function fileToImageAttachment(file: File): Promise<ImageAttachment> {
 
 function flushStreaming(view: AgentPaneView): void {
   const s = view._state;
+  cancelScheduledStreamRender(s);
   if (s.currentText || s.currentThinking) {
     s.messages.push({
       role: "assistant",
@@ -1144,6 +1153,39 @@ function flushStreaming(view: AgentPaneView): void {
   }
   s.toolCalls.clear();
   renderAllMessages(view);
+}
+
+/** Coalesce stream-text deltas to one render per rAF. Without this,
+ *  a model that emits 60 deltas/second renders the full streaming
+ *  surface 60×/sec — DOM thrashing during streaming was the agent
+ *  pane's biggest jank source pre-merge. Codex perf pass. */
+function scheduleStreamRender(view: AgentPaneView): void {
+  const s = view._state;
+  if (s.streamRenderFrame !== null) return;
+  s.streamRenderFrame = requestAnimationFrame(() => {
+    s.streamRenderFrame = null;
+    renderStream(view);
+  });
+}
+
+function scheduleThinkingRender(view: AgentPaneView): void {
+  const s = view._state;
+  if (s.thinkingRenderFrame !== null) return;
+  s.thinkingRenderFrame = requestAnimationFrame(() => {
+    s.thinkingRenderFrame = null;
+    renderThinkingStream(view);
+  });
+}
+
+function cancelScheduledStreamRender(s: AgentPanelState): void {
+  if (s.streamRenderFrame !== null) {
+    cancelAnimationFrame(s.streamRenderFrame);
+    s.streamRenderFrame = null;
+  }
+  if (s.thinkingRenderFrame !== null) {
+    cancelAnimationFrame(s.thinkingRenderFrame);
+    s.thinkingRenderFrame = null;
+  }
 }
 
 function syncStreamingUI(view: AgentPaneView): void {

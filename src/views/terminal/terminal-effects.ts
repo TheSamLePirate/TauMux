@@ -11,6 +11,18 @@ const PULSE_DURATION = 1.8; // seconds
 const PULSE_SPEED = 550; // px/sec (in canvas px)
 const RING_WIDTH_INPUT = 60; // px
 const RING_WIDTH_OUTPUT = 90; // px
+// Perf-pass merge (codex): occluder rasterisation runs on the CPU
+// (2D canvas blit). Capping it to ~30 fps frees frame budget for the
+// xterm renderer; the GPU draw still runs every rAF so pulses stay
+// smooth.
+const RASTER_MIN_INTERVAL_MS = 33;
+// Perf-pass merge (codex): pulses come from PTY chunks and key
+// events; without rate-limiting a single keystroke run or fast
+// stdout produces hundreds of overlapping rings per second. 16 ms
+// for input (one per frame max) and 35 ms for output (one per
+// rasterise budget).
+const INPUT_PULSE_MIN_INTERVAL_MS = 16;
+const OUTPUT_PULSE_MIN_INTERVAL_MS = 35;
 
 const VERTEX_SHADER_SOURCE = `
 attribute vec2 a_position;
@@ -210,6 +222,29 @@ export class TerminalEffects {
   private canvasH = 1;
   private mouseX = -1;
   private mouseY = -1;
+  /** Cached host bounding-rect origin. Refreshed by `resize()` and
+   *  the on-demand `updateGeometry()` so mousemove + cursor-pos
+   *  reads avoid `getBoundingClientRect()` per event. Codex perf
+   *  pass merge. */
+  private hostLeft = 0;
+  private hostTop = 0;
+  /** Cached xterm screen geometry — offset of the .xterm-screen
+   *  inside the host, plus per-cell width/height in canvas pixels.
+   *  Refreshed only when terminal cols/rows change or the canvas
+   *  resizes; previously every rasterise + cursor-pos read forced a
+   *  layout flush via two getBoundingClientRect calls. */
+  private offsetX = 0;
+  private offsetY = 0;
+  private cellW = 1;
+  private cellH = 1;
+  private geometryCols = 0;
+  private geometryRows = 0;
+  /** Rate limits for the rAF render loop (codex): rasterise capped
+   *  at 30 fps; pulses rate-limited so a key-repeat / fast-output
+   *  burst doesn't flood the canvas. */
+  private lastRasterAt = 0;
+  private lastInputPulseAt = 0;
+  private lastOutputPulseAt = 0;
 
   constructor(
     private host: HTMLElement,
@@ -282,9 +317,11 @@ export class TerminalEffects {
     );
 
     const onMouseMove = (e: MouseEvent): void => {
-      const rect = this.host.getBoundingClientRect();
-      this.mouseX = e.clientX - rect.left;
-      this.mouseY = e.clientY - rect.top;
+      // Codex merge: read against the cached host bounds instead of
+      // calling getBoundingClientRect on every mousemove. Refreshed
+      // by resize() / updateGeometry().
+      this.mouseX = e.clientX - this.hostLeft;
+      this.mouseY = e.clientY - this.hostTop;
       this.markDirty();
     };
     const onMouseLeave = (): void => {
@@ -305,6 +342,12 @@ export class TerminalEffects {
 
   pulseOutput(_size = 0): void {
     if (!this.available || !this.active) return;
+    // Codex merge: rate-limit so a fast-output burst (cat large
+    // file, build log) doesn't flood the canvas with overlapping
+    // rings. The visible animation is identical at the cap.
+    const now = performance.now();
+    if (now - this.lastOutputPulseAt < OUTPUT_PULSE_MIN_INTERVAL_MS) return;
+    this.lastOutputPulseAt = now;
     const pos = this.cursorCanvasPos();
     if (!pos) return;
     this.addPulse(pos.x, pos.y, "output");
@@ -312,6 +355,11 @@ export class TerminalEffects {
 
   pulseInput(_size = 0): void {
     if (!this.available || !this.active) return;
+    // Codex merge: same rate-limit shape as pulseOutput; one ring
+    // per frame max for input.
+    const now = performance.now();
+    if (now - this.lastInputPulseAt < INPUT_PULSE_MIN_INTERVAL_MS) return;
+    this.lastInputPulseAt = now;
     const pos = this.cursorCanvasPos();
     if (!pos) return;
     this.addPulse(pos.x, pos.y, "input");
@@ -368,22 +416,20 @@ export class TerminalEffects {
     const cols = this.term.cols;
     const rows = this.term.rows;
     if (cols <= 0 || rows <= 0) return null;
-
-    const hostRect = this.host.getBoundingClientRect();
-    const screen = this.host.querySelector(".xterm-screen") as HTMLElement;
-    const screenRect = screen ? screen.getBoundingClientRect() : hostRect;
-
-    const offsetX = (screenRect.left - hostRect.left) * this.dpr;
-    const offsetY = (screenRect.top - hostRect.top) * this.dpr;
-    const cellW = (screenRect.width * this.dpr) / cols;
-    const cellH = (screenRect.height * this.dpr) / rows;
+    // Codex merge: refresh geometry only when the terminal grid
+    // dimensions changed since the last refresh (or never refreshed
+    // yet). The previous code called getBoundingClientRect twice on
+    // every pulse — that's two layout flushes per keystroke.
+    if (cols !== this.geometryCols || rows !== this.geometryRows) {
+      this.updateGeometry();
+    }
 
     const cursorX = buffer.cursorX;
     const cursorY = buffer.cursorY;
 
     return {
-      x: offsetX + (cursorX + 0.5) * cellW,
-      y: offsetY + (cursorY + 0.5) * cellH,
+      x: this.offsetX + (cursorX + 0.5) * this.cellW,
+      y: this.offsetY + (cursorY + 0.5) * this.cellH,
     };
   }
 
@@ -423,9 +469,13 @@ export class TerminalEffects {
     // trail it left on the framebuffer.
     const pulsesJustEnded = pulsesBefore > 0 && this.pulses.length === 0;
 
-    if (this.dirty) {
+    // Codex merge: cap the CPU-side occluder rebuild to ~30 fps.
+    // The 2D-canvas blit inside rasterise() is the dominant frame
+    // cost; the GPU draw still runs every rAF so pulses stay smooth.
+    if (this.dirty && now - this.lastRasterAt >= RASTER_MIN_INTERVAL_MS) {
       this.rasterise();
       this.dirty = false;
+      this.lastRasterAt = now;
       this.dirtyDrawn = false;
     }
 
@@ -449,6 +499,10 @@ export class TerminalEffects {
   private resize(): void {
     if (!this.available) return;
     const rect = this.host.getBoundingClientRect();
+    // Codex merge: cache hostLeft/hostTop so mousemove doesn't have
+    // to re-read layout per event.
+    this.hostLeft = rect.left;
+    this.hostTop = rect.top;
     this.width = Math.max(1, Math.round(rect.width));
     this.height = Math.max(1, Math.round(rect.height));
     this.dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -464,6 +518,30 @@ export class TerminalEffects {
     this.occluderCanvas.height = this.canvasH;
 
     this.gl?.viewport(0, 0, this.canvasW, this.canvasH);
+    // Refresh xterm screen geometry now that the canvas changed.
+    this.updateGeometry();
+  }
+
+  /** Recompute the cached screen geometry from xterm's current
+   *  cols/rows + the host bounding rect. Called from `resize()` and
+   *  on-demand when `cursorCanvasPos()` notices the term grid moved.
+   *  Codex merge — replaces 2 getBoundingClientRect calls per pulse
+   *  / per rasterise with cached values. */
+  private updateGeometry(): void {
+    const cols = this.term.cols;
+    const rows = this.term.rows;
+    if (cols <= 0 || rows <= 0) return;
+    const hostRect = this.host.getBoundingClientRect();
+    this.hostLeft = hostRect.left;
+    this.hostTop = hostRect.top;
+    const screen = this.host.querySelector(".xterm-screen") as HTMLElement;
+    const screenRect = screen ? screen.getBoundingClientRect() : hostRect;
+    this.offsetX = (screenRect.left - hostRect.left) * this.dpr;
+    this.offsetY = (screenRect.top - hostRect.top) * this.dpr;
+    this.cellW = Math.max(1, (screenRect.width * this.dpr) / cols);
+    this.cellH = Math.max(1, (screenRect.height * this.dpr) / rows);
+    this.geometryCols = cols;
+    this.geometryRows = rows;
   }
 
   // ── Rasterise: draw occluder blocks + collect input-line lights ──────
