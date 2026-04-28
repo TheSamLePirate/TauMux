@@ -13,6 +13,26 @@ import {
 } from "./sidebar-manifest-card";
 import { renderStatusEntry } from "./status-renderers";
 
+/** Per-card slot cache used by Phase 3 of the perf pass. Each slot
+ *  is a section of the workspace card; the matching `sigs` entry is
+ *  the per-section signature computed from the slice of
+ *  `WorkspaceInfo` that drives that section. A miss rebuilds the
+ *  slot; a hit reuses the cached element across renders. */
+type CardSlotKey =
+  | "stripe"
+  | "header"
+  | "meta"
+  | "stats"
+  | "cwds"
+  | "panes"
+  | "manifests"
+  | "status"
+  | "progress";
+interface CardSlotCache {
+  slots: Partial<Record<CardSlotKey, HTMLElement>>;
+  sigs: Partial<Record<CardSlotKey, string>>;
+}
+
 /** Stable JSON signature of a `WorkspaceInfo[]`. Used by
  *  `Sidebar.setWorkspaces` to skip the render when the incoming
  *  payload is byte-identical to the last one. The replacer flattens
@@ -258,6 +278,16 @@ export class Sidebar {
    *  is the dominant idle-CPU draw. Stored as a stable JSON string
    *  with a Set replacer; comparison is O(string-length). */
   private lastWorkspacesSig: string | null = null;
+
+  /** Perf pass (Phase 3): per-card section caches. Each entry stores
+   *  the most-recently-built section nodes plus a per-section
+   *  signature; `populateWorkspaceCard` rebuilds only the sections
+   *  whose signature changed since the previous render. The 1 Hz
+   *  tick that drives stat-row updates no longer rebuilds header /
+   *  meta / cwds / panes / manifests / status / progress when only
+   *  cpuPercent moved. Cached by workspace id; cleared on workspace
+   *  removal via `reconcileUiState`. */
+  private cardSlots = new Map<string, CardSlotCache>();
 
   /** Plan #06 §A — keyed reconciliation cache. The previous
    *  implementation did `listEl.innerHTML = ""` on every refresh,
@@ -916,96 +946,239 @@ export class Sidebar {
   }
 
   /** Update an outer card's variable attributes + inner contents
-   *  in place. The outer element identity is preserved; only the
-   *  things that actually changed get touched. Inner subfields are
-   *  rebuilt on every call (Tier 1 of the plan); per-subfield
-   *  reconciliation is a future tier-2 polish. */
+   *  in place. The outer element identity is preserved (Plan #06
+   *  Tier 1); inner sections are now individually cached + diffed
+   *  by per-section signature (Phase 3 perf pass — Tier 2). The
+   *  most common metadata-tick case (only cpuPercent / cpuHistory
+   *  moved) now rebuilds only the stat row; header / meta / cwds /
+   *  panes / manifests / status / progress reuse their cached
+   *  nodes. */
   private populateWorkspaceCard(item: HTMLElement, ws: WorkspaceInfo): void {
     this.ensureUiState(ws.id);
     const accent = ws.color || DEFAULT_ACCENT;
 
-    // Attribute updates — assignments to `className` and
-    // `dataset[*]` are cheap and idempotent. Browsers no-op when
-    // the new value matches the old.
     item.className = `workspace-item${ws.active ? " active" : ""}${
       this.pinnedIds.has(ws.id) ? " pinned" : ""
     }`;
     item.style.setProperty("--workspace-accent", accent);
     item.setAttribute("aria-current", ws.active ? "true" : "false");
 
-    // Inner content — clear and rebuild. Tier 2 (per-subfield
-    // reconciliation) would chase the remaining flicker on the
-    // inner rows; the load-bearing fix is keeping the outer
-    // identity stable across refreshes.
-    item.replaceChildren();
+    let cache = this.cardSlots.get(ws.id);
+    if (!cache) {
+      cache = { slots: {}, sigs: {} };
+      this.cardSlots.set(ws.id, cache);
+    }
 
-    // Stripe on the left — thick, always tinted with the workspace
-    // colour. Cheap to rebuild; lives under the outer item.
-    const stripe = document.createElement("span");
-    stripe.className = "workspace-stripe";
-    stripe.setAttribute("aria-hidden", "true");
-    item.appendChild(stripe);
-
-    // Compact header row — workspace name + pin + close.
-    item.appendChild(this.buildCardHeader(ws));
-
+    const ordered: HTMLElement[] = [];
     const show = this.cardOptions.show;
+    const ui = this.uiState.get(ws.id);
+    const renamingHere = this.renamingId === ws.id;
+    const askPending = this.askUserPendingByWorkspace.get(ws.id) ?? 0;
 
+    // ── stripe ───────────────────────────────────────────────────
+    {
+      const sig = `s:${accent}`;
+      if (cache.sigs.stripe !== sig || !cache.slots.stripe) {
+        const stripe = document.createElement("span");
+        stripe.className = "workspace-stripe";
+        stripe.setAttribute("aria-hidden", "true");
+        cache.slots.stripe = stripe;
+        cache.sigs.stripe = sig;
+      }
+      ordered.push(cache.slots.stripe);
+    }
+
+    // ── header ───────────────────────────────────────────────────
+    {
+      const sig = [
+        "h",
+        ws.name,
+        ws.color ?? "",
+        ws.active ? "1" : "0",
+        this.pinnedIds.has(ws.id) ? "p" : "",
+        ws.surfaceTitles.length,
+        renamingHere ? "r" : "",
+        askPending,
+      ].join("|");
+      if (cache.sigs.header !== sig || !cache.slots.header) {
+        cache.slots.header = this.buildCardHeader(ws);
+        cache.sigs.header = sig;
+      }
+      ordered.push(cache.slots.header);
+    }
+
+    // ── meta row ────────────────────────────────────────────────
     if (show.meta) {
-      const meta = this.buildCardMetaRow(ws);
-      if (meta) item.appendChild(meta);
+      const sig = [
+        "m",
+        ws.focusedSurfaceCommand ?? "",
+        ws.focusedSurfaceTitle ?? "",
+        ws.listeningPorts.join(","),
+        ws.runningScripts.join(","),
+        ws.erroredScripts.join(","),
+        ws.runningCargoActions.join(","),
+        ws.erroredCargoActions.join(","),
+      ].join("|");
+      if (cache.sigs.meta !== sig) {
+        const fresh = this.buildCardMetaRow(ws);
+        if (fresh) {
+          cache.slots.meta = fresh;
+        } else {
+          delete cache.slots.meta;
+        }
+        cache.sigs.meta = sig;
+      }
+      if (cache.slots.meta) ordered.push(cache.slots.meta);
+    } else {
+      delete cache.slots.meta;
+      delete cache.sigs.meta;
     }
 
+    // ── stat row (the hot one — moves on every metadata tick) ───
     if (show.stats) {
-      item.appendChild(this.buildCardStatRow(ws, accent));
+      const sig = [
+        "st",
+        ws.cpuPercent.toFixed(1),
+        ws.memRssKb,
+        ws.processCount,
+        ws.cpuHistory.join(","),
+        ws.active ? "1" : "0",
+        accent,
+      ].join("|");
+      if (cache.sigs.stats !== sig || !cache.slots.stats) {
+        cache.slots.stats = this.buildCardStatRow(ws, accent);
+        cache.sigs.stats = sig;
+      }
+      ordered.push(cache.slots.stats);
+    } else {
+      delete cache.slots.stats;
+      delete cache.sigs.stats;
     }
 
+    // ── active-only sections ────────────────────────────────────
     if (ws.active) {
+      // cwds row
       if (ws.cwds.length > 1) {
-        item.appendChild(this.buildCwdRow(ws));
+        const sig = ["c", ws.cwds.join("|"), ws.selectedCwd ?? ""].join("|");
+        if (cache.sigs.cwds !== sig || !cache.slots.cwds) {
+          cache.slots.cwds = this.buildCwdRow(ws);
+          cache.sigs.cwds = sig;
+        }
+        ordered.push(cache.slots.cwds);
+      } else {
+        delete cache.slots.cwds;
+        delete cache.sigs.cwds;
       }
 
+      // panes
       if (show.panes && ws.surfaceTitles.length > 1) {
-        item.appendChild(
-          this.buildCollapseSection({
+        const open = ui?.panesOpen ?? false;
+        const sig = ["p", ws.surfaceTitles.join("|"), open ? "1" : "0"].join(
+          "|",
+        );
+        if (cache.sigs.panes !== sig || !cache.slots.panes) {
+          cache.slots.panes = this.buildCollapseSection({
             wsId: ws.id,
             key: "panesOpen",
             title: "Panes",
             count: ws.surfaceTitles.length,
             build: () => this.buildPanesList(ws),
-          }),
-        );
+          });
+          cache.sigs.panes = sig;
+        }
+        ordered.push(cache.slots.panes);
+      } else {
+        delete cache.slots.panes;
+        delete cache.sigs.panes;
       }
 
+      // manifests
       if (show.manifests && (ws.packageJson || ws.cargoToml)) {
+        const open = ui?.manifestsOpen ?? false;
         const count = (ws.packageJson ? 1 : 0) + (ws.cargoToml ? 1 : 0);
-        item.appendChild(
-          this.buildCollapseSection({
+        const sig = [
+          "mf",
+          stableWorkspacesSignature(ws.packageJson ?? null),
+          stableWorkspacesSignature(ws.cargoToml ?? null),
+          open ? "1" : "0",
+          count,
+        ].join("|");
+        if (cache.sigs.manifests !== sig || !cache.slots.manifests) {
+          cache.slots.manifests = this.buildCollapseSection({
             wsId: ws.id,
             key: "manifestsOpen",
             title: "Manifests",
             count,
             build: () => this.buildManifestsBlock(ws),
-          }),
-        );
+          });
+          cache.sigs.manifests = sig;
+        }
+        ordered.push(cache.slots.manifests);
+      } else {
+        delete cache.slots.manifests;
+        delete cache.sigs.manifests;
       }
 
+      // status pills
       if (show.statusPills && ws.statusPills.length > 0) {
-        item.appendChild(
-          this.buildCollapseSection({
+        const open = ui?.statusOpen ?? false;
+        const sig = [
+          "sp",
+          ws.statusPills
+            .map((p) => `${p.key}=${p.value}|${p.color ?? ""}|${p.icon ?? ""}`)
+            .join("/"),
+          open ? "1" : "0",
+        ].join("|");
+        if (cache.sigs.status !== sig || !cache.slots.status) {
+          cache.slots.status = this.buildCollapseSection({
             wsId: ws.id,
             key: "statusOpen",
             title: "Status",
             count: ws.statusPills.length,
             build: () => this.buildStatusGrid(ws),
-          }),
-        );
+          });
+          cache.sigs.status = sig;
+        }
+        ordered.push(cache.slots.status);
+      } else {
+        delete cache.slots.status;
+        delete cache.sigs.status;
       }
 
+      // progress
       if (show.progress && ws.progress) {
-        item.appendChild(this.buildProgressBar(ws));
+        const sig = `pr|${ws.progress.value}|${ws.progress.label ?? ""}`;
+        if (cache.sigs.progress !== sig || !cache.slots.progress) {
+          cache.slots.progress = this.buildProgressBar(ws);
+          cache.sigs.progress = sig;
+        }
+        ordered.push(cache.slots.progress);
+      } else {
+        delete cache.slots.progress;
+        delete cache.sigs.progress;
       }
+    } else {
+      // Inactive cards drop their active-only sections from cache so
+      // a re-activation rebuilds with fresh data (e.g. progress that
+      // arrived while the card was inactive).
+      delete cache.slots.cwds;
+      delete cache.slots.panes;
+      delete cache.slots.manifests;
+      delete cache.slots.status;
+      delete cache.slots.progress;
+      delete cache.sigs.cwds;
+      delete cache.sigs.panes;
+      delete cache.sigs.manifests;
+      delete cache.sigs.status;
+      delete cache.sigs.progress;
     }
+
+    // Replace children with the ordered slot list. When the slots
+    // are the same nodes in the same order as the current children
+    // (the common case post-Phase-3), the browser reuses them in
+    // place — no destruction or re-layout. When sections were
+    // rebuilt, only those nodes are new.
+    item.replaceChildren(...ordered);
   }
 
   private orderedWorkspaces(): WorkspaceInfo[] {
@@ -1620,6 +1793,12 @@ export class Sidebar {
         this.pinnedIds.delete(id);
         dirty = true;
       }
+    }
+    // Phase 3 perf pass: drop section caches for workspaces that
+    // disappeared so we don't keep references to detached DOM
+    // elements forever.
+    for (const id of [...this.cardSlots.keys()]) {
+      if (!alive.has(id)) this.cardSlots.delete(id);
     }
     if (dirty) {
       this.persistUiState();
