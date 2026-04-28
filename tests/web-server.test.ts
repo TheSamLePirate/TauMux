@@ -5,6 +5,17 @@ import { WEB_PROTOCOL_VERSION } from "../src/shared/web-protocol";
 
 const TEST_PORT = 18923;
 
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 1000,
+): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) return;
+    await Bun.sleep(20);
+  }
+}
+
 describe("WebServer", () => {
   let server: WebServer | null = null;
   let sessions: SessionManager | null = null;
@@ -234,7 +245,7 @@ describe("WebServer", () => {
 
     srv.broadcast({ type: "surfaceClosed", surfaceId: "test" });
 
-    await Bun.sleep(100);
+    await waitFor(() => received.every((client) => client.length >= 1));
 
     for (const client of received) {
       expect(client.length).toBeGreaterThanOrEqual(1);

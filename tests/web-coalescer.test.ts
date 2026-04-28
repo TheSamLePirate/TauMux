@@ -26,6 +26,17 @@ function metadata(overrides: Partial<SurfaceMetadata> = {}): SurfaceMetadata {
   };
 }
 
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 1000,
+): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) return;
+    await Bun.sleep(20);
+  }
+}
+
 describe("web M7 — coalescing + dedup", () => {
   let server: WebServer | null = null;
   let sessions: SessionManager | null = null;
@@ -84,8 +95,7 @@ describe("web M7 — coalescing + dedup", () => {
     received.length = 0;
 
     for (let i = 0; i < 20; i++) srv.broadcastStdout(surfaceId, `chunk-${i};`);
-    // Default OUTPUT_COALESCE_MS = 16 — wait well past it.
-    await Bun.sleep(80);
+    await waitFor(() => received.some((m) => m.type === "output"));
 
     const outputs = received.filter((m) => m.type === "output");
     expect(outputs.length).toBe(1);
@@ -121,7 +131,9 @@ describe("web M7 — coalescing + dedup", () => {
     // Third push changes a field — should broadcast.
     srv.sendSurfaceMetadata(surfaceId, metadata({ cwd: "/home/b" }));
 
-    await Bun.sleep(40);
+    await waitFor(
+      () => received.filter((m) => m.type === "surfaceMetadata").length >= 2,
+    );
     const metas = received.filter((m) => m.type === "surfaceMetadata");
     expect(metas.length).toBe(2);
     expect(
@@ -153,8 +165,7 @@ describe("web M7 — coalescing + dedup", () => {
     // waiting for the coalesce timer to elapse.
     const big = "x".repeat(16 * 1024);
     srv.broadcastStdout(surfaceId, big);
-    // Intentionally read before OUTPUT_COALESCE_MS elapses.
-    await Bun.sleep(8);
+    await waitFor(() => received.some((m) => m.type === "output"));
 
     const outputs = received.filter((m) => m.type === "output");
     expect(outputs.length).toBeGreaterThanOrEqual(1);

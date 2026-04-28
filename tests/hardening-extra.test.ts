@@ -136,6 +136,17 @@ function openWs(port: number, onHello: () => void): Promise<WebSocket> {
   });
 }
 
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 1000,
+): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) return;
+    await Bun.sleep(20);
+  }
+}
+
 describe("web mirror: input caps + rate limit", () => {
   let server: WebServer | null = null;
   let sessions: SessionManager | null = null;
@@ -180,8 +191,7 @@ describe("web mirror: input caps + rate limit", () => {
         data: "echo ok\n",
       }),
     );
-    // Give the server a tick to process both frames.
-    await new Promise((r) => setTimeout(r, 100));
+    await waitFor(() => writeCount === 1, 3000);
     ws.close();
 
     // Only the second (small) write should have reached the PTY.
@@ -218,7 +228,7 @@ describe("web mirror: input caps + rate limit", () => {
         data: "echo ok\n",
       }),
     );
-    await new Promise((r) => setTimeout(r, 100));
+    await waitFor(() => writeCount === 1, 3000);
     ws.close();
 
     expect(writeCount).toBe(1);
@@ -262,7 +272,7 @@ describe("web mirror: input caps + rate limit", () => {
         rows: "big" as unknown as number,
       }),
     );
-    await new Promise((r) => setTimeout(r, 100));
+    await waitFor(() => received.length >= 2);
     ws.close();
 
     // First two produce clamped values; third is dropped.

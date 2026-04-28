@@ -44,6 +44,7 @@ import {
 } from "./cookie-parsers";
 import { SocketServer } from "./socket-server";
 import { PanelRegistry } from "./panel-registry";
+import { NativeStdoutCoalescer } from "./native-stdout-coalescer";
 import { SurfaceMetadataPoller } from "./surface-metadata";
 import { WebServer } from "./web-server";
 import { createRpcHandler } from "./rpc-handler";
@@ -1202,19 +1203,37 @@ ContextMenu.on("context-menu-clicked", (event) => {
   if (menuEvent) handleMenuAction(menuEvent);
 });
 
-// Wire session callbacks → RPC → webview + web mirror
-sessions.onStdout = (surfaceId, data) => {
+// Wire session callbacks → RPC → webview + web mirror.
+//
+// Perf-pass merge: the native webview's RPC bridge gets its own 8 ms /
+// 8 KB coalescer for `writeStdout` so a fast PTY producer (cat, build
+// log, agent stream) doesn't fire one Electrobun JSON-RPC dispatch per
+// tiny chunk. The web-mirror WebSocket already had its own 16 ms
+// coalescer (`OUTPUT_COALESCE_MS`); both transports now batch.
+//
+// Ordering invariants the coalescer must preserve:
+//   - Pending stdout flushes BEFORE every sideband event so panels and
+//     downstream UI see the chunks that produced them in order.
+//   - Pending stdout flushes BEFORE surface close / exit so a final
+//     burst is delivered before "this surface is gone".
+const nativeStdout = new NativeStdoutCoalescer((surfaceId, data) => {
   rpc.send("writeStdout", { surfaceId, data });
+});
+
+sessions.onStdout = (surfaceId, data) => {
+  nativeStdout.push(surfaceId, data);
   app.webServer?.broadcastStdout(surfaceId, data);
 };
 
 sessions.onSidebandMeta = (surfaceId, msg) => {
+  nativeStdout.flushSurface(surfaceId);
   panelRegistry.handleMeta(surfaceId, msg);
   rpc.send("sidebandMeta", { ...msg, surfaceId });
   app.webServer?.broadcast({ type: "sidebandMeta", surfaceId, meta: msg });
 };
 
 sessions.onSidebandData = (surfaceId, id, data) => {
+  nativeStdout.flushSurface(surfaceId);
   // Native webview: base64 over Electrobun RPC (JSON transport requires it)
   const base64 = Buffer.from(data).toString("base64");
   rpc.send("sidebandData", { surfaceId, id, data: base64 });
@@ -1223,6 +1242,7 @@ sessions.onSidebandData = (surfaceId, id, data) => {
 };
 
 sessions.onSidebandDataFailed = (surfaceId, id, reason) => {
+  nativeStdout.flushSurface(surfaceId);
   rpc.send("sidebandDataFailed", { surfaceId, id, reason });
   app.webServer?.broadcast({
     type: "sidebandDataFailed",
@@ -1233,6 +1253,7 @@ sessions.onSidebandDataFailed = (surfaceId, id, reason) => {
 };
 
 sessions.onSurfaceClosed = (surfaceId) => {
+  nativeStdout.flushSurface(surfaceId);
   panelRegistry.clearSurface(surfaceId);
   rpc.send("surfaceClosed", { surfaceId });
   app.webServer?.broadcast({ type: "surfaceClosed", surfaceId });
@@ -1258,6 +1279,7 @@ browserSurfaces.onSurfaceClosed = (surfaceId) => {
 };
 
 sessions.onSurfaceExit = (surfaceId, exitCode) => {
+  nativeStdout.flushSurface(surfaceId);
   rpc.send("surfaceExited", { surfaceId, exitCode });
   app.webServer?.broadcast({ type: "surfaceExited", surfaceId, exitCode });
 };
@@ -2979,6 +3001,13 @@ async function gracefulShutdown(): Promise<void> {
     metadataPoller.stop();
   } catch (err) {
     console.warn("[main] metadataPoller.stop failed:", err);
+  }
+  // Drain any pending native-stdout coalescer batches so a final
+  // burst of output is delivered before the webview is closed.
+  try {
+    nativeStdout.dispose();
+  } catch (err) {
+    console.warn("[main] nativeStdout.dispose failed:", err);
   }
   // Force-flush the webview's pending `workspaceStateSync` before saving.
   // Without this, a just-made split is trapped in the 100ms debounce and

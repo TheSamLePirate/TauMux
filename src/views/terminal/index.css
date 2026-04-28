@@ -2065,6 +2065,10 @@ body.sidebar-resizing {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Perf-pass merge: limit layout / paint / style invalidation scope
+   * to this surface so a sidebar repaint or a panel resize doesn't
+   * force a recompute on every pane. */
+  contain: layout paint style;
   border-radius: 0;
   background:
     var(--bg-terminal-muted);
@@ -2458,6 +2462,11 @@ body.sidebar-resizing {
   mix-blend-mode: screen;
   opacity: 1;
   filter: none;
+  /* Perf-pass merge: hint the compositor to put this on its own layer
+   * so the bloom canvas doesn't cause repaints on the underlying
+   * terminal layer. */
+  transform: translateZ(0);
+  will-change: opacity;
 }
 
 .surface-terminal .xterm,
@@ -2626,6 +2635,11 @@ body.sidebar-resizing {
   flex-direction: column;
   pointer-events: auto;
   overflow: hidden;
+  /* Perf-pass merge: panels drag and resize a lot — containment
+   * scopes their layout/paint cost; will-change tells the compositor
+   * the transform animations are coming. */
+  contain: layout paint style;
+  will-change: transform, opacity;
   border-radius: 12px;
   border-top: 0.5px solid rgba(255, 255, 255, 0.12);
   border-left: 0.5px solid rgba(255, 255, 255, 0.08);
