@@ -19,8 +19,9 @@ When an agent (Claude Code, pi, a custom script) maintains a multi-step plan —
 ## Quick example
 
 ```bash
-# In an agent shell:
-ht plan set --workspace "$HT_WORKSPACE_ID" --agent claude:1 --json '[
+# Inside a τ-mux pane HT_SURFACE is auto-set, so the workspace is
+# resolved server-side — no --workspace flag needed.
+ht plan set --agent claude:1 --json '[
   {"id":"M1","title":"Explore","state":"active"},
   {"id":"M2","title":"Implement","state":"waiting"},
   {"id":"M3","title":"Test","state":"waiting"},
@@ -28,12 +29,15 @@ ht plan set --workspace "$HT_WORKSPACE_ID" --agent claude:1 --json '[
 ]'
 
 # As work progresses:
-ht plan update M1 --workspace "$HT_WORKSPACE_ID" --state done
-ht plan update M2 --workspace "$HT_WORKSPACE_ID" --state active
+ht plan update M1 --state done
+ht plan update M2 --state active
 
 # When done:
-ht plan complete --workspace "$HT_WORKSPACE_ID"
-ht plan clear    --workspace "$HT_WORKSPACE_ID"
+ht plan complete
+ht plan clear
+
+# From outside τ-mux, pass --workspace explicitly:
+#   ht plan set --workspace ws:5 --json '[…]'
 ```
 
 The sidebar widget shows the card the moment `set` lands; updates animate in 100 ms after each `update`.

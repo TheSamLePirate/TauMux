@@ -50,7 +50,7 @@ Replaces the plan for `(workspaceId, agentId?)`. Steps come in as a JSON array; 
 
 | Flag | Purpose |
 |---|---|
-| `--workspace <id>` | Target workspace (required, or set `HT_WORKSPACE_ID`). |
+| `--workspace <id>` | Target workspace. Optional inside a τ-mux pane (the server resolves the workspace from `HT_SURFACE`); required from a non-pane shell, or pass `HT_WORKSPACE_ID`. |
 | `--agent <id>` | Optional. Lets multiple agents in the same workspace own separate plans. |
 | `--json '<steps>'` | The full step array (required). |
 
@@ -77,7 +77,7 @@ ht plan complete --workspace ws:5 --agent claude:1
 Mark every step `done` in one call. Useful as the agent's "I'm finished" signal — combined with `plan clear` it gives scripts a clean finish-and-tear-down path:
 
 ```bash
-trap 'ht plan complete --workspace "$HT_WORKSPACE_ID"' EXIT
+trap 'ht plan complete' EXIT   # inside a τ-mux pane, no flags needed
 ```
 
 ## plan clear
@@ -106,7 +106,8 @@ The bridge derives the plan's `agentId` from the surface (`status:<surfaceId>`) 
 
 | Variable | Purpose |
 |---|---|
-| `HT_WORKSPACE_ID` | Default `--workspace` value. Exported into every τ-mux pane. |
+| `HT_SURFACE` | Auto-set in τ-mux panes. The server resolves the owning workspace from it, so `--workspace` is optional inside a pane. |
+| `HT_WORKSPACE_ID` | Optional explicit override. **Not** auto-set — export it manually if you want a non-pane shell to default to a specific workspace. |
 
 ## Read more
 

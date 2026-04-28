@@ -59,8 +59,8 @@ Without `--json`, output is human-friendly text — tables for lists, summary li
 | Variable | Purpose |
 |----------|---------|
 | `HT_SOCKET_PATH` | Override `/tmp/hyperterm.sock` |
-| `HT_SURFACE` | Auto-set per spawned shell (CLI default for `--surface`) |
-| `HT_WORKSPACE_ID` / `HT_SURFACE_ID` | Legacy aliases documented in `ht --help` |
+| `HT_SURFACE` | Auto-set per spawned shell (CLI default for `--surface`; the server resolves the owning workspace from it for workspace-scoped commands) |
+| `HT_WORKSPACE_ID` | Optional override for `--workspace`. **Not** auto-set — export it manually if you want a non-pane shell to default to a specific workspace. |
 | `HYPERTERM_WEB_PORT` | Overrides `webMirrorPort` and force-starts the mirror |
 | `HYPERTERM_DEBUG` | Enables debug logs in the Python / TS sideband clients |
 

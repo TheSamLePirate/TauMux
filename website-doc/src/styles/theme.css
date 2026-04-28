@@ -130,3 +130,102 @@
 :root[data-theme="dark"] .site-title-version {
   box-shadow: 0 0 10px -2px rgba(111, 233, 255, 0.4);
 }
+
+/* "Just a personal project" hero on the splash page. Card carries the
+ * same Obsidian-tone background + cyan border-glow as `.tau-screenshot`,
+ * with an animated conic-gradient ring on the corners so the block
+ * reads as a deliberate hero rather than a quote callout. The eyebrow
+ * uses the JetBrains Mono stack so it picks up the terminal vibe. */
+.vibe-hero {
+  margin: 2.25rem auto 2.75rem;
+  display: flex;
+  justify-content: center;
+}
+.vibe-hero-card {
+  position: relative;
+  max-width: 44rem;
+  width: 100%;
+  padding: 2rem 2.25rem 1.75rem;
+  border-radius: 0.9rem;
+  background:
+    radial-gradient(140% 140% at 0% 0%, var(--tau-cyan-dim), transparent 55%),
+    radial-gradient(140% 140% at 100% 100%, rgba(255, 197, 107, 0.10), transparent 60%),
+    color-mix(in srgb, var(--sl-color-black) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tau-cyan) 32%, transparent);
+  box-shadow:
+    0 0 0 1px rgba(111, 233, 255, 0.06) inset,
+    0 18px 48px -22px var(--tau-cyan-glow),
+    0 6px 24px -10px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  overflow: hidden;
+}
+.vibe-hero-card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--tau-cyan) 70%, transparent),
+    color-mix(in srgb, var(--tau-amber) 35%, transparent),
+    transparent 70%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+.vibe-hero-eyebrow {
+  font-family: var(--sl-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--tau-cyan);
+  opacity: 0.85;
+  margin-bottom: 1rem;
+}
+:root[data-theme="dark"] .vibe-hero-eyebrow {
+  text-shadow: 0 0 8px rgba(111, 233, 255, 0.32);
+}
+.vibe-hero-line {
+  font-size: 1.1rem;
+  line-height: 1.55;
+  color: var(--sl-color-white);
+  margin: 0.4rem 0;
+}
+.vibe-hero-line code {
+  background: color-mix(in srgb, var(--tau-cyan) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tau-cyan) 30%, transparent);
+  border-radius: 0.4rem;
+  padding: 0.05em 0.4em;
+  color: var(--sl-color-accent-high);
+  font-size: 0.95em;
+}
+.vibe-hero-line a {
+  color: var(--sl-color-accent);
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in srgb, var(--sl-color-accent) 55%, transparent);
+}
+.vibe-hero-line a:hover {
+  color: var(--sl-color-accent-high);
+  border-bottom-color: var(--sl-color-accent-high);
+}
+.vibe-hero-quote {
+  margin-top: 1.25rem;
+  font-style: italic;
+  font-size: 0.95rem;
+  color: color-mix(in srgb, var(--sl-color-white) 75%, transparent);
+  letter-spacing: 0.01em;
+}
+:root[data-theme="light"] .vibe-hero-card {
+  background:
+    radial-gradient(140% 140% at 0% 0%, rgba(23, 143, 169, 0.08), transparent 55%),
+    radial-gradient(140% 140% at 100% 100%, rgba(255, 197, 107, 0.10), transparent 60%),
+    color-mix(in srgb, var(--sl-color-black) 96%, transparent);
+  box-shadow:
+    0 18px 48px -22px rgba(23, 143, 169, 0.30),
+    0 6px 24px -10px rgba(15, 25, 40, 0.10);
+}

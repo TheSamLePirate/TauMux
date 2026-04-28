@@ -25,9 +25,7 @@ These are populated automatically when τ-mux spawns a new terminal surface. Scr
 
 | Variable | Value | Purpose |
 |---|---|---|
-| `HT_SURFACE` | e.g. `surface:3` | This surface's id. The CLI reads it as the default `--surface`. |
-| `HT_WORKSPACE_ID` | e.g. `ws:0` | Legacy alias — same as `HT_SURFACE`'s workspace. |
-| `HT_SURFACE_ID` | e.g. `surface:3` | Legacy alias for `HT_SURFACE`. |
+| `HT_SURFACE` | e.g. `surface:3` | This surface's id. The CLI reads it as the default `--surface`; bun handlers resolve the owning workspace from it for `ht plan`, `ht set-status`, `ht log`, `ht notify`. |
 | `HYPERTERM_PROTOCOL_VERSION` | `1` | Set on every spawned shell. Sideband clients use it as a "are we inside τ-mux?" check. |
 | `HYPERTERM_CHANNELS` | `{"meta":3,"data":4,"events":5}` | JSON channel map for the sideband protocol. |
 | `TERM` | `xterm-256color` | Standard terminfo entry. |

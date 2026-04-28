@@ -29,8 +29,7 @@ When τ-mux spawns a new shell (e.g., `zsh` or `bash`), it injects a specific se
 |---|---|
 | `TERM=xterm-256color` | Tells CLI applications (like vim or htop) to use rich colors. |
 | `COLORTERM=truecolor` | Indicates the terminal supports 24-bit RGB colors. |
-| `HT_WORKSPACE_ID` | The ID of the current workspace (e.g., `ws:1`). |
-| `HT_SURFACE_ID` | The ID of the specific pane/surface you are in (e.g., `surface:4`). |
+| `HT_SURFACE` | The ID of the specific pane/surface you are in (e.g., `surface:4`). The `ht` CLI uses it as the default `--surface`, and the bun handlers resolve the owning workspace from it. |
 | `HT_SOCKET_PATH` | The path to the Unix socket for the RPC API (default: `/tmp/hyperterm.sock`). |
 | `HYPERTERM_META_FD` | The File Descriptor number mapped to the Sideband Meta channel (usually `3`). |
 | `HYPERTERM_DATA_FD` | The File Descriptor number mapped to the Sideband Binary channel (usually `4`). |

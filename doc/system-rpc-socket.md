@@ -88,7 +88,7 @@ ht rename-workspace "frontend-build"
 
 A workspace is divided into panes (referred to internally as "surfaces"). Every terminal instance running inside τ-mux is a surface with a unique ID (e.g., `surface:5`).
 
-When you run `ht` inside a τ-mux pane, the environment variables `HT_WORKSPACE_ID` and `HT_SURFACE_ID` are automatically set. If you don't specify a `--surface` flag in your commands, `ht` will target the pane it was executed from.
+When you run `ht` inside a τ-mux pane, the environment variable `HT_SURFACE` is automatically set to the pane's id. If you don't specify a `--surface` flag, `ht` will target that pane; the bun-side handlers also resolve the owning workspace from it, so workspace-scoped commands (`ht plan …`, `ht set-status`, `ht log`, `ht notify`) Just Work without a `--workspace` flag. `HT_SOCKET_PATH` is also exported so `ht` knows where to find the socket. `HT_WORKSPACE_ID` is **not** auto-set — pass it (or `--workspace`) only when you explicitly need to target a different workspace than the caller's.
 
 **Splitting the current pane:**
 ```bash

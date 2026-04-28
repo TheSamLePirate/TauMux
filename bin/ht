@@ -716,23 +716,32 @@ function mapCommand(): RpcCall {
     // `ht plan list`               — print every active plan.
     case "plan": {
       const sub = positional[0] || "list";
+      // Workspace is resolved server-side: explicit `--workspace` /
+      // `HT_WORKSPACE_ID` wins; otherwise the backend falls back to the
+      // workspace that owns `surface_id`. Inside a τ-mux pane HT_SURFACE
+      // is auto-set, so `ht plan …` Just Works without flags.
       const workspaceId =
         flags["workspace"] ||
         flags["workspace_id"] ||
         process.env["HT_WORKSPACE_ID"] ||
         undefined;
+      const surfaceId =
+        flags["surface"] || process.env["HT_SURFACE"] || undefined;
       const agentId =
         flags["agent"] || flags["agent_id"] || undefined;
+      const requireScope = (cmd: string): void => {
+        if (!workspaceId && !surfaceId) {
+          console.error(
+            `ht plan ${cmd}: --workspace W is required (or run inside a τ-mux pane so HT_SURFACE is set)`,
+          );
+          process.exit(1);
+        }
+      };
       switch (sub) {
         case "list":
           return { method: "plan.list", params: {} };
         case "set": {
-          if (!workspaceId) {
-            console.error(
-              "ht plan set: --workspace W is required (or set HT_WORKSPACE_ID)",
-            );
-            process.exit(1);
-          }
+          requireScope("set");
           const json = flags["json"];
           if (!json) {
             console.error(
@@ -751,18 +760,14 @@ function mapCommand(): RpcCall {
             method: "plan.set",
             params: {
               workspace_id: workspaceId,
+              surface_id: surfaceId,
               agent_id: agentId,
               steps,
             },
           };
         }
         case "update": {
-          if (!workspaceId) {
-            console.error(
-              "ht plan update: --workspace W is required (or set HT_WORKSPACE_ID)",
-            );
-            process.exit(1);
-          }
+          requireScope("update");
           const stepId = positional[1];
           if (!stepId) {
             console.error("ht plan update: <stepId> positional is required");
@@ -772,6 +777,7 @@ function mapCommand(): RpcCall {
             method: "plan.update",
             params: {
               workspace_id: workspaceId,
+              surface_id: surfaceId,
               agent_id: agentId,
               step_id: stepId,
               state: flags["state"],
@@ -780,27 +786,25 @@ function mapCommand(): RpcCall {
           };
         }
         case "complete": {
-          if (!workspaceId) {
-            console.error(
-              "ht plan complete: --workspace W is required (or set HT_WORKSPACE_ID)",
-            );
-            process.exit(1);
-          }
+          requireScope("complete");
           return {
             method: "plan.complete",
-            params: { workspace_id: workspaceId, agent_id: agentId },
+            params: {
+              workspace_id: workspaceId,
+              surface_id: surfaceId,
+              agent_id: agentId,
+            },
           };
         }
         case "clear": {
-          if (!workspaceId) {
-            console.error(
-              "ht plan clear: --workspace W is required (or set HT_WORKSPACE_ID)",
-            );
-            process.exit(1);
-          }
+          requireScope("clear");
           return {
             method: "plan.clear",
-            params: { workspace_id: workspaceId, agent_id: agentId },
+            params: {
+              workspace_id: workspaceId,
+              surface_id: surfaceId,
+              agent_id: agentId,
+            },
           };
         }
         default:
@@ -2230,8 +2234,9 @@ Aliases:
 
 Environment:
   HT_SOCKET_PATH    Override socket path (default: /tmp/hyperterm.sock)
-  HT_WORKSPACE_ID   Auto-set in HyperTerm terminals
-  HT_SURFACE_ID     Auto-set in HyperTerm terminals
+  HT_SURFACE        Auto-set in τ-mux panes — used as default --surface,
+                    and the server resolves the owning workspace from it
+  HT_WORKSPACE_ID   Optional override for --workspace (not auto-set)
   HT_TELEGRAM_CHAT  Default chat id for "ht telegram read | send"
 
 Add --json to any command for raw JSON output.`);

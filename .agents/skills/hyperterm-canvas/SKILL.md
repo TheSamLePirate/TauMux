@@ -530,7 +530,9 @@ Publish a multi-step plan that surfaces in the τ-mux **plan panel** (sidebar wi
 ### Set / replace the plan
 
 ```bash
-ht plan set --workspace "$HT_WORKSPACE_ID" --agent claude:1 --json '[
+# Inside a τ-mux pane HT_SURFACE is auto-set; the server resolves the
+# workspace from it, so --workspace is optional.
+ht plan set --agent claude:1 --json '[
   {"id":"M1","title":"Explore","state":"done"},
   {"id":"M2","title":"Implement","state":"active"},
   {"id":"M3","title":"Test","state":"waiting"},
@@ -538,21 +540,21 @@ ht plan set --workspace "$HT_WORKSPACE_ID" --agent claude:1 --json '[
 ]'
 ```
 
-`--workspace` is required (or set `HT_WORKSPACE_ID`). `--agent` is optional. The full step array is required; `state` defaults to `waiting` if omitted.
+`--workspace` is optional inside a τ-mux pane (resolved from `HT_SURFACE`); required from a non-pane shell, or pass `HT_WORKSPACE_ID`. `--agent` is optional. The full step array is required; `state` defaults to `waiting` if omitted.
 
 ### Patch one step
 
 ```bash
-ht plan update M2 --workspace "$HT_WORKSPACE_ID" --state done
-ht plan update M3 --workspace "$HT_WORKSPACE_ID" --state active
-ht plan update M2 --workspace "$HT_WORKSPACE_ID" --title "Implement fix v2"
+ht plan update M2 --state done
+ht plan update M3 --state active
+ht plan update M2 --title "Implement fix v2"
 ```
 
 ### Mark all done / clear
 
 ```bash
-ht plan complete --workspace "$HT_WORKSPACE_ID"   # mark every step done
-ht plan clear    --workspace "$HT_WORKSPACE_ID"   # drop the plan
+ht plan complete   # mark every step done
+ht plan clear      # drop the plan
 ```
 
 ### List plans
@@ -924,7 +926,7 @@ ht browser list --json
 - `ht agent new` + `ht shutdown` require the bun main process and will not work against a web-mirror-only connection.
 - `ht telegram send` reads stdin when no positional text is given — `make 2>&1 | ht telegram send` works.
 - `HT_TELEGRAM_CHAT` overrides the most-recent-chat fallback for `ht telegram send` and `ht telegram read`.
-- `ht plan set` requires `--workspace` (or `HT_WORKSPACE_ID`); the steps array is a JSON string parsed by the CLI before forwarding.
+- `ht plan set` resolves the workspace from `HT_SURFACE` inside a pane (no `--workspace` needed); pass `--workspace` (or `HT_WORKSPACE_ID`) when calling from outside τ-mux. The steps array is a JSON string parsed by the CLI before forwarding.
 - `ht autocontinue` is **off by default** (engine=off) and starts in **dry-run** when first enabled — every decision is logged to the audit ring without sending text. Flip `Dry run` off in Settings → Auto-continue or via `ht autocontinue set --dry-run false` once you trust what you see.
 - `ht ask` blocks until the user answers/cancels/timeouts. Always check the exit code: `0` = answered, `2` = timeout, `3` = cancelled. Stdout carries the answer when exit is `0`.
 - `ht ask` runs from inside any τ-mux pane will inherit `HT_SURFACE` automatically; from a remote shell pass `--surface surface:N` explicitly.

@@ -5,6 +5,7 @@ import {
   type AppState,
   type WorkspaceSnapshot,
 } from "../src/bun/rpc-handler";
+import { PlanStore } from "../src/bun/plan-store";
 
 function makeState(overrides: Partial<AppState> = {}): AppState {
   return {
@@ -341,6 +342,129 @@ describe("RPC Handler", () => {
     const handler = setup();
     handler("sidebar.set_status", { key: "build", value: "ok" });
     expect(dispatched[0].payload["workspaceId"]).toBeUndefined();
+  });
+
+  // ── Plans ──
+
+  function setupWithPlans(stateOverrides: Partial<AppState> = {}) {
+    sessions = new SessionManager("/bin/sh");
+    dispatched = [];
+    const state = makeState(stateOverrides);
+    const plans = new PlanStore();
+    const handler = createRpcHandler(
+      sessions,
+      () => state,
+      (action, payload) => dispatched.push({ action, payload }),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { plans },
+    );
+    return { handler, plans };
+  }
+
+  test("plan.set resolves workspace_id from surface_id when missing", () => {
+    const { handler, plans } = setupWithPlans({
+      workspaces: [
+        {
+          id: "ws:A",
+          name: "A",
+          color: "#89b4fa",
+          surfaceIds: ["surface:1"],
+          focusedSurfaceId: "surface:1",
+          layout: { type: "leaf", surfaceId: "surface:1" },
+        },
+        {
+          id: "ws:B",
+          name: "B",
+          color: "#f5c2e7",
+          surfaceIds: ["surface:2"],
+          focusedSurfaceId: "surface:2",
+          layout: { type: "leaf", surfaceId: "surface:2" },
+        },
+      ],
+      activeWorkspaceId: "ws:A",
+    });
+    // Script running in ws:B calls `ht plan set` without --workspace; only
+    // HT_SURFACE=surface:2 is forwarded. The plan must land on ws:B.
+    handler("plan.set", {
+      surface_id: "surface:2",
+      steps: [{ id: "M1", title: "do thing", state: "active" }],
+    });
+    const list = plans.list();
+    expect(list.length).toBe(1);
+    expect(list[0].workspaceId).toBe("ws:B");
+    expect(list[0].steps[0].id).toBe("M1");
+  });
+
+  test("plan.set prefers explicit workspace_id over surface_id", () => {
+    const { handler, plans } = setupWithPlans({
+      workspaces: [
+        {
+          id: "ws:A",
+          name: "A",
+          color: "#89b4fa",
+          surfaceIds: ["surface:1"],
+          focusedSurfaceId: "surface:1",
+          layout: { type: "leaf", surfaceId: "surface:1" },
+        },
+        {
+          id: "ws:B",
+          name: "B",
+          color: "#f5c2e7",
+          surfaceIds: ["surface:2"],
+          focusedSurfaceId: "surface:2",
+          layout: { type: "leaf", surfaceId: "surface:2" },
+        },
+      ],
+    });
+    handler("plan.set", {
+      workspace_id: "ws:A",
+      surface_id: "surface:2",
+      steps: [{ id: "M1", title: "x", state: "waiting" }],
+    });
+    expect(plans.list()[0].workspaceId).toBe("ws:A");
+  });
+
+  test("plan.set throws when neither workspace_id nor surface_id is present", () => {
+    const { handler } = setupWithPlans();
+    expect(() =>
+      handler("plan.set", { steps: [{ id: "M1", title: "x" }] }),
+    ).toThrow(/workspace_id required/);
+  });
+
+  test("plan.update / complete / clear resolve workspace from surface_id too", () => {
+    const { handler, plans } = setupWithPlans({
+      workspaces: [
+        {
+          id: "ws:A",
+          name: "A",
+          color: "#89b4fa",
+          surfaceIds: ["surface:1"],
+          focusedSurfaceId: "surface:1",
+          layout: { type: "leaf", surfaceId: "surface:1" },
+        },
+      ],
+    });
+    handler("plan.set", {
+      surface_id: "surface:1",
+      steps: [{ id: "M1", title: "x", state: "waiting" }],
+    });
+    handler("plan.update", {
+      surface_id: "surface:1",
+      step_id: "M1",
+      state: "done",
+    });
+    expect(plans.list()[0].steps[0].state).toBe("done");
+
+    handler("plan.complete", { surface_id: "surface:1" });
+    expect(plans.list()[0].steps.every((s) => s.state === "done")).toBe(true);
+
+    handler("plan.clear", { surface_id: "surface:1" });
+    expect(plans.list().length).toBe(0);
   });
 
   // ── Notifications ──

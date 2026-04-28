@@ -1,4 +1,5 @@
 import type { PaneNode, PaneRect } from "../../shared/types";
+import type { WorkspaceSnapshot } from "./types";
 
 /** Compute normalized rects (0-1) from a PaneNode tree. */
 export function computeNormalizedRects(node: PaneNode): Map<string, PaneRect> {
@@ -262,4 +263,23 @@ export function resolveSurfaceId(
     (params["surface_id"] as string | undefined) ??
     (params["surface"] as string | undefined);
   return explicit ?? focusedId;
+}
+
+/** Resolve the workspace a handler call targets. Explicit `workspace_id`
+ *  / `workspace` wins. Otherwise fall back to the workspace that owns
+ *  `surface_id` (HT_SURFACE is exported into every τ-mux pane, so scripts
+ *  inherit it for free). Returns `undefined` when neither hint is
+ *  available — callers decide whether to fall through to the active
+ *  workspace or reject the request. */
+export function resolveWorkspaceId(
+  params: Record<string, unknown>,
+  workspaces: WorkspaceSnapshot[],
+): string | undefined {
+  const explicit = (params["workspace_id"] ?? params["workspace"]) as
+    | string
+    | undefined;
+  if (explicit) return explicit;
+  const surfaceId = params["surface_id"] as string | undefined;
+  if (!surfaceId) return undefined;
+  return workspaces.find((w) => w.surfaceIds.includes(surfaceId))?.id;
 }
