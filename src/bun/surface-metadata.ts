@@ -674,6 +674,28 @@ export class SurfaceMetadataPoller {
  *  the next tick will retry. */
 const SUBPROCESS_TIMEOUT_MS = 5000;
 
+/** Build a child-process env that pins every locale category to POSIX.
+ *  Setting only `LC_ALL` is *almost* enough — most libc implementations
+ *  honor `LC_ALL` over the per-category vars — but a few (glibc with
+ *  certain locale archives, IEEE 1003.1 edge cases) read the more
+ *  specific category when available. We cover them all so a user
+ *  shipping a custom `LC_NUMERIC=fr_FR.UTF-8` in their environment
+ *  cannot accidentally re-introduce comma decimal separators in our
+ *  `ps` output. Issue I13 in doc/full_analysis.md. */
+function posixLocaleEnv(): Record<string, string | undefined> {
+  return {
+    ...process.env,
+    LC_ALL: "C",
+    LANG: "C",
+    LC_NUMERIC: "C",
+    LC_MONETARY: "C",
+    LC_TIME: "C",
+    LC_COLLATE: "C",
+    LC_CTYPE: "C",
+    LC_MESSAGES: "C",
+  };
+}
+
 /** Run a command and return {stdout, exitCode} or null if it failed, was
  *  killed by the timeout, or threw at spawn. Stderr is consumed in
  *  parallel so the child cannot deadlock by filling a 64 KiB pipe
@@ -757,8 +779,9 @@ async function runPs(): Promise<Map<number, PsRow> | null> {
   const res = await runSubprocess(
     ["ps", "-axo", "pid,ppid,pgid,stat,%cpu,rss,args", "-ww"],
     // Force POSIX locale so CPU% always formats as "0.4" (not "0,4"
-    // in locales like fr_FR, de_DE).
-    { env: { ...process.env, LC_ALL: "C", LANG: "C" } },
+    // in locales like fr_FR, de_DE). Neutralize every category in
+    // case the user has e.g. `LC_NUMERIC=fr_FR` overriding `LC_ALL`.
+    { env: posixLocaleEnv() },
   );
   if (!res || res.exitCode !== 0) return null;
   return parsePs(res.stdout);
@@ -792,7 +815,7 @@ async function runListeningPorts(
  * Never throws — subprocess failures degrade gracefully to null.
  */
 async function runGit(cwd: string): Promise<GitInfo | null> {
-  const gitEnv = { ...process.env, LC_ALL: "C", LANG: "C" };
+  const gitEnv = posixLocaleEnv();
   const statusRes = await runSubprocess(
     ["git", "status", "--porcelain=v2", "-b"],
     { cwd, env: gitEnv },

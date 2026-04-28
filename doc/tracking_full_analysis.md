@@ -201,4 +201,30 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 
 **Deviations / issues:** none.
 
+**Commit:** `888c8be` (bump 0.2.47 → 0.2.48).
+
+---
+
+### Step 11 — I4, I5, I13: telegram + locale robustness
+
+**What:** Three small but real robustness fixes that the audit flagged.
+
+- **I4** — when the telegram service fails to persist its update offset (db lock, disk full, schema drift), the catch no longer silently discards the error. It now logs `"telegram offset persist failed: <reason>"` via `onLog` so operators see *why* polling is leaking back to the same updates.
+- **I5** — `probeIdentity()` used to await `transport.getMe({ signal })` with no application-side timeout. If the Telegram API responded slowly (or stalled mid-response), the probe could hang indefinitely while the status pill stayed in `starting`. Now races against a 5 s timeout that resolves with a synthetic `{ ok: false, description: "getMe timed out after 5000ms" }`, and clears the timer in a `finally` so we don't leak handles.
+- **I13** — surface-metadata poller now neutralizes every locale category (`LC_ALL`, `LANG`, `LC_NUMERIC`, `LC_MONETARY`, `LC_TIME`, `LC_COLLATE`, `LC_CTYPE`, `LC_MESSAGES`) instead of just `LC_ALL` + `LANG`. A user with `LC_NUMERIC=fr_FR` in their shell can no longer re-introduce comma decimal separators in `ps %cpu` output. Wrapped in a `posixLocaleEnv()` helper used by both `runPs` and `runGit`.
+
+**Files:**
+- `src/bun/telegram-service.ts:404–423` — I4: error logging on offset persist.
+- `src/bun/telegram-service.ts:311–356` — I5: `Promise.race` with a 5 s timeout, `finally`-cleared timer.
+- `src/bun/surface-metadata.ts:670–695` — I13: new `posixLocaleEnv()` helper.
+- `src/bun/surface-metadata.ts:761` — I13: `runPs` switched to the helper.
+- `src/bun/surface-metadata.ts:795` — I13: `runGit` switched to the helper.
+
+**Verification:**
+- `bun run typecheck` — clean.
+- `bun test tests/telegram-service.test.ts tests/surface-metadata.test.ts` — 60 / 60 pass.
+- `bun test tests/` — 1501 / 1501 pass.
+
+**Deviations / issues:** none.
+
 **Commit:** filled in below.

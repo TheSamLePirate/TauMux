@@ -309,10 +309,32 @@ export class TelegramService {
   }
 
   /** Check whether the current bot can be reached and which @username
-   *  it owns. Cached in db so reconnects don't re-probe. Updates status. */
+   *  it owns. Cached in db so reconnects don't re-probe. Updates status.
+   *
+   *  Issue I5 in doc/full_analysis.md: this used to await `getMe()` with
+   *  no application-side timeout. If the host was reachable but the
+   *  response stalled, the probe could hang indefinitely (only the
+   *  external `stop()` would abort it via the signal). Now we race
+   *  against a 5 s timeout so the status pill gets a real answer one
+   *  way or the other. */
   private async probeIdentity(signal: AbortSignal): Promise<void> {
+    const PROBE_TIMEOUT_MS = 5000;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<{ ok: false; description: string }>(
+      (resolveOnce) => {
+        timer = setTimeout(() => {
+          resolveOnce({
+            ok: false,
+            description: `getMe timed out after ${PROBE_TIMEOUT_MS}ms`,
+          });
+        }, PROBE_TIMEOUT_MS);
+      },
+    );
     try {
-      const res = await this.transport.getMe({ signal });
+      const res = await Promise.race([
+        this.transport.getMe({ signal }),
+        timeout,
+      ]);
       if (res.ok && res.username) {
         this.status = { ...this.status, botUsername: res.username };
         this.opts.db.setKv(BOT_USERNAME_KV_KEY, res.username);
@@ -329,6 +351,8 @@ export class TelegramService {
     } catch {
       // Network errors during probe are non-fatal — the poll loop will
       // surface them properly with backoff.
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -404,8 +428,20 @@ export class TelegramService {
         if (typeof this.offset === "number" && updates.length > 0) {
           try {
             this.opts.db.setKv(OFFSET_KV_KEY, String(this.offset));
-          } catch {
-            /* persistent storage hiccup — next batch will retry */
+          } catch (persistErr) {
+            // Persistent storage hiccup — next batch will retry. We do
+            // NOT swallow silently: a corrupted db means every batch
+            // re-fetches the same updates, dedup absorbs them, and the
+            // operator never sees why offset persistence is broken.
+            // Issue I4 in doc/full_analysis.md.
+            this.opts.onLog?.(
+              "warn",
+              `telegram offset persist failed: ${
+                persistErr instanceof Error
+                  ? persistErr.message
+                  : String(persistErr)
+              }`,
+            );
           }
         }
       } catch (err) {
