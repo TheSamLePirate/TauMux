@@ -1,16 +1,16 @@
 {
   "name": "tau-mux",
-  "version": "0.2.52",
+  "version": "0.2.53",
   "type": "module",
   "description": "A hybrid terminal emulator with structured rendering channels",
   "bin": {
     "ht": "bin/ht"
   },
   "scripts": {
-    "start": "bun scripts/build-web-client.ts && electrobun dev",
-    "dev": "bun scripts/build-web-client.ts && electrobun dev --watch",
+    "start": "bun scripts/build-web-client.ts && HT_CONFIG_DIR=\"$HOME/Library/Application Support/hyperterm-canvas-dev\" electrobun dev",
+    "dev": "bun scripts/build-web-client.ts && HT_CONFIG_DIR=\"$HOME/Library/Application Support/hyperterm-canvas-dev\" electrobun dev --watch",
     "build": "bun scripts/build-web-client.ts --minify && electrobun build",
-    "build:dev": "bun scripts/build-web-client.ts --minify && electrobun build --env=dev",
+    "build:dev": "bun scripts/build-web-client.ts --minify && HT_CONFIG_DIR=\"$HOME/Library/Application Support/hyperterm-canvas-dev\" electrobun build --env=dev",
     "build:canary": "bun scripts/build-web-client.ts --minify && electrobun build --env=canary",
     "build:stable": "HYPERTERM_INCLUDE_TEST_HOOKS=0 bun scripts/build-web-client.ts --minify && HYPERTERM_INCLUDE_TEST_HOOKS=0 electrobun build --env=stable",
     "build:cli": "bun scripts/build-cli.ts",
