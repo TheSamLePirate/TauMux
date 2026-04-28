@@ -14,7 +14,7 @@ steps, files to touch, tests, risks, effort.
 | 06 | [Sidebar workspace card: flicker fix + modular settings](plan_workspace_card.md) | `src/views/terminal/sidebar.ts`, `sidebar-state.ts`, `settings-panel.ts` | M      |
 | 07 | [Telegram resilience: crash must not break ht/notifications](plan_telegram_resilience.md) | `src/bun/telegram-service.ts`, `app-context.ts`, `socket-server.ts` | M      |
 | 08 | [Telegram smart buttons on turn-end notifications](plan_telegram_smart_buttons.md) ✅ shipped (v1.1 — OK / No / Continue / Cancel; ctrl+\* added to KEY_MAP) | `src/bun/telegram-service.ts`, `src/bun/telegram-button-dispatch.ts`, `src/bun/rpc-handlers/shared.ts`, `claude-integration/`, `pi-extensions/` | M      |
-| 09 | [Plan panel in τ-mux: agent plan + auto-continue](plan_agent_plan_panel.md) | new pane kind, `agent-panel.ts`, sideband | L      |
+| 09 | [Plan panel in τ-mux: agent plan + auto-continue](plan_agent_plan_panel.md) ✅ shipped (commit C — Settings UI + `ht autocontinue` CLI + `notifyHumanInput` wiring + `plan_array` status-key bridge) | new pane kind, `agent-panel.ts`, sideband | L      |
 | 10 | [User-request panel in τ-mux (agent asks user via UI)](plan_user_request_panel.md) ✅ shipped (commit C — webview modal for all four kinds + sidebar pending pill) | `prompt-dialog.ts`, agent runtime, telegram | M      |
 | 11 | [OSC 9;4 progress reporting passthrough](plan_osc_progress.md) | xterm.js parser hook, status surface | M      |
 | 12 | [Terminal scroll-to-top regression](plan_terminal_scroll_fix.md) | `surface-manager.ts`, xterm wiring | S      |
@@ -81,7 +81,7 @@ files stay in `doc/todos/` — they are part of the project's memory.
 
 ## Status
 
-Most plans are still **proposed, not started**. Three are fully
+Most plans are still **proposed, not started**. Four are fully
 closed and tracked retrospectively in `tracking_*.md`:
 
 - **#02 Smart status-key system** — closed at commit C (2026-04-27).
@@ -99,6 +99,18 @@ closed and tracked retrospectively in `tracking_*.md`:
   through `surface.send_text` + `surface.send_key`. Cancel-fix added
   the `ctrl+*` family to `KEY_MAP`. Tracking:
   [`tracking_telegram_smart_buttons.md`](tracking_telegram_smart_buttons.md).
+- **#09 Agent plan panel + auto-continue** — closed at commit C
+  (2026-04-28). Settings UI, `ht autocontinue` CLI (status / audit /
+  set / fire / pause / resume), `notifyHumanInput` wiring at every
+  human-originated `writeStdin` site, and a `plan_array` status-key
+  bridge that lights up the typed PlanStore for agents already
+  publishing checklists via `ht set-status`. Tracking files:
+  [`tracking_agent_plan_panel.md`](tracking_agent_plan_panel.md)
+  (commit A) ·
+  [`tracking_agent_plan_panel_b.md`](tracking_agent_plan_panel_b.md)
+  (commit B) ·
+  [`tracking_agent_plan_panel_c.md`](tracking_agent_plan_panel_c.md)
+  (commit C).
 - **#10 User-request panel** — closed at commit C (2026-04-28).
   Backend queue + `ht ask` CLI (commit A) · Telegram fan-out for all
   four kinds with edit-in-place audit trail (commit B) · webview

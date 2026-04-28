@@ -10,6 +10,10 @@ import type { AppState, Handler, HandlerDeps } from "./rpc-handlers/types";
 import { METHOD_SCHEMAS, validateParams } from "./rpc-handlers/shared";
 import { type AuditRegistryHandle, registerAudit } from "./rpc-handlers/audit";
 import { registerPlan } from "./rpc-handlers/plan";
+import {
+  registerAutoContinue,
+  type AutoContinueDeps,
+} from "./rpc-handlers/auto-continue";
 import type { PlanStore } from "./plan-store";
 import { registerAskUser } from "./rpc-handlers/ask-user";
 import type { AskUserQueue } from "./ask-user-queue";
@@ -95,6 +99,10 @@ export interface RpcHandlerOptions {
    *  continue engine so turn-end notifications drive a continue/wait
    *  decision without polling. Optional in tests. */
   onNotificationCreate?: (notification: Notification) => void;
+  /** Plan #09 commit C — when wired, `autocontinue.*` handlers
+   *  register and `ht autocontinue` plus the Settings panel can
+   *  drive the engine. Optional in tests. */
+  autoContinue?: AutoContinueDeps;
 }
 
 export function createRpcHandler(
@@ -138,6 +146,7 @@ export function createRpcHandler(
     socketPath: options.socketPath ?? "/tmp/hyperterm.sock",
     logPath: options.logPath ?? null,
     health: options.health,
+    autoContinueEngine: options.autoContinue?.engine,
   };
 
   // `system.capabilities` needs to know the full registered surface —
@@ -165,6 +174,9 @@ export function createRpcHandler(
     options.audits ? registerAudit(deps, options.audits) : {},
     options.plans ? registerPlan(deps, options.plans) : {},
     options.askUser ? registerAskUser(deps, options.askUser) : {},
+    options.autoContinue
+      ? registerAutoContinue(deps, options.autoContinue)
+      : {},
   );
 
   return (method: string, params: Record<string, unknown>) => {

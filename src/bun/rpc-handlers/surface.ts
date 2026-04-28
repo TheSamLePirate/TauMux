@@ -18,7 +18,14 @@ interface SurfaceRect {
 }
 
 export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
-  const { sessions, getState, dispatch, requestWebview, metadataPoller } = deps;
+  const {
+    sessions,
+    getState,
+    dispatch,
+    requestWebview,
+    metadataPoller,
+    autoContinueEngine,
+  } = deps;
 
   return {
     "surface.list": () => {
@@ -181,7 +188,10 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
     "surface.send_text": (params) => {
       const id = resolveSurfaceId(params, getState().focusedSurfaceId);
       const text = params["text"] as string;
-      if (id && text) sessions.writeStdin(id, text);
+      if (id && text) {
+        autoContinueEngine?.notifyHumanInput(id);
+        sessions.writeStdin(id, text);
+      }
       return "OK";
     },
 
@@ -189,7 +199,10 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
       const id = resolveSurfaceId(params, getState().focusedSurfaceId);
       const key = (params["key"] as string)?.toLowerCase();
       const seq = KEY_MAP[key];
-      if (id && seq) sessions.writeStdin(id, seq);
+      if (id && seq) {
+        autoContinueEngine?.notifyHumanInput(id);
+        sessions.writeStdin(id, seq);
+      }
       return "OK";
     },
 

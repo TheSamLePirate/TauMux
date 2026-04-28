@@ -82,6 +82,13 @@ export class WebServer {
   /** Web client (re)requests the chat list + service status. */
   onTelegramRequestState: (() => void) | null = null;
 
+  /** Plan #09 commit C — fired before every web-mirror stdin packet
+   *  so the auto-continue engine can reset its runaway counter when
+   *  a real user types from the browser. Settable via
+   *  `setOnHumanInput` after construction since the engine may not
+   *  exist at WebServer instantiation time. */
+  private onHumanInput: (surfaceId: string) => void = () => {};
+
   constructor(
     private port: number,
     private sessionsManager: SessionManager,
@@ -91,6 +98,10 @@ export class WebServer {
     private bind: "127.0.0.1" | "0.0.0.0" = "0.0.0.0",
     private authToken: string = "",
   ) {}
+
+  setOnHumanInput(fn: (surfaceId: string) => void): void {
+    this.onHumanInput = fn;
+  }
 
   /** Allow live updates from the settings panel without restarting. */
   setAuthToken(token: string): void {
@@ -905,6 +916,7 @@ export class WebServer {
           );
           break;
         }
+        this.onHumanInput(surfaceId);
         this.sessionsManager.writeStdin(surfaceId, data);
         break;
       }

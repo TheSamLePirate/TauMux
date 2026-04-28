@@ -77,6 +77,8 @@ import {
 import { HealthRegistry } from "./health";
 import { PlanStore } from "./plan-store";
 import { AutoContinueEngine } from "./auto-continue-engine";
+import { createAutoContinueHost } from "./auto-continue-host";
+import { createPlanStatusBridge } from "./plan-status-bridge";
 import { AskUserQueue } from "./ask-user-queue";
 import { dispatchTelegramNotificationButton } from "./telegram-button-dispatch";
 import {
@@ -114,6 +116,7 @@ const health = new HealthRegistry();
 // `restorePlans` so the future plan panel can render without
 // polling.
 const plans = new PlanStore();
+const planStatusBridge = createPlanStatusBridge({ plans });
 let plansBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
 plans.subscribe(() => {
   if (plansBroadcastTimer) return;
@@ -515,6 +518,7 @@ const bunMessageHandlers = {
     void handlePaste();
   },
   writeStdin: (payload) => {
+    autoContinue.notifyHumanInput(payload.surfaceId);
     sessions.writeStdin(payload.surfaceId, payload.data);
   },
   viewportSize: (payload) => {
@@ -2267,6 +2271,7 @@ async function handlePaste(): Promise<void> {
     }
   }
   if (text) {
+    autoContinue.notifyHumanInput(surfaceId);
     sessions.writeStdin(surfaceId, text);
   }
 }
@@ -2441,6 +2446,19 @@ function dispatch(action: string, payload: Record<string, unknown>) {
         app.htKeysSeen.add(key);
         scheduleHtKeysSeenBroadcast();
       }
+      // Plan #09 commit C — bridge plan-shaped status keys into the
+      // typed PlanStore so agents emitting checklists via `ht set-
+      // status` light up the same panel as `ht plan set` does.
+      planStatusBridge.handle({
+        workspaceId:
+          (payload["workspaceId"] as string | undefined) ??
+          (payload["workspace_id"] as string | undefined),
+        surfaceId:
+          (payload["surfaceId"] as string | undefined) ??
+          (payload["surface_id"] as string | undefined),
+        key: payload["key"],
+        value: payload["value"],
+      });
     }
   } else if (action === "createBrowserSurface") {
     createBrowserWorkspaceSurface(payload["url"] as string | undefined);
@@ -2565,71 +2583,20 @@ autoContinue.subscribeAudit((audit) => {
   }, 100);
 });
 
-/** Locate the plan that the auto-continue engine should consult for
- *  a notification arriving on `surfaceId`. We walk every workspace,
- *  pick the one that owns the surface, and return the most recently
- *  updated plan registered for that workspace. Returns null when no
- *  plan is registered (the heuristic then falls into its "no plan"
- *  branch and chooses to wait). */
-function lookupPlanForSurface(surfaceId: string) {
-  const state = app.getAppState();
-  const owning = state.workspaces.find((ws) =>
-    ws.surfaceIds.includes(surfaceId),
-  );
-  if (!owning) return null;
-  const candidates = plans
-    .list()
-    .filter((p) => p.workspaceId === owning.id)
-    .sort((a, b) => b.updatedAt - a.updatedAt);
-  return candidates[0] ?? null;
-}
-
-/** Pull a few trailing lines from the surface so the heuristic /
- *  model can spot trailing questions or error markers. We cap at
- *  3 KiB regardless of history depth — a long agent run can grow
- *  the buffer to many MB and the heuristic only cares about the
- *  last N lines. */
-function lookupSurfaceTail(surfaceId: string): string[] {
-  let history: string;
-  try {
-    history = sessions.getOutputHistory(surfaceId) ?? "";
-  } catch {
-    return [];
-  }
-  if (!history) return [];
-  const slice = history.length > 3072 ? history.slice(-3072) : history;
-  return slice
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ""))
-    .slice(-12);
-}
-
-function dispatchAutoContinueForNotification(notification: {
-  surfaceId?: string;
-  title: string;
-  body: string;
-}): void {
-  const surfaceId = notification.surfaceId;
-  if (!surfaceId) return;
-  const plan = lookupPlanForSurface(surfaceId);
-  const surfaceTail = lookupSurfaceTail(surfaceId);
-  const notificationText = [notification.title, notification.body]
-    .filter((t) => t && t.length > 0)
-    .join(" — ");
-  void autoContinue
-    .dispatch({
-      surfaceId,
-      agentId: plan?.agentId,
-      plan,
-      surfaceTail,
-      notificationText,
-    })
-    .catch((err) => {
-      console.warn(
-        `[auto-continue] dispatch failed for ${surfaceId}: ${(err as Error).message}`,
-      );
-    });
-}
+// Plan #09 commit C — host helpers extracted to `auto-continue-host.ts`
+// so `autocontinue.fire` and `notification.create` share the same
+// "what does the engine see" pipeline.
+const autoContinueHost = createAutoContinueHost({
+  engine: autoContinue,
+  plans,
+  getWorkspaceForSurface: (surfaceId) => {
+    const state = app.getAppState();
+    return (
+      state.workspaces.find((ws) => ws.surfaceIds.includes(surfaceId)) ?? null
+    );
+  },
+  getOutputHistory: (surfaceId) => sessions.getOutputHistory(surfaceId),
+});
 
 const socketHandler = createRpcHandler(
   sessions,
@@ -2661,7 +2628,12 @@ const socketHandler = createRpcHandler(
     health,
     plans,
     askUser,
-    onNotificationCreate: (n) => dispatchAutoContinueForNotification(n),
+    onNotificationCreate: (n) => autoContinueHost.dispatchForNotification(n),
+    autoContinue: {
+      engine: autoContinue,
+      host: autoContinueHost,
+      settingsManager,
+    },
   },
 );
 const socketServer = new SocketServer(socketPath, socketHandler);
@@ -2702,6 +2674,7 @@ void runAudits(cachedAudits).then((results) => {
 
 // Auto-start web mirror server
 function setupWebServerCallbacks(ws: WebServer) {
+  ws.setOnHumanInput((surfaceId) => autoContinue.notifyHumanInput(surfaceId));
   ws.onPanelUpdate = (surfaceId, panelId, fields) => {
     rpc.send("sidebandMeta", {
       surfaceId,

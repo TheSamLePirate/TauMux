@@ -107,6 +107,12 @@ export class SettingsPanel {
         render: (c, s) => this.renderTelegram(c, s),
       },
       {
+        id: "autoContinue",
+        label: "Auto-continue",
+        icon: "rocket",
+        render: (c, s) => this.renderAutoContinue(c, s),
+      },
+      {
         id: "advanced",
         label: "Advanced",
         icon: "wrench",
@@ -1140,6 +1146,144 @@ export class SettingsPanel {
           "messages are edited in place to leave a clean audit trail.",
       },
     );
+  }
+
+  /** Plan #09 commit C — Auto-continue settings. Lives at
+   *  `s.autoContinue.*` (nested), so the helpers that take a top-
+   *  level `keyof AppSettings` don't apply directly. The renderer
+   *  hand-rolls each field but reuses the shared CSS classes via
+   *  `fieldRow` so the section blends with the rest of the panel. */
+  private renderAutoContinue(c: HTMLElement, s: AppSettings): void {
+    this.sectionTitle(c, "Auto-continue");
+    this.sectionDesc(
+      c,
+      "On every agent turn-end notification, decide whether to send 'Continue' " +
+        "automatically. The engine is off by default and starts in dry-run — " +
+        "decisions are logged to the plan panel's audit ring without firing " +
+        "until you flip dry-run off.",
+    );
+
+    const ac = s.autoContinue;
+    const patch = (delta: Partial<AppSettings["autoContinue"]>) =>
+      this.emit({ autoContinue: { ...ac, ...delta } });
+
+    // Engine — select
+    const engineRow = this.fieldRow(
+      c,
+      "Engine",
+      "Off disables every decision.",
+    );
+    const engineSel = document.createElement("select");
+    engineSel.className = "settings-input";
+    for (const opt of [
+      { value: "off", label: "off — never decide" },
+      { value: "heuristic", label: "heuristic — no model call" },
+      { value: "model", label: "model — every turn-end" },
+      { value: "hybrid", label: "hybrid — heuristic + model fallback" },
+    ]) {
+      const o = document.createElement("option");
+      o.value = opt.value;
+      o.textContent = opt.label;
+      o.selected = opt.value === ac.engine;
+      engineSel.appendChild(o);
+    }
+    engineSel.addEventListener("change", () => {
+      const v = engineSel.value;
+      if (v === "off" || v === "heuristic" || v === "model" || v === "hybrid") {
+        patch({ engine: v });
+      }
+    });
+    engineRow.appendChild(engineSel);
+
+    // Dry-run — toggle
+    const dryRow = this.fieldRow(
+      c,
+      "Dry run",
+      "Log decisions only; never sends text to the agent.",
+    );
+    const dryToggle = document.createElement("label");
+    dryToggle.className = "settings-toggle";
+    const dryInput = document.createElement("input");
+    dryInput.type = "checkbox";
+    dryInput.checked = ac.dryRun;
+    dryInput.addEventListener("change", () => {
+      patch({ dryRun: dryInput.checked });
+    });
+    const drySlider = document.createElement("span");
+    drySlider.className = "settings-toggle-slider";
+    dryToggle.appendChild(dryInput);
+    dryToggle.appendChild(drySlider);
+    dryRow.appendChild(dryToggle);
+
+    // Cooldown — number
+    const cdRow = this.fieldRow(
+      c,
+      "Cooldown (ms)",
+      "Minimum gap between auto-fires on the same surface.",
+    );
+    const cdInput = document.createElement("input");
+    cdInput.type = "number";
+    cdInput.min = "0";
+    cdInput.max = "60000";
+    cdInput.step = "500";
+    cdInput.className = "settings-input";
+    cdInput.value = String(ac.cooldownMs);
+    cdInput.addEventListener("change", () => {
+      const n = Number.parseInt(cdInput.value, 10);
+      if (Number.isFinite(n)) patch({ cooldownMs: n });
+    });
+    cdRow.appendChild(cdInput);
+
+    // Max consecutive — number
+    const maxRow = this.fieldRow(
+      c,
+      "Max consecutive",
+      "Pause auto-continue after this many fires without user input.",
+    );
+    const maxInput = document.createElement("input");
+    maxInput.type = "number";
+    maxInput.min = "1";
+    maxInput.max = "50";
+    maxInput.step = "1";
+    maxInput.className = "settings-input";
+    maxInput.value = String(ac.maxConsecutive);
+    maxInput.addEventListener("change", () => {
+      const n = Number.parseInt(maxInput.value, 10);
+      if (Number.isFinite(n)) patch({ maxConsecutive: n });
+    });
+    maxRow.appendChild(maxInput);
+
+    // Model name — text
+    const modelRow = this.fieldRow(
+      c,
+      "Model name",
+      "Anthropic model id used in 'model' / 'hybrid' modes.",
+    );
+    const modelInput = document.createElement("input");
+    modelInput.type = "text";
+    modelInput.className = "settings-input";
+    modelInput.placeholder = "claude-haiku-4-5-20251001";
+    modelInput.value = ac.modelName;
+    modelInput.addEventListener("change", () => {
+      patch({ modelName: modelInput.value });
+    });
+    modelRow.appendChild(modelInput);
+
+    // API key env var — text
+    const keyRow = this.fieldRow(
+      c,
+      "API key env var",
+      "Reads the API key from this environment variable; never stored on disk.",
+    );
+    const keyInput = document.createElement("input");
+    keyInput.type = "text";
+    keyInput.className = "settings-input";
+    keyInput.placeholder = "ANTHROPIC_API_KEY";
+    keyInput.value = ac.modelApiKeyEnv;
+    keyInput.addEventListener("change", () => {
+      patch({ modelApiKeyEnv: keyInput.value });
+    });
+    keyRow.appendChild(keyInput);
   }
 
   /** Password-style input. Same wiring as `textField` but masked, with a

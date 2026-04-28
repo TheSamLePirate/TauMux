@@ -451,8 +451,9 @@ export interface AutoContinueAuditEntry {
   agentId?: string;
   /** Outcome the engine produced — `fired` actually sent the
    *  instruction, `dry-run` logged it, `skipped` waited (cooldown,
-   *  loop, heuristic, etc). */
-  outcome: "fired" | "dry-run" | "skipped";
+   *  loop, heuristic, etc), `paused` and `resumed` are administrative
+   *  events from `ht autocontinue pause/resume` or the settings UI. */
+  outcome: "fired" | "dry-run" | "skipped" | "paused" | "resumed";
   /** One-sentence reason for the outcome — surfaced verbatim in the
    *  sidebar audit log. */
   reason: string;

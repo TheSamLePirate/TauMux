@@ -113,4 +113,10 @@ export interface HandlerDeps {
   /** Subsystem health aggregator. Read by `system.health`. Optional in
    *  test fixtures that don't need health surfaces. */
   health?: HealthRegistry;
+  /** Plan #09 commit C — auto-continue engine, exposed so surface
+   *  handlers can call `notifyHumanInput` when stdin originates from
+   *  a real user (CLI `surface.send_text/send_key`). The engine
+   *  resets the runaway counter so a paused-on-runaway agent can
+   *  resume after genuine user intervention. Optional in tests. */
+  autoContinueEngine?: import("../auto-continue-engine").AutoContinueEngine;
 }

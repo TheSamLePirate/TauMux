@@ -811,6 +811,95 @@ function mapCommand(): RpcCall {
       break;
     }
 
+    // ── Auto-continue engine (Plan #09 commit C) ──
+    // `ht autocontinue status`            — print engine config + paused list.
+    // `ht autocontinue audit [--limit N]` — print last N decisions.
+    // `ht autocontinue set --engine X
+    //   [--dry-run BOOL] [--cooldown MS] [--max N]
+    //   [--model NAME] [--api-key-env VAR]` — write settings.
+    // `ht autocontinue fire <surface>`    — manual dispatch.
+    // `ht autocontinue pause <surface>`   — pause auto-continue for a surface.
+    // `ht autocontinue resume <surface>`  — clear the pause.
+    case "autocontinue": {
+      const sub = positional[0] || "status";
+      switch (sub) {
+        case "status":
+          return { method: "autocontinue.status", params: {} };
+        case "audit": {
+          const limitRaw = flags["limit"];
+          const params: Record<string, unknown> = {};
+          if (limitRaw !== undefined) {
+            const limit = Number.parseInt(limitRaw, 10);
+            if (Number.isFinite(limit)) params["limit"] = limit;
+          }
+          return { method: "autocontinue.audit", params };
+        }
+        case "set": {
+          const params: Record<string, unknown> = {};
+          if (flags["engine"]) params["engine"] = flags["engine"];
+          if (flags["dry-run"]) {
+            const v = flags["dry-run"].toLowerCase();
+            params["dryRun"] = v === "true" || v === "1" || v === "yes";
+          }
+          if (flags["cooldown"]) {
+            const n = Number.parseInt(flags["cooldown"], 10);
+            if (Number.isFinite(n)) params["cooldownMs"] = n;
+          }
+          if (flags["max"]) {
+            const n = Number.parseInt(flags["max"], 10);
+            if (Number.isFinite(n)) params["maxConsecutive"] = n;
+          }
+          if (flags["model"]) params["modelName"] = flags["model"];
+          if (flags["api-key-env"]) params["modelApiKeyEnv"] = flags["api-key-env"];
+          if (Object.keys(params).length === 0) {
+            console.error(
+              "ht autocontinue set: pass at least one of --engine, --dry-run, --cooldown, --max, --model, --api-key-env",
+            );
+            process.exit(1);
+          }
+          return { method: "autocontinue.set", params };
+        }
+        case "fire": {
+          const surfaceId = positional[1];
+          if (!surfaceId) {
+            console.error("ht autocontinue fire: <surface> positional is required");
+            process.exit(1);
+          }
+          return {
+            method: "autocontinue.fire",
+            params: { surface_id: surfaceId },
+          };
+        }
+        case "pause": {
+          const surfaceId = positional[1];
+          if (!surfaceId) {
+            console.error("ht autocontinue pause: <surface> positional is required");
+            process.exit(1);
+          }
+          return {
+            method: "autocontinue.pause",
+            params: { surface_id: surfaceId },
+          };
+        }
+        case "resume": {
+          const surfaceId = positional[1];
+          if (!surfaceId) {
+            console.error("ht autocontinue resume: <surface> positional is required");
+            process.exit(1);
+          }
+          return {
+            method: "autocontinue.resume",
+            params: { surface_id: surfaceId },
+          };
+        }
+        default:
+          console.error(`Unknown autocontinue subcommand: ${sub}`);
+          console.error("Supported: status | audit | set | fire | pause | resume");
+          process.exit(1);
+      }
+      break;
+    }
+
     // ── Startup audits ──
     // `audit list`   — return cached results (the running app
     //                  populates this once at boot via runAudits).
@@ -1431,6 +1520,10 @@ function formatOutput(result: unknown): void {
     formatPlan(result);
     return;
   }
+  if (command === "autocontinue") {
+    formatAutoContinue(positional[0] || "status", result);
+    return;
+  }
   if (command === "screenshot" && result && typeof result === "object") {
     const { path, cropped, surface_id } = result as {
       path: string;
@@ -1718,6 +1811,112 @@ function printPlan(plan: PlanWire): void {
   }
 }
 
+interface AutoContinueAuditWire {
+  at: number;
+  surfaceId: string;
+  agentId?: string;
+  outcome: "fired" | "dry-run" | "skipped" | "paused" | "resumed";
+  reason: string;
+  engine: "off" | "heuristic" | "model" | "hybrid";
+  modelConsulted: boolean;
+}
+
+interface AutoContinueStatusWire {
+  engine: "off" | "heuristic" | "model" | "hybrid";
+  dryRun: boolean;
+  cooldownMs: number;
+  maxConsecutive: number;
+  modelProvider: string;
+  modelName: string;
+  modelApiKeyEnv: string;
+  paused: string[];
+}
+
+/** Pretty-print every `autocontinue.*` result. The CLI funnels every
+ *  subcommand through this so the output stays readable for humans
+ *  while `--json` still gives scripts a stable shape. */
+function formatAutoContinue(sub: string, result: unknown): void {
+  if (!result || typeof result !== "object") {
+    console.log("(none)");
+    return;
+  }
+  const obj = result as Record<string, unknown>;
+  if (sub === "status") {
+    const s = obj as unknown as AutoContinueStatusWire;
+    console.log(`engine          ${s.engine}`);
+    console.log(`dryRun          ${s.dryRun}`);
+    console.log(`cooldownMs      ${s.cooldownMs}`);
+    console.log(`maxConsecutive  ${s.maxConsecutive}`);
+    console.log(`model           ${s.modelProvider}/${s.modelName}`);
+    console.log(`apiKeyEnv       ${s.modelApiKeyEnv}`);
+    if (s.paused && s.paused.length > 0) {
+      console.log(`paused          ${s.paused.join(", ")}`);
+    } else {
+      console.log("paused          (none)");
+    }
+    return;
+  }
+  if (sub === "audit") {
+    const audit = (obj["audit"] ?? []) as AutoContinueAuditWire[];
+    if (audit.length === 0) {
+      console.log("(no decisions)");
+      return;
+    }
+    const useColor = process.stdout.isTTY;
+    for (const e of audit) {
+      const time = new Date(e.at).toISOString().slice(11, 19);
+      const tag =
+        e.outcome === "fired"
+          ? useColor ? "\x1b[32mfired\x1b[0m   " : "fired   "
+          : e.outcome === "dry-run"
+            ? useColor ? "\x1b[33mdry-run\x1b[0m " : "dry-run "
+            : e.outcome === "paused"
+              ? useColor ? "\x1b[35mpaused\x1b[0m  " : "paused  "
+              : e.outcome === "resumed"
+                ? useColor ? "\x1b[36mresumed\x1b[0m " : "resumed "
+                : useColor ? "\x1b[90mskipped\x1b[0m " : "skipped ";
+      const m = e.modelConsulted ? " (model)" : "";
+      console.log(`${time}  ${tag}  ${e.surfaceId}  ${e.reason}${m}`);
+    }
+    return;
+  }
+  if (sub === "set") {
+    const ac = obj["autoContinue"] as unknown as AutoContinueStatusWire;
+    if (ac) {
+      console.log(`ok — engine=${ac.engine} dryRun=${ac.dryRun} cooldown=${ac.cooldownMs}ms max=${ac.maxConsecutive}`);
+    } else {
+      console.log("ok");
+    }
+    return;
+  }
+  if (sub === "pause" || sub === "resume") {
+    const paused = (obj["paused"] ?? []) as string[];
+    if (paused.length > 0) {
+      console.log(`ok — paused: ${paused.join(", ")}`);
+    } else {
+      console.log("ok — no surfaces paused");
+    }
+    return;
+  }
+  if (sub === "fire") {
+    const out = obj["outcome"] as Record<string, unknown> | undefined;
+    if (!out) {
+      console.log("(no outcome)");
+      return;
+    }
+    const kind = out["kind"] as string;
+    const reason =
+      kind === "skipped"
+        ? (out["reason"] as string)
+        : ((out["decision"] as Record<string, unknown> | undefined)?.[
+            "reason"
+          ] as string | undefined) || kind;
+    console.log(`${kind}  ${reason ?? ""}`);
+    return;
+  }
+  console.log(JSON.stringify(result, null, 2));
+}
+
 interface HealthEntry {
   id: string;
   severity: "ok" | "degraded" | "error" | "disabled";
@@ -1997,6 +2196,23 @@ Agent plan (Plan #09):
        [--title T]                      replaces the step title.
   plan complete --workspace W           Mark every step as done.
   plan clear --workspace W              Drop the plan entirely.
+
+Auto-continue (Plan #09):
+  autocontinue status                   Print engine config + paused list.
+  autocontinue audit [--limit N]        Print last N decisions (default 20,
+                                        cap 50).
+  autocontinue set --engine X           Persist a partial settings update.
+       [--dry-run BOOL] [--cooldown MS] X = off|heuristic|model|hybrid.
+       [--max N] [--model NAME]
+       [--api-key-env VAR]
+  autocontinue fire <surface>           Manual dispatch on a surface — runs
+                                        the same lookup pipeline used for
+                                        turn-end notifications.
+  autocontinue pause <surface>          Pause auto-continue for a surface
+                                        until a sibling 'resume' or until
+                                        the user types into that terminal.
+  autocontinue resume <surface>         Clear the pause and reset the
+                                        runaway counter.
 
 Ask the user (Plan #10):
   ask <kind> --title T [--body B]       Block until the user answers via a

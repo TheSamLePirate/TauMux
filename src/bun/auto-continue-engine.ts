@@ -70,6 +70,7 @@ const AUDIT_CAP = 50;
 
 export class AutoContinueEngine {
   private state = new Map<string, PerSurfaceState>();
+  private pausedSurfaces = new Set<string>();
   private audit: AutoContinueAuditEntry[] = [];
   private now: () => number;
   private subscribers = new Set<(audit: AutoContinueAuditEntry[]) => void>();
@@ -88,9 +89,54 @@ export class AutoContinueEngine {
     s.loopWarned = false;
   }
 
+  /** Pause auto-continue for a single surface. Subsequent dispatches
+   *  short-circuit with a `paused` skip until `resume` is called. */
+  pause(surfaceId: string, reason = "manual pause via ht/UI"): void {
+    if (this.pausedSurfaces.has(surfaceId)) return;
+    this.pausedSurfaces.add(surfaceId);
+    this.pushAudit({
+      at: this.now(),
+      surfaceId,
+      outcome: "paused",
+      reason,
+      engine: this.deps.getSettings().engine,
+      modelConsulted: false,
+    });
+  }
+
+  /** Resume a paused surface. Also resets the runaway counter so the
+   *  next legitimate auto-continue can fire without colliding with a
+   *  stale "looped" gate. */
+  resume(surfaceId: string, reason = "manual resume via ht/UI"): void {
+    if (!this.pausedSurfaces.has(surfaceId)) return;
+    this.pausedSurfaces.delete(surfaceId);
+    const s = this.state.get(surfaceId);
+    if (s) {
+      s.consecutive = 0;
+      s.loopWarned = false;
+    }
+    this.pushAudit({
+      at: this.now(),
+      surfaceId,
+      outcome: "resumed",
+      reason,
+      engine: this.deps.getSettings().engine,
+      modelConsulted: false,
+    });
+  }
+
+  isPaused(surfaceId: string): boolean {
+    return this.pausedSurfaces.has(surfaceId);
+  }
+
+  listPaused(): string[] {
+    return [...this.pausedSurfaces];
+  }
+
   /** Drop all per-surface counters (e.g. on session reset). */
   resetAll(): void {
     this.state.clear();
+    this.pausedSurfaces.clear();
   }
 
   /** Snapshot the audit ring for inspection / RPC export. */
@@ -118,6 +164,18 @@ export class AutoContinueEngine {
         {
           kind: "skipped",
           reason: "engine disabled",
+        },
+        settings,
+        false,
+      );
+    }
+
+    if (this.pausedSurfaces.has(args.surfaceId)) {
+      return this.record(
+        args,
+        {
+          kind: "skipped",
+          reason: "paused",
         },
         settings,
         false,
@@ -294,7 +352,7 @@ export class AutoContinueEngine {
       outcome.kind === "skipped"
         ? outcome.reason
         : (outcome.decision.reason ?? outcome.kind);
-    const entry: AutoContinueAuditEntry = {
+    this.pushAudit({
       at: this.now(),
       surfaceId: args.surfaceId,
       agentId: args.agentId,
@@ -302,7 +360,11 @@ export class AutoContinueEngine {
       reason,
       engine: settings.engine,
       modelConsulted,
-    };
+    });
+    return outcome;
+  }
+
+  private pushAudit(entry: AutoContinueAuditEntry): void {
     this.audit.push(entry);
     while (this.audit.length > AUDIT_CAP) this.audit.shift();
     for (const fn of this.subscribers) {
@@ -312,7 +374,6 @@ export class AutoContinueEngine {
         /* don't let a buggy subscriber take down the engine */
       }
     }
-    return outcome;
   }
 }
 
