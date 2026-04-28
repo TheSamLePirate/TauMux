@@ -124,6 +124,11 @@ interface SurfaceView {
    *  after this until the surface is closed — protects a user's chosen
    *  pane name from being overwritten by e.g. `vim` setting the title. */
   titleLockedByUser?: boolean;
+  /** Last container rect signature (`L,T,W,H`) the browser-pane OOPIF
+   *  was synced against. Used by `applyLayout` to skip the IPC call
+   *  when the pane's geometry hasn't actually changed since the last
+   *  layout pass. Only set on browser surfaces. */
+  lastBrowserRectKey?: string;
 }
 
 export interface Workspace {
@@ -1740,7 +1745,28 @@ export class SurfaceManager {
     this.updateSidebar();
   }
 
+  /** Coalesced sidebar update — flips a dirty flag and schedules one
+   *  flush at the next animation frame. The 19 callsites in this
+   *  module continue to invoke `updateSidebar()`; multiple calls in
+   *  the same tick (e.g. multiple `setSurfaceMetadata` from the 1 Hz
+   *  metadata poller, or a focusSurface chain that touches several
+   *  pieces of state) collapse into one render pass. Phase 2A of the
+   *  perf pass. Use `flushSidebarSync()` if a caller really needs the
+   *  DOM updated before the current task yields. */
+  private sidebarUpdateScheduled = false;
   private updateSidebar(): void {
+    if (this.sidebarUpdateScheduled) return;
+    this.sidebarUpdateScheduled = true;
+    requestAnimationFrame(() => {
+      this.sidebarUpdateScheduled = false;
+      this.flushSidebarSync();
+    });
+  }
+
+  /** Synchronous escape hatch — used when a caller really needs the
+   *  rendered sidebar in the same task. None of the current call
+   *  sites do, but exposed so future code has the choice. */
+  flushSidebarSync(): void {
     this.sidebar.setWorkspaces(
       buildSidebarWorkspaces({
         workspaces: this.workspaces,
@@ -2270,9 +2296,18 @@ export class SurfaceManager {
       const view = this.surfaces.get(surfaceId);
       if (!view) continue;
       if (view.surfaceType === "browser") {
-        // Browser panes: sync the OOPIF overlay dimensions
+        // Browser panes: sync the OOPIF overlay dimensions — but only
+        // when the container geometry actually changed since last
+        // layout. Each `browserPaneSyncDimensions` is an Electrobun
+        // IPC into the OOPIF host and is wasted work when the pane
+        // hasn't moved. Per Phase 1G of the perf pass.
         if (view.browserView) {
-          browserPaneSyncDimensions(view.browserView);
+          const c = view.container;
+          const rectKey = `${c.offsetLeft},${c.offsetTop},${c.offsetWidth},${c.offsetHeight}`;
+          if (view.lastBrowserRectKey !== rectKey) {
+            view.lastBrowserRectKey = rectKey;
+            browserPaneSyncDimensions(view.browserView);
+          }
         }
       } else if (view.surfaceType === "telegram") {
         // Telegram panes are pure DOM — no terminal to fit, no OOPIF to
@@ -2365,15 +2400,27 @@ export class SurfaceManager {
         const startRatio = splitNode.ratio;
         const totalSize = div.direction === "horizontal" ? bounds.w : bounds.h;
 
+        // rAF-coalesce mousemove → applyPositions. Without this, every
+        // pixel of drag fires a layout read+write inside applyPositions,
+        // and OS mousemove rates of 120+ Hz starve the frame budget.
+        // We capture only the latest position per frame and run one
+        // applyPositions per rAF tick.
+        let pending = false;
+        let lastPos = startPos;
+
         const onMove = (me: MouseEvent) => {
-          const currentPos =
-            div.direction === "horizontal" ? me.clientX : me.clientY;
-          const delta = currentPos - startPos;
-          splitNode.ratio = Math.max(
-            0.1,
-            Math.min(0.9, startRatio + delta / totalSize),
-          );
-          this.applyPositions();
+          lastPos = div.direction === "horizontal" ? me.clientX : me.clientY;
+          if (pending) return;
+          pending = true;
+          requestAnimationFrame(() => {
+            pending = false;
+            const delta = lastPos - startPos;
+            splitNode.ratio = Math.max(
+              0.1,
+              Math.min(0.9, startRatio + delta / totalSize),
+            );
+            this.applyPositions();
+          });
         };
 
         const onUp = () => {
@@ -2605,16 +2652,20 @@ function fitSurfaceTerminal(view: {
     return;
   }
 
-  const ps = window.getComputedStyle(term.element.parentElement);
-  const w = Math.max(0, parseInt(ps.getPropertyValue("width")) || 0);
-  const h = parseInt(ps.getPropertyValue("height")) || 0;
-  const es = window.getComputedStyle(term.element);
+  // Perf pass (Phase 1E): use clientWidth/clientHeight on the parent
+  // for the visible dimensions (numeric reads, no string parsing) and
+  // ONE getComputedStyle on the term element for padding. The previous
+  // implementation read getComputedStyle twice — parent + term — and
+  // parsed two width strings. Per-pane fit cost roughly halved on a
+  // resizeAll pass.
+  const parent = term.element.parentElement;
+  const w = parent.clientWidth;
+  const h = parent.clientHeight;
+  const cs = window.getComputedStyle(term.element);
   const padX =
-    (parseInt(es.getPropertyValue("padding-left")) || 0) +
-    (parseInt(es.getPropertyValue("padding-right")) || 0);
+    (parseInt(cs.paddingLeft) || 0) + (parseInt(cs.paddingRight) || 0);
   const padY =
-    (parseInt(es.getPropertyValue("padding-top")) || 0) +
-    (parseInt(es.getPropertyValue("padding-bottom")) || 0);
+    (parseInt(cs.paddingTop) || 0) + (parseInt(cs.paddingBottom) || 0);
 
   const cols = Math.max(2, Math.floor((w - padX) / cell.width));
   const rows = Math.max(1, Math.floor((h - padY) / cell.height));

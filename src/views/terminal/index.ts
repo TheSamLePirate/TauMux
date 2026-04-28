@@ -386,6 +386,36 @@ const planPanel = new PlanPanel({
 });
 sidebarEl.appendChild(planPanel.getElement());
 
+/** Fire `action` once the named CSS transition on `el` completes,
+ *  with a safety-net fallback in case the transition doesn't fire
+ *  (reduced motion, display change, identical computed value, etc.).
+ *  Replaces hard-coded `setTimeout(.., 220)` blind waits with a real
+ *  signal that the layout settled. The fallback duration is the old
+ *  hard-coded value plus a small margin so the worst-case behaviour
+ *  is unchanged. */
+function afterTransition(
+  el: HTMLElement,
+  property: string,
+  fallbackMs: number,
+  action: () => void,
+): void {
+  let done = false;
+  const handler = (e: TransitionEvent) => {
+    if (e.target !== el || e.propertyName !== property) return;
+    if (done) return;
+    done = true;
+    el.removeEventListener("transitionend", handler);
+    action();
+  };
+  el.addEventListener("transitionend", handler);
+  setTimeout(() => {
+    if (done) return;
+    done = true;
+    el.removeEventListener("transitionend", handler);
+    action();
+  }, fallbackMs);
+}
+
 function applySettings(settings: AppSettings): void {
   currentSettings = settings;
   surfaceManager.applySettings(settings);
@@ -565,8 +595,12 @@ function refreshStatusBar(): void {
   // source of truth for which element receives status-key children.
   const atlasRight = document.getElementById("tau-atlas-ticker-right");
   const mount: HTMLElement = atlasRight ?? statusBarHandle.root;
-  mount.replaceChildren();
 
+  // Build into an off-DOM scratch first so we can hash the result and
+  // skip the mount.replaceChildren when nothing visible changed. The
+  // 1 Hz tick fires whether or not state moved; this turns the steady-
+  // state cost of paint+style-recalc to zero on uneventful ticks.
+  const scratch = document.createElement("div");
   let first = true;
   let rendered = 0;
   for (const id of ids) {
@@ -576,15 +610,13 @@ function refreshStatusBar(): void {
       const s = document.createElement("span");
       s.className = "tau-hud-sep";
       s.textContent = "·";
-      mount.appendChild(s);
+      scratch.appendChild(s);
     }
-    mount.appendChild(el);
+    scratch.appendChild(el);
     first = false;
     rendered++;
   }
 
-  // If nothing rendered — either no keys enabled or none had data —
-  // drop a neutral hint so the bar isn't silently empty.
   if (rendered === 0) {
     const hint = document.createElement("span");
     hint.className = "tau-status-label";
@@ -592,8 +624,17 @@ function refreshStatusBar(): void {
       ids.length === 0
         ? "no status keys — enable some in Settings → Layout"
         : "no live status data yet";
-    mount.appendChild(hint);
+    scratch.appendChild(hint);
   }
+
+  // Hash via innerHTML — the bar is small (a handful of spans) so
+  // this is well under a millisecond. Compare against the last hash
+  // stored on the mount; a match means the new render is byte-
+  // identical to what's already on screen, so skip the swap.
+  const sig = scratch.innerHTML;
+  if (mount.dataset["statusBarSig"] === sig) return;
+  mount.dataset["statusBarSig"] = sig;
+  mount.replaceChildren(...scratch.childNodes);
 }
 
 function buildStatusContext(): StatusContext {
@@ -1635,7 +1676,9 @@ const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
       document.body.classList.toggle("tau-rail-collapsed");
       // Ask the terminal to resize after the transition so xterm
       // reflows to the new available width.
-      setTimeout(() => surfaceManager.resizeAll(), 220);
+      afterTransition(terminalContainerEl, "left", 240, () =>
+        surfaceManager.resizeAll(),
+      );
     },
   },
   // - ⌘G toggles graph visibility (Atlas only). In other variants it
@@ -1648,7 +1691,9 @@ const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
     match: keyMatch({ key: "g", meta: true, shift: false }),
     action: () => {
       document.body.classList.toggle("tau-atlas-graph-hidden");
-      setTimeout(() => surfaceManager.resizeAll(), 220);
+      afterTransition(terminalContainerEl, "left", 240, () =>
+        surfaceManager.resizeAll(),
+      );
     },
   },
   {

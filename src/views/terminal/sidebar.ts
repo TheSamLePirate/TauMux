@@ -13,6 +13,22 @@ import {
 } from "./sidebar-manifest-card";
 import { renderStatusEntry } from "./status-renderers";
 
+/** Stable JSON signature of a `WorkspaceInfo[]`. Used by
+ *  `Sidebar.setWorkspaces` to skip the render when the incoming
+ *  payload is byte-identical to the last one. The replacer flattens
+ *  Set fields (e.g. workspace.surfaceIds isn't a Set on `WorkspaceInfo`
+ *  but defensive against future additions) and the Map values that
+ *  occasionally surface in `statusPills`. Plain JSON for everything
+ *  else — an O(string-length) string compare is cheaper than the
+ *  full sidebar render. */
+function stableWorkspacesSignature(list: unknown): string {
+  return JSON.stringify(list, (_key, value) => {
+    if (value instanceof Set) return [...value];
+    if (value instanceof Map) return [...value.entries()];
+    return value;
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Sidebar (V2 — hyper-dense, color-forward, zero border-radius)
 //
@@ -235,6 +251,14 @@ export class Sidebar {
    *  default means no badge, matching the pre-Plan-#10 layout. */
   private askUserPendingByWorkspace = new Map<string, number>();
 
+  /** Perf pass (Phase 2B): hash of the last `WorkspaceInfo[]` we
+   *  rendered. `setWorkspaces` short-circuits when the new payload
+   *  hashes to the same value — the 1 Hz metadata tick mostly ships
+   *  identical data, and rebuilding 80–200 DOM nodes for "no change"
+   *  is the dominant idle-CPU draw. Stored as a stable JSON string
+   *  with a Set replacer; comparison is O(string-length). */
+  private lastWorkspacesSig: string | null = null;
+
   /** Plan #06 §A — keyed reconciliation cache. The previous
    *  implementation did `listEl.innerHTML = ""` on every refresh,
    *  which tore down every workspace card and rebuilt it from
@@ -331,9 +355,20 @@ export class Sidebar {
   }
 
   setWorkspaces(workspaces: WorkspaceInfo[]): void {
+    // Phase 2B perf pass: skip the render entirely when the incoming
+    // payload is byte-identical to the last one. JSON.stringify with
+    // a Set→Array replacer gives a stable signature; floats like
+    // cpuPercent / memRssKb travel through unchanged so any actual
+    // movement still triggers a render. Both `reconcileManualOrder`
+    // and `reconcileUiState` are pure functions of `this.workspaces`,
+    // so we still call them even on the skip path so any internal
+    // dirty bookkeeping stays consistent.
     this.workspaces = workspaces;
     this.reconcileManualOrder();
     this.reconcileUiState();
+    const sig = stableWorkspacesSignature(workspaces);
+    if (sig === this.lastWorkspacesSig) return;
+    this.lastWorkspacesSig = sig;
     this.renderWorkspaces();
     this.renderGlobalStats();
   }
@@ -354,10 +389,52 @@ export class Sidebar {
    *  Index.ts's ask-user-state subscriber aggregates pending counts
    *  per workspace and pushes the map; the workspace card renders the
    *  cyan "?" pill next to the pane-count badge. Empty / zero entries
-   *  hide the pill. */
+   *  hide the pill.
+   *
+   *  Perf pass (Phase 1D): does NOT call `renderWorkspaces()` anymore.
+   *  A badge update used to repaint every workspace card; now we walk
+   *  the cached card nodes and surgically add / update / remove just
+   *  the `.workspace-ask-badge` element on each. Cuts a 1 Hz full
+   *  sidebar render to a constant-cost field-mutation. */
   setAskUserPending(map: Map<string, number>): void {
     this.askUserPendingByWorkspace = map;
-    if (this.workspaces.length > 0) this.renderWorkspaces();
+    if (this.workspaces.length === 0) return;
+    for (const [wsId, item] of this.workspaceItems) {
+      const header = item.querySelector(
+        ".workspace-card-header",
+      ) as HTMLElement | null;
+      if (!header) continue;
+      const existing = header.querySelector(
+        ".workspace-ask-badge",
+      ) as HTMLElement | null;
+      const count = map.get(wsId) ?? 0;
+      if (count <= 0) {
+        if (existing) existing.remove();
+        continue;
+      }
+      const text = `${count} ?`;
+      const tooltip = `${count} pending agent question${count === 1 ? "" : "s"}`;
+      if (existing) {
+        if (existing.textContent !== text) existing.textContent = text;
+        if (existing.title !== tooltip) existing.title = tooltip;
+        continue;
+      }
+      const pill = document.createElement("span");
+      pill.className = "workspace-ask-badge";
+      pill.title = tooltip;
+      pill.textContent = text;
+      // Insert next to the pane-count badge if present; otherwise
+      // append at the end of the header. Matches buildCardHeader's
+      // ordering on first paint.
+      const paneBadge = header.querySelector(".workspace-pane-badge");
+      if (paneBadge && paneBadge.nextSibling) {
+        header.insertBefore(pill, paneBadge.nextSibling);
+      } else if (paneBadge) {
+        header.appendChild(pill);
+      } else {
+        header.appendChild(pill);
+      }
+    }
   }
 
   toggle(): void {

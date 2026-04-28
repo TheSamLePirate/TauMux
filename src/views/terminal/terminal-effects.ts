@@ -196,6 +196,11 @@ export class TerminalEffects {
   private destroyed = false;
   private available = true;
   private active = true;
+  /** True after `draw()` has committed the most-recently-rasterised
+   *  content. Lets the render loop skip the GPU draw call entirely
+   *  when nothing's changed and no pulses are animating, instead of
+   *  redrawing the same frame to no visible effect. */
+  private dirtyDrawn = false;
   private intensity = 1;
   private dirty = true;
   private width = 1;
@@ -410,16 +415,30 @@ export class TerminalEffects {
 
     // Prune expired pulses
     const now = performance.now();
+    const pulsesBefore = this.pulses.length;
     this.pulses = this.pulses.filter(
       (p) => (now - p.startTime) / 1000 < PULSE_DURATION,
     );
+    // After the last pulse expires we still owe one draw to clear the
+    // trail it left on the framebuffer.
+    const pulsesJustEnded = pulsesBefore > 0 && this.pulses.length === 0;
 
     if (this.dirty) {
       this.rasterise();
       this.dirty = false;
+      this.dirtyDrawn = false;
     }
 
-    this.draw();
+    // Skip the GPU draw entirely when there's nothing to paint and
+    // nothing animating. Without this, every focused-pane rAF tick
+    // ran a no-op draw — wasted GPU cycles per frame. The first frame
+    // after a rasterise still needs to commit; `dirtyDrawn` tracks it.
+    const needsDraw =
+      this.pulses.length > 0 || pulsesJustEnded || !this.dirtyDrawn;
+    if (needsDraw) {
+      this.draw();
+      this.dirtyDrawn = true;
+    }
 
     // Keep animating while there are active pulses
     if (this.pulses.length > 0 || this.dirty) {

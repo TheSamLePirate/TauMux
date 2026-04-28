@@ -68,6 +68,10 @@ export class PaneDragController {
   private dropOverlayEl: HTMLDivElement | null = null;
   private dropOverlayLabelEl: HTMLSpanElement | null = null;
   private highlightedDropTargetId: string | null = null;
+  /** Container bounding rect cached at drag-start. Reset on cleanup.
+   *  Avoids a layout-flushing getBoundingClientRect() on every
+   *  mousemove. The container can't move during a drag. */
+  private cachedContainerRect: DOMRect | null = null;
 
   constructor(private host: PaneDragHost) {}
 
@@ -100,6 +104,14 @@ export class PaneDragController {
       const offsetY = e.clientY - rect.top;
       let dragStarted = false;
 
+      // rAF-coalesce mousemove. Pane drag is identical to divider drag
+      // in shape — the OS pumps mousemove faster than the frame budget
+      // and updatePaneDrag does multiple getBoundingClientRect calls
+      // + DOM writes. Capture latest pos per frame; one update per rAF.
+      let pending = false;
+      let lastX = 0;
+      let lastY = 0;
+
       const onMove = (moveEvent: MouseEvent) => {
         if (!dragStarted) {
           const distance = Math.hypot(
@@ -111,7 +123,14 @@ export class PaneDragController {
           this.startPaneDrag(surfaceId, offsetX, offsetY);
         }
 
-        this.updatePaneDrag(moveEvent.clientX, moveEvent.clientY);
+        lastX = moveEvent.clientX;
+        lastY = moveEvent.clientY;
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(() => {
+          pending = false;
+          this.updatePaneDrag(lastX, lastY);
+        });
       };
 
       const onUp = (upEvent: MouseEvent) => {
@@ -178,6 +197,12 @@ export class PaneDragController {
     this.host.terminalContainer.classList.add("pane-drag-active");
     document.body.classList.add("pane-dragging");
 
+    // Cache the container rect now — frozen for the duration of the
+    // drag (other UI is locked by `pane-dragging` body class). The
+    // mousemove handler reuses this instead of re-reading layout.
+    this.cachedContainerRect =
+      this.host.terminalContainer.getBoundingClientRect();
+
     this.activeDrag = {
       surfaceId,
       offsetX,
@@ -191,7 +216,13 @@ export class PaneDragController {
     const drag = this.activeDrag;
     if (!drag) return;
 
-    const containerRect = this.host.terminalContainer.getBoundingClientRect();
+    // Reuse the rect captured at drag-start. The terminal container
+    // doesn't reposition during a drag (the rest of the UI is frozen
+    // by `pane-dragging` on body), so this is safe and avoids a layout
+    // flush per mousemove.
+    const containerRect =
+      this.cachedContainerRect ??
+      this.host.terminalContainer.getBoundingClientRect();
     const maxX = Math.max(0, containerRect.width - drag.ghostEl.offsetWidth);
     const maxY = Math.max(0, containerRect.height - drag.ghostEl.offsetHeight);
     const nextX = clientX - containerRect.left - drag.offsetX;
@@ -238,6 +269,7 @@ export class PaneDragController {
       this.activeDrag = null;
     }
 
+    this.cachedContainerRect = null;
     this.host.terminalContainer.classList.remove("pane-drag-active");
     document.body.classList.remove("pane-dragging");
     this.renderPaneDropOverlay(null);
@@ -264,7 +296,12 @@ export class PaneDragController {
       return null;
     }
 
-    const containerRect = this.host.terminalContainer.getBoundingClientRect();
+    // Same cached-rect trick as updatePaneDrag — the container is
+    // frozen during a drag, the target rect varies per move so we
+    // still re-read it.
+    const containerRect =
+      this.cachedContainerRect ??
+      this.host.terminalContainer.getBoundingClientRect();
     const targetRect = targetEl.getBoundingClientRect();
 
     return {
