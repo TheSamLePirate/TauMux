@@ -225,8 +225,11 @@ export class TelegramService {
     // onIncoming calls still pulse the UI.
     const persistedOffset = this.opts.db.getKv(OFFSET_KV_KEY);
     if (persistedOffset) {
-      const n = parseInt(persistedOffset, 10);
-      if (Number.isFinite(n) && n > 0) this.offset = n;
+      // `parseInt("123abc")` returns 123. `Number("123abc")` returns NaN,
+      // which `Number.isInteger` rejects — gives us a strict numeric guard
+      // for what should always be a clean integer.
+      const n = Number(persistedOffset);
+      if (Number.isInteger(n) && n > 0) this.offset = n;
     }
     const cachedUsername = this.opts.db.getKv(BOT_USERNAME_KV_KEY);
     if (cachedUsername) this.status.botUsername = cachedUsername;

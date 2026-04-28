@@ -533,6 +533,26 @@ All methods accept an optional `surface_id` in their params; if omitted, the ser
 
 **`browser.*`** — `list`, `open`, `open_split`, `close`, `identify`, `navigate`, `back`, `forward`, `reload`, `url`, `wait`, `click`, `dblclick`, `hover`, `focus`, `check`, `uncheck`, `scroll_into_view`, `type`, `fill`, `press`, `select`, `scroll`, `highlight`, `snapshot`, `get`, `is`, `eval`, `addscript`, `addstyle`, `find`, `stop_find`, `devtools`, `console_list`, `console_clear`, `errors_list`, `errors_clear`, `history`, `clear_history`.
 
+#### RPC-only methods (no CLI verb)
+
+A handful of RPC methods are deliberately **not** wired into the `ht` CLI. They are still discoverable via `ht capabilities --json` and are usable from any custom RPC client, but the CLI surface intentionally omits them — either because their use case is purely programmatic (audit / cleanup helpers consumed by the webview itself) or because the inputs are awkward to express on a shell command line.
+
+| Method | Why no CLI? | Use it from |
+|--------|-------------|-------------|
+| `surface.kill_pid` | The shell-side equivalent is `ht kill PORT` (resolves the pid from a listening port). Killing an arbitrary pid that we happen to have observed inside a surface tree is too easy to misuse from a shell pipeline. | Process Manager overlay (⌘⌥P) and any custom RPC script that already has the pid in hand. |
+| `surface.rename` | Surfaces don't carry user-visible names today — only the `pane.label` chip does. Method exists so a future labeling UI can wire up cleanly without a schema bump. | Internal webview tooling. |
+| `notification.dismiss` | Equivalent CLI surface would be `ht dismiss <id>`, which is rarely useful interactively (the user just clicks the X). The webview calls it on swipe / X-button. | Notification overlay UI; integration tests. |
+| `browser.stop_find` | Pairs with `browser.find`; the CLI has `find-in-page` but the cancel half is exclusively a UI concern (no human types `ht browser stop-find`). | DevTools-style overlays in the webview. |
+
+### Read-style replies (readScreen vs webviewResponse)
+
+The bun↔webview bridge has two reply channels for read-style RPCs that need a value back from the webview:
+
+- `readScreenResponse` — legacy, single-purpose path for `surface.read_text` round-trips. Predates the generic mechanism; kept for back-compat so existing scripts don't change.
+- `webviewResponse` — generic `{ reqId, result }` envelope for any other read-style RPC, including Tier 2 `__test.*` round-trips and future additions.
+
+Both ride the same `pendingReads` map keyed by `reqId`. New read-style RPCs should use `webviewResponse`; only `surface.read_text` continues to use `readScreenResponse`.
+
 ### Live metadata methods in detail
 
 ```json

@@ -19,6 +19,9 @@ interface ChannelState {
   queueDepth: number;
   /** Set to true to abort in-flight reads (timeout, flush, stop) */
   aborted: boolean;
+  /** Re-entry guard for flushChannel: a flush in flight should not stack
+   *  another tail callback that would clobber the in-progress reset. */
+  flushing: boolean;
 }
 
 export class SidebandParser {
@@ -76,6 +79,11 @@ export class SidebandParser {
   flushChannel(channelName: string): void {
     const ch = this.channels.get(channelName);
     if (!ch) return;
+    // Two flushes in a row would each chain a reset onto `ch.queue`. The
+    // second tail would run after the first re-enabled the channel and
+    // could clobber a fresh in-flight read. Drop redundant flushes.
+    if (ch.flushing) return;
+    ch.flushing = true;
     // Abort current in-flight read
     ch.aborted = true;
     ch.leftover = null;
@@ -85,6 +93,7 @@ export class SidebandParser {
       // Re-enable after the aborted read finishes
       ch.aborted = false;
       ch.queueDepth = 0;
+      ch.flushing = false;
     });
   }
 
@@ -98,6 +107,7 @@ export class SidebandParser {
           queue: Promise.resolve(),
           queueDepth: 0,
           aborted: false,
+          flushing: false,
         });
       } catch (err) {
         this.onError?.(

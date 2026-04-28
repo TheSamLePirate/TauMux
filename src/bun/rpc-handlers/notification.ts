@@ -41,13 +41,14 @@ export function registerNotification(
       }
       // Plan #09 commit B — fire the per-process onCreate hook so
       // the auto-continue engine (or any future bun-side observer)
-      // sees turn-end notifications without polling. Errors in the
-      // subscriber are swallowed so a buggy hook can't fail the
-      // notification flow.
+      // sees turn-end notifications without polling. Synchronous
+      // throws from the subscriber are swallowed so a buggy hook
+      // can't fail the notification flow. Async rejections are NOT
+      // caught here — hooks must handle their own promise errors.
       try {
         notifications.onCreate?.(n);
       } catch {
-        /* don't let a buggy hook break notification.create */
+        /* swallow synchronous throws only */
       }
       dispatch("notification", {
         surfaceId: surfaceId ?? null,

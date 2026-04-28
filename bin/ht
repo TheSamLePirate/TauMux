@@ -2041,7 +2041,10 @@ Surfaces & Panes:
   list-panes                        List panes
 
 I/O:
-  send [--surface S] "text"         Send text to terminal
+  send [--surface S] "text"         Send text to terminal.
+                                    Escapes: \\n and \\r both send carriage
+                                    return (the terminal expects \\r for Enter,
+                                    not \\n). \\t = tab, \\x1b = ESC, \\\\ = literal \\.
   send-key [--surface S] <key>      Send key (enter|tab|escape|...)
   read-screen [--surface S] [--lines N]  Read terminal content
   screenshot [--surface S] [--output PATH] [--full-window]

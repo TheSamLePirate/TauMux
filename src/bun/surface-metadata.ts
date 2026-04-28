@@ -628,8 +628,17 @@ export class SurfaceMetadataPoller {
         }
       }
     } catch (err) {
-      // Poller failures must never crash the app.
-      console.error("[metadata] tick failed:", err);
+      // Poller failures must never crash the app. Differentiate
+      // subprocess timeouts (slow NFS, contended FS lock — common,
+      // self-healing on the next tick) from genuine orchestration or
+      // parser bugs that escape `runSubprocess`. The plain "tick failed"
+      // message is reserved for the latter so it stays actionable.
+      const message = err instanceof Error ? err.message : String(err);
+      if (/timeout/i.test(message)) {
+        console.error("[metadata] subprocess timeout:", message);
+      } else {
+        console.error("[metadata] tick failed:", err);
+      }
     } finally {
       this.inFlight = false;
     }

@@ -639,6 +639,11 @@ const bunMessageHandlers = {
     }
   },
   readScreenResponse: (payload) => {
+    // Legacy single-purpose reply channel for surface.read_text round-trips.
+    // The newer generic webview→bun reply path is `webviewResponse` below
+    // (used by Tier 2 `__test.*` and any future read-style RPC). See
+    // doc/system-rpc-socket.md § "Read-style replies (readScreen vs
+    // webviewResponse)" for why both exist.
     const resolve = pendingReads.get(payload.reqId);
     if (resolve) {
       pendingReads.delete(payload.reqId);

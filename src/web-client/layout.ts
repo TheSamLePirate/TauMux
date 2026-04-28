@@ -177,6 +177,12 @@ export function createLayoutView(deps: LayoutDeps): LayoutView {
     scaleTerminals(state);
   }
 
+  // Must run after `applyMirrorScale` has already set the container's
+  // outer transform/size for this state. The CSS-pixel measurements
+  // below (`offsetWidth` of the xterm screen, `clientWidth` of each
+  // term cell) only converge to their post-scale values once the
+  // container transform is applied; calling `scaleTerminals` first
+  // would read pre-scale values and produce a doubled scale.
   function scaleTerminals(state: AppState) {
     if (!state.nativeViewport) return;
     requestAnimationFrame(() => {

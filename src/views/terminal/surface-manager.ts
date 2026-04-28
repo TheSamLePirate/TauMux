@@ -411,7 +411,15 @@ export class SurfaceManager {
     this.addSurfaceAsSplitImpl(surfaceId, view, splitFrom, direction);
   }
 
-  /** Remove an agent surface (same as removeSurface — shared logic). */
+  /** Remove an agent surface (webview-side teardown only).
+   *
+   *  The DOM/layout cleanup is identical to a PTY surface so this is a
+   *  thin pass-through. The asymmetry is on the bun side: when `removeSurface`
+   *  notifies the bun process via RPC, the agent path also tears down the
+   *  agent-manager's child process and unregisters its sideband listeners,
+   *  whereas the PTY path just closes the shell. The webview doesn't need
+   *  to know — it sees the resulting `surfaceClosed` event the same way
+   *  for both kinds. */
   removeAgentSurface(surfaceId: string): void {
     this.removeSurface(surfaceId);
   }

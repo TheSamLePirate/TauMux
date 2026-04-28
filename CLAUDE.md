@@ -103,3 +103,17 @@ Electrobun Webview (src/views/terminal/)
 
 allways use bun run bum:patch/minor/major before commit, if you dont, explain why
 
+when modifying website-doc, make sure you incude the app version in :
+website-doc/src/content/docs/api/system.md
+and
+website-doc/src/content/docs/cli/system.md
+
+When working, keep track of the changes that needs to be documented in a doc/changes_to_document.md and keep it up to date. clear it when you do update de website-doc
+
+update the website-doc on user request. you can propose to update it when needed
+
+
+when folowing a plan, track your progress, deviation and issues in doc/tracking_*plan_name*.md include the commit id when you commit
+
+
+
