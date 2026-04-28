@@ -181,4 +181,24 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 **Deviations / issues:**
 - The commit also picks up the pre-existing in-flight README edits (the "Just a personal project" hero block and the `HT_WORKSPACE_ID` env-var clarification). They are cohesive with this docs refresh — both clarify reality versus an older, smaller version of the project — so bundling them in keeps the working tree clean rather than splitting hairs across two PRs. The website-doc modifications stay uncommitted; they're handled in step 10.
 
+**Commit:** `df45179` (bump 0.2.46 → 0.2.47).
+
+---
+
+### Step 10 — I2: website doc version examples
+
+**What:** Extended `scripts/bump-version.ts` to also touch the example version strings in `website-doc/src/content/docs/cli/system.md:23` (`# tau-mux X.Y.Z`) and `website-doc/src/content/docs/api/system.md:21` (`"version": "X.Y.Z"`). Anchored each regex to its surrounding token (`tau-mux ` prefix, `"version":` key) so unrelated semver-shaped strings are left alone. The next bump (this commit's bump, 0.2.47 → 0.2.48) carried both files from the stale `0.2.24` to `0.2.48` automatically — no manual edits needed.
+
+**Files:**
+- `scripts/bump-version.ts` — added `CLI_DOC` / `API_DOC` path consts, two new updater functions, wired them into the entry block; refreshed the file's top docstring.
+- `website-doc/src/content/docs/cli/system.md:23` — `0.2.24` → `0.2.48` (via the script).
+- `website-doc/src/content/docs/api/system.md:21` — `0.2.24` → `0.2.48` (via the script).
+
+**Verification:**
+- `bun run typecheck` — clean.
+- `bun test tests/` — 1501 / 1501 pass.
+- Inspected the website doc files post-bump; both show `0.2.48`.
+
+**Deviations / issues:** none.
+
 **Commit:** filled in below.

@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Bump the app version across all three files that hold it:
- *   - package.json                         (npm package version)
- *   - electrobun.config.ts                 (bundle CFBundleVersion)
- *   - src/bun/rpc-handlers/system.ts       (returned by the system.version RPC)
+ * Bump the app version across every file that hard-codes it:
+ *   - package.json                                                  (npm package version)
+ *   - electrobun.config.ts                                          (bundle CFBundleVersion)
+ *   - src/bun/rpc-handlers/system.ts                                (returned by `system.version` RPC)
+ *   - website-doc/src/content/docs/cli/system.md                    (example output in `ht version`)
+ *   - website-doc/src/content/docs/api/system.md                    (example output in `system.version` RPC)
  *
  * Usage:  bun scripts/bump-version.ts <patch|minor|major|x.y.z>
  * Wired via npm scripts: `bun run bump:{patch,minor,major}`.
@@ -11,9 +13,9 @@
  * Reads the current version from package.json (the authoritative
  * source), bumps or replaces it, and writes the new version back to
  * each file with targeted regex replacements so we don't perturb
- * surrounding code. If the three files were out of sync on entry,
- * they are all brought to the new version — this is the quickest way
- * to converge.
+ * surrounding code. If the files were out of sync on entry, they are
+ * all brought to the new version — this is the quickest way to
+ * converge.
  *
  * Does NOT create a git tag or commit. Review the diff, stage, and
  * commit yourself.
@@ -26,6 +28,8 @@ const ROOT = resolve(import.meta.dir, "..");
 const PKG = resolve(ROOT, "package.json");
 const ELECTROBUN = resolve(ROOT, "electrobun.config.ts");
 const SYSTEM_RPC = resolve(ROOT, "src/bun/rpc-handlers/system.ts");
+const CLI_DOC = resolve(ROOT, "website-doc/src/content/docs/cli/system.md");
+const API_DOC = resolve(ROOT, "website-doc/src/content/docs/api/system.md");
 
 type Level = "patch" | "minor" | "major";
 
@@ -97,6 +101,33 @@ function updateSystemRpc(next: string): void {
   writeFileSync(SYSTEM_RPC, replaced);
 }
 
+/** Replace the example `# tau-mux X.Y.Z (build: …)` line in the CLI
+ *  doc. The leading `tau-mux ` anchor disambiguates it from any other
+ *  semver-shaped strings that might land in the file. */
+function updateCliDoc(next: string): void {
+  const raw = readFileSync(CLI_DOC, "utf8");
+  const replaced = raw.replace(/(tau-mux\s+)\d+\.\d+\.\d+/, `$1${next}`);
+  if (replaced === raw) {
+    throw new Error(`Could not find \`tau-mux X.Y.Z\` in ${CLI_DOC}`);
+  }
+  writeFileSync(CLI_DOC, replaced);
+}
+
+/** Replace the example `"version": "X.Y.Z"` JSON value in the API
+ *  doc. Anchored to the `version` key so unrelated semver-shaped
+ *  strings (in code samples, payload examples) are left alone. */
+function updateApiDoc(next: string): void {
+  const raw = readFileSync(API_DOC, "utf8");
+  const replaced = raw.replace(
+    /("version"\s*:\s*")\d+\.\d+\.\d+(")/,
+    `$1${next}$2`,
+  );
+  if (replaced === raw) {
+    throw new Error(`Could not find \`"version": "X.Y.Z"\` in ${API_DOC}`);
+  }
+  writeFileSync(API_DOC, replaced);
+}
+
 // ---------------------------------------------------------------------------
 // Entry
 // ---------------------------------------------------------------------------
@@ -114,7 +145,9 @@ console.log(`[bump] ${current} → ${next}`);
 updatePackageJson(next);
 updateElectrobunConfig(next);
 updateSystemRpc(next);
+updateCliDoc(next);
+updateApiDoc(next);
 console.log(
-  `[bump] Updated package.json, electrobun.config.ts, src/bun/rpc-handlers/system.ts.`,
+  `[bump] Updated package.json, electrobun.config.ts, src/bun/rpc-handlers/system.ts,\n        website-doc/src/content/docs/{cli,api}/system.md.`,
 );
 console.log(`[bump] Review the diff, then commit.`);
