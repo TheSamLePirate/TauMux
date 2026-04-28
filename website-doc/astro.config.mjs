@@ -53,6 +53,12 @@ export default defineConfig({
       pagefind: true,
       tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 4 },
       customCss: ["./src/styles/theme.css"],
+      components: {
+        // Adds a "v<root-package-version>" pill next to the site title
+        // so docs visitors can see exactly which τ-mux release the
+        // currently-deployed docs were built from.
+        SiteTitle: "./src/components/SiteTitle.astro",
+      },
       expressiveCode: {
         themes: ["github-dark", "github-light"],
         styleOverrides: { borderRadius: "0.5rem" },

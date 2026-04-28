@@ -2,6 +2,14 @@
 
 A hybrid terminal emulator where a traditional PTY text layer (xterm.js) coexists with floating canvas overlays and a live, cross-pane view of every process your shells spawn. Scripts running inside the terminal can stream structured content (images, charts, interactive widgets) through extra file descriptors, while the main process continuously observes cwd / pid / ports / CPU / RSS for every descendant of every shell and ships those observations into the UI and any attached CLI. Built on [Electrobun](https://electrobun.dev) + [Bun](https://bun.sh).
 
+📖 **Documentation:** <https://thesamlepirate.github.io/TauMux/>
+&nbsp;·&nbsp;
+[Install](https://thesamlepirate.github.io/TauMux/getting-started/installation/)
+&nbsp;·&nbsp;
+[`ht` CLI reference](https://thesamlepirate.github.io/TauMux/cli/overview/)
+&nbsp;·&nbsp;
+[Sideband protocol](https://thesamlepirate.github.io/TauMux/sideband/overview/)
+
 ## Table of contents
 
 - [Highlights](#highlights)
@@ -578,6 +586,7 @@ The `tests-e2e/` suite exercises the web mirror (HTTP + WebSocket + xterm.js ren
 
 ## Further reading
 
+- **[Documentation site](https://thesamlepirate.github.io/TauMux/)** — Astro Starlight build with full feature docs, CLI reference, and sideband protocol guides
 - [`doc/system-pty-session.md`](doc/system-pty-session.md) — PTY architecture, environment, output buffering, session management
 - [`doc/system-rpc-socket.md`](doc/system-rpc-socket.md) — JSON-RPC socket, full method reference
 - [`doc/system-sideband-protocol.md`](doc/system-sideband-protocol.md) — fd 3/4/5 protocol framing, validation, backpressure

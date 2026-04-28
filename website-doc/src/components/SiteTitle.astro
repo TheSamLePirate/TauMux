@@ -1,0 +1,57 @@
+---
+// Custom Starlight `SiteTitle` override.
+// Renders the default Starlight site title (logo + name) and appends a
+// small pill showing the τ-mux release the docs were built against.
+// Source of truth: the root project's package.json — we import it at
+// build time so the pill reflects whichever version was checked out
+// when `astro build` ran.
+import Default from "@astrojs/starlight/components/SiteTitle.astro";
+import rootPkg from "../../../package.json";
+
+const version = (rootPkg as { version?: string }).version ?? "dev";
+---
+
+<span class="site-title-row">
+  <Default><slot /></Default>
+  <a
+    class="site-title-version"
+    href="https://github.com/TheSamLePirate/TauMux/releases"
+    title={`τ-mux v${version} — view release notes`}
+    aria-label={`Documentation built for τ-mux v${version}`}
+  >
+    v{version}
+  </a>
+</span>
+
+<style>
+  .site-title-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .site-title-version {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.05rem 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--sl-color-accent-high);
+    background: var(--sl-color-accent-low);
+    border: 1px solid var(--sl-color-accent);
+    border-radius: 999px;
+    text-decoration: none;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+    transition:
+      background 120ms ease,
+      color 120ms ease;
+  }
+
+  .site-title-version:hover,
+  .site-title-version:focus-visible {
+    background: var(--sl-color-accent);
+    color: var(--sl-color-text-invert, var(--sl-color-white));
+  }
+</style>
