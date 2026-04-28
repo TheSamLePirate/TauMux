@@ -124,11 +124,6 @@ interface SurfaceView {
    *  after this until the surface is closed — protects a user's chosen
    *  pane name from being overwritten by e.g. `vim` setting the title. */
   titleLockedByUser?: boolean;
-  /** Last container rect signature (`L,T,W,H`) the browser-pane OOPIF
-   *  was synced against. Used by `applyLayout` to skip the IPC call
-   *  when the pane's geometry hasn't actually changed since the last
-   *  layout pass. Only set on browser surfaces. */
-  lastBrowserRectKey?: string;
 }
 
 export interface Workspace {
@@ -167,6 +162,15 @@ export class SurfaceManager {
   private fontSize: number;
   private searchBar: TerminalSearchBar;
   private metadata = new Map<string, SurfaceMetadata>();
+  /** Layout coalescer (perf-pass merge — codex). Multiple calls into
+   *  `requestLayout()` within the same frame collapse into a single
+   *  rAF-scheduled run. `mode` upgrades from "positions" → "full" if
+   *  any caller asked for the full pass. `pendingLayoutCallbacks` are
+   *  invoked after the layout completes (e.g. focus / fit follow-ups
+   *  scheduled from `scheduleLayoutForNewSurface`). */
+  private layoutFrame: number | null = null;
+  private pendingLayoutMode: "positions" | "full" | null = null;
+  private pendingLayoutCallbacks: (() => void)[] = [];
   /** surfaceId → metadata about why we launched this surface, for script
    *  status tracking. Cleared on surfaceExited. */
   private scriptTrackers = new Map<
@@ -196,7 +200,7 @@ export class SurfaceManager {
       getSurface: (id) => this.surfaces.get(id),
       focusSurface: (id) => this.focusSurface(id),
       onDropCommitted: () => {
-        this.applyLayout();
+        this.requestLayout("full");
         this.updateSidebar();
       },
     });
@@ -257,14 +261,14 @@ export class SurfaceManager {
           "--sidebar-width",
           `${width}px`,
         );
-        this.applyLayout();
+        this.requestLayout("full");
       },
       onCommit: (width) => {
         document.documentElement.style.setProperty(
           "--sidebar-width",
           `${width}px`,
         );
-        this.applyLayout();
+        this.requestLayout("full");
         window.dispatchEvent(
           new CustomEvent("ht-sidebar-resize-commit", {
             detail: { width },
@@ -290,13 +294,13 @@ export class SurfaceManager {
   private scheduleLayoutAfterTransition(): void {
     const handler = () => {
       this.terminalContainer.removeEventListener("transitionend", handler);
-      this.applyLayout();
+      this.requestLayout("full");
     };
     this.terminalContainer.addEventListener("transitionend", handler);
     // Fallback in case transitionend doesn't fire (e.g. no transition)
     setTimeout(() => {
       this.terminalContainer.removeEventListener("transitionend", handler);
-      this.applyLayout();
+      this.requestLayout("full");
     }, 300);
   }
 
@@ -586,10 +590,11 @@ export class SurfaceManager {
       requestAnimationFrame(() => {
         // First pass: position the containers so xterm can measure
         this.applyPositions();
-        // Second pass after a tick: fit terminals now that xterm has rendered
+        // Second pass after a tick: fit terminals now that xterm has
+        // rendered. Route through the layout coalescer + pass `after`
+        // so the focus follow-up fires after the full pass lands.
         setTimeout(() => {
-          this.applyLayout();
-          after?.();
+          this.requestLayout("full", after);
         }, 50);
       });
     });
@@ -617,7 +622,7 @@ export class SurfaceManager {
         const remaining = ws.layout.getAllSurfaceIds();
         if (remaining.length > 0) this.focusSurface(remaining[0]);
       }
-      this.applyLayout();
+      this.requestLayout("full");
     }
 
     // Order matters: destroy PanelManager (and its xterm subscriptions)
@@ -719,7 +724,7 @@ export class SurfaceManager {
   }
 
   resizeAll(): void {
-    this.applyLayout();
+    this.requestLayout("full");
   }
 
   getSidebar(): Sidebar {
@@ -1080,7 +1085,7 @@ export class SurfaceManager {
       this.onResize(active.id, active.term.cols, active.term.rows);
     }
 
-    this.applyLayout();
+    this.requestLayout("full");
   }
 
   // ── Font size ──
@@ -1281,7 +1286,9 @@ export class SurfaceManager {
       const view = this.surfaces.get(sid);
       if (view?.browserView) {
         browserPaneSetHidden(view.browserView, false);
-        browserPaneSyncDimensions(view.browserView);
+        // Force-sync on return-from-hidden — the cache was cleared
+        // by setHidden(false) so this is a fresh sync regardless.
+        browserPaneSyncDimensions(view.browserView, undefined, true);
       }
     }
   }
@@ -1714,7 +1721,7 @@ export class SurfaceManager {
         "--workspace-accent",
         activeWs.color,
       );
-      this.applyLayout();
+      this.requestLayout("full");
       const ids = activeWs.layout.getAllSurfaceIds();
       if (
         this.focusedSurfaceId &&
@@ -2288,26 +2295,58 @@ export class SurfaceManager {
     };
   }
 
+  /** Schedule a layout pass. Multiple callers in the same frame
+   *  collapse into one rAF-scheduled run; the most-aggressive mode
+   *  asked for wins ("full" upgrades any pending "positions"). The
+   *  `after` callback is invoked once the layout completes — used by
+   *  `scheduleLayoutForNewSurface` to focus the new pane after fit.
+   *
+   *  Modes:
+   *    "positions" — pane rectangles only. Cheap; used during the
+   *                  divider drag mousemove path so each frame
+   *                  doesn't re-fit xterm or re-broadcast resize to
+   *                  bun.
+   *    "full"      — positions + xterm fit + effects refocus + bun
+   *                  resize broadcast + inline panel sync + browser
+   *                  pane OOPIF sync. */
+  private requestLayout(
+    mode: "positions" | "full" = "full",
+    after?: () => void,
+  ): void {
+    if (after) this.pendingLayoutCallbacks.push(after);
+    if (this.pendingLayoutMode !== "full") {
+      this.pendingLayoutMode = mode;
+    }
+    if (this.layoutFrame !== null) return;
+    this.layoutFrame = requestAnimationFrame(() => {
+      this.layoutFrame = null;
+      const nextMode = this.pendingLayoutMode ?? "full";
+      const callbacks = this.pendingLayoutCallbacks.splice(0);
+      this.pendingLayoutMode = null;
+      if (nextMode === "positions") {
+        this.applyPositions(false);
+      } else {
+        this.applyLayout();
+      }
+      for (const cb of callbacks) cb();
+    });
+  }
+
   private applyLayout(): void {
-    this.applyPositions();
+    const rects = this.applyPositions();
     const ws = this.activeWorkspace();
     if (!ws) return;
     for (const surfaceId of ws.surfaceIds) {
       const view = this.surfaces.get(surfaceId);
       if (!view) continue;
       if (view.surfaceType === "browser") {
-        // Browser panes: sync the OOPIF overlay dimensions — but only
-        // when the container geometry actually changed since last
-        // layout. Each `browserPaneSyncDimensions` is an Electrobun
-        // IPC into the OOPIF host and is wasted work when the pane
-        // hasn't moved. Per Phase 1G of the perf pass.
+        // Browser panes: sync the OOPIF overlay dimensions. The
+        // browser pane itself caches the last-synced rect signature
+        // and short-circuits when unchanged (see browser-pane.ts) —
+        // we just pass the freshly-computed rect so it doesn't have
+        // to re-read layout.
         if (view.browserView) {
-          const c = view.container;
-          const rectKey = `${c.offsetLeft},${c.offsetTop},${c.offsetWidth},${c.offsetHeight}`;
-          if (view.lastBrowserRectKey !== rectKey) {
-            view.lastBrowserRectKey = rectKey;
-            browserPaneSyncDimensions(view.browserView);
-          }
+          browserPaneSyncDimensions(view.browserView, rects?.get(surfaceId));
         }
       } else if (view.surfaceType === "telegram") {
         // Telegram panes are pure DOM — no terminal to fit, no OOPIF to
@@ -2323,9 +2362,21 @@ export class SurfaceManager {
     }
   }
 
-  private applyPositions(): void {
+  /** Position pane containers for the active workspace.
+   *
+   *  Returns the rects map so callers (e.g. `applyLayout`) can pass
+   *  per-surface rects into downstream calls without re-computing
+   *  layout. `renderDividers=false` skips the divider rebuild — used
+   *  by positions-only updates that don't change the divider set
+   *  (the dividers themselves are still re-positioned via the same
+   *  layout writes). Style writes are skipped when the rect's
+   *  signature equals the last applied one (avoids redundant DOM
+   *  mutations on no-op layouts). */
+  private applyPositions(
+    renderDividers = true,
+  ): Map<string, { x: number; y: number; w: number; h: number }> | null {
     const ws = this.activeWorkspace();
-    if (!ws) return;
+    if (!ws) return null;
 
     const bounds = {
       x: 0,
@@ -2334,7 +2385,7 @@ export class SurfaceManager {
       h: this.terminalContainer.offsetHeight,
     };
 
-    if (bounds.w === 0 || bounds.h === 0) return;
+    if (bounds.w === 0 || bounds.h === 0) return null;
 
     const rects = ws.layout.computeRects(bounds);
     let bottomRightSurfaceId: string | null = null;
@@ -2356,18 +2407,23 @@ export class SurfaceManager {
       if (!view) continue;
 
       const s = view.container.style;
-      s.left = `${rect.x}px`;
-      s.top = `${rect.y}px`;
-      s.width = `${rect.w}px`;
-      s.height = `${rect.h}px`;
-      s.display = "flex";
+      const sig = `${rect.x},${rect.y},${rect.w},${rect.h}`;
+      if (view.container.dataset["layoutSig"] !== sig) {
+        s.left = `${rect.x}px`;
+        s.top = `${rect.y}px`;
+        s.width = `${rect.w}px`;
+        s.height = `${rect.h}px`;
+        view.container.dataset["layoutSig"] = sig;
+      }
+      if (s.display !== "flex") s.display = "flex";
       view.container.classList.toggle(
         "surface-window-corner",
         surfaceId === bottomRightSurfaceId,
       );
     }
 
-    this.renderDividers(ws, bounds);
+    if (renderDividers) this.renderDividers(ws, bounds);
+    return rects;
   }
 
   private renderDividers(
@@ -2400,33 +2456,28 @@ export class SurfaceManager {
         const startRatio = splitNode.ratio;
         const totalSize = div.direction === "horizontal" ? bounds.w : bounds.h;
 
-        // rAF-coalesce mousemove → applyPositions. Without this, every
-        // pixel of drag fires a layout read+write inside applyPositions,
-        // and OS mousemove rates of 120+ Hz starve the frame budget.
-        // We capture only the latest position per frame and run one
-        // applyPositions per rAF tick.
-        let pending = false;
-        let lastPos = startPos;
-
+        // The previous rAF-batching here is now redundant — the
+        // global layout coalescer (requestLayout) already collapses
+        // multiple positions-only requests into one rAF flush. Each
+        // mousemove just updates the model and asks for a positions
+        // pass; coalescing lives in one place now.
         const onMove = (me: MouseEvent) => {
-          lastPos = div.direction === "horizontal" ? me.clientX : me.clientY;
-          if (pending) return;
-          pending = true;
-          requestAnimationFrame(() => {
-            pending = false;
-            const delta = lastPos - startPos;
-            splitNode.ratio = Math.max(
-              0.1,
-              Math.min(0.9, startRatio + delta / totalSize),
-            );
-            this.applyPositions();
-          });
+          const currentPos =
+            div.direction === "horizontal" ? me.clientX : me.clientY;
+          const delta = currentPos - startPos;
+          splitNode.ratio = Math.max(
+            0.1,
+            Math.min(0.9, startRatio + delta / totalSize),
+          );
+          this.requestLayout("positions");
         };
 
         const onUp = () => {
           document.removeEventListener("mousemove", onMove);
           document.removeEventListener("mouseup", onUp);
-          this.applyLayout();
+          // Mouseup gets the full pass: re-fit xterm, re-broadcast
+          // bun resize, re-sync browser OOPIFs to the final rect.
+          this.requestLayout("full");
         };
 
         document.addEventListener("mousemove", onMove);

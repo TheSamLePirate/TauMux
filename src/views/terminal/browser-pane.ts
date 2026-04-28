@@ -204,6 +204,11 @@ export interface BrowserPaneView {
    *  browser pane leaks its callback closures (which hold surfaceId and
    *  callbacks refs). */
   _cleanup: (() => void)[];
+  /** Last native OOPIF rect synced through Electrobun. Avoids forcing a
+   *  native-layer resize on layout passes where the browser pane stayed
+   *  put (perf-pass merge — codex). Cleared by `browserPaneSetHidden`
+   *  when the pane returns to view so the next layout force-syncs. */
+  _lastSyncedRectSig: string | null;
 }
 
 export interface BrowserPaneCallbacks {
@@ -416,6 +421,7 @@ export function createBrowserPaneView(
     findVisible: false,
     desiredHidden: false,
     _cleanup: [],
+    _lastSyncedRectSig: null,
   };
 
   /** Register a webviewEl.on(event, listener) and stash an off() hook
@@ -847,8 +853,31 @@ export function browserPaneFocusAddressBar(view: BrowserPaneView) {
   view.addressBar.select();
 }
 
-export function browserPaneSyncDimensions(view: BrowserPaneView) {
+/** Sync the OOPIF overlay dimensions to whatever rect this pane is
+ *  currently occupying. The Electrobun call into the native host is
+ *  surprisingly expensive on every layout pass; this helper caches
+ *  the last-synced rect signature on the view itself and short-
+ *  circuits when the pane hasn't moved. Pass `rect` when the caller
+ *  has just computed it (e.g. `applyLayout` does) to avoid an extra
+ *  `getBoundingClientRect`; otherwise we read it lazily. `force=true`
+ *  bypasses the cache — used when a pane returns from hidden, since
+ *  the native layer needs a fresh sync regardless.
+ *
+ *  Perf-pass merge — codex. */
+export function browserPaneSyncDimensions(
+  view: BrowserPaneView,
+  rect?: { x: number; y: number; w: number; h: number },
+  force = false,
+) {
   try {
+    const sig = rect
+      ? `${Math.round(rect.x)},${Math.round(rect.y)},${Math.round(rect.w)},${Math.round(rect.h)}`
+      : (() => {
+          const r = view.container.getBoundingClientRect();
+          return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+        })();
+    if (!force && view._lastSyncedRectSig === sig) return;
+    view._lastSyncedRectSig = sig;
     view.webviewEl.syncDimensions(true);
   } catch {
     // May fail if webview is hidden or not attached
@@ -856,7 +885,13 @@ export function browserPaneSyncDimensions(view: BrowserPaneView) {
 }
 
 export function browserPaneSetHidden(view: BrowserPaneView, hidden: boolean) {
+  if (view.desiredHidden === hidden) return;
   view.desiredHidden = hidden;
+  // Going visible again invalidates the cache — the OOPIF needs a
+  // fresh sync regardless of what the rect signature says, since the
+  // native layer may have stopped tracking the pane while it was
+  // hidden.
+  if (!hidden) view._lastSyncedRectSig = null;
   applyHiddenState(view);
 }
 
