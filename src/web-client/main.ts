@@ -219,7 +219,17 @@ function boot() {
   // frame arrives before `ensurePanelDom` has run for its id, buffer it
   // here and flush once the DOM exists. Mirrors PanelManager.pendingData
   // on the native side.
-  const pendingPanelData: Record<string, Uint8Array> = {};
+  //
+  // D.2 — FIFO per panel id. The previous single-slot map silently
+  // dropped earlier frames if multiple landed in the same animation
+  // frame; now we drain in arrival order. A per-panel cap protects
+  // against an unbounded buffer if the rAF never fires (rare, but a
+  // buggy producer that never sends meta would otherwise OOM the
+  // renderer).
+  const PENDING_PANEL_DATA_CAP = 16;
+  const pendingPanelData: Record<string, Uint8Array[]> = {};
+  // Once-per-panel warn flag so the cap-exceeded log doesn't spam.
+  const pendingPanelDataDropped: Record<string, boolean> = {};
 
   // ------------------------------------------------------------------
   // Transport + protocol dispatch
@@ -962,7 +972,10 @@ function boot() {
     // Drop buffered binary frames for panels that never materialized
     // (e.g. meta cleared or failed before rAF ran).
     for (const id in pendingPanelData) {
-      if (!state.panels[id]) delete pendingPanelData[id];
+      if (!state.panels[id]) {
+        delete pendingPanelData[id];
+        delete pendingPanelDataDropped[id];
+      }
     }
     // Create / update panels from state.
     for (const id in state.panels) {
@@ -1038,11 +1051,13 @@ function boot() {
     panelsDom[id] = { el, contentEl, panelId: id };
     if (meta.data !== undefined) contentEl.innerHTML = meta.data;
 
-    // Flush any binary frame that arrived before this DOM was created.
+    // Flush any binary frames that arrived before this DOM was created,
+    // in arrival order.
     const pending = pendingPanelData[id];
-    if (pending) {
+    if (pending && pending.length > 0) {
       delete pendingPanelData[id];
-      renderPanelData(id, pending, true);
+      delete pendingPanelDataDropped[id];
+      for (const frame of pending) renderPanelData(id, frame, true);
     }
 
     // Inform the script of the terminal pixel size for interactive panels
@@ -1078,7 +1093,22 @@ function boot() {
     if (!ps || !dom) {
       // DOM not created yet (rAF hasn't fired since the meta envelope
       // arrived). Stash bytes and let ensurePanelDom flush them.
-      if (isBinary) pendingPanelData[panelId] = data as Uint8Array;
+      if (isBinary) {
+        const queue = pendingPanelData[panelId] ?? [];
+        if (queue.length >= PENDING_PANEL_DATA_CAP) {
+          // Drop the oldest. Warn once per panel id so the log shows
+          // which producer is misbehaving without spamming on every frame.
+          queue.shift();
+          if (!pendingPanelDataDropped[panelId]) {
+            pendingPanelDataDropped[panelId] = true;
+            console.warn(
+              `[panel] pending-frame queue cap (${PENDING_PANEL_DATA_CAP}) exceeded for ${panelId}; dropping oldest frame(s)`,
+            );
+          }
+        }
+        queue.push(data as Uint8Array);
+        pendingPanelData[panelId] = queue;
+      }
       return;
     }
     const renderer = panelRenderers.get(ps.meta.type);

@@ -1,15 +1,17 @@
 // Mouse / touch / wheel routing for interactive panels.
 //
-// Three gestures share one pattern (grab a pointer, install document
-// listeners for move + end, tear them down on release). We factor out:
+// Drag and resize gestures use the unified Pointer Events API plus
+// `setPointerCapture` so once the gesture starts the source element
+// keeps receiving move/end/cancel events even if the pointer leaves
+// the element bounds, lands on a different overlay, or the OS hands
+// focus elsewhere mid-drag (D.1). Compared to the previous
+// `document.addEventListener('mousemove' | 'touchmove' | …)` scheme,
+// this means a stuck-drag bug after a fast off-screen flick is no
+// longer possible — the browser guarantees an end event.
 //
-//   - pointerXY: unify mouse and touch event coordinate reads
-//   - sendPanelMouseEvent: build + forward the JSON envelope
-//   - startPointerDrag: document listener install/remove for
-//     mousemove/mouseup/touchmove/touchend/touchcancel
-//
-// The three entry points then become thin wrappers with slightly
-// different state capture and release behavior.
+// Wheel and per-element mouse events still use the legacy listeners;
+// migrating those is unrelated to drag stickiness and would fan the
+// diff out across surfaces this module isn't responsible for.
 
 export type SendMsg = (type: string, payload: Record<string, unknown>) => void;
 
@@ -18,38 +20,46 @@ interface PointerXY {
   clientY: number;
 }
 
-function pointerXY(e: MouseEvent | TouchEvent): PointerXY {
-  if ("touches" in e) {
-    const t = e.touches[0] || e.changedTouches[0];
-    if (t) return { clientX: t.clientX, clientY: t.clientY };
-    return { clientX: 0, clientY: 0 };
-  }
-  return { clientX: e.clientX, clientY: e.clientY };
-}
-
+/** Begin a drag-style gesture on `source` for the pointer that just
+ *  fired `pointerdown`. Captures the pointer so subsequent move / end
+ *  events fire on `source` regardless of cursor position; releases
+ *  the capture on `pointerup` or `pointercancel`. The end callback
+ *  fires for both — distinguishing them isn't useful at the gesture
+ *  layer, only that the gesture ended. */
 function startPointerDrag(
-  onMove: (p: PointerXY, e: MouseEvent | TouchEvent) => void,
-  onEnd: (p: PointerXY, e: MouseEvent | TouchEvent) => void,
+  source: HTMLElement,
+  pointerId: number,
+  onMove: (p: PointerXY) => void,
+  onEnd: (p: PointerXY) => void,
 ): void {
-  function move(e: MouseEvent | TouchEvent) {
-    if ("touches" in e && e.cancelable) e.preventDefault();
-    onMove(pointerXY(e), e);
+  try {
+    source.setPointerCapture(pointerId);
+  } catch {
+    /* Some test environments / older browsers don't implement capture.
+     * Fall through — the listeners below still work, they just don't
+     * follow the pointer outside the element. */
   }
-  function end(e: MouseEvent | TouchEvent) {
-    document.removeEventListener("mousemove", move as EventListener);
-    document.removeEventListener("mouseup", end as EventListener);
-    document.removeEventListener("touchmove", move as EventListener);
-    document.removeEventListener("touchend", end as EventListener);
-    document.removeEventListener("touchcancel", end as EventListener);
-    onEnd(pointerXY(e), e);
-  }
-  document.addEventListener("mousemove", move as EventListener);
-  document.addEventListener("mouseup", end as EventListener);
-  document.addEventListener("touchmove", move as EventListener, {
-    passive: false,
-  });
-  document.addEventListener("touchend", end as EventListener);
-  document.addEventListener("touchcancel", end as EventListener);
+
+  const move = (e: PointerEvent): void => {
+    if (e.pointerId !== pointerId) return;
+    onMove({ clientX: e.clientX, clientY: e.clientY });
+  };
+  const end = (e: PointerEvent): void => {
+    if (e.pointerId !== pointerId) return;
+    source.removeEventListener("pointermove", move);
+    source.removeEventListener("pointerup", end);
+    source.removeEventListener("pointercancel", end);
+    try {
+      source.releasePointerCapture(pointerId);
+    } catch {
+      /* already released — captures auto-release on pointerup */
+    }
+    onEnd({ clientX: e.clientX, clientY: e.clientY });
+  };
+
+  source.addEventListener("pointermove", move);
+  source.addEventListener("pointerup", end);
+  source.addEventListener("pointercancel", end);
 }
 
 /** Forward panel mouse/touch/wheel events to the server. */
@@ -157,15 +167,20 @@ export function setupPanelDrag(
   surfaceId: string,
   sendMsg: SendMsg,
 ): void {
-  function startDrag(e: MouseEvent | TouchEvent) {
+  handle.addEventListener("pointerdown", (e) => {
+    // Only respond to the primary button on mouse pointers; let touch
+    // / pen pointers through (pointerType !== "mouse" has no `button`
+    // semantics worth filtering on).
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    const p = pointerXY(e);
-    const startX = p.clientX;
-    const startY = p.clientY;
+    const startX = e.clientX;
+    const startY = e.clientY;
     const startLeft = parseInt(el.style.left) || 0;
     const startTop = parseInt(el.style.top) || 0;
     startPointerDrag(
+      handle,
+      e.pointerId,
       (mp) => {
         el.style.left = startLeft + mp.clientX - startX + "px";
         el.style.top = startTop + mp.clientY - startY + "px";
@@ -180,10 +195,6 @@ export function setupPanelDrag(
         });
       },
     );
-  }
-  handle.addEventListener("mousedown", startDrag as EventListener);
-  handle.addEventListener("touchstart", startDrag as EventListener, {
-    passive: false,
   });
 }
 
@@ -195,15 +206,17 @@ export function setupPanelResize(
   surfaceId: string,
   sendMsg: SendMsg,
 ): void {
-  function startResize(e: MouseEvent | TouchEvent) {
+  handle.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    const p = pointerXY(e);
-    const startX = p.clientX;
-    const startY = p.clientY;
+    const startX = e.clientX;
+    const startY = e.clientY;
     const startW = el.offsetWidth;
     const startH = el.offsetHeight;
     startPointerDrag(
+      handle,
+      e.pointerId,
       (mp) => {
         el.style.width = Math.max(120, startW + mp.clientX - startX) + "px";
         el.style.height = Math.max(72, startH + mp.clientY - startY) + "px";
@@ -218,9 +231,5 @@ export function setupPanelResize(
         });
       },
     );
-  }
-  handle.addEventListener("mousedown", startResize as EventListener);
-  handle.addEventListener("touchstart", startResize as EventListener, {
-    passive: false,
   });
 }

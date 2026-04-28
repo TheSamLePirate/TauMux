@@ -159,7 +159,35 @@ describe("setupPanelMouse", () => {
   });
 });
 
-describe("setupPanelDrag", () => {
+// D.1 — Drag and resize moved from document-level mouse/touch listeners
+// to Pointer Events captured on the handle. Tests dispatch PointerEvent
+// directly on the handle (where the listeners now live) instead of on
+// document.
+function pointerEvt(
+  type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
+  init: { clientX?: number; clientY?: number; pointerId?: number } = {},
+): PointerEvent {
+  // happy-dom supports PointerEvent but its constructor may not pick up
+  // every field; assign defensively after construction so the listener
+  // sees what it needs.
+  const evt = new (typeof PointerEvent !== "undefined"
+    ? PointerEvent
+    : MouseEvent)(type, {
+    bubbles: true,
+    cancelable: true,
+  }) as PointerEvent;
+  Object.assign(evt, {
+    clientX: init.clientX ?? 0,
+    clientY: init.clientY ?? 0,
+    pointerId: init.pointerId ?? 1,
+    pointerType: "mouse",
+    button: 0,
+    buttons: 1,
+  });
+  return evt;
+}
+
+describe("setupPanelDrag (pointer events)", () => {
   test("dragging updates left/top, release emits dragend with final pos", async () => {
     const { setupPanelDrag } = await loadModule();
     const el = makePanel();
@@ -169,15 +197,17 @@ describe("setupPanelDrag", () => {
     setupPanelDrag(el, handle, "pid", "sid", send);
 
     handle.dispatchEvent(
-      new MouseEvent("mousedown", { clientX: 100, clientY: 100 }),
+      pointerEvt("pointerdown", { clientX: 100, clientY: 100 }),
     );
-    document.dispatchEvent(
-      new MouseEvent("mousemove", { clientX: 150, clientY: 140 }),
+    handle.dispatchEvent(
+      pointerEvt("pointermove", { clientX: 150, clientY: 140 }),
     );
     expect(el.style.left).toBe("60px"); // 10 + (150 - 100)
     expect(el.style.top).toBe("60px"); // 20 + (140 - 100)
 
-    document.dispatchEvent(new MouseEvent("mouseup"));
+    handle.dispatchEvent(
+      pointerEvt("pointerup", { clientX: 150, clientY: 140 }),
+    );
     expect(send).toHaveBeenCalledTimes(1);
     expect(send.mock.calls[0]![1]).toMatchObject({
       event: "dragend",
@@ -186,7 +216,26 @@ describe("setupPanelDrag", () => {
     });
   });
 
-  test("mouseup tears down document listeners", async () => {
+  test("pointerup tears down handle listeners", async () => {
+    const { setupPanelDrag } = await loadModule();
+    const el = makePanel();
+    const handle = document.createElement("div");
+    el.appendChild(handle);
+    const send = mock(() => {});
+    setupPanelDrag(el, handle, "pid", "sid", send);
+
+    handle.dispatchEvent(pointerEvt("pointerdown", { clientX: 0, clientY: 0 }));
+    handle.dispatchEvent(pointerEvt("pointerup", { clientX: 0, clientY: 0 }));
+
+    // Further moves should not update the element anymore.
+    const beforeLeft = el.style.left;
+    handle.dispatchEvent(
+      pointerEvt("pointermove", { clientX: 999, clientY: 999 }),
+    );
+    expect(el.style.left).toBe(beforeLeft);
+  });
+
+  test("pointercancel cleanly ends the drag (D.1: stuck-drag fix)", async () => {
     const { setupPanelDrag } = await loadModule();
     const el = makePanel();
     const handle = document.createElement("div");
@@ -195,20 +244,30 @@ describe("setupPanelDrag", () => {
     setupPanelDrag(el, handle, "pid", "sid", send);
 
     handle.dispatchEvent(
-      new MouseEvent("mousedown", { clientX: 0, clientY: 0 }),
+      pointerEvt("pointerdown", { clientX: 50, clientY: 50 }),
     );
-    document.dispatchEvent(new MouseEvent("mouseup"));
+    handle.dispatchEvent(
+      pointerEvt("pointermove", { clientX: 80, clientY: 70 }),
+    );
+    // Simulate the OS handing focus elsewhere mid-drag — the previous
+    // mouse/touch implementation could leave the drag in a stuck state.
+    handle.dispatchEvent(
+      pointerEvt("pointercancel", { clientX: 80, clientY: 70 }),
+    );
 
-    // Further document moves should not update the element anymore.
-    const beforeLeft = el.style.left;
-    document.dispatchEvent(
-      new MouseEvent("mousemove", { clientX: 999, clientY: 999 }),
+    // Subsequent move must not move the element — gesture is over.
+    const left = el.style.left;
+    handle.dispatchEvent(
+      pointerEvt("pointermove", { clientX: 999, clientY: 999 }),
     );
-    expect(el.style.left).toBe(beforeLeft);
+    expect(el.style.left).toBe(left);
+    // dragend still fires so consumers learn the gesture ended.
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0]![1]).toMatchObject({ event: "dragend" });
   });
 });
 
-describe("setupPanelResize", () => {
+describe("setupPanelResize (pointer events)", () => {
   test("dragging changes width/height respecting minimums", async () => {
     const { setupPanelResize } = await loadModule();
     const el = makePanel({ width: 200, height: 100 });
@@ -218,10 +277,10 @@ describe("setupPanelResize", () => {
     setupPanelResize(el, handle, "pid", "sid", send);
 
     handle.dispatchEvent(
-      new MouseEvent("mousedown", { clientX: 100, clientY: 100 }),
+      pointerEvt("pointerdown", { clientX: 100, clientY: 100 }),
     );
-    document.dispatchEvent(
-      new MouseEvent("mousemove", { clientX: 150, clientY: 120 }),
+    handle.dispatchEvent(
+      pointerEvt("pointermove", { clientX: 150, clientY: 120 }),
     );
     expect(el.style.width).toBe("250px"); // 200 + 50
     expect(el.style.height).toBe("120px"); // 100 + 20
@@ -236,16 +295,14 @@ describe("setupPanelResize", () => {
     setupPanelResize(el, handle, "pid", "sid", send);
 
     handle.dispatchEvent(
-      new MouseEvent("mousedown", { clientX: 200, clientY: 200 }),
+      pointerEvt("pointerdown", { clientX: 200, clientY: 200 }),
     );
-    document.dispatchEvent(
-      new MouseEvent("mousemove", { clientX: 0, clientY: 0 }),
-    );
+    handle.dispatchEvent(pointerEvt("pointermove", { clientX: 0, clientY: 0 }));
     expect(el.style.width).toBe("120px");
     expect(el.style.height).toBe("72px");
   });
 
-  test("mouseup emits resize event with final dims", async () => {
+  test("pointerup emits resize event with final dims", async () => {
     const { setupPanelResize } = await loadModule();
     const el = makePanel({ width: 200, height: 100 });
     const handle = document.createElement("div");
@@ -254,12 +311,14 @@ describe("setupPanelResize", () => {
     setupPanelResize(el, handle, "pid", "sid", send);
 
     handle.dispatchEvent(
-      new MouseEvent("mousedown", { clientX: 100, clientY: 100 }),
+      pointerEvt("pointerdown", { clientX: 100, clientY: 100 }),
     );
-    document.dispatchEvent(
-      new MouseEvent("mousemove", { clientX: 150, clientY: 120 }),
+    handle.dispatchEvent(
+      pointerEvt("pointermove", { clientX: 150, clientY: 120 }),
     );
-    document.dispatchEvent(new MouseEvent("mouseup"));
+    handle.dispatchEvent(
+      pointerEvt("pointerup", { clientX: 150, clientY: 120 }),
+    );
     expect(send.mock.calls[0]![1]).toMatchObject({
       event: "resize",
     });

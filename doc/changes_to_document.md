@@ -2,6 +2,11 @@
 
 Pending updates to fold into `website-doc/` on the next user-driven docs sweep.
 
+## 0.2.56 — PR #6 (D.1 pointer capture, D.2 FIFO)
+
+- Web mirror panel drag/resize gestures migrated to Pointer Events with `setPointerCapture` so a fast off-screen flick can no longer leave a panel "stuck" mid-drag (the browser now guarantees an end event). User-visible only as a stability fix; no API change.
+- Web mirror's pending-frame buffer for sideband panel data is now per-panel FIFO (cap 16). Multiple binary frames arriving before `ensurePanelDom` runs are now drained in order rather than collapsed to the last one.
+
 ## 0.2.55 — PR #5 (C.1, C.2 UX polish)
 
 - Theme preset cards in Settings → Theme now move the active-card border on the same tick as the click (no need to close & reopen the panel).
