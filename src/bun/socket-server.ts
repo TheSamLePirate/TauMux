@@ -1,4 +1,4 @@
-import { chmodSync, unlinkSync } from "fs";
+import { chmodSync, existsSync, unlinkSync } from "fs";
 
 type RpcHandler = (
   method: string,
@@ -11,18 +11,42 @@ interface SocketData {
 
 export class SocketServer {
   private server: ReturnType<typeof Bun.listen> | null = null;
+  private bound = false;
 
   constructor(
     private socketPath: string,
     private handler: RpcHandler,
   ) {}
 
-  start(): void {
-    // Remove stale socket file
-    try {
-      unlinkSync(this.socketPath);
-    } catch {
-      // doesn't exist, fine
+  async start(): Promise<void> {
+    // Don't blindly unlink the socket file. If another τ-mux process is
+    // already listening on this path, deleting the inode would orphan that
+    // listener and silently break its `ht` clients (issue B4/B5 in
+    // doc/full_analysis.md). Probe first; only unlink if the path is stale.
+    if (existsSync(this.socketPath)) {
+      const live = await this.isPeerLive();
+      if (live) {
+        console.error(
+          `[socket] Another process is already listening on ${this.socketPath}.`,
+        );
+        console.error(
+          "[socket] Refusing to overwrite — the existing process's `ht` clients would break.",
+        );
+        console.error(
+          "[socket] Set HT_CONFIG_DIR or HT_SOCKET_PATH to a different path,",
+        );
+        console.error(
+          "[socket]   e.g. HT_CONFIG_DIR=/tmp/tau-mux-dev bun run dev",
+        );
+        console.error("[socket] CLI commands via 'ht' will be unavailable.");
+        return;
+      }
+      try {
+        unlinkSync(this.socketPath);
+      } catch {
+        // race: peer cleaned up between probe and unlink — fine, the bind
+        // attempt below will fail loudly if the path reappears.
+      }
     }
 
     try {
@@ -85,6 +109,7 @@ export class SocketServer {
         console.warn("[socket] Could not set permissions on", this.socketPath);
       }
 
+      this.bound = true;
       console.log(`[socket] listening on ${this.socketPath}`);
     } catch (err) {
       // If the socket cannot be bound (EADDRINUSE, EACCES, etc.), log the
@@ -95,12 +120,62 @@ export class SocketServer {
       );
       console.error("[socket] CLI commands via 'ht' will be unavailable.");
       this.server = null;
+      this.bound = false;
     }
+  }
+
+  /** True iff the listener is bound and ready to accept connections. */
+  isBound(): boolean {
+    return this.bound;
+  }
+
+  /** Best-effort probe: does someone answer on this socket within 250 ms?
+   *  Used to distinguish a live peer (refuse to take over) from a stale
+   *  inode left behind by a crashed process (safe to unlink). */
+  private async isPeerLive(): Promise<boolean> {
+    return await new Promise<boolean>((resolveOnce) => {
+      let done = false;
+      const finish = (live: boolean): void => {
+        if (done) return;
+        done = true;
+        resolveOnce(live);
+      };
+      const timer = setTimeout(() => finish(false), 250);
+      try {
+        Bun.connect<{ live: boolean }>({
+          unix: this.socketPath,
+          socket: {
+            open: (socket) => {
+              clearTimeout(timer);
+              try {
+                socket.end();
+              } catch {
+                // ignore — connection succeeded, that's all we need
+              }
+              finish(true);
+            },
+            data: () => {},
+            close: () => {},
+            error: () => {
+              clearTimeout(timer);
+              finish(false);
+            },
+          },
+        }).catch(() => {
+          clearTimeout(timer);
+          finish(false);
+        });
+      } catch {
+        clearTimeout(timer);
+        finish(false);
+      }
+    });
   }
 
   stop(): void {
     this.server?.stop();
     this.server = null;
+    this.bound = false;
     try {
       unlinkSync(this.socketPath);
     } catch {

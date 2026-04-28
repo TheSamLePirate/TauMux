@@ -2637,13 +2637,20 @@ const socketHandler = createRpcHandler(
   },
 );
 const socketServer = new SocketServer(socketPath, socketHandler);
-socketServer.start();
-// Health: socket lifecycle. SocketServer logs binding errors itself
-// (it doesn't throw) so by the time we reach this point either the
-// listener is up or it failed silently and `ht` will be unreachable.
-// We assume up; if a future refactor adds a real `bound` getter we'll
-// flip to consulting it.
-health.set("socket", "ok", `Bound to ${socketPath}`);
+await socketServer.start();
+// Health: socket lifecycle. SocketServer no longer overwrites a live peer
+// (issue B4/B5 in doc/full_analysis.md) so the bind can fail when another
+// τ-mux is already running on the same configDir. Reflect that in health
+// so the user sees *why* `ht` is unreachable instead of a silent dead state.
+if (socketServer.isBound()) {
+  health.set("socket", "ok", `Bound to ${socketPath}`);
+} else {
+  health.set(
+    "socket",
+    "error",
+    `Could not bind ${socketPath} — see logs (peer alive, or bind failed)`,
+  );
+}
 
 // Run audits once at startup. Cheap (one git invocation) and gives
 // the user a canary against wrong-config drift right at boot. Logged

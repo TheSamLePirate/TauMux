@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from "bun:test";
-import { existsSync } from "fs";
+import { existsSync, writeFileSync } from "fs";
 import { SocketServer } from "../src/bun/socket-server";
 import { connect } from "net";
 
@@ -42,7 +42,7 @@ describe("SocketServer", () => {
       if (method === "ping") return "PONG";
       throw new Error("unknown");
     });
-    server.start();
+    await server.start();
 
     const res = (await sendRpc(TEST_SOCKET, "ping")) as {
       id: string;
@@ -55,7 +55,7 @@ describe("SocketServer", () => {
     server = new SocketServer(TEST_SOCKET, (method) => {
       throw new Error(`Unknown: ${method}`);
     });
-    server.start();
+    await server.start();
 
     const res = (await sendRpc(TEST_SOCKET, "bogus")) as {
       id: string;
@@ -69,7 +69,7 @@ describe("SocketServer", () => {
     server = new SocketServer(TEST_SOCKET, () => {
       return ++callCount;
     });
-    server.start();
+    await server.start();
 
     const res = await new Promise<number[]>((resolve, reject) => {
       const sock = connect(TEST_SOCKET);
@@ -102,7 +102,7 @@ describe("SocketServer", () => {
     server = new SocketServer(TEST_SOCKET, (_method, params) => {
       return { echo: params };
     });
-    server.start();
+    await server.start();
 
     const res = (await sendRpc(TEST_SOCKET, "test", {
       foo: "bar",
@@ -118,7 +118,7 @@ describe("SocketServer", () => {
       await Bun.sleep(50);
       return `async-${method}`;
     });
-    server.start();
+    await server.start();
 
     const res = (await sendRpc(TEST_SOCKET, "delayed")) as {
       result: string;
@@ -126,9 +126,9 @@ describe("SocketServer", () => {
     expect(res.result).toBe("async-delayed");
   });
 
-  test("stop cleans up socket file", () => {
+  test("stop cleans up socket file", async () => {
     server = new SocketServer(TEST_SOCKET, () => "ok");
-    server.start();
+    await server.start();
 
     expect(existsSync(TEST_SOCKET)).toBe(true);
 
@@ -137,9 +137,47 @@ describe("SocketServer", () => {
     expect(existsSync(TEST_SOCKET)).toBe(false);
   });
 
+  test("refuses to overwrite a live peer on the same socket path", async () => {
+    server = new SocketServer(TEST_SOCKET, () => "first");
+    await server.start();
+    expect(server.isBound()).toBe(true);
+
+    const intruder = new SocketServer(TEST_SOCKET, () => "second");
+    await intruder.start();
+    // Probe should detect the live peer and refuse to bind. The original
+    // server stays in charge.
+    expect(intruder.isBound()).toBe(false);
+
+    const res = (await sendRpc(TEST_SOCKET, "ping")) as { result: string };
+    expect(res.result).toBe("first");
+
+    intruder.stop();
+  });
+
+  test("reclaims a stale socket path when no peer is alive", async () => {
+    // Simulate a crashed predecessor: the path exists on disk but no
+    // process is listening. SocketServer must unlink and bind cleanly.
+    server = new SocketServer(TEST_SOCKET, () => "ok");
+    await server.start();
+    // Force-stop the listener while leaving the path; mimic a crash.
+    // We can't easily get at the underlying listen socket to skip the
+    // unlinkSync in stop(), so instead we stop and immediately recreate
+    // the file as a regular file — same surface from the probe's point
+    // of view (existsSync true, connect refused).
+    server.stop();
+    server = null;
+    writeFileSync(TEST_SOCKET, "");
+    expect(existsSync(TEST_SOCKET)).toBe(true);
+
+    const next = new SocketServer(TEST_SOCKET, () => "fresh");
+    await next.start();
+    expect(next.isBound()).toBe(true);
+    next.stop();
+  });
+
   test("preserves request id in response", async () => {
     server = new SocketServer(TEST_SOCKET, () => "ok");
-    server.start();
+    await server.start();
 
     const res = await new Promise<{ id: string }>((resolve, reject) => {
       const sock = connect(TEST_SOCKET);
