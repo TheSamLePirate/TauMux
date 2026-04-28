@@ -249,14 +249,19 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       // resolved transitions and (on demand) a snapshot. Forward each
       // into the local store; the modal subscribes to the store and
       // re-renders the head request for the active surface, the
-      // sidebar badge reads pending counts.
+      // sidebar badge reads pending counts. Wrapped so a bug in the
+      // store can't take down the rpc dispatch loop.
       askUserEvent: (payload) => {
-        if (payload.kind === "shown") {
-          askUserState.pushShown(payload.request);
-        } else if (payload.kind === "resolved") {
-          askUserState.pushResolved(payload.request_id);
-        } else if (payload.kind === "snapshot") {
-          askUserState.seedSnapshot(payload.pending);
+        try {
+          if (payload.kind === "shown") {
+            askUserState.pushShown(payload.request);
+          } else if (payload.kind === "resolved") {
+            askUserState.pushResolved(payload.request_id);
+          } else if (payload.kind === "snapshot") {
+            askUserState.seedSnapshot(payload.pending);
+          }
+        } catch (err) {
+          console.error("[ask-user] state update failed:", err);
         }
       },
     },
@@ -293,42 +298,65 @@ surfaceManager.setTerminalEffectsEnabled(loadTerminalEffectsEnabled());
 // Plan #10 commit C — install the ask-user modal. The state is
 // already populated via the askUserEvent rpc handler above; the
 // modal reads the head request for the focused surface and renders.
-// Snapshot seed: ask bun for any pending requests it has from before
-// this webview attached (e.g. webview reload mid-question).
-const askUserModalHandle = installAskUserModal({
-  state: askUserState,
-  onAnswer: (request_id, value) => {
-    rpc.send("askUserAnswer", { request_id, value });
-  },
-  onCancel: (request_id, reason) => {
-    rpc.send("askUserCancel", {
-      request_id,
-      ...(reason ? { reason } : {}),
-    });
-  },
-  getActiveSurfaceId: () => surfaceManager.getActiveSurfaceId(),
-  getAttribution: (surface_id) => {
-    const ref = surfaceManager.getSurfaceDetailsRef(surface_id);
-    return {
-      workspace: ref?.workspaceName ?? "",
-      surface: ref?.title ?? "",
-    };
-  },
-});
-rpc.send("askUserRequestSnapshot");
-// Sidebar badge: when the per-surface pending count changes, push a
-// per-workspace aggregation into the sidebar so the workspace card
-// can show a "1 question pending" pill.
-askUserState.subscribe(() => {
-  const map = new Map<string, number>();
-  const ws = surfaceManager.getWorkspaceState();
-  for (const w of ws.workspaces) {
-    let n = 0;
-    for (const sid of w.surfaceIds) n += askUserState.getPendingCount(sid);
-    if (n > 0) map.set(w.id, n);
-  }
-  surfaceManager.getSidebar().setAskUserPending(map);
-});
+// All ask-user wiring is wrapped in try/catch so a bug here cannot
+// poison the rest of webview bootstrap (settings panel, surface
+// creation, sidebar render). Snapshot seed is deferred to the same
+// setTimeout that fires the initial resize so it never races with
+// the bun bridge readiness.
+let askUserModalHandle: {
+  rerender: () => void;
+  isVisible: () => boolean;
+  destroy: () => void;
+} = {
+  rerender: () => {},
+  isVisible: () => false,
+  destroy: () => {},
+};
+try {
+  askUserModalHandle = installAskUserModal({
+    state: askUserState,
+    onAnswer: (request_id, value) => {
+      rpc.send("askUserAnswer", { request_id, value });
+    },
+    onCancel: (request_id, reason) => {
+      rpc.send("askUserCancel", {
+        request_id,
+        ...(reason ? { reason } : {}),
+      });
+    },
+    getActiveSurfaceId: () => surfaceManager.getActiveSurfaceId(),
+    getAttribution: (surface_id) => {
+      try {
+        const ref = surfaceManager.getSurfaceDetailsRef(surface_id);
+        return {
+          workspace: ref?.workspaceName ?? "",
+          surface: ref?.title ?? "",
+        };
+      } catch {
+        return { workspace: "", surface: "" };
+      }
+    },
+  });
+  // Sidebar badge: when the per-surface pending count changes, push a
+  // per-workspace aggregation into the sidebar so the workspace card
+  // can show a "1 question pending" pill.
+  askUserState.subscribe(() => {
+    try {
+      const map = new Map<string, number>();
+      const ws = surfaceManager.getWorkspaceState();
+      for (const w of ws.workspaces) {
+        let n = 0;
+        for (const sid of w.surfaceIds) n += askUserState.getPendingCount(sid);
+        if (n > 0) map.set(w.id, n);
+      }
+      surfaceManager.getSidebar().setAskUserPending(map);
+    } catch (err) {
+      console.error("[ask-user] badge update failed:", err);
+    }
+  });
+} catch (err) {
+  console.error("[ask-user] install failed — modal disabled:", err);
+}
 
 let currentSettings: AppSettings | null = null;
 let variantController: VariantController | null = null;
@@ -708,6 +736,16 @@ setTimeout(() => {
       width: Math.round(rect.width),
       height: Math.round(rect.height),
     });
+  }
+  // Plan #10 commit C — request the bun-side ask-user snapshot from
+  // here rather than at module load: the bridge is guaranteed ready
+  // (the resize call above just used it), and a missing snapshot is
+  // never fatal — the modal still works for live shown / resolved
+  // events that arrive afterwards.
+  try {
+    rpc.send("askUserRequestSnapshot");
+  } catch (err) {
+    console.error("[ask-user] snapshot request failed:", err);
   }
 }, 300);
 
@@ -1853,9 +1891,16 @@ document.addEventListener("keydown", (e) => {
   // Plan #10 commit C — ask-user modal owns its own keyboard
   // (Esc → cancel, Enter → submit, two-step click for confirm-cmd).
   // When it's visible, swallow everything else so the bindings array
-  // and xterm don't see keystrokes meant for the modal.
-  if (askUserModalHandle.isVisible()) {
-    return;
+  // and xterm don't see keystrokes meant for the modal. Defensive
+  // guard: if the install threw and the handle is the no-op stub,
+  // isVisible always returns false and we keep the existing
+  // keyboard flow.
+  try {
+    if (askUserModalHandle.isVisible()) {
+      return;
+    }
+  } catch (err) {
+    console.error("[ask-user] isVisible check failed:", err);
   }
 
   const ctx: KeyCtx = {
