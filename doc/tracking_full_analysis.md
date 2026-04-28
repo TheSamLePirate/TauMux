@@ -109,4 +109,18 @@ Per `CLAUDE.md`, every functional commit is preceded by `bun run bump:patch` so 
 
 **Deviations / issues:** none — git history retains the file, so re-adding is a single `git checkout HEAD~1 -- assets/audio/need-human.mp3` if the feature lands.
 
-**Commit:** filled in below.
+**Commit:** `51f8ab5` (bump 0.2.43 → 0.2.44).
+
+---
+
+### Step 6 — M6: verify `system.shutdown` wiring (RETRACTED)
+
+**What:** Audit confirmed `shutdown: () => gracefulShutdown()` is passed in at `src/bun/index.ts:2614`, and `gracefulShutdown` (`src/bun/index.ts:2973–3055`) is a thorough teardown — metadata poller, native stdout coalescer, webview layout flush, settings/history/cookie persistence, pi agent dispose, web server, socket server, sessions, telegram service. The throw at `src/bun/rpc-handlers/system.ts:38` only fires in tests with minimal deps. **No code change.**
+
+**Files:** none (read-only audit). Updated `doc/full_analysis.md` § M6 to mark the finding retracted.
+
+**Verification:** read `src/bun/index.ts:2600–2640` and `:2973–3055`.
+
+**Deviations / issues:** finding retracted as a false positive. Recorded the retraction in the source plan so future readers don't chase it.
+
+**Commit:** filled in below (docs-only).

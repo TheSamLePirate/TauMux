@@ -463,14 +463,12 @@ This protects against B4 even if the dev/packaged processes do collide on `confi
 
 ---
 
-### M6. `system.shutdown` is dependency-gated and may not be wired
+### M6. `system.shutdown` is dependency-gated — wiring confirmed (RETRACTED)
 
-**Severity:** MISSING
-**File:** `src/bun/rpc-handlers/system.ts:37–41`
+**Severity:** ~~MISSING~~ → resolved on inspection
+**File:** `src/bun/rpc-handlers/system.ts:37–41`, `src/bun/index.ts:2614, :2973–3055`
 
-The handler reads `shutdown` from `deps`. If the host did not pass a `shutdown` callback when constructing the handler, every call throws `"shutdown not supported in this process"`. I confirmed the throw exists; I did not confirm whether `src/bun/index.ts` actually wires a callback when registering system handlers — worth a five-minute follow-up. If the wiring is missing, `ht` and any external orchestrator have no graceful-quit path; SIGTERM is the only option, which can leave PTY children orphaned.
-
-**Suggested fix:** verify `src/bun/index.ts` passes a `shutdown` callback that quiesces sessions, persists state, and exits the Bun process. If it isn't, wire it.
+Spot-checked while executing the action list (see `doc/tracking_full_analysis.md` step 6). The handler does throw when `deps.shutdown` is unset, but `src/bun/index.ts:2614` passes `shutdown: () => gracefulShutdown()` and `gracefulShutdown` (`:2973`) is a complete teardown — metadata poller, native stdout coalescer, webview layout flush, settings/history/cookie persistence, pi agent dispose, web server stop, socket server stop, session destroy, telegram service stop. The throw only manifests in test contexts where the deps are intentionally minimal. **No code change needed.**
 
 ### M7. IME composition position is documented-broken
 
