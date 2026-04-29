@@ -53,6 +53,12 @@ export class TelegramDatabase {
     this.db = new Database(filePath, { create: true });
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA synchronous = NORMAL");
+    // G.9 / L14 — without busy_timeout, a concurrent reader (e.g.
+    // the read-side `telegram.history` RPC running while the
+    // long-poll loop inserts) gets SQLITE_BUSY immediately and
+    // throws. 5 s is generous for any legitimate write; SQLite
+    // automatically retries during this window.
+    this.db.exec("PRAGMA busy_timeout = 5000");
     // Owner-only — DM history can be sensitive (H.1 / S1). Chmod
     // after open in case the file pre-existed with looser perms. WAL
     // mode also creates `-shm` and `-wal` neighbors; tighten those
