@@ -29,19 +29,51 @@ export interface Binding<Ctx> {
   noPreventDefault?: boolean;
 }
 
-export type KeyMatcher = (e: KeyboardEvent) => boolean;
+export type KeyMatcher = ((e: KeyboardEvent) => boolean) & {
+  /** Pre-formatted human display ("⌘⇧P", "Esc"). Attached so the
+   *  cheat-sheet renderer (I.11 / U11) can show shortcuts without
+   *  every binding having to declare `keys:` redundantly. */
+  display?: string;
+};
 
-/** Build a key matcher. Modifiers default to false (must be released);
- *  pass `undefined` to mean "don't care". */
-export function keyMatch(spec: {
+export interface KeyMatchSpec {
   key: string | ((k: string) => boolean);
   meta?: boolean;
   shift?: boolean;
   alt?: boolean;
   ctrl?: boolean;
   caseInsensitive?: boolean;
-}): KeyMatcher {
-  return (e: KeyboardEvent) => {
+}
+
+function formatKeyMatch(spec: KeyMatchSpec): string {
+  if (typeof spec.key === "function") return "";
+  const parts: string[] = [];
+  if (spec.ctrl) parts.push("⌃");
+  if (spec.alt) parts.push("⌥");
+  if (spec.shift) parts.push("⇧");
+  if (spec.meta) parts.push("⌘");
+  // Pretty-print special keys. Plain single-char keys go through as-is
+  // but uppercased so "p" renders as "P".
+  const pretty: Record<string, string> = {
+    ArrowUp: "↑",
+    ArrowDown: "↓",
+    ArrowLeft: "←",
+    ArrowRight: "→",
+    Escape: "Esc",
+    " ": "Space",
+  };
+  parts.push(
+    pretty[spec.key] ??
+      (spec.key.length === 1 ? spec.key.toUpperCase() : spec.key),
+  );
+  return parts.join("");
+}
+
+/** Build a key matcher. Modifiers default to false (must be released);
+ *  pass `undefined` to mean "don't care". The returned function carries
+ *  a `display` property suitable for rendering in a cheat-sheet. */
+export function keyMatch(spec: KeyMatchSpec): KeyMatcher {
+  const fn: KeyMatcher = ((e: KeyboardEvent) => {
     if (spec.meta !== undefined && e.metaKey !== spec.meta) return false;
     if (spec.shift !== undefined && e.shiftKey !== spec.shift) return false;
     if (spec.alt !== undefined && e.altKey !== spec.alt) return false;
@@ -50,7 +82,9 @@ export function keyMatch(spec: {
     return spec.caseInsensitive
       ? e.key.toLowerCase() === spec.key.toLowerCase()
       : e.key === spec.key;
-  };
+  }) as KeyMatcher;
+  fn.display = formatKeyMatch(spec);
+  return fn;
 }
 
 /** Dispatch an event against a binding table. Returns true if any

@@ -11,6 +11,7 @@ import {
 } from "../../shared/settings";
 import { SurfaceManager } from "./surface-manager";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
+import { KeyboardCheatsheet } from "./keyboard-cheatsheet";
 import { createIcon } from "./icons";
 import { IconTau } from "./tau-icons";
 import { StatusBar } from "./tau-primitives";
@@ -800,6 +801,19 @@ setTimeout(() => {
 
 const palette = new CommandPalette();
 lifecycleDisposers.push(() => palette.destroy());
+const keyboardCheatsheet = new KeyboardCheatsheet();
+lifecycleDisposers.push(() => keyboardCheatsheet.destroy());
+
+function syncCheatsheetBindings(): void {
+  // Aggregate normal + high-priority bindings so the dialog covers
+  // every shortcut a user can hit. Run on first call (KEYBOARD_BINDINGS
+  // is initialized at module-load time, after this declaration); the
+  // cheatsheet itself only renders on `show()`, so re-syncing is fine.
+  keyboardCheatsheet.setBindings([
+    ...KEYBOARD_BINDINGS,
+    ...HIGH_PRIORITY_BINDINGS,
+  ]);
+}
 syncPaletteCommands();
 
 function loadTerminalEffectsEnabled(): boolean {
@@ -872,6 +886,14 @@ function buildPaletteCommands(): PaletteCommand[] {
       description: "Open a fresh shell workspace.",
       shortcut: "\u2318N",
       action: () => rpc.send("createSurface", {}),
+    },
+    {
+      id: "keyboard-help",
+      category: "Help",
+      label: "Keyboard shortcuts",
+      description: "Show the cheat-sheet of every keybinding.",
+      shortcut: "\u2318?",
+      action: () => keyboardCheatsheet.toggle(),
     },
     {
       id: "split-right",
@@ -1889,6 +1911,21 @@ const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
       },
     }),
   ),
+
+  // Keyboard cheat-sheet — ⌘? (I.11 / U11). Discoverability for
+  // every other binding above. Same array drives the rendered
+  // dialog, so adding a new binding shows up in the help instantly.
+  {
+    id: "app.keyboard-help",
+    description: "Show keyboard shortcuts",
+    category: "App",
+    match: keyMatch({
+      key: "?",
+      meta: true,
+      shift: true,
+    }),
+    action: () => keyboardCheatsheet.toggle(),
+  },
 ];
 
 // The high-priority bindings must fire even when the palette is visible
@@ -1989,11 +2026,18 @@ document.addEventListener("keydown", (e) => {
 
   if (dispatchKeyboardEvent(e, HIGH_PRIORITY_BINDINGS, ctx)) return;
 
+  // Cheat-sheet binding may have fired and toggled visibility — no
+  // re-sync needed since the bindings array is static; we sync once
+  // at module bottom.
+
   // Command palette visible — block the rest of the bindings.
   if (palette.isVisible()) return;
 
   dispatchKeyboardEvent(e, KEYBOARD_BINDINGS, ctx);
 });
+
+// One-shot sync now that both binding arrays are initialized.
+syncCheatsheetBindings();
 
 document.addEventListener(
   "mousemove",
