@@ -182,7 +182,10 @@ export class BrowserHistoryStore {
       const dir = dirname(this.filePath);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       const arr = [...this.entries.values()];
-      writeFileAtomic(this.filePath, JSON.stringify(arr));
+      // History isn't quite "secrets" but URLs visited can be
+      // sensitive — owner-only matches the cookies/settings policy
+      // (H.1 / S1).
+      writeFileAtomic(this.filePath, JSON.stringify(arr), { mode: 0o600 });
     } catch {
       /* ignore write failures */
     }

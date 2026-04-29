@@ -50,7 +50,11 @@ export class SettingsManager {
       // settings.json (G.4 / L7). The previous direct writeFileSync
       // could corrupt the file; load() falls back to defaults on
       // parse error, so the user lost their last save.
-      writeFileAtomic(this.filePath, JSON.stringify(this.settings, null, 2));
+      // Owner-only — settings.json contains the Telegram bot token
+      // and webMirrorAuthToken (H.1 / S1).
+      writeFileAtomic(this.filePath, JSON.stringify(this.settings, null, 2), {
+        mode: 0o600,
+      });
       this.writeWarned = false;
     } catch (err) {
       // Write failures (disk full, permission denied) used to silently

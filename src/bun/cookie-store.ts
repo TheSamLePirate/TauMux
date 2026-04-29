@@ -14,7 +14,7 @@
  * except saveNow() which is synchronous for SIGINT/SIGTERM shutdown.
  */
 
-import { existsSync, mkdirSync, renameSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { writeFileAtomic } from "./atomic-write";
 
@@ -325,9 +325,15 @@ export class CookieStore {
       const arr = [...this.entries.values()];
       // Write to a `.tmp` neighbor first, then rename — atomic on
       // POSIX, so a crash mid-write never leaves a truncated
-      // cookies.json (G.4 / L7).
+      // cookies.json (G.4 / L7). Owner-only — cookies are sensitive
+      // session material (H.1 / S1).
       await Bun.write(`${this.filePath}.tmp`, JSON.stringify(arr));
       renameSync(`${this.filePath}.tmp`, this.filePath);
+      try {
+        chmodSync(this.filePath, 0o600);
+      } catch {
+        /* best-effort — non-POSIX FS may reject chmod */
+      }
       this.saveWarned = false;
     } catch (err) {
       if (!this.saveWarned) {
@@ -346,7 +352,7 @@ export class CookieStore {
       const dir = dirname(this.filePath);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       const arr = [...this.entries.values()];
-      writeFileAtomic(this.filePath, JSON.stringify(arr));
+      writeFileAtomic(this.filePath, JSON.stringify(arr), { mode: 0o600 });
     } catch {
       /* ignore write failures */
     }

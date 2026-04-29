@@ -36,6 +36,7 @@
 // continue as before.
 
 import {
+  chmodSync,
   closeSync,
   mkdirSync,
   openSync,
@@ -122,6 +123,14 @@ export function setupLogging(configDir: string | undefined): LoggerHandle {
     // but possible — e.g. dev + packaged running side by side both log
     // here if HT_CONFIG_DIR isn't set).
     fd = openSync(activePath, "a");
+    // Owner-only — the log can contain bot tokens and auth handshake
+    // URLs (S1 / H.1). Chmod after open in case the file existed with
+    // looser perms from a previous version.
+    try {
+      chmodSync(activePath, 0o600);
+    } catch {
+      /* best-effort — non-POSIX filesystems may reject chmod */
+    }
   } catch (err) {
     console.error(`[logger] could not open ${activePath}: ${String(err)}`);
     return { currentPath: null, dispose: () => {} };
@@ -139,6 +148,11 @@ export function setupLogging(configDir: string | undefined): LoggerHandle {
     activePath = join(dir, logFileName(activeDate));
     try {
       fd = openSync(activePath, "a");
+      try {
+        chmodSync(activePath, 0o600);
+      } catch {
+        /* best-effort — see open path above */
+      }
     } catch {
       // If reopening fails, drop the tee. Restoring the original
       // writers would silently swallow future output from within the

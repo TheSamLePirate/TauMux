@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { chmodSync, existsSync } from "node:fs";
 
 /** A single message persisted to the local Telegram log. `direction` is
  *  "in" for messages received from Telegram and "out" for messages this
@@ -52,6 +53,25 @@ export class TelegramDatabase {
     this.db = new Database(filePath, { create: true });
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA synchronous = NORMAL");
+    // Owner-only — DM history can be sensitive (H.1 / S1). Chmod
+    // after open in case the file pre-existed with looser perms. WAL
+    // mode also creates `-shm` and `-wal` neighbors; tighten those
+    // too so a side-channel reader can't pick up uncommitted rows.
+    try {
+      chmodSync(filePath, 0o600);
+    } catch {
+      /* best-effort — non-POSIX FS may reject chmod */
+    }
+    for (const suffix of ["-shm", "-wal"]) {
+      const sidecar = `${filePath}${suffix}`;
+      if (existsSync(sidecar)) {
+        try {
+          chmodSync(sidecar, 0o600);
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
     this.init();
   }
 
