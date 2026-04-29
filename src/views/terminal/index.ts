@@ -799,6 +799,7 @@ setTimeout(() => {
 }, 300);
 
 const palette = new CommandPalette();
+lifecycleDisposers.push(() => palette.destroy());
 syncPaletteCommands();
 
 function loadTerminalEffectsEnabled(): boolean {

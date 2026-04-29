@@ -19,6 +19,12 @@ export class CommandPalette {
   private selectedIndex = 0;
   private visible = false;
   private recentIds: string[];
+  /** Single AbortController for every listener attached at the
+   *  document/window level. `destroy()` aborts it, removing all of
+   *  them at once. Without this the document-level Escape listener
+   *  re-registered on every electrobun-dev hot-reload — N reloads = N
+   *  listeners with stale `this` (G.6 / L8). */
+  private abort = new AbortController();
 
   constructor() {
     this.overlay = document.createElement("div");
@@ -131,8 +137,18 @@ export class CommandPalette {
           this.hide();
         }
       },
-      true,
+      { capture: true, signal: this.abort.signal },
     );
+  }
+
+  /** Detach every document/window-level listener and remove the
+   *  overlay from the DOM. Wire onto `lifecycleDisposers` in `index.ts`
+   *  so a webview reload doesn't accumulate stale palette instances. */
+  destroy(): void {
+    this.abort.abort();
+    if (this.overlay.parentElement) {
+      this.overlay.parentElement.removeChild(this.overlay);
+    }
   }
 
   setCommands(commands: PaletteCommand[]): void {

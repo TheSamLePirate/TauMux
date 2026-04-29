@@ -577,12 +577,10 @@ const bunMessageHandlers = {
     splitSurface(payload.direction, undefined, payload.cwd);
   },
   closeSurface: (payload) => {
-    // Clean up any pending cookie injection debounce
-    const pendingCookie = domReadyDebounce.get(payload.surfaceId);
-    if (pendingCookie) {
-      clearTimeout(pendingCookie);
-      domReadyDebounce.delete(payload.surfaceId);
-    }
+    // Pending cookie-injection debounce is now cleared in the
+    // `browserSurfaces.onSurfaceClosed` callback, which catches every
+    // browser-close path (RPC, menu, accessory). Non-browser surfaces
+    // never appear in `domReadyDebounce`, so no cleanup needed here.
     if (piAgentManager.isAgentSurface(payload.surfaceId)) {
       piAgentManager.removeAgent(payload.surfaceId);
       sendWebviewAction("agentSurfaceClosed", {
@@ -1285,6 +1283,17 @@ sessions.onSurfaceClosed = (surfaceId) => {
 };
 
 browserSurfaces.onSurfaceClosed = (surfaceId) => {
+  // L11 (G.7): every browser-surface close path now flows through here
+  // (closeSurface RPC, menu closePane, accessory-mode close), so
+  // cleaning up the dom-ready cookie-injection debounce here covers
+  // all of them. Without this the timer eventually fires
+  // `cookieStore.getForUrl` + `rpc.send("browserInjectCookies", …)`
+  // for a surface that no longer exists.
+  const pending = domReadyDebounce.get(surfaceId);
+  if (pending) {
+    clearTimeout(pending);
+    domReadyDebounce.delete(surfaceId);
+  }
   rpc.send("browserSurfaceClosed", { surfaceId });
   app.webServer?.broadcast({ type: "browserSurfaceClosed", surfaceId });
   if (
