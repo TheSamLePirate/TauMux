@@ -121,3 +121,27 @@ Importantly, the metadata pipeline never touches the PTY — it only reads pids 
 Terminal output is a continuous stream of bytes. Sometimes, a multi-byte UTF-8 character (like an emoji: 🚀) gets split right down the middle across two network chunks.
 
 τ-mux's `PtyManager` uses `TextDecoder("utf-8", { stream: true })`. This guarantees that if half an emoji arrives in Chunk A, the decoder will buffer it and wait for Chunk B before emitting the character to the UI, preventing strange `` symbols from appearing in your terminal.
+
+---
+
+## 9. Pi agent stream — a deliberate channel divergence
+
+The PTY documentation above (and most of the sideband docs) describes the standard τ-mux IPC: a child process writes JSONL on **fd 3**, optional binary payloads on **fd 4**, and reads inbound events from **fd 5**. Every panel renderer, every sidebar update, every `ht`-driven script uses this protocol.
+
+**`pi-agent-manager.ts` is different.** When you open a pi coding-agent pane (`ht agent new` or the command palette), τ-mux spawns `pi --mode rpc` and communicates with it via JSON-RPC over **stdin / stdout** — not over the fd 3/4/5 sideband. There is no terminal in front of it, no xterm.js renderer, and the agent is not a PTY child.
+
+### Why this looks weird
+
+A new contributor seeing `PiAgentManager` for the first time naturally asks: *"why doesn't pi just emit JSONL on fd 3 like everything else?"* The answer is upstream-defined: the `pi` CLI is its own project, and its `--mode rpc` contract (JSON-RPC over stdio) is what `pi` ships. We consume that as-is rather than fork the project to retrofit our sideband shape.
+
+### Concrete consequences
+
+- **No fd 3/4/5 in pi-agent pane env.** `HYPERTERM_META_FD` / `HYPERTERM_DATA_FD` / `HYPERTERM_EVENT_FD` are not set on the pi child — they're only set on shells spawned by `SessionManager` (Section 2 above).
+- **`PiAgentManager.send()` throws if stdin isn't bound.** Defensive: if the child crashed before we connected, the manager's `send` raises rather than silently dropping the message. Ordinary sideband producers don't have this concern because they write to the parent's fd, not the child's stdin.
+- **Lifecycle is separate from `PaneLeaf.surfaceType === "agent"`.** The webview-side surface is a thin wrapper around an agent-panel view; the bun-side counterpart is owned by `pi-agent-manager`, not `SessionManager`. Removing the surface tears down the pi child via the agent manager (see the asymmetry comment near `removeAgentSurface` in `surface-manager.ts`).
+
+### When this might converge
+
+If the upstream `pi` project ever standardizes on a τ-mux-compatible sideband protocol (or gives us a stable plug-in point), we'd happily migrate. Until then, the divergence is intentional and documented here so the difference doesn't read as an oversight.
+
+For the agent pane UI (composer, message rendering, plan widgets), see [`system-pi-agent.md`](system-pi-agent.md).

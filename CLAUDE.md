@@ -69,6 +69,7 @@ Electrobun Webview (src/views/terminal/)
 - **No sandboxing of fd4 content** for now. HTML/SVG from fd4 is rendered directly. Scripts are trusted.
 - **Electrobun RPC is the webview bridge.** Socket RPC is the CLI/external bridge. They share the handler registry aggregated in `src/bun/rpc-handler.ts` from per-domain modules under `src/bun/rpc-handlers/` (system / workspace / surface / sidebar / pane / notification / agent / browser-* / telegram). The Electrobun-facing handlers in `src/bun/index.ts` are gated by `satisfies BunMessageHandlers` so any new method in `TauMuxRPC["bun"]["messages"]` without a wired handler fails the typecheck.
 - **Metadata pipeline never touches the PTY.** `SurfaceMetadataPoller` reads pids we already own and runs `ps` / `lsof` — if it breaks, the terminal keeps working.
+- **Pi agents use a different IPC than everything else.** `pi-agent-manager` consumes `pi --mode rpc` JSONL over **stdin/stdout**, NOT the fd 3/4/5 sideband used by every other producer. The pi CLI is upstream-defined; we don't get to reshape its protocol. See `doc/system-pty-session.md` § 9 for the rationale.
 
 ## Directory Roles
 
