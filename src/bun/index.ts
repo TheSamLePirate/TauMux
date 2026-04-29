@@ -2987,12 +2987,49 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
 //      call process.exit.
 // A safety watchdog exits hard after 2s if any of the above wedge, so a
 // broken save path can never prevent shutdown.
+let shuttingDown = false;
 async function gracefulShutdown(): Promise<void> {
+  // Idempotent (G.3 / L6): a second SIGINT mid-shutdown (impatient
+  // user) would otherwise re-enter every step — two `forceLayoutSync`
+  // round-trips, two `saveLayout` calls racing the same JSON, two
+  // `socketServer.stop()`s. Hard-exit on the second invocation; the
+  // first one's hardExit watchdog will catch a hung primary path.
+  if (shuttingDown) {
+    console.warn("[main] gracefulShutdown re-entered — exiting hard");
+    process.exit(1);
+  }
+  shuttingDown = true;
+
   const hardExit = setTimeout(() => {
     console.warn("[main] graceful shutdown timed out after 2s; exiting hard");
     process.exit(1);
   }, 2000);
   (hardExit as { unref?: () => void }).unref?.();
+
+  // Cancel any module-level debounce timers so a callback can't fire
+  // after we've nulled `app.webServer` / closed the rpc bridge. None
+  // of these have semantic value at shutdown — they're all
+  // broadcasters or save-debouncers.
+  if (plansBroadcastTimer) {
+    clearTimeout(plansBroadcastTimer);
+    plansBroadcastTimer = null;
+  }
+  if (autoContinueAuditTimer) {
+    clearTimeout(autoContinueAuditTimer);
+    autoContinueAuditTimer = null;
+  }
+  if (app.htKeysSeenTimer) {
+    clearTimeout(app.htKeysSeenTimer);
+    app.htKeysSeenTimer = null;
+  }
+  for (const t of domReadyDebounce.values()) {
+    clearTimeout(t);
+  }
+  domReadyDebounce.clear();
+  if (app.layoutSaveTimer) {
+    clearTimeout(app.layoutSaveTimer);
+    app.layoutSaveTimer = null;
+  }
 
   try {
     metadataPoller.stop();
