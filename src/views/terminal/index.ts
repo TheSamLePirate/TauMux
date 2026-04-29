@@ -1873,6 +1873,22 @@ const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
     },
     noPreventDefault: true,
   },
+
+  // Workspace switch by ordinal — ⌘1..⌘9 (I.6 / U13). Standard
+  // muscle memory shared with iTerm, Warp, Wezterm, and tmux. The
+  // method is a no-op when fewer workspaces exist, so the binding
+  // is safe to register unconditionally.
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(
+    (n): Binding<KeyCtx> => ({
+      id: `workspace.switch-${n}`,
+      description: `Switch to workspace ${n}`,
+      category: "Workspace",
+      match: keyMatch({ key: String(n), meta: true, shift: false, alt: false }),
+      action: () => {
+        surfaceManager.selectWorkspaceByIndex(n - 1);
+      },
+    }),
+  ),
 ];
 
 // The high-priority bindings must fire even when the palette is visible

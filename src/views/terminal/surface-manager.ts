@@ -1703,6 +1703,14 @@ export class SurfaceManager {
     if (idx !== -1) this.switchToWorkspace(idx);
   }
 
+  /** Switch to the workspace at the given 0-based index. No-op when
+   *  the index is out of range — keeps the ⌘1..⌘9 shortcut binding
+   *  (I.6 / U13) idempotent for users who don't have N workspaces. */
+  selectWorkspaceByIndex(index: number): void {
+    if (index < 0 || index >= this.workspaces.length) return;
+    this.switchToWorkspace(index);
+  }
+
   private switchToWorkspace(index: number): void {
     this.paneDrag.cancel();
     this.activeWorkspaceIndex = index;

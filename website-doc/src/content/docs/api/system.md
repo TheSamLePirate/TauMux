@@ -18,7 +18,7 @@ System-level introspection methods.
 
 ```json
 { "method": "system.version", "params": {} }
-→ { "result": { "version": "0.2.76", "build": "…" } }
+→ { "result": { "version": "0.2.77", "build": "…" } }
 ```
 
 ## system.identify
