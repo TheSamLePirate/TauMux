@@ -39,6 +39,32 @@ import {
 } from "./connection";
 import { WebStateStore } from "./state-store";
 
+/** Recommended minimum auth-token length on `0.0.0.0` (H.3 / S4).
+ *  16 chars of high-entropy base64 (≈96 bits) is the floor below
+ *  which an online brute-force at modest connection rates becomes
+ *  feasible against the per-IP throttle (H.4). The check is a warn,
+ *  not a refuse-to-start, so existing users with a 12-char token
+ *  aren't locked out by an upgrade. */
+export const TOKEN_MIN_LEN_FOR_LAN = 16;
+
+/** Per-IP brute-force throttle on auth (H.4 / S5). Counts failed
+ *  auth attempts per source IP in a sliding window; once the count
+ *  exceeds `AUTH_FAIL_LIMIT` within `AUTH_FAIL_WINDOW_MS`, every
+ *  subsequent request from that IP gets a 429 for `AUTH_FAIL_COOL_MS`
+ *  regardless of token correctness. Cleanup is lazy — entries are
+ *  expired on next access. */
+const AUTH_FAIL_LIMIT = 10;
+const AUTH_FAIL_WINDOW_MS = 60_000;
+const AUTH_FAIL_COOL_MS = 10 * 60_000;
+
+interface AuthFailRecord {
+  count: number;
+  windowStart: number;
+  /** Set when the IP has tripped the limit; rejected with 429 until
+   *  this timestamp (epoch ms). */
+  cooldownUntil: number;
+}
+
 export class WebServer {
   private server: ReturnType<typeof Bun.serve> | null = null;
   /** Clients (live sessions, attached or recently detached). */
@@ -106,6 +132,73 @@ export class WebServer {
   /** Allow live updates from the settings panel without restarting. */
   setAuthToken(token: string): void {
     this.authToken = (token ?? "").trim();
+  }
+
+  /** Per-IP brute-force throttle state (H.4 / S5). Map keyed on the
+   *  source IP recovered from `req`. */
+  private authFails = new Map<string, AuthFailRecord>();
+
+  /** Extract a best-effort source IP from a Request. Bun.serve
+   *  exposes `server.requestIP(req)` for this in newer versions; we
+   *  fall back to `x-forwarded-for` (first hop) for proxy setups,
+   *  then to the `host` header as a last resort. None of these are
+   *  spoofable from the LAN itself but they're best-effort. */
+  private clientIp(req: Request): string {
+    const xff = req.headers.get("x-forwarded-for");
+    if (xff) {
+      const first = xff.split(",")[0]?.trim();
+      if (first) return first;
+    }
+    return req.headers.get("host") ?? "unknown";
+  }
+
+  /** Returns true if the IP is currently under cooldown. Also expires
+   *  stale records lazily. */
+  private throttled(ip: string): boolean {
+    const rec = this.authFails.get(ip);
+    if (!rec) return false;
+    const now = Date.now();
+    if (rec.cooldownUntil && rec.cooldownUntil > now) return true;
+    if (rec.cooldownUntil && rec.cooldownUntil <= now) {
+      // Cooldown expired — clear the record entirely so the next
+      // failure starts a fresh window.
+      this.authFails.delete(ip);
+      return false;
+    }
+    if (now - rec.windowStart > AUTH_FAIL_WINDOW_MS) {
+      this.authFails.delete(ip);
+      return false;
+    }
+    return false;
+  }
+
+  /** Record a failed auth attempt; trips the cooldown when the count
+   *  exceeds the limit within the window. */
+  private recordAuthFail(ip: string): void {
+    const now = Date.now();
+    const rec = this.authFails.get(ip);
+    if (!rec) {
+      this.authFails.set(ip, {
+        count: 1,
+        windowStart: now,
+        cooldownUntil: 0,
+      });
+      return;
+    }
+    if (now - rec.windowStart > AUTH_FAIL_WINDOW_MS) {
+      // Reset the window
+      rec.count = 1;
+      rec.windowStart = now;
+      rec.cooldownUntil = 0;
+      return;
+    }
+    rec.count += 1;
+    if (rec.count > AUTH_FAIL_LIMIT) {
+      rec.cooldownUntil = now + AUTH_FAIL_COOL_MS;
+      console.warn(
+        `[web] auth-throttle: IP ${ip} tripped at ${rec.count} failures; cooling for ${AUTH_FAIL_COOL_MS / 1000}s`,
+      );
+    }
   }
 
   private authorized(url: URL, req: Request): boolean {
@@ -188,9 +281,20 @@ export class WebServer {
               headers: { ...sec, ...(init.headers ?? {}) },
             });
 
+          // Per-IP throttle check on any auth-gated path (H.4 / S5).
+          const ip = this.clientIp(req);
+          if (this.authToken && this.throttled(ip)) {
+            return respond("Too Many Requests", {
+              status: 429,
+              headers: { "retry-after": "600" },
+            });
+          }
+
           if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-            if (!this.authorized(url, req))
+            if (!this.authorized(url, req)) {
+              if (this.authToken) this.recordAuthFail(ip);
               return respond("Unauthorized", { status: 401 });
+            }
             if (!this.originAllowed(url, req))
               return respond("Forbidden: cross-origin", { status: 403 });
             const resumeId = url.searchParams.get("resume") || undefined;
@@ -212,8 +316,10 @@ export class WebServer {
           }
 
           if (url.pathname === "/" || url.pathname === "/index.html") {
-            if (!this.authorized(url, req))
+            if (!this.authorized(url, req)) {
+              if (this.authToken) this.recordAuthFail(ip);
               return respond("Unauthorized", { status: 401 });
+            }
             return respond(buildHtmlPage(), {
               headers: {
                 "content-type": "text/html; charset=utf-8",
@@ -366,6 +472,21 @@ export class WebServer {
       if (this.bind === "0.0.0.0" && !this.authToken) {
         console.log(
           `[web] Warning: bound to 0.0.0.0 without auth. Anyone on your network can view and type in your terminal.`,
+        );
+      } else if (
+        this.bind === "0.0.0.0" &&
+        this.authToken &&
+        this.authToken.length < TOKEN_MIN_LEN_FOR_LAN
+      ) {
+        // H.3 / S4: a short / weak token on `0.0.0.0` is fundamentally
+        // insufficient. We don't refuse-to-start (would surprise users
+        // who have a long-running config); we log loudly and tell them
+        // exactly what the floor is. Settings UI should also expose a
+        // "Generate" button (deferred to a later PR).
+        console.warn(
+          `[web] Warning: webMirrorAuthToken is only ${this.authToken.length} chars; ` +
+            `recommended minimum on 0.0.0.0 is ${TOKEN_MIN_LEN_FOR_LAN} chars of high entropy. ` +
+            `Generate one with: openssl rand -base64 24`,
         );
       }
     } catch (error) {

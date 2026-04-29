@@ -138,4 +138,23 @@ describe("web mirror auth", () => {
     const res = await fetch(`http://127.0.0.1:${TEST_PORT}/`);
     expect(res.status).toBe(200);
   });
+
+  test("excessive auth failures from same peer trip a 429 cooldown (H.4 / S5)", async () => {
+    startServer({ token: "correct-horse-battery-staple" });
+    // First 11 wrongs all 401 — the 11th is what trips the limit but
+    // its own response is still the rejection that triggered it.
+    for (let i = 0; i < 11; i++) {
+      const res = await fetch(`http://127.0.0.1:${TEST_PORT}/?t=wrong-${i}`);
+      expect(res.status, `attempt ${i + 1}`).toBe(401);
+      await res.arrayBuffer();
+    }
+    // 12th request — now under cooldown; even a CORRECT token is
+    // denied with 429 + retry-after.
+    const correctButLocked = await fetch(
+      `http://127.0.0.1:${TEST_PORT}/?t=correct-horse-battery-staple`,
+    );
+    expect(correctButLocked.status).toBe(429);
+    expect(correctButLocked.headers.get("retry-after")).toBe("600");
+    await correctButLocked.arrayBuffer();
+  });
 });
