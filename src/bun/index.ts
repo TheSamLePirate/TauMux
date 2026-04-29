@@ -241,6 +241,14 @@ const settingsManager = new SettingsManager(configDir, settingsFile);
 
 const sessions = new SessionManager(settingsManager.get().shellPath);
 const piAgentManager = new PiAgentManager();
+// When a `pi --mode rpc` subprocess exits unexpectedly (crash, OOM,
+// `pi` self-exit), the per-instance onExit fires an `agent_exit` event
+// to the UI; this manager-level hook then evicts the dead instance from
+// the registry so `getAgent(id)` doesn't keep returning a corpse whose
+// `send()` would throw "Agent process is not running".
+piAgentManager.onExit = (agentId) => {
+  piAgentManager.removeAgent(agentId);
+};
 const browserSurfaces = new BrowserSurfaceManager();
 const browserHistory = new BrowserHistoryStore(configDir);
 const cookieStore = new CookieStore(configDir);

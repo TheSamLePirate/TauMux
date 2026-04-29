@@ -108,14 +108,26 @@ export class PiAgentInstance {
   private readyPromise: Promise<void>;
   private responseWaiters = new Map<
     string,
-    { resolve: (data: unknown) => void; reject: (err: Error) => void }
+    {
+      resolve: (data: unknown) => void;
+      reject: (err: Error) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
   >();
   private reqCounter = 0;
 
   /** Fires for every RPC event from pi (text deltas, tool calls, etc.). */
   onEvent: ((event: PiAgentEvent) => void) | null = null;
-  /** Fires when the subprocess exits. */
+  /** Fires when the subprocess exits. Public — call sites overwrite
+   *  this freely (e.g. to fan an `agent_exit` event to the webview),
+   *  so the manager cannot rely on it for its own bookkeeping. See
+   *  `_managerExit` below. */
   onExit: ((code: number) => void) | null = null;
+  /** Manager-private exit hook — set once by `PiAgentManager.createAgent`
+   *  and not exposed for overwrite. Used to evict dead instances from
+   *  the registry without colliding with user-supplied `onExit`
+   *  handlers in `index.ts:createAgentSurface` / `splitAgentSurface`. */
+  _managerExit: ((code: number) => void) | null = null;
 
   constructor(
     id: string,
@@ -203,9 +215,16 @@ export class PiAgentInstance {
     // Watch for exit
     this.proc.exited.then((code) => {
       this.dead = true;
+      // Fire the manager hook first so the instance is evicted from
+      // the registry before any user-side `onExit` callback gets a
+      // chance to look it up and find a corpse.
+      this._managerExit?.(code ?? 1);
       this.onExit?.(code ?? 1);
-      // Reject any pending waiters
+      // Reject any pending waiters and clear their timeout timers so the
+      // event loop isn't held open waiting for a response that will never
+      // arrive.
       for (const [, waiter] of this.responseWaiters) {
+        clearTimeout(waiter.timer);
         waiter.reject(new Error("pi process exited"));
       }
       this.responseWaiters.clear();
@@ -280,6 +299,7 @@ export class PiAgentInstance {
     if (msg["type"] === "response" && msg["id"]) {
       const waiter = this.responseWaiters.get(msg["id"] as string);
       if (waiter) {
+        clearTimeout(waiter.timer);
         this.responseWaiters.delete(msg["id"] as string);
         if (msg["success"]) {
           waiter.resolve(msg["data"] ?? null);
@@ -306,16 +326,11 @@ export class PiAgentInstance {
     const line = JSON.stringify(msg) + "\n";
 
     return new Promise<unknown>((resolve, reject) => {
-      this.responseWaiters.set(id, { resolve, reject });
-      // stdin is spawned with "pipe", so the runtime value is a Bun
-      // FileSink. The union with `number` only fires when stdio is
-      // an fd — not our case.
-      const writer = this.proc!.stdin! as Bun.FileSink;
-      writer.write(line);
-      writer.flush();
-
-      // Timeout
-      setTimeout(() => {
+      // Arm the timeout first so we can store the timer id alongside
+      // the resolve/reject. On a successful response or exit drain we
+      // clear the timer so the event loop isn't kept alive for the
+      // remainder of `timeoutMs`.
+      const timer = setTimeout(() => {
         if (this.responseWaiters.has(id)) {
           this.responseWaiters.delete(id);
           reject(
@@ -323,6 +338,13 @@ export class PiAgentInstance {
           );
         }
       }, timeoutMs);
+      this.responseWaiters.set(id, { resolve, reject, timer });
+      // stdin is spawned with "pipe", so the runtime value is a Bun
+      // FileSink. The union with `number` only fires when stdio is
+      // an fd — not our case.
+      const writer = this.proc!.stdin! as Bun.FileSink;
+      writer.write(line);
+      writer.flush();
     });
   }
 
@@ -500,6 +522,15 @@ export class PiAgentInstance {
   kill(): void {
     if (this.dead) return;
     this.dead = true;
+    // Drain pending waiters synchronously. proc.exited.then will run
+    // again after the kill, but this prevents callers from waiting up
+    // to 30 s on the timeout if the proc was already gone when we
+    // called kill().
+    for (const [, waiter] of this.responseWaiters) {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error("pi agent killed"));
+    }
+    this.responseWaiters.clear();
     try {
       this.proc?.kill();
     } catch {
@@ -531,7 +562,12 @@ export class PiAgentManager {
       this.onEvent?.(id, event);
     };
 
-    instance.onExit = (code) => {
+    // Internal manager-only exit hook — survives even if the caller
+    // overwrites the public `onExit` field with their own handler.
+    // The manager's onExit is the seam used by `index.ts` to evict
+    // dead instances; the public onExit is for the same call site to
+    // notify the webview.
+    instance._managerExit = (code) => {
       this.onExit?.(id, code);
     };
 
