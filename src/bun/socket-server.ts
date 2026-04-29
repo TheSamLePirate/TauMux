@@ -7,7 +7,19 @@ type RpcHandler = (
 
 interface SocketData {
   buffer: string;
+  /** Set once we've terminated this peer for buffer overflow so a slow
+   *  drain of in-flight data events doesn't spam the log or restart
+   *  the buffer-grow loop. */
+  killed: boolean;
 }
+
+/** Hard cap on the per-connection accumulator. Reached only by a buggy
+ *  client (or a malicious one) that writes bytes without ever sending a
+ *  newline. The biggest legitimate `ht` payloads — agent prompts,
+ *  layout snapshots — are well under this. Owner-only chmod limits
+ *  exposure to local-user attacks, but a runaway script could still
+ *  wedge the whole app via OOM, hence the cap. (Triple-A G.5 / L4) */
+const MAX_BUFFER_BYTES = 1_048_576;
 
 export class SocketServer {
   private server: ReturnType<typeof Bun.listen> | null = null;
@@ -54,9 +66,10 @@ export class SocketServer {
         unix: this.socketPath,
         socket: {
           open: (socket) => {
-            socket.data = { buffer: "" };
+            socket.data = { buffer: "", killed: false };
           },
           data: async (socket, rawData) => {
+            if (socket.data.killed) return;
             const text =
               typeof rawData === "string"
                 ? rawData
@@ -67,6 +80,32 @@ export class SocketServer {
             // across multiple data events, so we must buffer until we see a
             // complete newline-delimited line.
             socket.data.buffer += text;
+
+            // Hard cap (L4): a client that writes bytes without ever
+            // sending a newline would otherwise grow the buffer until
+            // the parent runs out of memory. Send a structured error and
+            // close.
+            if (socket.data.buffer.length > MAX_BUFFER_BYTES) {
+              socket.data.killed = true;
+              const err = JSON.stringify({
+                id: 0,
+                error: `request exceeded ${MAX_BUFFER_BYTES} bytes without a newline; closing connection`,
+              });
+              try {
+                socket.write(err + "\n");
+              } catch {
+                /* connection may already be gone */
+              }
+              try {
+                socket.end();
+              } catch {
+                /* idem */
+              }
+              console.warn(
+                `[socket] dropped peer: per-connection buffer exceeded ${MAX_BUFFER_BYTES} bytes without newline`,
+              );
+              return;
+            }
 
             const parts = socket.data.buffer.split("\n");
             // Keep the last (potentially incomplete) segment for the next event

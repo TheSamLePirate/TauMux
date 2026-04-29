@@ -175,6 +175,48 @@ describe("SocketServer", () => {
     next.stop();
   });
 
+  test("drops a peer that exceeds the per-connection buffer cap without a newline (G.5 / L4)", async () => {
+    server = new SocketServer(TEST_SOCKET, async () => "ok");
+    await server.start();
+
+    const errorMsg: string = await new Promise((resolve, reject) => {
+      const sock = connect(TEST_SOCKET);
+      let received = "";
+      sock.on("connect", () => {
+        // Stream 1.5 MiB of garbage with no newline. The server should
+        // close the connection at 1 MiB with a structured error.
+        const chunk = "x".repeat(64 * 1024); // 64 KiB
+        for (let i = 0; i < 24; i++) {
+          try {
+            sock.write(chunk);
+          } catch {
+            break;
+          }
+        }
+      });
+      sock.on("data", (d) => {
+        received += d.toString();
+        const nl = received.indexOf("\n");
+        if (nl >= 0) {
+          try {
+            const parsed = JSON.parse(received.slice(0, nl));
+            resolve(parsed.error || "");
+          } catch (e) {
+            reject(e);
+          }
+          sock.destroy();
+        }
+      });
+      sock.on("error", () => {
+        /* socket close races the error frame — fine */
+      });
+      setTimeout(() => reject(new Error("test timeout")), 3000);
+    });
+
+    expect(errorMsg).toContain("1048576");
+    expect(errorMsg).toContain("newline");
+  });
+
   test("preserves request id in response", async () => {
     server = new SocketServer(TEST_SOCKET, () => "ok");
     await server.start();
