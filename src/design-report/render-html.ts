@@ -340,6 +340,10 @@ export function renderHtml(
     }
   }
 
+  // NOTE: this escapeHtml is intentionally inlined into the
+  // generated report's <script>. It runs in the browser viewing the
+  // report (a different execution context) and cannot import from
+  // src/shared/escape-html.ts. Keep in sync with that file. (F.3)
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, "&amp;")

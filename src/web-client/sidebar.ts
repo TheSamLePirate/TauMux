@@ -17,15 +17,9 @@
 
 import type { AppState, Store } from "./store";
 import { ICONS } from "./icons";
+import { escapeHtml } from "../shared/escape-html";
 
-export function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+export { escapeHtml };
 
 export interface SidebarDeps {
   store: Store;

@@ -13,6 +13,7 @@
  */
 
 import type { AutoContinueAuditEntry, Plan } from "./types";
+import { escapeHtml } from "./escape-html";
 
 /** Render a single plan card. The host element binds a click
  *  handler via event delegation on the `data-plan-workspace`
@@ -102,11 +103,4 @@ function stateIcon(state: string): string {
   }
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+// escapeHtml moved to ./escape-html (F.3 / A13).
