@@ -408,6 +408,14 @@ export class WebServer {
         },
 
         websocket: {
+          // H.5 / L3 — half-open WebSockets used to survive ~2 hours
+          // (the macOS TCP keepalive default) because nothing was
+          // pinging on a quiet session. `idleTimeout` is in seconds;
+          // 60 s with `sendPings: true` lets Bun close idle peers
+          // automatically. The 2 MiB resume ring is unaffected — a
+          // detached session still survives `SESSION_TTL_MS`.
+          idleTimeout: 60,
+          sendPings: true,
           open: (ws: WS) => {
             const { resumeId, resumeSeq } = ws.data;
             ws.data.resumeId = undefined;

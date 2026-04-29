@@ -42,6 +42,12 @@ export function createTransport(deps: TransportDeps): Transport {
 
   let ws: WebSocket | null = null;
   let reconnectDelay = 1000;
+  // H.5 / L5 — cap retries so a permanently-wrong token (or stale
+  // device after the user rotated the secret) doesn't reconnect every
+  // 30 s forever, leaking warn-lines into the console. After
+  // `MAX_RECONNECT_ATTEMPTS` we stop and ask the user to refresh.
+  const MAX_RECONNECT_ATTEMPTS = 30;
+  let reconnectAttempts = 0;
 
   // D.4 — capture the auth token from the page URL once at module load
   // and remember it for the lifetime of the page. Reconnects read from
@@ -117,6 +123,7 @@ export function createTransport(deps: TransportDeps): Transport {
 
     ws.onopen = () => {
       reconnectDelay = 1000;
+      reconnectAttempts = 0;
       store.dispatch({ kind: "connection/status", status: "connected" });
       // D.4 — once the first connection succeeds, scrub the token out of
       // the page URL. Subsequent reconnects use the captured value, so
@@ -145,8 +152,25 @@ export function createTransport(deps: TransportDeps): Transport {
       // doc/full_analysis.md.
       const reason = event.reason ? ` reason="${event.reason}"` : "";
       const wasClean = event.wasClean ? " clean" : "";
+      reconnectAttempts++;
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.warn(
+          `[mirror] ws closed code=${event.code}${reason}${wasClean}; giving up after ${reconnectAttempts} attempts`,
+        );
+        store.dispatch({
+          kind: "connection/status",
+          status: "disconnected",
+        });
+        return;
+      }
+      // H.5 / L5 — apply ±25 % jitter so N peers (laptop + phone +
+      // tablet) reconnecting after a server restart don't all hit at
+      // the same step. Without this the LAN sees a thundering-herd
+      // pattern at 1 s, 2 s, 4 s, 8 s, 16 s, 30 s, 30 s, …
+      const jitter = (Math.random() - 0.5) * 0.5; // ±25 %
+      const wait = Math.round(reconnectDelay * (1 + jitter));
       console.warn(
-        `[mirror] ws closed code=${event.code}${reason}${wasClean}; reconnecting in ${reconnectDelay}ms`,
+        `[mirror] ws closed code=${event.code}${reason}${wasClean}; reconnecting in ${wait}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`,
       );
       store.dispatch({
         kind: "connection/status",
@@ -159,7 +183,7 @@ export function createTransport(deps: TransportDeps): Transport {
       setTimeout(() => {
         reconnectDelay = Math.min(reconnectDelay * 2, 30000);
         connect();
-      }, reconnectDelay);
+      }, wait);
     };
     ws.onerror = () => {
       /* the close handler drives reconnect; suppress default noise */
