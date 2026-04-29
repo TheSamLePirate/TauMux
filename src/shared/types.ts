@@ -15,9 +15,18 @@ export interface PaneLeaf {
   surfaceId: string;
   /** Surface kind. Omitted or "terminal" = terminal PTY pane.
    *  "browser" = embedded web browser pane.
-   *  "agent" = pi coding agent pane. */
-  surfaceType?: "terminal" | "browser" | "agent" | "telegram";
+   *  "agent" = pi coding agent pane.
+   *  "telegram" = telegram chat pane.
+   *  See `SurfaceKind` for the canonical literal-string union. */
+  surfaceType?: SurfaceKind;
 }
+
+/** The four kinds of pane surface. F.4 / A3 — single source of truth
+ *  so adding a fifth kind is one edit instead of four. Previously
+ *  this literal-string union was duplicated in `PaneLeaf.surfaceType`,
+ *  `PersistedWorkspace.surfaceTypes`, the workspaceState RPC type,
+ *  and `WorkspaceSnapshot.surfaceTypes`. */
+export type SurfaceKind = "terminal" | "browser" | "agent" | "telegram";
 
 export type PaneNode = PaneSplit | PaneLeaf;
 
@@ -46,7 +55,7 @@ export interface PersistedWorkspace {
   /** Persisted URL per browser surface id for restore. */
   surfaceUrls?: Record<string, string>;
   /** Surface type per surface id (only stored for "browser" or "agent"; terminal is the default). */
-  surfaceTypes?: Record<string, "terminal" | "browser" | "agent" | "telegram">;
+  surfaceTypes?: Record<string, SurfaceKind>;
 }
 
 export interface PersistedLayout {
@@ -519,10 +528,7 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
           /** Persisted URL per browser surface id for restore. */
           surfaceUrls?: Record<string, string>;
           /** Surface type per surface id (only stored for "browser" or "agent"). */
-          surfaceTypes?: Record<
-            string,
-            "terminal" | "browser" | "agent" | "telegram"
-          >;
+          surfaceTypes?: Record<string, SurfaceKind>;
         }[];
         activeWorkspaceId: string | null;
       };

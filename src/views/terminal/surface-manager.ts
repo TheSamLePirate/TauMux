@@ -10,9 +10,7 @@ import { applyTauPaneClasses } from "./tau-primitives";
 import type { TauIdentity } from "./tau-tokens";
 
 /** Map a surface kind to the τ-mux §7 identity signal (colour is identity). */
-function surfaceIdentity(
-  kind: "terminal" | "browser" | "agent" | "telegram",
-): TauIdentity {
+function surfaceIdentity(kind: SurfaceKind): TauIdentity {
   // Agents are amber. Everything the user drives (shell, browser, chat) is cyan.
   return kind === "agent" ? "agent" : "human";
 }
@@ -23,6 +21,7 @@ import type {
   PersistedLayout,
   SidebandContentMessage,
   SurfaceContextMenuRequest,
+  SurfaceKind,
   SurfaceMetadata,
 } from "../../shared/types";
 import { createWorkspaceRecord } from "./workspace-factory";
@@ -100,7 +99,7 @@ const defaultGlassTheme = {
 
 interface SurfaceView {
   id: string;
-  surfaceType: "terminal" | "browser" | "agent" | "telegram";
+  surfaceType: SurfaceKind;
   // Terminal-specific (null for browser panes)
   term: Terminal | null;
   fitAddon: FitAddon | null;
@@ -788,7 +787,7 @@ export class SurfaceManager {
     return view.term;
   }
 
-  getActiveSurfaceType(): "terminal" | "browser" | "agent" | "telegram" | null {
+  getActiveSurfaceType(): SurfaceKind | null {
     if (!this.focusedSurfaceId) return null;
     return this.surfaces.get(this.focusedSurfaceId)?.surfaceType ?? null;
   }
@@ -1431,10 +1430,7 @@ export class SurfaceManager {
       surfaceCwds?: Record<string, string>;
       selectedCwd?: string;
       surfaceUrls?: Record<string, string>;
-      surfaceTypes?: Record<
-        string,
-        "terminal" | "browser" | "agent" | "telegram"
-      >;
+      surfaceTypes?: Record<string, SurfaceKind>;
     }[];
     activeWorkspaceId: string | null;
   } {
@@ -1444,10 +1440,7 @@ export class SurfaceManager {
         const surfaceTitles: Record<string, string> = {};
         const surfaceCwds: Record<string, string> = {};
         const surfaceUrls: Record<string, string> = {};
-        const surfaceTypes: Record<
-          string,
-          "terminal" | "browser" | "agent" | "telegram"
-        > = {};
+        const surfaceTypes: Record<string, SurfaceKind> = {};
         for (const sid of surfaceIds) {
           const view = this.surfaces.get(sid);
           const title = view?.title;

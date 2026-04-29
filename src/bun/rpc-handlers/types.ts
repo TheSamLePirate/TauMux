@@ -1,3 +1,4 @@
+import type { SurfaceKind } from "../../shared/types";
 import type { BrowserHistoryStore } from "../browser-history";
 import type { BrowserSurfaceManager } from "../browser-surface-manager";
 import type { CookieStore } from "../cookie-store";
@@ -32,7 +33,7 @@ export interface WorkspaceSnapshot {
   /** Persisted URL per browser surface id for restore. */
   surfaceUrls?: Record<string, string>;
   /** Surface type per surface id (only stored for "browser" or "agent"). */
-  surfaceTypes?: Record<string, "terminal" | "browser" | "agent" | "telegram">;
+  surfaceTypes?: Record<string, SurfaceKind>;
 }
 
 export type Handler = (
