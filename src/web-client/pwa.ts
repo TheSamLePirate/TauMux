@@ -1,17 +1,23 @@
 // τ-mux web mirror — PWA / service-worker registration helper.
 //
-// Two responsibilities:
+// Three responsibilities:
 //
 //   - registerServiceWorker(): idempotent registration with graceful
 //     fallback when the API is unavailable (private mode, http on a
-//     non-localhost origin, ancient browser).
+//     non-localhost origin, ancient browser). Also wires the D.3
+//     update-available flow: when a new SW reaches `installed` state
+//     while a previous SW still controls the page, we surface the
+//     update banner and reload on `controllerchange`.
 //   - injectIosMeta(): drops the iOS-specific Add-to-Home-Screen
 //     `<meta>` tags into the document so the icon, status-bar style,
 //     and standalone mode all light up. The other browsers honour
 //     manifest.json directly.
+//   - attachPullToRefresh(): touch-driven manual reload for mobile.
 //
-// Both are idempotent — safe to call multiple times across reconnects
-// or hot reloads.
+// All three are idempotent — safe to call multiple times across
+// reconnects or hot reloads.
+
+import { showUpdateBanner } from "./update-banner";
 
 const SW_PATH = "/sw.js";
 const APPLE_TOUCH_ICON_PATH = "/icons/apple-touch-icon.png";
@@ -40,11 +46,71 @@ export async function registerServiceWorker(): Promise<RegisterServiceWorkerResu
     return { registered: false, reason: "insecure-context" };
   }
   try {
-    await navigator.serviceWorker.register(SW_PATH, { scope: "/" });
+    const reg = await navigator.serviceWorker.register(SW_PATH, { scope: "/" });
+    wireUpdateFlow(reg);
     return { registered: true };
   } catch {
     return { registered: false, reason: "error" };
   }
+}
+
+// D.3 — listen for SW updates and drive the banner.
+//
+// Three sources of "an update is waiting":
+//   1. `reg.waiting` is non-null at registration time (the user opened
+//      the app while a previous deploy left a SW already waiting).
+//   2. `reg.installing` becomes non-null after registration; we listen
+//      to its `statechange` and surface once it reaches `installed`.
+//   3. `reg.onupdatefound` fires when the browser's periodic update
+//      check finds a new SW.
+//
+// Each path resolves to the same banner. After the user clicks Reload,
+// the banner's onReload handler posts SKIP_WAITING; the SW activates;
+// `controllerchange` fires; we reload the page once.
+let controllerChangeBound = false;
+let reloadingForUpdate = false;
+function wireUpdateFlow(reg: ServiceWorkerRegistration): void {
+  // (1) Already-waiting worker on first registration.
+  if (reg.waiting && navigator.serviceWorker.controller) {
+    surfaceBanner(() => reg.waiting);
+  }
+
+  // (2) A new SW just started installing — wait for `installed`.
+  const watchInstalling = (worker: ServiceWorker | null): void => {
+    if (!worker) return;
+    worker.addEventListener("statechange", () => {
+      if (worker.state === "installed" && navigator.serviceWorker.controller) {
+        // Only show the banner when we have an existing controller
+        // — that's the "this is an update, not a fresh install" signal.
+        surfaceBanner(() => worker);
+      }
+    });
+  };
+  watchInstalling(reg.installing);
+
+  // (3) Future updates picked up by `reg.update()` / browser idle
+  //     update check.
+  reg.addEventListener("updatefound", () => {
+    watchInstalling(reg.installing);
+  });
+
+  // controllerchange → activate fired on the new SW → reload to
+  // pick up the new bundle. We bind once globally; if the helper is
+  // called twice (e.g. dev hot reload), the guard avoids double-reload.
+  if (!controllerChangeBound) {
+    controllerChangeBound = true;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloadingForUpdate) return;
+      reloadingForUpdate = true;
+      window.location.reload();
+    });
+  }
+}
+
+function surfaceBanner(getWaiting: () => ServiceWorker | null): void {
+  showUpdateBanner({
+    getWaitingWorker: getWaiting,
+  });
 }
 
 /** Trigger a one-shot update probe so a deployed bundle is picked up

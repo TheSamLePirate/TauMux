@@ -2,6 +2,10 @@
 
 Pending updates to fold into `website-doc/` on the next user-driven docs sweep.
 
+## 0.2.60 — PR #9 (D.3 SW update flow with banner)
+
+- Web mirror: when a new bundle is deployed and a previous SW still controls the page, the SW now stays in `waiting` state and the page renders a banner ("A new version is available." / Reload / Later). Clicking Reload posts `{type:"SKIP_WAITING"}`; the new SW activates; `controllerchange` fires and the page reloads onto the new bundle. Clicking Later dismisses the banner without affecting the running session. Old caches are deleted in the new SW's `activate` handler — i.e. only after the user has accepted the update — so a mid-session tab on the old version no longer white-screens on a fresh asset request. First-install path (no previous SW) is unchanged: the SW skips waiting automatically. Reflect in any website-doc PWA / "installation" section.
+
 ## 0.2.59 — PR #10 (D.4 auth token scrub)
 
 - Web mirror: the `?t=…` auth token in the page URL is captured at module load and removed from `window.location` via `history.replaceState` after the first successful WebSocket open. Reconnects keep authenticating (the token survives in module scope). On 401 / connection failure the URL is intentionally left intact so the failure is debuggable. No public API change; security hardening only.

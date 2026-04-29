@@ -12,9 +12,16 @@
 //
 // The build pipeline injects the bundle hash into CACHE_NAME via a
 // `__BUILD_VERSION__` placeholder (see scripts/build-web-client.ts).
-// Two service workers with different cache names coexist briefly
-// during a deploy; the old one is GC'd by the browser once the new
-// one activates.
+//
+// D.3 — Update lifecycle.
+//   On first install (no SW currently controlling the page), we
+//   `skipWaiting()` so the user gets a working SW on the very next
+//   navigation. On a subsequent deploy (a previous SW IS controlling),
+//   we deliberately stay in `waiting` state until the page posts
+//   `{type:"SKIP_WAITING"}`. That gives the client a chance to render
+//   the "update available — reload" banner; until the user clicks,
+//   the still-running tab keeps fetching from the OLD cache instead
+//   of getting white-screened by a half-deployed bundle.
 
 /// <reference lib="webworker" />
 
@@ -29,14 +36,30 @@ const SHELL_PATHS = ["/", "/manifest.json"];
 
 self.addEventListener("install", (event: ExtendableEvent) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_PATHS)),
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.addAll(SHELL_PATHS);
+      // First-install fast path: when no client is currently controlled
+      // by a previous SW, skip waiting so the page becomes controlled
+      // on the very next navigation. Avoids the "first load doesn't
+      // benefit from the SW" surprise. On subsequent deploys
+      // `clients.matchAll()` returns the live tabs and we stay in
+      // `waiting` until the page asks us to take over.
+      const existingClients = await self.clients.matchAll({
+        includeUncontrolled: false,
+      });
+      if (existingClients.length === 0) {
+        await self.skipWaiting();
+      }
+    })(),
   );
-  // Activate immediately so the next reload picks up the new bundle
-  // without waiting for every tab to close.
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event: ExtendableEvent) => {
+  // Activate only fires after `skipWaiting()` runs (either auto on
+  // first install, or in response to a SKIP_WAITING message from the
+  // page). At that point the user has accepted the new bundle, so it's
+  // safe to drop old caches.
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
@@ -48,6 +71,17 @@ self.addEventListener("activate", (event: ExtendableEvent) => {
       await self.clients.claim();
     })(),
   );
+});
+
+// Page → SW message channel. Only one message kind today: SKIP_WAITING,
+// dispatched when the user clicks "Reload" in the update banner. A
+// future addition might be a CHECK_FOR_UPDATE ping, but it's not
+// needed because `registration.update()` already handles probing.
+self.addEventListener("message", (event: ExtendableMessageEvent) => {
+  const data = event.data as { type?: string } | null | undefined;
+  if (data && data.type === "SKIP_WAITING") {
+    void self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event: FetchEvent) => {
