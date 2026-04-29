@@ -1,16 +1,11 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import {
   type AppSettings,
   DEFAULT_SETTINGS,
   applyBloomMigration,
   mergeSettings,
 } from "../shared/settings";
+import { writeFileAtomic } from "./atomic-write";
 
 export class SettingsManager {
   private settings: AppSettings;
@@ -51,7 +46,11 @@ export class SettingsManager {
   private writeToDisk(): void {
     try {
       if (!existsSync(this.dir)) mkdirSync(this.dir, { recursive: true });
-      writeFileSync(this.filePath, JSON.stringify(this.settings, null, 2));
+      // Atomic — a crash mid-write never leaves a truncated
+      // settings.json (G.4 / L7). The previous direct writeFileSync
+      // could corrupt the file; load() falls back to defaults on
+      // parse error, so the user lost their last save.
+      writeFileAtomic(this.filePath, JSON.stringify(this.settings, null, 2));
       this.writeWarned = false;
     } catch (err) {
       // Write failures (disk full, permission denied) used to silently

@@ -9,8 +9,9 @@
  * synchronous for SIGINT/SIGTERM shutdown.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { writeFileAtomic } from "./atomic-write";
 
 export interface BrowserHistoryEntry {
   url: string;
@@ -159,7 +160,10 @@ export class BrowserHistoryStore {
       const dir = dirname(this.filePath);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       const arr = [...this.entries.values()];
-      await Bun.write(this.filePath, JSON.stringify(arr));
+      // Write-then-rename — atomic on POSIX (G.4 / L7) so a crash
+      // mid-write never leaves a truncated browser-history.json.
+      await Bun.write(`${this.filePath}.tmp`, JSON.stringify(arr));
+      renameSync(`${this.filePath}.tmp`, this.filePath);
       this.saveWarned = false;
     } catch (err) {
       if (!this.saveWarned) {
@@ -178,7 +182,7 @@ export class BrowserHistoryStore {
       const dir = dirname(this.filePath);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       const arr = [...this.entries.values()];
-      writeFileSync(this.filePath, JSON.stringify(arr));
+      writeFileAtomic(this.filePath, JSON.stringify(arr));
     } catch {
       /* ignore write failures */
     }
