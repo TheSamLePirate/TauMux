@@ -50,21 +50,48 @@ export interface Audit {
  *  real one for a stub. */
 export type GitRunner = (args: string[]) => Promise<string>;
 
+/** Hard upper bound on a git config probe. Without this, a hung
+ *  `git config --global` (e.g. NFS-mounted home that's gone away)
+ *  wedges the audit registry forever and never logs. 5 s is generous
+ *  for what should be a sub-millisecond syscall. (G.10 / L13) */
+const GIT_AUDIT_TIMEOUT_MS = 5_000;
+
 /** Real-process implementation, used in production. Empty stdout
  *  resolves to "" (no config set) — git itself returns exit code 1
  *  for missing keys; we capture stderr too so a permissions surprise
- *  doesn't masquerade as an empty answer. */
+ *  doesn't masquerade as an empty answer. Hard timeout guards
+ *  against a hung subprocess. */
 export async function defaultRunGit(args: string[]): Promise<string> {
   const proc = Bun.spawn(["git", ...args], {
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [stdout] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  await proc.exited;
-  return stdout.trim();
+  const stdoutP = new Response(proc.stdout).text();
+  // Race the read against a timeout. On timeout we kill the proc and
+  // return "" — the audit treats that as "no config", which is a
+  // safe fallback (the audit just won't fire).
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<string>((resolve) => {
+    timer = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        /* already gone */
+      }
+      console.warn(
+        `[audits] git ${args.join(" ")} timed out after ${GIT_AUDIT_TIMEOUT_MS}ms`,
+      );
+      resolve("");
+    }, GIT_AUDIT_TIMEOUT_MS);
+  });
+  const result = await Promise.race([stdoutP, timeout]);
+  if (timer) clearTimeout(timer);
+  // Best-effort wait for the proc to actually exit so we don't leak
+  // a zombie on fast paths; ignore any further output.
+  proc.exited.catch(() => {
+    /* ignore */
+  });
+  return result.trim();
 }
 
 export interface AuditRegistryOptions {

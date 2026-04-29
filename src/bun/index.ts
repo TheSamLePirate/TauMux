@@ -517,9 +517,24 @@ const bunMessageHandlers = {
     try {
       Utils.clipboardWriteText(payload.text);
     } catch {
+      // Fallback to pbcopy when the FFI path isn't available
+      // (rare — but keep it for resilience). G.10 / L13: race against
+      // a 2 s timeout so a hung pbcopy doesn't leak the subprocess.
       const proc = Bun.spawn(["pbcopy"], { stdin: "pipe" });
       proc.stdin.write(payload.text);
       proc.stdin.end();
+      const timer = setTimeout(() => {
+        try {
+          proc.kill();
+        } catch {
+          /* already done */
+        }
+      }, 2000);
+      proc.exited
+        .then(() => clearTimeout(timer))
+        .catch(() => {
+          clearTimeout(timer);
+        });
     }
   },
   clipboardPaste: (payload) => {
@@ -2322,7 +2337,25 @@ async function handlePaste(): Promise<void> {
   if (text === null || text === undefined) {
     try {
       const proc = Bun.spawn(["pbpaste"], { stdout: "pipe" });
-      text = await new Response(proc.stdout).text();
+      // G.10 / L13: race read against a 2 s timeout. If pbpaste hangs
+      // (e.g. SecureInput shenanigans on macOS) we skip the paste
+      // rather than wedge the surface.
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const timeoutP = new Promise<string>((resolve) => {
+        timer = setTimeout(() => {
+          try {
+            proc.kill();
+          } catch {
+            /* already gone */
+          }
+          resolve("");
+        }, 2000);
+      });
+      text = await Promise.race([new Response(proc.stdout).text(), timeoutP]);
+      if (timer) clearTimeout(timer);
+      proc.exited.catch(() => {
+        /* ignore */
+      });
     } catch {
       /* ignore */
     }
