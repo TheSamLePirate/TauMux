@@ -1499,16 +1499,47 @@ function broadcastTelegramMessage(wire: TelegramWireMessage): void {
   broadcastTelegramState();
 }
 
+/** Telegram's per-message text limit. Anything longer is rejected by
+ *  their API anyway; we cap before persisting so a token-holding LAN
+ *  attacker can't flood the local SQLite log via the mirror's
+ *  `telegramSend` envelope (H.6 / S3). */
+const TELEGRAM_MAX_TEXT_LEN = 4096;
+
 /** Send a message via the live service and fan the result out to every
- *  client. No-op (with warning) when the service isn't running. */
+ *  client. No-op (with warning) when the service isn't running.
+ *  `allowUnknownChat` is set on bun-side internal callers (e.g. the
+ *  notification forwarder) which legitimately address chats the user
+ *  has just paired with; web-mirror-originated sends pass false so a
+ *  token-holding LAN peer can't DM arbitrary chatIds the bot has
+ *  spoken to (H.6 / S7). */
 async function sendTelegramAndBroadcast(
   chatId: string,
   text: string,
+  opts: { allowUnknownChat?: boolean } = {},
 ): Promise<void> {
   const svc = telegramService;
   if (!svc) {
     console.warn("[telegram] send dropped — service not running");
     return;
+  }
+  if (typeof text !== "string" || text.length === 0) {
+    console.warn("[telegram] send dropped — empty text");
+    return;
+  }
+  if (text.length > TELEGRAM_MAX_TEXT_LEN) {
+    console.warn(
+      `[telegram] send dropped — text length ${text.length} exceeds ${TELEGRAM_MAX_TEXT_LEN}`,
+    );
+    return;
+  }
+  if (!opts.allowUnknownChat) {
+    const known = new Set(telegramDb.listChats().map((c) => c.id));
+    if (!known.has(chatId)) {
+      console.warn(
+        `[telegram] send dropped — chatId ${chatId} not in known-chats allow-list`,
+      );
+      return;
+    }
   }
   try {
     const persisted = await svc.sendMessage(chatId, text);
@@ -2445,7 +2476,12 @@ function dispatch(action: string, payload: Record<string, unknown>) {
               surfaceId,
             });
           } else {
-            void sendTelegramAndBroadcast(chatId, text);
+            // Notification forwarder — chatId is sourced from the
+            // user's `telegramAllowedUserIds` allow-list, so a target
+            // not yet in `db.listChats()` (just-paired user) is OK.
+            void sendTelegramAndBroadcast(chatId, text, {
+              allowUnknownChat: true,
+            });
           }
         }
       }
