@@ -52,6 +52,43 @@ describe("web mirror auth", () => {
     expect(res.status).toBe(401);
   });
 
+  test("every response carries security headers (H.2 / S6)", async () => {
+    startServer({ token: "" });
+    for (const path of ["/", "/manifest.json", "/sw.js", "/no-such-path"]) {
+      const res = await fetch(`http://127.0.0.1:${TEST_PORT}${path}`);
+      expect(
+        res.headers.get("x-frame-options"),
+        `missing X-Frame-Options on ${path}`,
+      ).toBe("DENY");
+      expect(
+        res.headers.get("x-content-type-options"),
+        `missing nosniff on ${path}`,
+      ).toBe("nosniff");
+      expect(
+        res.headers.get("referrer-policy"),
+        `missing referrer-policy on ${path}`,
+      ).toBe("no-referrer");
+      expect(
+        res.headers.get("content-security-policy"),
+        `missing CSP on ${path}`,
+      ).toContain("frame-ancestors 'none'");
+      expect(
+        res.headers.get("permissions-policy"),
+        `missing permissions-policy on ${path}`,
+      ).toContain("camera=()");
+      // drain so the connection closes cleanly
+      await res.arrayBuffer();
+    }
+  });
+
+  test("401 on auth failure also carries security headers", async () => {
+    startServer({ token: "s3cret" });
+    const res = await fetch(`http://127.0.0.1:${TEST_PORT}/?t=wrong`);
+    expect(res.status).toBe(401);
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    await res.arrayBuffer();
+  });
+
   test("GET / with correct token returns 200", async () => {
     startServer({ token: "s3cret" });
     const res = await fetch(`http://127.0.0.1:${TEST_PORT}/?t=s3cret`);

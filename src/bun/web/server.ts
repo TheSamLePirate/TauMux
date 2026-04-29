@@ -118,6 +118,32 @@ export class WebServer {
     return false;
   }
 
+  /** Default security headers for every HTTP response (H.2 / S6).
+   *  - frame-ancestors=none: a neighbor's malicious page can't iframe
+   *    `http://your-laptop.local:8080/` and clickjack into typing.
+   *  - X-Content-Type-Options=nosniff: the browser refuses to MIME-
+   *    sniff resources, so a sideband-served HTML chunk can't be
+   *    misinterpreted as a script.
+   *  - Referrer-Policy=no-referrer: no token leakage in third-party
+   *    navigations.
+   *  - Permissions-Policy: deny camera/mic/geolocation by default.
+   *  Returns plain object so callers can spread into their own
+   *  `headers:` map. */
+  private securityHeaders(): Record<string, string> {
+    return {
+      "x-frame-options": "DENY",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
+      "permissions-policy":
+        "geolocation=(), microphone=(), camera=(), payment=(), usb=()",
+      // CSP for the HTML page is set inline on `/` since the inline
+      // bootstrap script needs `unsafe-inline`. Static assets get a
+      // stricter default.
+      "content-security-policy":
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+    };
+  }
+
   /** CSRF protection: reject WebSocket upgrades from a cross-origin page.
    *  Native clients (curl, Bun tests, non-browser) usually omit Origin;
    *  we allow that. Browsers always send Origin, so a mismatch is a real
@@ -148,11 +174,25 @@ export class WebServer {
         fetch: (req, server) => {
           const url = new URL(req.url);
 
+          // Helper: merge security headers into every response so
+          // we don't have to remember at each call-site (H.2 / S6).
+          // Hoisted above the WebSocket-upgrade branch so error
+          // responses on that path also get the headers.
+          const sec = this.securityHeaders();
+          const respond = (
+            body: BodyInit | null,
+            init: ResponseInit & { headers?: Record<string, string> } = {},
+          ) =>
+            new Response(body, {
+              ...init,
+              headers: { ...sec, ...(init.headers ?? {}) },
+            });
+
           if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
             if (!this.authorized(url, req))
-              return new Response("Unauthorized", { status: 401 });
+              return respond("Unauthorized", { status: 401 });
             if (!this.originAllowed(url, req))
-              return new Response("Forbidden: cross-origin", { status: 403 });
+              return respond("Forbidden: cross-origin", { status: 403 });
             const resumeId = url.searchParams.get("resume") || undefined;
             const resumeSeqRaw = url.searchParams.get("seq");
             const resumeSeq =
@@ -168,13 +208,13 @@ export class WebServer {
             };
             const ok = server.upgrade(req, { data });
             if (ok) return undefined;
-            return new Response("WebSocket upgrade failed", { status: 400 });
+            return respond("WebSocket upgrade failed", { status: 400 });
           }
 
           if (url.pathname === "/" || url.pathname === "/index.html") {
             if (!this.authorized(url, req))
-              return new Response("Unauthorized", { status: 401 });
-            return new Response(buildHtmlPage(), {
+              return respond("Unauthorized", { status: 401 });
+            return respond(buildHtmlPage(), {
               headers: {
                 "content-type": "text/html; charset=utf-8",
                 "cache-control": "no-store",
@@ -183,7 +223,7 @@ export class WebServer {
           }
 
           if (url.pathname === "/fonts/nerd-regular.ttf" && NERD_FONT_REGULAR) {
-            return new Response(NERD_FONT_REGULAR.buffer as ArrayBuffer, {
+            return respond(NERD_FONT_REGULAR.buffer as ArrayBuffer, {
               headers: {
                 "content-type": "font/ttf",
                 "cache-control": "public, max-age=31536000",
@@ -191,7 +231,7 @@ export class WebServer {
             });
           }
           if (url.pathname === "/fonts/nerd-bold.ttf" && NERD_FONT_BOLD) {
-            return new Response(NERD_FONT_BOLD.buffer as ArrayBuffer, {
+            return respond(NERD_FONT_BOLD.buffer as ArrayBuffer, {
               headers: {
                 "content-type": "font/ttf",
                 "cache-control": "public, max-age=31536000",
@@ -202,19 +242,16 @@ export class WebServer {
             url.pathname === "/audio/finish.mp3" &&
             NOTIFICATION_SOUND_FINISH
           ) {
-            return new Response(
-              NOTIFICATION_SOUND_FINISH.buffer as ArrayBuffer,
-              {
-                headers: {
-                  "content-type": "audio/mpeg",
-                  "cache-control": "public, max-age=31536000",
-                },
+            return respond(NOTIFICATION_SOUND_FINISH.buffer as ArrayBuffer, {
+              headers: {
+                "content-type": "audio/mpeg",
+                "cache-control": "public, max-age=31536000",
               },
-            );
+            });
           }
 
           if (url.pathname.endsWith(".map")) {
-            return new Response('{"version":3,"sources":[],"mappings":""}', {
+            return respond('{"version":3,"sources":[],"mappings":""}', {
               headers: { "content-type": "application/json" },
             });
           }
@@ -226,7 +263,7 @@ export class WebServer {
           // state, just chrome metadata.
           if (url.pathname === "/sw.js") {
             const sw = readAsset("assets/web-client/sw.js");
-            return new Response(sw, {
+            return respond(sw, {
               headers: {
                 "content-type": "application/javascript; charset=utf-8",
                 // `no-store` so the browser always re-fetches; the SW
@@ -239,7 +276,7 @@ export class WebServer {
           }
           if (url.pathname === "/manifest.json") {
             const manifest = readAsset("assets/web-client/manifest.json");
-            return new Response(manifest, {
+            return respond(manifest, {
               headers: {
                 "content-type": "application/manifest+json; charset=utf-8",
                 "cache-control": "public, max-age=600",
@@ -253,7 +290,7 @@ export class WebServer {
             // Single SVG icon serves both manifest + iOS slots; iOS
             // accepts SVG since 16.4 and falls back gracefully.
             const svg = readAsset("assets/web-client/icon.svg");
-            return new Response(svg, {
+            return respond(svg, {
               headers: {
                 "content-type": "image/svg+xml",
                 "cache-control": "public, max-age=86400",
@@ -261,7 +298,7 @@ export class WebServer {
             });
           }
 
-          return new Response("Not found", { status: 404 });
+          return respond("Not found", { status: 404 });
         },
 
         websocket: {
