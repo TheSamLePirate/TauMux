@@ -11749,3 +11749,89 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ────────────────────────────────────────────────────────────────
+ * Triple-A I.3 / U2 — system preference adaptation
+ *
+ * The app is dark by design (terminal aesthetics) and the cyan-glow
+ * theme is part of the brand. We don't switch to light mode on
+ * `prefers-color-scheme: light` — that would break the visual
+ * identity. But we DO honor:
+ *
+ * - `prefers-contrast: more` — bump borders/outlines so visually-
+ *   impaired users can see UI structure even with the dark accent.
+ * - `forced-colors: active` (Windows High Contrast) — map our cyan
+ *   accents onto system tokens so the OS theme wins.
+ *
+ * Anything not covered here falls through to the existing rules.
+ * ──────────────────────────────────────────────────────────────── */
+@media (prefers-contrast: more) {
+  /* Strengthen borders that are otherwise nearly invisible on dark
+   * backgrounds — pane borders, sidebar dividers, chip outlines. */
+  :root {
+    --tau-border: rgba(111, 233, 255, 0.55);
+    --tau-border-strong: rgba(111, 233, 255, 0.85);
+  }
+  .pane-border,
+  .surface-chip,
+  .palette-container,
+  .kbd-panel,
+  .settings-panel,
+  .process-manager,
+  .ask-user-modal {
+    border-width: 1px;
+    border-color: rgba(111, 233, 255, 0.85);
+  }
+  /* Increase focus-ring contrast — default outlines are too subtle. */
+  *:focus-visible {
+    outline: 2px solid #6fe9ff;
+    outline-offset: 2px;
+  }
+}
+
+@media (forced-colors: active) {
+  /* Windows High Contrast Mode replaces colors with a system palette.
+   * Map our accents to system tokens so the OS choice wins; let
+   * ButtonText/Highlight/HighlightText handle contrast rather than
+   * fighting with our cyan brand. */
+  :root {
+    --tau-cyan: Highlight;
+    --tau-text-strong: ButtonText;
+    --tau-text-mute: GrayText;
+    --tau-ok: Highlight;
+    --tau-warn: ButtonText;
+  }
+  .surface-chip,
+  .palette-container,
+  .kbd-panel,
+  .settings-panel,
+  .ask-user-modal {
+    border: 1px solid ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+  *:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
+/* I.2 / U3 — global reduced-motion blanket. Existing
+ * prefers-reduced-motion blocks higher in this file cover specific
+ * sidebar items; this catches everything they missed (notification-
+ * overlay slide-in, glow pulses on chips, terminal-effects bloom
+ * tween, agent-panel running-dot, panel content cross-fades). When
+ * the user has opted into reduced motion, we collapse all
+ * animation/transition durations to ~0. State-conveying animations
+ * (running dot, etc.) become static color swaps — that's the
+ * trade-off of prefers-reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

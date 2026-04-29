@@ -1609,3 +1609,65 @@ body.wm-kbd-active #pane-container {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ────────────────────────────────────────────────────────────────
+ * Triple-A I.3 / U2 — system preference adaptation (web mirror)
+ *
+ * Mirror of the native webview's blocks (see index.css end-of-file).
+ * Honor `prefers-contrast: more` and `forced-colors: active`.
+ * ──────────────────────────────────────────────────────────────── */
+@media (prefers-contrast: more) {
+  :root {
+    --ht-border: rgba(111, 233, 255, 0.55);
+    --ht-border-strong: rgba(111, 233, 255, 0.85);
+  }
+  .pane,
+  .pane-bar,
+  .panel,
+  .sidebar,
+  .toolbar-btn {
+    border-color: rgba(111, 233, 255, 0.85) !important;
+  }
+  *:focus-visible {
+    outline: 2px solid #6fe9ff;
+    outline-offset: 2px;
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --ht-accent: Highlight;
+    --ht-text-strong: ButtonText;
+    --ht-text-dim: GrayText;
+    --ht-sem-success: Highlight;
+    --ht-sem-info: Highlight;
+  }
+  .pane,
+  .panel,
+  .sidebar,
+  .toolbar-btn {
+    border: 1px solid ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+  *:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
+/* I.2 / U3 — global reduced-motion blanket. Existing prefers-reduced-
+ * motion blocks in index.css cover specific sidebar items only; the
+ * web mirror had zero. This applies a near-zero animation/transition
+ * cap to all elements. Use !important to override per-component
+ * declarations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
