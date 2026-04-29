@@ -7,3 +7,13 @@
 # command behave the same.
 [test]
 root = "./tests"
+# J.1 / T1 — when `bun test --coverage` is invoked, exclude tests
+# themselves and tooling from the coverage report so the headline
+# number reflects production-code coverage, not "test files cover
+# themselves 100 %". Bun auto-excludes node_modules.
+coveragePathIgnorePatterns = [
+  "tests/",
+  "tests-e2e/",
+  "tests-e2e-native/",
+  "scripts/",
+]

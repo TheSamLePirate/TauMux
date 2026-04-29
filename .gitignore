@@ -28,3 +28,5 @@ assets/web-client/
 # Design-report staging — PNGs + JSONL survive between `test:e2e` and
 # `test:native` by living outside /test-results/ (Playwright wipes that).
 /.design-artifacts/
+# Coverage output from `bun test --coverage` (J.1 / T1).
+/coverage/

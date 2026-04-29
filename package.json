@@ -1,6 +1,6 @@
 {
   "name": "tau-mux",
-  "version": "0.2.73",
+  "version": "0.2.74",
   "type": "module",
   "description": "A hybrid terminal emulator with structured rendering channels",
   "bin": {
@@ -17,6 +17,7 @@
     "build:web-client": "bun scripts/build-web-client.ts",
     "package:mac": "bun scripts/build-web-client.ts --minify && electrobun build --env=stable && bun scripts/post-package.ts",
     "test": "bun scripts/build-web-client.ts && bun test tests/",
+    "test:coverage": "bun scripts/build-web-client.ts && bun test --coverage --coverage-reporter=lcov tests/",
     "test:e2e": "playwright test",
     "test:native": "playwright test --config=playwright-native.config.ts",
     "test:native:bloom-on": "HT_TEST_BLOOM=on playwright test --config=playwright-native.config.ts",
