@@ -38,6 +38,32 @@ Working through clusters in roughly suggested order, but prioritizing HIGH-sever
 | 13 | F.3 — A13 escapeHtml shared module | landed | b1a8040 | bumped 0.2.71 → 0.2.72. New src/shared/escape-html.ts. design-report copy left in (different exec context — embedded in <script>). |
 | 14 | F.4 — A3+A17 SurfaceKind shared type | landed | 1858f27 | bumped 0.2.72 → 0.2.73. Single literal-string union; eliminated 7 duplicate sites. |
 | 15 | J.1 — T1 coverage script | landed | 3768115 | bumped 0.2.73 → 0.2.74. `bun run test:coverage` writes lcov to coverage/lcov.info; tests/scripts/e2e excluded from coverage collection. |
+| 16 | (tracking) catch-up doc commit | landed | bc709ba | docs-only |
+| 17 | G.10 — L13 hard timeouts on pbcopy/pbpaste/git audits | landed | 9a86e59 | bumped 0.2.74 → 0.2.75. 5s timeout on git, 2s on pb*; race against subprocess read; kill on timeout. |
+| 18 | G.9 — L14 (partial) telegram-db PRAGMA busy_timeout | landed | 8d9e940 | bumped 0.2.75 → 0.2.76. **Deviation:** prepared-statement caching deferred — ~12 inline call sites and the CPU win is small; risk of regressing existing tests not justified. |
+| 19 | I.6 — U13 ⌘1..⌘9 workspace switch | landed | db286e8 | bumped 0.2.76 → 0.2.77. New surfaceManager.selectWorkspaceByIndex(); 9 keybindings registered as a generated array. |
+| 20 | I.11 — U11 keyboard cheat-sheet | landed | 89d04c5 | bumped 0.2.77 → 0.2.78. New KeyboardCheatsheet class; ⌘? to toggle; "Help: Keyboard shortcuts" palette command; rendered from KEYBOARD_BINDINGS + HIGH_PRIORITY_BINDINGS. keyMatch() now stashes a `display` string on the matcher. |
+| 21 | I.2+I.3 — U2+U3 a11y media queries | landed | a3d3d5f | bumped 0.2.78 → 0.2.79. prefers-contrast: more (bumped borders), forced-colors: active (Windows High-Contrast mapping), prefers-reduced-motion: reduce (global blanket caps animation+transition to 0.001ms !important). Both index.css and web-client/client.css. **Deviation:** light mode NOT added — dark-by-design is brand; would be a separate RFC. |
+
+## Summary so far
+
+- **20 functional commits**, 21 PRs total (incl. tracking).
+- All HIGH-severity items in clusters G (lifecycle) and the high-leverage parts of H (security) landed:
+  G.1 / G.2 / G.3 / G.4 / G.5 / G.6 / G.7 / G.9 (partial) / G.10 / H.1 / H.2 / H.3 / H.4 / H.5 / H.6.
+- Cluster F: F.3 + F.4 landed (the cheap wins — escapeHtml dedup + SurfaceKind type).
+- Cluster I: I.6 (⌘1..⌘9), I.11 (cheat-sheet), I.2+I.3 (a11y media queries) landed.
+- Cluster J: J.1 (coverage script) landed; the J.2-J.19 unit-test work remains.
+- Started at 0.2.60 / `5afd12f`; ended at 0.2.79 / a3d3d5f.
+- Test count: 1531 → 1544 (+13 net new tests).
+- Typecheck remains clean throughout; no test regressions.
+
+## Items remaining for future sessions
+
+- **Cluster F (architecture refactors):** F.1 chip-render extract, F.2 pane-layout-math extract, F.5 protocol-dispatcher narrow, F.6 settings schema, F.7 typed dispatch, F.8 typed event-bus, F.9 broadcaster, F.10 move handlers, F.11 WorkspaceCollection extract.
+- **Cluster G (remaining lifecycle):** G.9 prepared-statement caching (deferred — see PR 18).
+- **Cluster H (remaining security):** H.7 sideband CSP iframe sandbox, H.8 per-surface browser partition, H.9 session cap + manifest-auth + cross-site origin, H.10 docs, H.11 telegram parse-mode.
+- **Cluster I (remaining UX):** I.1 modal a11y helper, I.4 semantic color tokens, I.5 phone touch + visualViewport, I.7-I.13 various polish items.
+- **Cluster J (remaining test depth):** J.2-J.19 covering the five biggest UI files, bootstrap, settings migration, telegram offset crash, surface-metadata diff, etc.
 
 ---
 
