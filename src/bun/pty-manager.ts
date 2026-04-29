@@ -126,7 +126,7 @@ export class PtyManager {
     const channelMap: ChannelMap = { version: 1, channels: allChannels };
 
     const isBundled = process.execPath.includes("Contents/MacOS");
-    
+
     // In dev: import.meta.dir is src/bun -> ../../shareBin is root/shareBin
     // In packaged: import.meta.dir is Contents/Resources/app/bun -> ../shareBin is Contents/Resources/app/shareBin
     const shareBinPath = isBundled
@@ -279,7 +279,25 @@ export class PtyManager {
       this.terminalWatchdog = null;
     }
     if (this.proc && !this._exited) {
-      this.proc.kill(9);
+      // Send SIGHUP first (G.2 / L2) so shells and editors get a
+      // chance to flush buffers, run `trap` handlers, and clean up
+      // child daemons. If the child is still alive after a short
+      // grace, escalate to SIGKILL. The 2 s parent-shutdown watchdog
+      // is the hard upper bound; this 500 ms grace fits inside it.
+      const proc = this.proc;
+      try {
+        proc.kill(1); // SIGHUP
+      } catch {
+        // proc may already be gone — fall through to the timer
+      }
+      const escalate = setTimeout(() => {
+        try {
+          proc.kill(9);
+        } catch {
+          /* already reaped — no-op */
+        }
+      }, 500);
+      (escalate as { unref?: () => void }).unref?.();
     }
     this.proc = null;
     this.terminal = null;
