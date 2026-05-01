@@ -1,0 +1,98 @@
+---
+title: τ-mux
+description: Un émulateur de terminal hybride avec des superpositions canvas flottantes, des métadonnées de processus en direct, une CLI scriptable et un navigateur intégré. Construit sur Electrobun + Bun.
+template: splash
+hero:
+  title: τ-mux
+  tagline: Un terminal hybride où xterm.js cohabite avec des canvas flottants, un observateur de processus à 1 Hz et une CLI scriptable.
+  image:
+    file: ../../../../../assets/images/IconTau.png
+    alt: Logo τ-mux — un tau cyan lumineux sur fond sombre
+  actions:
+    - text: Commencer
+      link: /TauMux/fr/getting-started/introduction/
+      icon: right-arrow
+      variant: primary
+    - text: Voir sur GitHub
+      link: https://github.com/TheSamLePirate/TauMux
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+import { Image } from "astro:assets";
+import appScreenshot from "../../../../../assets/images/App_screenshot.png";
+
+<div class="vibe-hero">
+  <div class="vibe-hero-card">
+    <div class="vibe-hero-eyebrow">une lettre d'amour, pas un produit</div>
+    <p class="vibe-hero-line">
+      J'aimais bien <a href="https://cmux.com/"><code>cmux</code></a>. J'adore le <em>vibe coding</em>.
+    </p>
+    <p class="vibe-hero-line">
+      Alors j'ai essayé d'en faire un clone vibe-codé —<br />
+      <strong>aussi pro qu'un projet vibe-codé peut l'être.</strong>
+    </p>
+    <p class="vibe-hero-quote">« Juste un projet perso. »</p>
+  </div>
+</div>
+
+## De quoi s'agit-il
+
+τ-mux est un émulateur de terminal de bureau qui laisse la couche texte du PTY intacte tout en superposant par-dessus des canvas flottants, de la télémétrie de processus en direct et des canaux structurés pour les scripts. Il est piloté au clavier, agréable à la souris, et entièrement scriptable depuis le shell via la CLI `ht`.
+
+<Image
+  src={appScreenshot}
+  alt="τ-mux en cours d'utilisation avec un panneau Pi Agent, un split Claude Code, un panneau de plan d'agent dans la barre latérale, une arborescence de fichiers et des touches de statut en bas."
+  class="tau-screenshot"
+  loading="eager"
+/>
+
+<CardGrid>
+  <Card title="Multiplexeur de terminal" icon="laptop">
+    Espaces de travail, splits en mosaïque, séparateurs glissables, glisser-déposer de panneaux, couleurs d'espace. xterm.js avec PTYs `Bun.spawn` — sans node-pty.
+  </Card>
+  <Card title="Panneaux canvas" icon="puzzle">
+    Superpositions flottantes SVG, HTML, image et canvas2d pilotées par des descripteurs de fichier supplémentaires (fd 3/4/5). Éléments DOM indépendants — déplaçables, redimensionnables, interactifs.
+  </Card>
+  <Card title="Métadonnées de processus en direct" icon="magnifier">
+    Un observateur `ps` + `lsof` à 1 Hz expose le cwd, les ports, le %CPU, la RSS et la ligne argv complète pour chaque descendant de chaque shell. Les puces, la barre latérale et la CLI s'alimentent toutes au même pipeline.
+  </Card>
+  <Card title="CLI `ht`" icon="seti:powershell">
+    Crée des panneaux, envoie des touches, manipule les layouts, ouvre des ports dans un navigateur, envoie des signaux, inspecte des arbres. Livré en binaire autonome dans le `.app`.
+  </Card>
+  <Card title="Navigateur intégré" icon="open-book">
+    Des panneaux WebKit aux côtés des terminaux avec `⌘⇧L`. Barre d'adresse, détection d'URL intelligente et plus de 40 commandes scriptables via `ht browser`.
+  </Card>
+  <Card title="Miroir web" icon="rocket">
+    Toute l'interface native diffusée sur WebSocket vers n'importe quoi sur le LAN. Auth par jeton, contrôles d'origine, reprise à la reconnexion.
+  </Card>
+</CardGrid>
+
+## Pour aller plus loin
+
+<CardGrid>
+  <Card title="Installer τ-mux" icon="download">
+    [Compiler depuis les sources ou installer le binaire fourni →](/fr/getting-started/installation/)
+  </Card>
+  <Card title="Comprendre l'architecture" icon="setting">
+    [PTY, canaux sideband et métadonnées dans un seul schéma →](/fr/concepts/architecture/)
+  </Card>
+  <Card title="Le piloter depuis un shell" icon="seti:powershell">
+    [Toutes les commandes `ht`, regroupées par domaine →](/fr/cli/overview/)
+  </Card>
+  <Card title="Rendre du contenu structuré" icon="pencil">
+    [Le protocole sideband fd 3/4/5 avec clients Python + TypeScript →](/fr/sideband/overview/)
+  </Card>
+</CardGrid>
+
+## Stack
+
+- **Runtime** — [Bun](https://bun.sh) 1.3+
+- **Framework** — [Electrobun](https://electrobun.dev) 1.16+
+- **Terminal** — [xterm.js](https://xtermjs.org) 5.3
+- **PTY** — `Bun.spawn` avec l'option `terminal` (sans node-pty)
+- **Métadonnées de processus** — `ps` + `lsof` (sans tmux, sans intégration shell)
+- **Thème par défaut** — Obsidian (10 préréglages intégrés)
+
+Licence : MIT.

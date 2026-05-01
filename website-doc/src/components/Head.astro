@@ -1,0 +1,86 @@
+---
+// Custom Starlight `Head` override.
+//
+// Two responsibilities:
+//   1. Render the default Starlight head (meta, favicon, social cards…).
+//   2. Inject a tiny synchronous script that, on the *first* visit to
+//      the docs from a given browser, redirects the user to the locale
+//      that matches their `navigator.language`.
+//
+// The redirect:
+//   - runs at most once per device (gated on a localStorage flag);
+//   - respects whatever URL the user landed on — English at `/`,
+//     French at `/fr/...`, and any future locale we add;
+//   - never overrides a user choice. Clicking the Starlight language
+//     picker updates the URL, the script has already short-circuited
+//     for this device, and stays out of the way thereafter.
+//
+// Runs synchronously in `<head>` so we never flash the wrong locale.
+import Default from "@astrojs/starlight/components/Head.astro";
+---
+
+<Default><slot /></Default>
+
+<script is:inline>
+  (function () {
+    try {
+      var STORAGE_KEY = "tau-mux-lang-autodetect";
+      // If we have already auto-detected on this device, do nothing.
+      // The user's manual choices via the language picker take over.
+      if (localStorage.getItem(STORAGE_KEY)) return;
+
+      var BASE = "/TauMux";
+      // Map of supported non-default locales to their URL prefix.
+      // Add new languages here when registering them in astro.config.mjs.
+      var LOCALES = [{ code: "fr", prefix: "/fr" }];
+
+      var path = location.pathname || "/";
+      var rel = path.indexOf(BASE) === 0 ? path.slice(BASE.length) : path;
+      if (rel === "") rel = "/";
+
+      // Already on a locale-prefixed URL? Record that as the preference
+      // and stop — they obviously chose this locale by clicking a link.
+      for (var i = 0; i < LOCALES.length; i++) {
+        var p = LOCALES[i].prefix;
+        if (rel === p || rel.indexOf(p + "/") === 0) {
+          localStorage.setItem(STORAGE_KEY, LOCALES[i].code);
+          return;
+        }
+      }
+
+      // Pick the best locale that matches navigator.languages.
+      var langs = navigator.languages && navigator.languages.length
+        ? navigator.languages
+        : [navigator.language || navigator.userLanguage || "en"];
+      var match = null;
+      outer: for (var j = 0; j < langs.length; j++) {
+        var tag = String(langs[j] || "").toLowerCase();
+        for (var k = 0; k < LOCALES.length; k++) {
+          var code = LOCALES[k].code;
+          if (tag === code || tag.indexOf(code + "-") === 0) {
+            match = LOCALES[k];
+            break outer;
+          }
+        }
+        // Default English ("en", "en-US"…) — stop scanning, keep root.
+        if (tag === "en" || tag.indexOf("en-") === 0) {
+          match = null;
+          break;
+        }
+      }
+
+      // Persist the decision either way so we never run again.
+      localStorage.setItem(STORAGE_KEY, match ? match.code : "en");
+      if (!match) return;
+
+      // Redirect to the matched locale, preserving the rest of the URL.
+      var target = BASE + match.prefix + rel;
+      if (location.search) target += location.search;
+      if (location.hash) target += location.hash;
+      location.replace(target);
+    } catch (_) {
+      // localStorage may be unavailable (Safari private mode, etc.).
+      // Silent fall-through keeps the page usable in the default locale.
+    }
+  })();
+</script>
