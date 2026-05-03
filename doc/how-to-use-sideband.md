@@ -346,7 +346,7 @@ what it demonstrates.
 | [`demo_mdpreview.ts`](../scripts/demo_mdpreview.ts) | Markdown preview, re-rendered on stdin. |
 | [`demo_procs.ts`](../scripts/demo_procs.ts) | Live process tree. |
 | [`demo_sysmon.ts`](../scripts/demo_sysmon.ts) | System monitor — CPU / memory / disk panels. |
-| [`demo_canvas_particles.ts`](../scripts/demo_canvas_particles.ts) | Particle system with mouse interaction. |
+| [`demo_canvas_particles.ts`](../scripts/demo_canvas_particles.ts) | Procedural tornado scene with rotating debris, rain, lightning, and mouse-triggered gusts. |
 | [`demo_canvas_life.ts`](../scripts/demo_canvas_life.ts) | Conway's Game of Life. |
 
 Run any of them from a τ-mux pane:

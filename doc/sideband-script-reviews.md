@@ -122,9 +122,9 @@ Run the companion doc to learn what each script demonstrates: [`doc/how-to-use-s
 
 ### [`scripts/demo_canvas_particles.ts`](../scripts/demo_canvas_particles.ts) — **A**
 
-**Teaches.** CPU particles with click-to-spawn.
+**Teaches.** A CPU-rendered tornado scene with procedural sky, funnel body, rotating debris, rain, lightning, and click-triggered gusts.
 
-**Fixes applied.** 2× internal canvas with half-size meta for HiDPI crispness; physics + click coords scaled by `SCALE`; `CLICK_DEBOUNCE_MS = 50` gates spawn-on-click; `timeout: 20000` on every `ht.update`; `onError` handler.
+**Fixes applied.** 2× internal canvas with half-size meta for HiDPI crispness; funnel and debris physics scale by `SCALE`; `CLICK_DEBOUNCE_MS = 80` gates gust-on-click; `timeout: 20000` on every `ht.update`; `onError` handler.
 
 ### [`scripts/demo_canvas_life.ts`](../scripts/demo_canvas_life.ts) — **A**
 

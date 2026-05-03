@@ -6,6 +6,8 @@
  *   - src/bun/rpc-handlers/system.ts                                (returned by `system.version` RPC)
  *   - website-doc/src/content/docs/cli/system.md                    (example output in `ht version`)
  *   - website-doc/src/content/docs/api/system.md                    (example output in `system.version` RPC)
+ *   - website-doc/src/content/docs/fr/cli/system.md                 (French mirror of the above)
+ *   - website-doc/src/content/docs/fr/api/system.md                 (French mirror of the above)
  *
  * Usage:  bun scripts/bump-version.ts <patch|minor|major|x.y.z>
  * Wired via npm scripts: `bun run bump:{patch,minor,major}`.
@@ -30,6 +32,14 @@ const ELECTROBUN = resolve(ROOT, "electrobun.config.ts");
 const SYSTEM_RPC = resolve(ROOT, "src/bun/rpc-handlers/system.ts");
 const CLI_DOC = resolve(ROOT, "website-doc/src/content/docs/cli/system.md");
 const API_DOC = resolve(ROOT, "website-doc/src/content/docs/api/system.md");
+const CLI_DOC_FR = resolve(
+  ROOT,
+  "website-doc/src/content/docs/fr/cli/system.md",
+);
+const API_DOC_FR = resolve(
+  ROOT,
+  "website-doc/src/content/docs/fr/api/system.md",
+);
 
 type Level = "patch" | "minor" | "major";
 
@@ -103,29 +113,32 @@ function updateSystemRpc(next: string): void {
 
 /** Replace the example `# tau-mux X.Y.Z (build: …)` line in the CLI
  *  doc. The leading `tau-mux ` anchor disambiguates it from any other
- *  semver-shaped strings that might land in the file. */
-function updateCliDoc(next: string): void {
-  const raw = readFileSync(CLI_DOC, "utf8");
+ *  semver-shaped strings that might land in the file. Updates the
+ *  English source and the French mirror so the two locales stay in
+ *  sync — the example block is identical in both. */
+function updateCliDoc(next: string, path: string): void {
+  const raw = readFileSync(path, "utf8");
   const replaced = raw.replace(/(tau-mux\s+)\d+\.\d+\.\d+/, `$1${next}`);
   if (replaced === raw) {
-    throw new Error(`Could not find \`tau-mux X.Y.Z\` in ${CLI_DOC}`);
+    throw new Error(`Could not find \`tau-mux X.Y.Z\` in ${path}`);
   }
-  writeFileSync(CLI_DOC, replaced);
+  writeFileSync(path, replaced);
 }
 
 /** Replace the example `"version": "X.Y.Z"` JSON value in the API
  *  doc. Anchored to the `version` key so unrelated semver-shaped
- *  strings (in code samples, payload examples) are left alone. */
-function updateApiDoc(next: string): void {
-  const raw = readFileSync(API_DOC, "utf8");
+ *  strings (in code samples, payload examples) are left alone. Updates
+ *  the English source and the French mirror. */
+function updateApiDoc(next: string, path: string): void {
+  const raw = readFileSync(path, "utf8");
   const replaced = raw.replace(
     /("version"\s*:\s*")\d+\.\d+\.\d+(")/,
     `$1${next}$2`,
   );
   if (replaced === raw) {
-    throw new Error(`Could not find \`"version": "X.Y.Z"\` in ${API_DOC}`);
+    throw new Error(`Could not find \`"version": "X.Y.Z"\` in ${path}`);
   }
-  writeFileSync(API_DOC, replaced);
+  writeFileSync(path, replaced);
 }
 
 // ---------------------------------------------------------------------------
@@ -145,9 +158,11 @@ console.log(`[bump] ${current} → ${next}`);
 updatePackageJson(next);
 updateElectrobunConfig(next);
 updateSystemRpc(next);
-updateCliDoc(next);
-updateApiDoc(next);
+updateCliDoc(next, CLI_DOC);
+updateApiDoc(next, API_DOC);
+updateCliDoc(next, CLI_DOC_FR);
+updateApiDoc(next, API_DOC_FR);
 console.log(
-  `[bump] Updated package.json, electrobun.config.ts, src/bun/rpc-handlers/system.ts,\n        website-doc/src/content/docs/{cli,api}/system.md.`,
+  `[bump] Updated package.json, electrobun.config.ts, src/bun/rpc-handlers/system.ts,\n        website-doc/src/content/docs/{,fr/}{cli,api}/system.md.`,
 );
 console.log(`[bump] Review the diff, then commit.`);

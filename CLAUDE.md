@@ -109,6 +109,8 @@ website-doc/src/content/docs/api/system.md
 and
 website-doc/src/content/docs/cli/system.md
 
+for the website-doc, for each content, you must aso translate to french 
+
 When working, keep track of the changes that needs to be documented in a doc/changes_to_document.md and keep it up to date. clear it when you do update de website-doc
 
 update the website-doc on user request. you can propose to update it when needed
