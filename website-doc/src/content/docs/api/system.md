@@ -18,7 +18,7 @@ System-level introspection methods.
 
 ```json
 { "method": "system.version", "params": {} }
-→ { "result": { "version": "0.2.79", "build": "…" } }
+→ { "result": { "version": "0.2.80", "build": "…" } }
 ```
 
 ## system.identify
@@ -92,3 +92,14 @@ Workspaces / panes / surfaces in one tree.
 | `system.identify` | `ht identify` |
 | `system.capabilities` | `ht capabilities --json` |
 | `system.tree` | `ht tree` |
+
+## RPC-only methods (no CLI verb)
+
+A handful of RPC methods are deliberately **not** wired into the `ht` CLI. They remain discoverable via `ht capabilities --json` and usable from any custom RPC client, but the CLI surface intentionally omits them — either because the use case is purely programmatic (audit / cleanup helpers consumed by the webview itself) or because the inputs are awkward to express on a shell command line.
+
+| Method | Why no CLI? | Use it from |
+|---|---|---|
+| `surface.kill_pid` | The shell-side equivalent is `ht kill PORT`, which resolves the pid from a listening port. Killing an arbitrary observed pid is too easy to misuse from a shell pipeline; the method also rejects pids that aren't tracked by a live surface tree, plus signals outside `{SIGTERM, SIGINT, SIGKILL, SIGHUP, SIGQUIT}`. | Process Manager overlay (⌘⌥P) and any custom RPC script that already has the pid in hand. |
+| `surface.rename` | Surfaces don't carry user-visible names today — only the `pane.label` chip does. Method exists so a future labeling UI can wire up cleanly without a schema bump. | Internal webview tooling. |
+| `notification.dismiss` | Equivalent CLI surface would be `ht dismiss <id>`, which is rarely useful interactively (the user just clicks the X). The webview calls it on swipe / X-button. | Notification overlay UI; integration tests. |
+| `browser.stop_find` | Pairs with `browser.find` (`ht browser find-in-page`); the cancel half is exclusively a UI concern (no human types `ht browser stop-find`). | DevTools-style overlays in the webview. |

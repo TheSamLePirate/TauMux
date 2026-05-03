@@ -44,6 +44,18 @@ HYPERTERM_WEB_PORT=3000 bun start
 - Changements de métadonnées dédupliqués côté serveur — seuls les deltas passent sur le fil.
 - La reprise utilise `@xterm/headless` + `SerializeAddon` pour un instantané de rattrapage en une seule trame.
 
+## Mises à jour et service worker
+
+Le miroir est livré comme une PWA installable adossée à un service worker. Quand un nouveau build τ-mux est déployé alors qu'un SW précédent contrôle encore une page ouverte :
+
+- Le nouveau SW reste à l'état `waiting` — il ne **s'active pas** automatiquement en pleine session.
+- La page affiche une petite bannière : **« A new version is available. »** avec les boutons **Reload** et **Later**.
+- **Reload** poste `{type: "SKIP_WAITING"}` au SW en attente ; le SW s'active ; `controllerchange` se déclenche et la page se recharge sur le nouveau bundle.
+- **Later** masque la bannière sans affecter la session en cours — le nouveau bundle attend que vous rechargiez manuellement ou ouvriez un nouvel onglet.
+- Les anciens caches sont supprimés dans le handler `activate` du nouveau SW — c'est-à-dire **seulement après** que vous ayez accepté la mise à jour — donc un onglet encore sur l'ancienne version ne bascule pas brutalement en page blanche lors d'une requête d'asset frais.
+
+Le chemin de première install (pas de SW précédent) est inchangé : le tout premier SW saute l'attente automatiquement pour que l'app s'affiche immédiatement.
+
 ## Fichiers source
 
 - `src/bun/web/server.ts` — `Bun.serve`, enveloppes, reprise, authentification.

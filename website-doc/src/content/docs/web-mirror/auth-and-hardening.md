@@ -21,6 +21,12 @@ If the token is wrong:
 - HTTP requests get `401 Unauthorized` with no body.
 - WebSocket upgrades are rejected before the handshake completes.
 
+### `?t=…` is scrubbed from the URL after first auth
+
+When the page loads from a `?t=<token>` link, the browser captures the token at module-load time and then **removes it from `window.location` via `history.replaceState`** as soon as the first WebSocket open succeeds. Reconnects keep authenticating because the token survives in module scope — only the URL gets cleaned. Net effect: the token can't leak via screenshare, the back/forward stack, copy-paste of the URL, or `Referer` headers from outbound links.
+
+If the initial connection fails (401, network error), the URL is intentionally left intact so the failure stays debuggable — you still see the token you supplied in the address bar and can copy/edit it.
+
 ## Origin enforcement
 
 WebSocket upgrades are rejected when the `Origin` header is set and doesn't match `Host`. This prevents browsers on a different site from hijacking the connection over a forged WS request.

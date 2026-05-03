@@ -115,8 +115,19 @@ ht browser browser:1 history --clear
 
 ```bash
 ht browser browser:1 find-in-page "search query"
-ht browser browser:1 stop-find
 ```
+
+La moitié « annuler » est exposée uniquement en RPC (`browser.stop_find`) — le bouton d'annulation vit dans l'UI du panneau navigateur, pas comme verbe `ht`. Voir [Méthodes RPC sans verbe CLI](/fr/api/system/#méthodes-rpc-sans-verbe-cli).
+
+## Aide
+
+```bash
+ht browser help
+ht browser --help          # alias
+ht browser -h              # alias
+```
+
+Imprime le même bloc browser-section que le `ht --help` global, restreint aux sous-commandes browser. Le chemin d'erreur par défaut (`Unknown browser subcommand: …`) renvoie vers cette commande ; elle pointe désormais vers une vraie commande.
 
 ## DevTools
 

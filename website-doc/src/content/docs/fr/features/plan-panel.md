@@ -56,7 +56,9 @@ skipped    cooldown — 1842ms
 dry-run    would continue: M2
 ```
 
-Les plans vides sont masqués — quand rien n'est publié dans aucun espace de travail, le panneau se réduit à hauteur zéro.
+Les plans vides sont masqués — quand rien n'est publié dans aucun espace de travail, le panneau natif se réduit à hauteur zéro.
+
+Dans le [miroir web](/fr/features/web-mirror/), le widget agent-plans affiche à la place un placeholder **« No active agent plans »** dès l'arrivée du premier envelope `plansSnapshot` — même s'il est vide. Ainsi, les utilisateurs découvrent l'existence du widget avant qu'un agent n'y publie quoi que ce soit, plutôt que d'attendre en vain qu'il apparaisse.
 
 ## Comment fonctionne le pont
 

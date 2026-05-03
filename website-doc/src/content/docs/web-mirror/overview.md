@@ -44,6 +44,18 @@ HYPERTERM_WEB_PORT=3000 bun start
 - Metadata changes deduped server-side — only deltas go on the wire.
 - Resume uses `@xterm/headless` + `SerializeAddon` for a single-frame catch-up snapshot.
 
+## Updates and the service worker
+
+The mirror ships as an installable PWA backed by a service worker. When a new τ-mux build is deployed and a previous SW is still controlling an open page:
+
+- The new SW stays in the `waiting` state — it does **not** auto-activate mid-session.
+- The page renders a small banner: **"A new version is available."** with **Reload** and **Later** buttons.
+- **Reload** posts `{type: "SKIP_WAITING"}` to the waiting SW; the SW activates; `controllerchange` fires and the page reloads onto the new bundle.
+- **Later** dismisses the banner without affecting the running session — the new bundle waits until you reload manually or open a new tab.
+- Old caches are deleted in the new SW's `activate` handler — i.e. **only after** you accept the update — so a tab still on the old version doesn't suddenly white-screen on a fresh asset request.
+
+First-install path (no previous SW) is unchanged: the very first SW skips waiting automatically so the app comes up immediately.
+
 ## Source files
 
 - `src/bun/web/server.ts` — `Bun.serve`, envelopes, resume, auth.

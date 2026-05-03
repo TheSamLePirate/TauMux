@@ -39,6 +39,10 @@ Adding a command is a matter of appending to the array — no other registration
 - Telegram actions — open chat, refresh.
 - App actions — settings, install `ht` CLI, about.
 
+### "Creates a new pane" entries
+
+The command descriptions for `Open Browser Split`, `New Browser Workspace`, `Split Agent Right`, and `Split Agent Down` make the "creates a new pane" semantics explicit. If you only want to focus an existing browser / agent surface, use the matching "Focus" entry — the "Split"/"Open"/"New" verbs always allocate a fresh surface.
+
 ## Source files
 
 - `src/views/terminal/command-palette.ts` — overlay + fuzzy match.

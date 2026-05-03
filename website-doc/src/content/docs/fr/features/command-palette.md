@@ -39,6 +39,10 @@ Ajouter une commande consiste à ajouter une entrée au tableau — aucun autre 
 - Actions Telegram — ouvrir la conversation, rafraîchir.
 - Actions de l'app — paramètres, installer le CLI `ht`, à propos.
 
+### Entrées qui « créent un nouveau panneau »
+
+Les descriptions des commandes `Open Browser Split`, `New Browser Workspace`, `Split Agent Right` et `Split Agent Down` rendent explicite la sémantique « crée un nouveau panneau ». Si vous voulez seulement focaliser une surface navigateur / agent existante, utilisez l'entrée « Focus » correspondante — les verbes « Split »/« Open »/« New » allouent toujours une surface neuve.
+
 ## Fichiers source
 
 - `src/views/terminal/command-palette.ts` — superposition + correspondance floue.

@@ -45,6 +45,18 @@ Ferme la surface ciblée (par défaut, celle qui a le focus). Le shell reçoit S
 ht focus-surface --surface surface:3
 ```
 
+## wait-ready
+
+```bash
+ht wait-ready                                      # attend la surface focalisée
+ht wait-ready --surface surface:7                  # cible explicite
+ht wait-ready --surface surface:7 --timeout-ms 5000
+```
+
+Bloque jusqu'à ce que les métadonnées de la surface ciblée soient observables (le poller 1 Hz a produit son premier snapshot), puis affiche le snapshot. Retourne `null` au timeout. Le timeout par défaut est 2000 ms ; plafonné à 30 000 ms.
+
+À utiliser pour synchroniser de l'automation qui fait la course avec le poll de métadonnées post-spawn — par ex. spawn d'un panneau puis appel immédiat à `ht open`. Les scripts naïfs n'en ont plus besoin : `ht open` et `ht kill` attendent désormais jusqu'à 2 s en interne avant d'échouer. N'utilisez `wait-ready` que si vous voulez fixer le moment exact vous-même.
+
 ## send
 
 ```bash
@@ -52,7 +64,17 @@ ht send "echo hello\n"
 ht send --surface surface:3 "ls\n"
 ```
 
-Envoie du texte brut au PTY de la surface. Utilisez `\n` pour injecter Entrée, `\t` pour Tab, etc. (Les règles d'échappement standard s'appliquent.)
+Envoie du texte brut au PTY de la surface. La chaîne est désechappée avant écriture, donc les séquences suivantes sont interprétées :
+
+| Échappement | Envoyé comme | Utilisation |
+|---|---|---|
+| `\n` | `\r` (CR) | Soumettre une commande — les terminaux attendent un retour chariot, pas un line feed. |
+| `\r` | `\r` (CR) | Identique à `\n` ; forme explicite pour les scripts qui produisent déjà CR. |
+| `\t` | `\t` (HT) | Tab — autocomplétion, navigation entre champs. |
+| `\x1b` | `\x1b` (ESC) | Échap — sortir du mode insertion vim, fermer un menu. |
+| `\\` | `\` | Backslash littéral. |
+
+Tout le reste passe verbatim. Mettez l'argument entre guillemets doubles (ou la forme préférée de votre shell) pour que les backslashes survivent au parsing du shell.
 
 ## send-key
 

@@ -115,8 +115,19 @@ ht browser browser:1 history --clear
 
 ```bash
 ht browser browser:1 find-in-page "search query"
-ht browser browser:1 stop-find
 ```
+
+The cancel half is RPC-only (`browser.stop_find`) — the cancel button lives in the browser-pane UI, not as a `ht` verb. See [RPC-only methods](/api/system/#rpc-only-methods-no-cli-verb).
+
+## Help
+
+```bash
+ht browser help
+ht browser --help          # alias
+ht browser -h              # alias
+```
+
+Prints the same browser-section block as the global `ht --help`, scoped to browser subcommands. The default error path (`Unknown browser subcommand: …`) tells users to run this; it points at a real command.
 
 ## DevTools
 

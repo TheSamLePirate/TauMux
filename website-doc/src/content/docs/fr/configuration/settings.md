@@ -43,6 +43,7 @@ Schéma : `AppSettings` dans `src/shared/settings.ts`. Valeurs par défaut : `DE
 |---|---|---|---|
 | `bloomEnabled` | boolean | `false` | Couche de bloom WebGL au-dessus du terminal. |
 | `bloomIntensity` | number | `0.5` | 0.0–1.0. Plus haut = lueur plus brillante. |
+| `legacyBloomIntensity` | number | (snapshot) | Capturée automatiquement lors de la migration depuis l'ancien slider de bloom. Alimente le bouton **Restore previous bloom (X.XX)** dans Paramètres → Effets, qui n'apparaît que si vous avez été migré ET que vous n'avez pas encore choisi un `bloomIntensity` non nul depuis. Un clic règle `bloomIntensity` à la valeur capturée et masque le bouton. |
 
 ## Réseau (miroir web)
 

@@ -43,6 +43,7 @@ Schema: `AppSettings` in `src/shared/settings.ts`. Defaults: `DEFAULT_SETTINGS`.
 |---|---|---|---|
 | `bloomEnabled` | boolean | `false` | WebGL bloom layer over the terminal. |
 | `bloomIntensity` | number | `0.5` | 0.0–1.0. Higher = brighter glow. |
+| `legacyBloomIntensity` | number | (snapshot) | Captured automatically when migrating from the older bloom slider. Powers the **Restore previous bloom (X.XX)** button in Settings → Effects, which only appears if you were migrated AND haven't yet picked a non-zero `bloomIntensity` since. One click sets `bloomIntensity` to the snapshotted value and dismisses the button. |
 
 ## Network (Web Mirror)
 

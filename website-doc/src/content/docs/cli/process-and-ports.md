@@ -82,6 +82,8 @@ ht open 3000 --browser        # forces the built-in browser even if external is 
 
 Resolves a port to a URL and opens it. Without an arg, requires that the surface have exactly one listening port.
 
+If the targeted surface was just spawned and the 1 Hz metadata poller hasn't produced a snapshot yet, `ht open` and `ht kill` now wait up to 2 s for it before erroring out — no more `no metadata yet — try again in a second` on first-tick race. After 2 s with no snapshot the error becomes `surface metadata unavailable after 2000ms — pane may have crashed`. Use [`ht wait-ready`](/cli/surfaces-and-io/#wait-ready) if you'd rather pin the moment explicitly.
+
 ## kill
 
 ```bash

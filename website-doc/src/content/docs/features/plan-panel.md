@@ -56,7 +56,9 @@ skipped    cooldown — 1842ms
 dry-run    would continue: M2
 ```
 
-Empty plans are hidden — when nothing is published in any workspace, the panel collapses to zero height.
+Empty plans are hidden — when nothing is published in any workspace, the native panel collapses to zero height.
+
+In the [web mirror](/features/web-mirror/) the agent-plans widget instead renders a **"No active agent plans"** placeholder once the first `plansSnapshot` envelope arrives — even if it's empty. This way users discover the widget exists before any agent posts a plan, rather than waiting in vain for it to appear.
 
 ## How the bridge works
 

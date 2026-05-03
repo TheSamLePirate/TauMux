@@ -17,6 +17,10 @@ bun dev                    # build + launch with --watch (rebuilds on src change
 
 `bun start` est le bon défaut — recompilation unique, lancement rapide. `bun dev` maintient un watcher Electrobun en vie pour que les modifications de source se rechargent à chaud.
 
+### Le runtime dev est isolé d'une install stable
+
+`bun start`, `bun run dev` et `bun run build:dev` positionnent automatiquement `HT_CONFIG_DIR=$HOME/Library/Application Support/hyperterm-canvas-dev`. Le runtime dev a son propre settings.json, telegram.db, historique de navigation, cookies, et socket Unix — donc un τ-mux stable installé sur la même machine ne perd pas son état quand vous lancez le dev, et les invocations `ht` depuis un volet dev parlent au socket dev, pas à celui de l'app installée. Les builds stable / canary / package gardent le défaut `~/Library/Application Support/hyperterm-canvas`.
+
 ## Tests
 
 ```bash

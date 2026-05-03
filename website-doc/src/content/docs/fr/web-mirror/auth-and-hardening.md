@@ -21,6 +21,12 @@ Si le jeton est incorrect :
 - Les requêtes HTTP reçoivent un `401 Unauthorized` sans corps.
 - Les upgrades WebSocket sont rejetés avant la fin du handshake.
 
+### `?t=…` est nettoyé de l'URL après la première authentification
+
+Quand la page charge depuis un lien `?t=<token>`, le navigateur capture le jeton au chargement du module puis **le retire de `window.location` via `history.replaceState`** dès que la première ouverture WebSocket réussit. Les reconnexions continuent à s'authentifier parce que le jeton survit dans la portée du module — seule l'URL est nettoyée. Effet net : le jeton ne peut pas fuir via partage d'écran, la pile back/forward, le copier-coller de l'URL, ou les en-têtes `Referer` des liens sortants.
+
+Si la connexion initiale échoue (401, erreur réseau), l'URL est laissée intacte intentionnellement pour que l'échec reste débuggable — vous voyez encore le jeton fourni dans la barre d'adresse et pouvez le copier/éditer.
+
 ## Contrôle d'origine
 
 Les upgrades WebSocket sont rejetés lorsque l'en-tête `Origin` est défini et ne correspond pas à `Host`. Cela empêche les navigateurs sur un autre site de détourner la connexion via une requête WS forgée.

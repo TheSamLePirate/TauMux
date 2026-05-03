@@ -17,7 +17,7 @@ sidebar:
 | `HYPERTERM_WEB_PORT` | (non défini) | Surcharge `webMirrorPort` et force le démarrage automatique, indépendamment des paramètres. |
 | `HT_SOCKET_PATH` | `/tmp/hyperterm.sock` | Surcharge le chemin du socket Unix. Doit correspondre entre τ-mux et le CLI `ht`. |
 | `HYPERTERM_INCLUDE_TEST_HOOKS` | `1` (dev), `0` (stable) | Indique si les méthodes RPC réservées aux tests sont exposées. Mettez à `0` pour les builds de production. |
-| `HT_CONFIG_DIR` | `~/Library/Application Support/hyperterm-canvas` | Emplacement de settings.json, telegram.db, sharebin/, logs/. Les tests surchargent cette valeur. |
+| `HT_CONFIG_DIR` | `~/Library/Application Support/hyperterm-canvas` | Emplacement de settings.json, telegram.db, browser-history.json, cookie-store.json, et (en e2e) logs/. Les tests surchargent cette valeur. |
 
 ## Définies automatiquement dans les shells lancés
 

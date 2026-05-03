@@ -45,6 +45,18 @@ Closes the targeted surface (defaults to focused). Shell receives SIGHUP.
 ht focus-surface --surface surface:3
 ```
 
+## wait-ready
+
+```bash
+ht wait-ready                                      # wait on the focused surface
+ht wait-ready --surface surface:7                  # explicit target
+ht wait-ready --surface surface:7 --timeout-ms 5000
+```
+
+Block until the targeted surface's metadata is observable (the 1 Hz poller has produced its first snapshot), then print the snapshot. Returns `null` on timeout. Default timeout is 2000 ms; capped at 30 000 ms.
+
+Use it to synchronize automation that races the post-spawn metadata poll — e.g. spawning a pane and immediately calling `ht open`. Naive scripts don't need this anymore: `ht open` and `ht kill` now wait up to 2 s internally before erroring out. Reach for `wait-ready` only when you want to pin the exact moment yourself.
+
 ## send
 
 ```bash
@@ -52,7 +64,17 @@ ht send "echo hello\n"
 ht send --surface surface:3 "ls\n"
 ```
 
-Sends raw text to the surface's PTY. Use `\n` to inject Enter, `\t` for Tab, etc. (Standard escape rules apply.)
+Sends raw text to the surface's PTY. The string is unescaped before being written, so the following sequences are interpreted:
+
+| Escape | Sent as | Use for |
+|---|---|---|
+| `\n` | `\r` (CR) | Submit a command — terminals expect carriage return, not line feed. |
+| `\r` | `\r` (CR) | Same as `\n`; explicit form for scripts that already produce CR. |
+| `\t` | `\t` (HT) | Tab — autocomplete, field navigation. |
+| `\x1b` | `\x1b` (ESC) | Escape — leave insert mode in vim, dismiss menus. |
+| `\\` | `\` | Literal backslash. |
+
+Anything else passes through verbatim. Quote the argument with double quotes (or your shell's preferred form) so the backslashes survive shell parsing intact.
 
 ## send-key
 

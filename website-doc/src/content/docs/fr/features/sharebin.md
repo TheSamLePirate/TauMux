@@ -1,46 +1,83 @@
 ---
-title: Sharebin
-description: Déposez un fichier ou collez du texte, obtenez une URL courte servie depuis le miroir web local. Pour partager des captures d'écran, des logs ou des extraits ponctuels entre machines.
+title: shareBin
+description: Un dossier d'exécutables fournis (show_md, show_img, show_chart, …) ajoutés en tête du $PATH dans chaque shell. Ils affichent des panneaux sideband plein-volet.
 sidebar:
   order: 8
 ---
 
-Sharebin est une petite boîte aux lettres de style pastebin servie depuis le miroir web de τ-mux. Elle vous permet de déposer un fichier (image, log, extrait de code) dans un emplacement de la barre latérale et d'obtenir immédiatement une URL courte comme `http://<your-ip>:3000/share/abc123` que n'importe qui sur le LAN (ou n'importe qui avec un jeton d'auth valide) peut récupérer.
+`shareBin/` est un dossier de petits exécutables livrés avec τ-mux. Son chemin absolu est **ajouté en tête du `$PATH` de chaque shell que τ-mux ouvre**, donc les scripts fournis (`show_md`, `show_img`, `show_chart`, …) sont accessibles comme commandes nues depuis n'importe quel volet — sans étape d'installation, sans modification de shell-rc, sans wrapper `bun run`.
 
-## À quoi ça sert
+Chaque script utilise le [protocole sideband](/fr/sideband/overview/) (fd 3/4/5) pour afficher un panneau HTML/SVG plein-volet épinglé au volet hôte. Quand l'utilisateur ferme le panneau — ou envoie SIGINT / SIGTERM — le script se termine.
 
-- « Hé, c'est quoi cette erreur sur ton écran ? » — `ht share screenshot.png`, collez l'URL.
-- Transférer un log de build à un coéquipier sans le faire passer par Slack.
-- Partager la sortie d'une commande longue entre deux instances τ-mux sur le même réseau.
+## Commandes fournies
+
+| Commande | Ce qu'elle fait |
+|---|---|
+| `show_md <file.md>` | Aperçu markdown en direct. Re-rend à chaque changement de mtime sauf `--no-watch`. |
+| `show_img <path>` | Panneau image centré. Conserve le ratio ; plafond 50 Mo. |
+| `show_html <file>` | Habille un fragment HTML quelconque dans la chrome de panneau standard. |
+| `show_table <csv\|tsv>` | Table HTML triable. Cliquer un en-tête trie asc / desc / restaure. |
+| `show_chart <csv>` | Graphique ligne / barre / nuage de points. Re-rendu à chaque redimensionnement. |
+| `show_json <file>` | Arbre JSON pliable. `--depth N` règle la profondeur ouverte par défaut. |
+| `show_yaml <file>` | YAML → arbre (parseur partiel ; pour du YAML complexe, passez par `yq -o json`). |
+| `show_diff <patch>` | Diff unifié côte-à-côte avec compte des hunks et des +/-. |
+| `show_gitdiff` | `git diff` du dépôt courant, côte-à-côte. |
+| `show_gitlog [path]` | Log git en graphe de branches. `--max N` et `--branches`. |
+| `show_qr <text>` | SVG de QR code. `--ec`, `--scale`, `--margin`, `--dark`/`--light`. |
+| `show_sysmon` | Moniteur système plein-volet — arc CPU, barres par cœur, RAM, top procs, sparkline. |
+| `show_webcam` | Flux MJPEG webcam via ffmpeg + AVFoundation (macOS) / V4L2 (Linux). |
+| `demo_status_keys` | Exerce tous les rendus du DSL de status-keys via `ht set-status`. |
+
+La plupart acceptent `<path>` ou stdin (`-` est implicite quand argv est vide), donc ils se composent avec les pipes shell :
+
+```bash
+ps aux | show_table --tsv
+git diff | show_diff
+curl -s api.example.com/data.json | show_json --depth 3
+echo "https://example.com" | show_qr --ec H
+```
 
 ## Comment ça marche
 
-- Les fichiers vivent sous `~/Library/Application Support/hyperterm-canvas/sharebin/`, indexés par des ids courts aléatoires.
-- Le miroir web sert `/share/<id>` pour chaque entrée, en appliquant les mêmes contrôles d'auth que le reste du miroir.
-- Un panneau de la barre latérale liste les entrées actuelles avec taille / date de création / suppression en un clic.
-- Les entrées ne sont pas auto-expirées — nettoyez-les explicitement (bouton UI ou `ht share clear`).
+- `src/bun/pty-manager.ts` résout le chemin absolu de `shareBin/` (que l'on tourne depuis un checkout dev ou depuis le `.app` packagé) et le préfixe au `PATH` de chaque `Bun.spawn`. Le dossier est aussi listé sous `build.copy` dans `electrobun.config.ts` pour qu'il soit inclus dans le bundle.
+- Chaque script est un exécutable `#!/usr/bin/env bun` (ou `python3`) sans extension — `show_md`, pas `show_md.ts`. Le shebang permet au kernel de les lancer directement via le lookup `PATH`.
+- Les scripts importent depuis `shareBin/lib/` (helpers de rendu — `full-screen`, `chart`, `csv`, `markdown`, `json-tree`, `qr`, `git-log`, `diff-render`, `table`, `yaml`) et depuis les clients fournis `hyperterm.ts` / `hyperterm.py`. Ces clients deviennent des no-ops hors de τ-mux, donc le même script tourne aussi depuis un terminal classique.
+- Le rendu passe par `lib/full-screen.ts`, qui produit une page HTML stylée Catppuccin et l'épingle au volet hôte. La page se re-rend au redimensionnement, sort proprement à la fermeture, et n'affecte jamais le PTY sous-jacent.
 
-## Ajouter des entrées
+## Ajouter votre propre commande
 
-- **Glisser-déposer** un fichier sur le panneau sharebin de la barre latérale.
-- **Coller du texte** avec `⌘V` quand le panneau est focalisé — le texte devient une entrée `.txt`.
-- Depuis un script : écrivez un fichier dans le dossier sharebin et postez une ligne de métadonnées via le canal standard (prévu).
+Déposez un exécutable dans `shareBin/`, marquez-le `+x`, et il devient une commande de première classe dans chaque shell τ-mux. Le guide d'authoring orienté agents — boilerplate, helpers de rendu, positionnement des panneaux, gestion des événements — vit dans [`doc/system-sharebin.md`](https://github.com/TheSamLePirate/TauMux/blob/main/doc/system-sharebin.md). Version courte :
 
-## Durcissement
+```typescript
+#!/usr/bin/env bun
+// shareBin/show_widget
+import { fullScreenHtml, fullScreenPage, CATPPUCCIN } from "./lib/full-screen";
 
-Mêmes protections que le reste du [miroir web](/fr/web-mirror/auth-and-hardening/) :
+fullScreenHtml({
+  render: () => fullScreenPage({
+    tag: { label: "WIDGET", color: CATPPUCCIN.blue },
+    title: "hello",
+    body: `<p style="padding:24px">…</p>`,
+  }),
+});
+```
 
-- L'auth par jeton s'applique — `Authorization: Bearer <token>` ou `?t=<token>` sur l'URL.
-- Les vérifications d'origine / taille / rate-limit s'appliquent aussi aux GET.
-- Les entrées sharebin sont en lecture seule via HTTP. Le miroir web ne peut pas téléverser — les entrées ne peuvent être créées que depuis l'hôte.
+```bash
+chmod +x shareBin/show_widget
+# rebuild / relance τ-mux — `show_widget` est maintenant sur le $PATH de chaque volet
+```
 
 ## Fichiers source
 
-- `src/bun/sharebin.ts` — registre des entrées, métadonnées, lookup des fichiers.
-- `src/bun/web/server.ts` — route `/share/:id`.
-- `src/views/terminal/sidebar.ts` — panneau sharebin de la barre latérale.
+- `shareBin/` — les scripts eux-mêmes et leurs helpers `lib/`.
+- `shareBin/hyperterm.ts` / `shareBin/hyperterm.py` — bibliothèques client sideband.
+- `src/bun/pty-manager.ts` — préfixe `PATH` au moment du spawn de shell.
+- `electrobun.config.ts` — `build.copy.shareBin` embarque le dossier dans l'app packagée.
+- `doc/system-sharebin.md` — guide d'authoring pour de nouvelles commandes.
 
 ## Pour aller plus loin
 
-- [Vue d'ensemble du miroir web](/fr/web-mirror/overview/)
-- [Auth et durcissement](/fr/web-mirror/auth-and-hardening/)
+- [Vue d'ensemble du sideband](/fr/sideband/overview/)
+- [Client TypeScript](/fr/sideband/typescript-client/)
+- [Client Python](/fr/sideband/python-client/)
+- [Scripts de démo](/fr/sideband/demos/)
