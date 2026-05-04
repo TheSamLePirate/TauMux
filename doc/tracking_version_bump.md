@@ -27,4 +27,4 @@ Plan: align the app, website docs, and pi extension documentation around the sam
 
 ## Commit
 
-- Pending.
+- Version alignment commit: `64c3156` (`Bump release docs to 0.2.81`).
