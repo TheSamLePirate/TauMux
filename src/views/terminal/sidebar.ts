@@ -1096,12 +1096,35 @@ export class Sidebar {
       if (show.manifests && (ws.packageJson || ws.cargoToml)) {
         const open = ui?.manifestsOpen ?? false;
         const count = (ws.packageJson ? 1 : 0) + (ws.cargoToml ? 1 : 0);
+        // Per-card expansion lives in `this.expandedPackages` and is
+        // mutated by `toggleExpanded`, which calls `renderWorkspaces`
+        // directly. Bake it into the sig or a click on the card header
+        // hits a stale cache slot — the user sees no expansion until
+        // they click the outer panel header (which flips `open` and
+        // forces a rebuild). Same goes for script run/error state: it
+        // drives the action-row dot colour, so without it in the sig a
+        // running script's orange dot doesn't appear until the panel
+        // is closed and reopened.
+        const npmExpanded =
+          ws.packageJson && this.expandedPackages.has(`${ws.id}:npm`)
+            ? "1"
+            : "0";
+        const cargoExpanded =
+          ws.cargoToml && this.expandedPackages.has(`${ws.id}:cargo`)
+            ? "1"
+            : "0";
         const sig = [
           "mf",
           stableWorkspacesSignature(ws.packageJson ?? null),
           stableWorkspacesSignature(ws.cargoToml ?? null),
           open ? "1" : "0",
           count,
+          npmExpanded,
+          cargoExpanded,
+          ws.runningScripts.join(","),
+          ws.erroredScripts.join(","),
+          ws.runningCargoActions.join(","),
+          ws.erroredCargoActions.join(","),
         ].join("|");
         if (cache.sigs.manifests !== sig || !cache.slots.manifests) {
           cache.slots.manifests = this.buildCollapseSection({
