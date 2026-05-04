@@ -539,6 +539,54 @@ describe("RPC Handler", () => {
     expect(remaining.length).toBe(1);
   });
 
+  test("notification.dismiss broadcast includes the dismissed entry's surfaceId", () => {
+    // Regression — without this the webview overlay manager couldn't
+    // route the dismiss to the right per-surface stack: the dismissed
+    // entry has already been spliced out of `notifications`, so the
+    // post-dismiss list lookup returns undefined and the card stays
+    // on screen until *every* notification is gone (whereupon
+    // `dismissAll()` mass-clears them).
+    const handler = setup();
+    handler("notification.create", {
+      title: "A",
+      body: "1",
+      surface_id: "surface:7",
+    });
+    handler("notification.create", { title: "B", body: "2" });
+    dispatched.length = 0;
+
+    const listed = handler("notification.list", {}) as Record<
+      string,
+      unknown
+    >[];
+    const targetId = listed[0]["id"] as string;
+    handler("notification.dismiss", { id: targetId });
+
+    expect(dispatched.length).toBe(1);
+    expect(dispatched[0].payload["dismissed"]).toBe(targetId);
+    expect(dispatched[0].payload["surfaceId"]).toBe("surface:7");
+  });
+
+  test("notification.dismiss broadcast surfaceId is null when the source had none", () => {
+    // Notifications without a `surface_id` (e.g. native chrome alerts)
+    // were never overlaid in the first place, so there's no per-surface
+    // stack to route to. We still emit the field with an explicit
+    // `null` so the webview's payload schema is consistent.
+    const handler = setup();
+    handler("notification.create", { title: "A", body: "1" });
+    dispatched.length = 0;
+
+    const listed = handler("notification.list", {}) as Record<
+      string,
+      unknown
+    >[];
+    handler("notification.dismiss", { id: listed[0]["id"] });
+
+    expect(dispatched.length).toBe(1);
+    expect(dispatched[0].payload).toHaveProperty("surfaceId");
+    expect(dispatched[0].payload["surfaceId"]).toBeNull();
+  });
+
   test("notification.dismiss is a no-op for unknown id", () => {
     const handler = setup();
     handler("notification.create", { title: "A", body: "1" });

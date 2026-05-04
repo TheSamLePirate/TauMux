@@ -2222,15 +2222,20 @@ window.addEventListener("ht-split", (e: Event) => {
 // Plan #03 §A — overlay manager. Hooks dispatch a `ht-focus-surface`
 // event for click-to-focus and route close-button taps through the
 // existing `notification.dismiss` RPC so sidebar + native chrome
-// stay in sync.
+// stay in sync. We also dismiss the local card *optimistically*
+// before the RPC fires — the round-trip echo is idempotent thanks to
+// `dismiss()`'s early-return on unknown id, but the local removal
+// makes the click feel instant instead of laggy.
 const notificationOverlay = new NotificationOverlay({
   onCardActivate: ({ id, surfaceId }) => {
+    notificationOverlay.dismiss(surfaceId, id);
     window.dispatchEvent(
       new CustomEvent("ht-focus-surface", { detail: { surfaceId } }),
     );
     rpc.send("dismissNotification", { id });
   },
-  onCardDismiss: ({ id }) => {
+  onCardDismiss: ({ id, surfaceId }) => {
+    notificationOverlay.dismiss(surfaceId, id);
     rpc.send("dismissNotification", { id });
   },
   onOverflowClick: () => {

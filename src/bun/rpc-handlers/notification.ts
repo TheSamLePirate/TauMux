@@ -89,11 +89,20 @@ export function registerNotification(
       if (!id) return "OK";
       const idx = notifications.list.findIndex((n) => n.id === id);
       if (idx === -1) return "OK";
+      // Snapshot the source surface BEFORE the splice. The webview's
+      // overlay manager keeps a per-surface stack and needs this to
+      // route the dismiss to the right one. Looking it up post-splice
+      // (or via `notifications.find(...)` in the broadcast list) fails
+      // because the entry is already gone — that was the regression
+      // that left every card on screen until *all* notifications were
+      // dismissed.
+      const surfaceId = notifications.list[idx]?.surfaceId ?? null;
       notifications.list.splice(idx, 1);
       // Include the dismissed id so the bun→web bridge can broadcast
       // a `notificationDismiss` envelope without having to diff lists.
       dispatch("notification", {
         dismissed: id,
+        surfaceId,
         notifications: notifications.list.map((x) => ({
           id: x.id,
           title: x.title,

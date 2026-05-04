@@ -240,4 +240,84 @@ describe("createSocketActionDispatcher", () => {
     });
     expect(sm["notifyGlow"]).toHaveBeenCalledWith("s2");
   });
+
+  // Regression — when a single notification is dismissed server-side,
+  // the broadcast carries `dismissed` + the dismissed entry's
+  // `surfaceId` (it's no longer in the post-dismiss `notifications`
+  // list). The dispatcher must route to `notificationOverlay.dismiss`
+  // using the top-level `surfaceId`, NOT a list-lookup.
+  test("notification with `dismissed` routes overlay.dismiss using payload surfaceId", () => {
+    const { ctx, sm } = makeCtx();
+    const overlayDismiss = mock(() => {});
+    const overlayDismissAll = mock(() => {});
+    ctx.notificationOverlay = {
+      show: mock(() => {}),
+      dismiss: overlayDismiss,
+      dismissAll: overlayDismissAll,
+      forgetSurface: mock(() => {}),
+      setOptions: mock(() => {}),
+      destroy: mock(() => {}),
+    } as unknown as NonNullable<SocketActionContext["notificationOverlay"]>;
+
+    const dispatch = createSocketActionDispatcher(ctx);
+    // Two notifications existed; one (n1, surface:7) was just dismissed.
+    // Server's broadcast includes the dismissed id and the source
+    // surface, but the dismissed entry is NOT in the list anymore.
+    dispatch("notification", {
+      dismissed: "n1",
+      surfaceId: "s7",
+      notifications: [{ id: "n2", title: "kept", body: "", time: 0 }],
+    });
+    expect(overlayDismiss).toHaveBeenCalledWith("s7", "n1");
+    // Stack still has n2 → no global wipe.
+    expect(overlayDismissAll).not.toHaveBeenCalled();
+    expect(sm["clearGlow"]).not.toHaveBeenCalled();
+  });
+
+  test("notification with `dismissed` and surfaceId on the kept entry routes via list match", () => {
+    // Edge case — when the same surface still has another live
+    // notification in the list, the dispatcher's first-choice path
+    // (find dismissed in list) won't match (the dismissed entry was
+    // spliced out); it must still fall back to the top-level
+    // `surfaceId` to hit the right per-surface stack.
+    const { ctx } = makeCtx();
+    const overlayDismiss = mock(() => {});
+    ctx.notificationOverlay = {
+      show: mock(() => {}),
+      dismiss: overlayDismiss,
+      dismissAll: mock(() => {}),
+      forgetSurface: mock(() => {}),
+      setOptions: mock(() => {}),
+      destroy: mock(() => {}),
+    } as unknown as NonNullable<SocketActionContext["notificationOverlay"]>;
+    const dispatch = createSocketActionDispatcher(ctx);
+
+    dispatch("notification", {
+      dismissed: "n1",
+      surfaceId: "s7",
+      notifications: [
+        { id: "n2", title: "still on s7", body: "", time: 0, surfaceId: "s7" },
+      ],
+    });
+    expect(overlayDismiss).toHaveBeenCalledTimes(1);
+    expect(overlayDismiss).toHaveBeenCalledWith("s7", "n1");
+  });
+
+  test("empty notifications list dismissAll's the overlay", () => {
+    const { ctx, sm } = makeCtx();
+    const overlayDismissAll = mock(() => {});
+    ctx.notificationOverlay = {
+      show: mock(() => {}),
+      dismiss: mock(() => {}),
+      dismissAll: overlayDismissAll,
+      forgetSurface: mock(() => {}),
+      setOptions: mock(() => {}),
+      destroy: mock(() => {}),
+    } as unknown as NonNullable<SocketActionContext["notificationOverlay"]>;
+    const dispatch = createSocketActionDispatcher(ctx);
+
+    dispatch("notification", { notifications: [] });
+    expect(overlayDismissAll).toHaveBeenCalledTimes(1);
+    expect(sm["clearGlow"]).toHaveBeenCalled();
+  });
 });
