@@ -5,7 +5,9 @@ sidebar:
   order: 2
 ---
 
-`pi-extensions/ht-bridge/` (renommé depuis `ht-notify-summary/` en 0.2.80) est le pont de première classe entre [pi-coding-agent](https://github.com/TheSamLePirate/pi-coding-agent) et τ-mux.
+`pi-extensions/ht-bridge/` (renommé depuis `ht-notify-summary/` avant la release d'intégration 0.2.81) est le pont de première classe entre [pi-coding-agent](https://github.com/TheSamLePirate/pi-coding-agent) et τ-mux.
+
+Release bundlée actuelle : **τ-mux / ht-bridge 0.2.81**.
 
 Cette relation est intentionnelle : **τ = 2π**, donc τ-mux est littéralement et conceptuellement « deux pi » — un multiplexeur de terminal pensé autour d'une paire humain + agent pi. L'extension rend pi visible, vérifiable et contrôlable depuis τ-mux au lieu de cacher la boucle d'agent dans un simple buffer de terminal.
 

@@ -612,7 +612,7 @@ doc/
 tests/                          # 1500+ tests across 100 files (bun test)
 tests-e2e/                      # 10 Playwright web-mirror specs (bun run test:e2e)
 pi-extensions/
-  ht-bridge/                    # pi coding-agent extension: sidebar pill + ht notify (more capabilities landing in 0.2.81+)
+  ht-bridge/                    # pi coding-agent extension bundled in 0.2.81: sidebar, plans, ask-user, ht_* tools
 claude-integration/
   ht-bridge/                    # Claude Code shell hooks → ht set-status / ht notify
   install.sh                    # Symlink into ~/.claude/scripts

@@ -13,8 +13,11 @@ Outside τ-mux the extension is a no-op aside from a red `● τ-mux
 short-circuits so nothing fork-storms or logs noise at a missing
 socket.
 
-> Renamed from `ht-notify-summary/` in 0.2.80. The old env-var prefix
-> (`PI_HT_NOTIFY_*`) is preserved for backward compatibility.
+Current bundled release: **τ-mux / ht-bridge 0.2.81**.
+
+> Renamed from `ht-notify-summary/` before the 0.2.81 integration
+> release. The old env-var prefix (`PI_HT_NOTIFY_*`) is preserved for
+> backward compatibility.
 
 ## Capability matrix
 
