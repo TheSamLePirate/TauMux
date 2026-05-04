@@ -26,6 +26,7 @@ Même idée que l'[intégration Claude Code](/fr/integrations/claude-code/), mai
 | Capacité | Défaut |
 |---|---|
 | Pastille label actif (`Pi : <task>` pendant l'exécution, `ht notify` à `agent_end`) | on |
+| Les résumés label-actif / agent-end suivent le modèle vivant de la session pi — changer le modèle de la session redirige automatiquement les résumés (mettre `useSessionModel: false` pour épingler un modèle rapide à la place) | on |
 | Ticker coût / fenêtre de contexte (`Pi · 34% · $0.012`) | on |
 | Badge d'exécution d'outil (`pi_tool : bash <cmd>`) | on |
 | Mirror plan-texte (sniffe les blocs JSON fenced de `{id,title,state}`), écrit `.pi/plans/*.md`, puis demande accepter / refuser / discuter avant publication | on |
@@ -108,9 +109,18 @@ PI_HT_BRIDGE_BASH_SAFETY=confirmAll      # garder chaque appel bash (paranoïaqu
 PI_HT_BRIDGE_BASH_SAFETY=off             # désactiver totalement la garde
 PI_HT_BRIDGE_TOOLS=0                     # désactiver tous les outils ht_*
 PI_HT_BRIDGE_SYSTEM_PROMPT_PRIMER=0      # ne pas modifier le system-prompt de pi
-PI_HT_NOTIFY_MODEL=gpt-5-mini            # changer le modèle de résumé rapide
+PI_HT_BRIDGE_USE_SESSION_MODEL=0         # arrêter de suivre le modèle de session pi
+PI_HT_NOTIFY_MODEL=gpt-5-mini            # changer le modèle de repli (fallback) de résumé
 PI_HT_NOTIFY_DEBUG=1                     # logger les échecs de tout module sur stderr
 ```
+
+Par défaut (`useSessionModel: true`), la pastille label-actif et le résumé
+`agent_end` sont générés par le même modèle que celui utilisé par la session
+pi : passer pi de Haiku à Sonnet redirige aussi le résumeur — pas d'édition de
+config, pas de redémarrage. Mettez `useSessionModel: false` (ou
+`PI_HT_BRIDGE_USE_SESSION_MODEL=0`) pour épingler un modèle rapide via
+`provider` / `modelId` à la place. La paire configurée sert également de
+repli quand la session n'a pas encore de modèle résolu.
 
 ## Comment fonctionnent les outils LLM-appelables
 

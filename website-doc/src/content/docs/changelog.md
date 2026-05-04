@@ -12,6 +12,11 @@ This page summarizes user-facing changes. The full commit log is on [GitHub](htt
 - Documentation website launched (this site).
 - Ask-user (Plan #10): structured agent → human question protocol with `ht ask {yesno|choice|text|confirm-command}`. Answers via in-app webview modal, sibling CLI (`ht ask answer`), or Telegram inline buttons / force-reply. Per-surface FIFO queue, sidebar pending pill, edit-in-place audit trail in Telegram.
 
+## 0.2.82
+
+- pi-extensions/ht-bridge: active-label and `agent_end` summaries now follow the live pi session model (auth + base URL match too). Switching pi from Haiku to Sonnet retargets the summariser without a config edit. New `useSessionModel` flag (default `true`) + `PI_HT_BRIDGE_USE_SESSION_MODEL` env override; the existing `provider` / `modelId` pair is now the fallback path.
+- claude-integration: new `tau-mux` Claude Code skill at `claude-integration/skills/tau-mux/SKILL.md`. Mirrors the *active* / LLM-callable side of `pi-extensions/ht-bridge` (plans → `.claude/plans/<name>.md` review-gated via `ht ask choice` then `ht plan set`, `ht ask {yesno|choice|text|confirm-command}` for structured questions, milestone `ht notify`, `ht new-split` + `ht send` for long-running processes, `ht browser` for verification, `ht screenshot` for evidence, `ht set-status` / `ht set-progress` for in-progress signals, bash-safety gating). The runtime hook bridge keeps owning the passive pills (active label, cost ticker, idle/permission). `install.sh` now installs both pieces; `SKIP_HOOKS=1` / `SKIP_SKILL=1` for partial installs.
+
 ## 0.2.x
 
 - Telegram bridge: chat pane, long-poll bot service, SQLite log, `ht telegram` CLI, optional notification forwarding.

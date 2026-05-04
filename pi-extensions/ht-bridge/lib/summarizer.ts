@@ -73,8 +73,20 @@ export async function callFastModel(
   prompt: string,
   fallback: string,
 ): Promise<string> {
-  const model = getModel(cfg.provider, cfg.modelId);
+  // Prefer the active pi session's model so label/summary calls follow
+  // whatever the user has selected in pi (auth + base URL match too).
+  // Fall back to the configured fast model when the session has no
+  // model yet, or when the user explicitly opts out via config.
+  const sessionModel = cfg.useSessionModel ? ctx.model : undefined;
+  const model = sessionModel ?? getModel(cfg.provider, cfg.modelId);
   if (!model) return fallback;
+
+  if (debugEnabled()) {
+    const source = sessionModel ? "session" : "config";
+    console.error(
+      `[ht-bridge] fast-model: using ${source} model ${(model as any).id ?? "?"}`,
+    );
+  }
 
   const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
   if (!auth?.ok || !auth.apiKey) return fallback;

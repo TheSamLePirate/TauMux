@@ -1,5 +1,6 @@
 {
   "enabled": true,
+  "useSessionModel": true,
   "provider": "anthropic",
   "modelId": "claude-haiku-4-5",
   "minWords": 3,

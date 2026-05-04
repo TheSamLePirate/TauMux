@@ -14,6 +14,10 @@ import { fileURLToPath } from "node:url";
 export interface Config {
   // ── Active label pill ("Pi : Fixing the bug") ─────────────────────
   enabled: boolean;
+  /** Prefer the active pi session's model for label/summary calls.
+   *  Falls back to `provider`/`modelId` when the session has no model
+   *  yet or this flag is false. */
+  useSessionModel: boolean;
   provider: string;
   modelId: string;
   minWords: number;
@@ -95,6 +99,7 @@ export interface Config {
 
 export const DEFAULT_CONFIG: Config = {
   enabled: true,
+  useSessionModel: true,
   provider: "anthropic",
   modelId: "claude-haiku-4-5",
   minWords: 3,
@@ -177,6 +182,10 @@ export function loadConfig(): Config {
   }
   if (env.PI_HT_NOTIFY_PROVIDER) merged.provider = env.PI_HT_NOTIFY_PROVIDER;
   if (env.PI_HT_NOTIFY_MODEL) merged.modelId = env.PI_HT_NOTIFY_MODEL;
+  if (env.PI_HT_BRIDGE_USE_SESSION_MODEL !== undefined) {
+    const v = env.PI_HT_BRIDGE_USE_SESSION_MODEL;
+    merged.useSessionModel = v !== "0" && v.toLowerCase() !== "false";
+  }
   if (env.PI_HT_NOTIFY_MIN_WORDS)
     merged.minWords = Math.max(
       1,
