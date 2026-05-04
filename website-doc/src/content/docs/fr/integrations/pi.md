@@ -1,19 +1,23 @@
 ---
 title: Pi (ht-bridge)
-description: pi-extensions/ht-bridge — observer + intercepter + enregistrer des outils, reliant pi-coding-agent au panneau de plan, à la modale ask-user et à la barre latérale de τ-mux.
+description: "pi-extensions/ht-bridge — τ = 2π : rendre pi-coding-agent visible, vérifiable et contrôlable via le panneau de plan, la modale ask-user, les outils et la barre latérale de τ-mux."
 sidebar:
   order: 2
 ---
 
-`pi-extensions/ht-bridge/` (renommé depuis `ht-notify-summary/` en 0.2.80) est une extension pi (un agent de codage IA) qui fait trois choses à la fois :
+`pi-extensions/ht-bridge/` (renommé depuis `ht-notify-summary/` en 0.2.80) est le pont de première classe entre [pi-coding-agent](https://github.com/TheSamLePirate/pi-coding-agent) et τ-mux.
 
-1. **Observe** chaque tour pi — pousse le label de tâche actif, le ticker de coût, le badge d'exécution d'outil, le JSON-plan, et le log d'activité par tour dans la barre latérale τ-mux.
+Cette relation est intentionnelle : **τ = 2π**, donc τ-mux est littéralement et conceptuellement « deux pi » — un multiplexeur de terminal pensé autour d'une paire humain + agent pi. L'extension rend pi visible, vérifiable et contrôlable depuis τ-mux au lieu de cacher la boucle d'agent dans un simple buffer de terminal.
+
+Elle fait trois choses à la fois :
+
+1. **Observe** chaque tour pi — pousse le label de tâche actif, le ticker de coût, le badge d'exécution d'outil, les propositions de plan et le log d'activité par tour dans la barre latérale τ-mux.
 2. **Intercepte** les commandes bash dangereuses — fait apparaître une modale τ-mux (qui s'auto-mirrore vers Telegram) avant que `rm -rf`, `sudo`, force-push, etc. ne s'exécutent réellement.
 3. **Enregistre des outils** — donne au LLM `ht_ask_user`, `ht_plan_set/_update/_complete`, `ht_browser_open/_navigate/_close`, `ht_notify`, `ht_screenshot` et `ht_run_in_split` (spawn d'un panneau frère pour les commandes longues) pour qu'il pilote τ-mux directement. Un primer dans le system-prompt apprend au modèle quand utiliser chacun, incluant **l'espace de travail + la surface + le cwd actuels** résolus au démarrage via `system.identify`.
 
-Plus deux commandes slash (`/ht-plan`, `/ht-ask`) pour le contrôle humain, le replay du plan à la reprise de session, et une pastille « Compacting… » pendant que pi compacte une session en résumé.
+Plus deux commandes slash (`/ht-plan`, `/ht-ask`) pour le contrôle humain, le replay des plans acceptés à la reprise de session, et une pastille « Compacting… » pendant que pi compacte une session en résumé.
 
-Même idée que l'[intégration Claude Code](/fr/integrations/claude-code/), mais le surface d'événements plus riche de pi permet à ht-bridge d'intercepter les appels d'outils et d'ajouter des outils LLM-appelables — ce que le protocole shell-hook de Claude Code ne permet pas.
+Même idée que l'[intégration Claude Code](/fr/integrations/claude-code/), mais la surface d'événements plus riche de pi permet à ht-bridge d'intercepter les appels d'outils, d'injecter un primer d'orientation à chaque tour et d'ajouter des outils LLM-appelables — ce que le protocole shell-hook de Claude Code ne permet pas.
 
 ## Matrice de capacités
 
@@ -22,7 +26,7 @@ Même idée que l'[intégration Claude Code](/fr/integrations/claude-code/), mai
 | Pastille label actif (`Pi : <task>` pendant l'exécution, `ht notify` à `agent_end`) | on |
 | Ticker coût / fenêtre de contexte (`Pi · 34% · $0.012`) | on |
 | Badge d'exécution d'outil (`pi_tool : bash <cmd>`) | on |
-| Mirror plan-texte (sniffe les blocs JSON fenced de `{id,title,state}`) | on |
+| Mirror plan-texte (sniffe les blocs JSON fenced de `{id,title,state}`), écrit `.pi/plans/*.md`, puis demande accepter / refuser / discuter avant publication | on |
 | Log d'activité par espace de travail (`tool_call`, erreurs, résumés de tour) | on |
 | Scanner K2000 / KITT installé comme indicateur de travail de pi (`░▒█──────` qui balaie d'avant en arrière pendant le stream de pi) | on |
 | Pastille τ-mux : verte `● τ-mux ws:2 surface:7` quand connecté, rouge `● τ-mux (offline)` hors de τ-mux. Hors de τ-mux, c'est **la seule chose** que l'extension affiche — observateurs / outils / intercepteurs sont tous court-circuités. | on |
@@ -35,6 +39,28 @@ Même idée que l'[intégration Claude Code](/fr/integrations/claude-code/), mai
 | Replay du plan sur `session_start { reason: "resume" \| "fork" }` | on |
 
 Chaque ligne est gardée par un flag indépendant dans `config.json` — désactiver l'une d'elles est un seul booléen.
+
+## Workflow de planification
+
+La planification est volontairement review-first. Quand le modèle veut démarrer une tâche multi-étapes, `ht_plan_set` doit fournir :
+
+- `planName` — utilisé pour un nom de fichier Markdown stable.
+- `detailedPlanMarkdown` — le plan complet lisible par l'humain.
+- `steps` — les étapes concises de barre latérale dérivées du plan Markdown.
+
+Avant que quoi que ce soit n'apparaisse dans la barre latérale, ht-bridge écrit le fichier détaillé dans :
+
+```text
+.pi/plans/<planName>.md
+```
+
+Puis τ-mux affiche une modale avec le chemin sauvegardé et trois choix :
+
+- **Accepter** — publier le plan de barre latérale avec les `steps` concises.
+- **Refuser** — garder le fichier Markdown pour référence, mais ne rien publier.
+- **Discuter / réviser** — collecter le feedback pour l'agent ; aucun plan de barre latérale n'est publié tant que l'agent ne propose pas une version révisée.
+
+Le mirror plan-texte suit la même règle de sécurité. Si pi émet un plan JSON fenced au lieu d'appeler `ht_plan_set` directement, ht-bridge écrit quand même un fichier Markdown généré et demande avant publication. La restauration sur reprise / fork ne rejoue que les plans réellement acceptés.
 
 ## Transport
 
@@ -49,7 +75,7 @@ pi-extensions/ht-bridge/
 ├── lib/                       (config, ht-client, summarizer, surface-context)
 ├── observe/                   (active-label, cost-ticker, tool-badge, plan-mirror, activity-log)
 ├── intercept/                 (bash-safety + bash-safety-core)
-├── tools/                     (ask-user, plan, browser, notify, screenshot)
+├── tools/                     (ask-user, plan, browser, notify, screenshot, run-in-split)
 ├── system-prompt/             (primer)
 ├── commands/                  (plan-cmd, ask-cmd)
 └── lifecycle/                 (compaction, resume)
@@ -88,7 +114,9 @@ PI_HT_NOTIFY_DEBUG=1                     # logger les échecs de tout module sur
 
 Chaque outil est enregistré via `pi.registerTool({ name, description, promptSnippet, promptGuidelines, parameters, execute })`. Le champ `promptGuidelines` est le levier — pi n'apprend à utiliser ces outils que parce que le system-prompt lui dit quand. Chaque guideline nomme l'outil explicitement (`Use ht_ask_user when …` plutôt que `Use this tool when …`) puisque pi les ajoute à plat dans la section Guidelines globale.
 
-Le primer system-prompt ajoute, à chaque `before_agent_start`, un bloc d'orientation τ-mux : surface id, outils enregistrés, nudges de comportement (`Don't ht_notify on every step — once or twice per task`), et un rappel bash-safety. Les outils désactivés n'apparaissent pas dans le primer, donc un utilisateur qui a coupé `ht_browser_*` ne voit pas de guidance contradictoire.
+Le primer system-prompt ajoute, à chaque `before_agent_start`, un bloc d'orientation τ-mux : surface id, workspace id, cwd du panneau, outils enregistrés, nudges de comportement (`Don't ht_notify on every step — once or twice per task`), et un rappel bash-safety. Les outils désactivés n'apparaissent pas dans le primer, donc un utilisateur qui a coupé `ht_browser_*` ne voit pas de guidance contradictoire.
+
+Pour la planification, le primer dit à pi d'écrire d'abord le Markdown détaillé et de traiter la barre latérale comme une vue de progression compacte, pas comme la source de vérité. Cela garde la surface de review humaine durable (`.pi/plans/*.md`) tout en laissant la barre latérale τ-mux lisible d'un coup d'œil.
 
 ## Pour aller plus loin
 
