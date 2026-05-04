@@ -13,7 +13,7 @@ import {
   test,
 } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import type { Plan } from "../src/shared/types";
+import type { AutoContinueAuditEntry, Plan } from "../src/shared/types";
 
 beforeAll(() => {
   GlobalRegistrator.register();
@@ -31,6 +31,15 @@ const samplePlan: Plan = {
   agentId: "claude:1",
   steps: [{ id: "M1", title: "Explore", state: "active" }],
   updatedAt: 0,
+};
+
+const sampleAudit: AutoContinueAuditEntry = {
+  at: 0,
+  surfaceId: "surface:1",
+  outcome: "skipped",
+  reason: "ok",
+  engine: "heuristic",
+  modelConsulted: false,
 };
 
 describe("PlanPanelMirror — empty-state placeholder (C.3)", () => {
@@ -78,6 +87,30 @@ describe("PlanPanelMirror — empty-state placeholder (C.3)", () => {
     view.setPlans([samplePlan]);
     expect(host.querySelector(".sb-plan-empty")).toBeNull();
     expect(host.querySelectorAll("[data-plan-workspace]").length).toBe(1);
+  });
+
+  test("off-engine audit entries do not render the auto-continue strip", async () => {
+    const { createPlanPanelMirror } = await loadModule();
+    const view = createPlanPanelMirror({
+      hostEl: host,
+      onSelectWorkspace: () => {},
+    });
+    view.setPlans([]);
+    view.setAudit([{ ...sampleAudit, engine: "off" }]);
+    expect(host.querySelector(".sb-plan-audit-title")).toBeNull();
+  });
+
+  test("non-off audit entries still render the auto-continue strip", async () => {
+    const { createPlanPanelMirror } = await loadModule();
+    const view = createPlanPanelMirror({
+      hostEl: host,
+      onSelectWorkspace: () => {},
+    });
+    view.setPlans([]);
+    view.setAudit([sampleAudit]);
+    expect(host.querySelector(".sb-plan-audit-title")?.textContent).toContain(
+      "Auto-continue",
+    );
   });
 
   test("setAudit alone (before plansSnapshot) does not flip the visibility flag", async () => {

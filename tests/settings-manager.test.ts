@@ -75,6 +75,21 @@ describe("SettingsManager persistence recovery", () => {
     // No backup for valid-but-partial JSON.
     expect(existsSync(`${file}.bak`)).toBe(false);
   });
+
+  test("subscribers receive updated and previous settings on update", () => {
+    const mgr = new SettingsManager(dir, file);
+    const seen: Array<{ next: number; previous: number }> = [];
+    const unsubscribe = mgr.subscribe((next, previous) => {
+      seen.push({ next: next.fontSize, previous: previous.fontSize });
+    });
+
+    const before = mgr.get().fontSize;
+    mgr.update({ fontSize: before + 1 });
+    unsubscribe();
+    mgr.update({ fontSize: before + 2 });
+
+    expect(seen).toEqual([{ next: before + 1, previous: before }]);
+  });
 });
 
 describe("notification sound settings", () => {

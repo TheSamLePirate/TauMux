@@ -28,6 +28,7 @@ export class PlanPanel {
   private callbacks: PlanPanelCallbacks;
   private plans: Plan[] = [];
   private audit: AutoContinueAuditEntry[] = [];
+  private autoContinueAuditVisible = true;
   private destroyed = false;
 
   constructor(callbacks: PlanPanelCallbacks) {
@@ -80,6 +81,15 @@ export class PlanPanel {
     this.repaint();
   }
 
+  /** Hide the auto-continue audit strip when the engine is disabled.
+   *  The plan cards remain visible; only the `AUTO-CONTINUE · …`
+   *  sidebar section is suppressed. */
+  setAutoContinueAuditVisible(visible: boolean): void {
+    if (this.destroyed) return;
+    this.autoContinueAuditVisible = visible;
+    this.repaint();
+  }
+
   /** Detach from the DOM and stop responding to further state changes.
    *  Idempotent. After destroy, `setPlans` / `setAudit` are no-ops so a
    *  late-arriving RPC envelope can't repaint a torn-down node. */
@@ -94,8 +104,11 @@ export class PlanPanel {
   }
 
   private repaint(): void {
-    if (this.plans.length === 0 && this.audit.length === 0) {
+    const visibleAudit = this.getVisibleAudit();
+    if (this.plans.length === 0 && visibleAudit.length === 0) {
       this.rootEl.classList.add("hidden");
+      this.auditZoneEl.classList.add("hidden");
+      this.auditZoneEl.innerHTML = "";
       return;
     }
     this.rootEl.classList.remove("hidden");
@@ -108,17 +121,22 @@ export class PlanPanel {
         .join("");
     }
 
-    if (this.audit.length === 0) {
+    if (visibleAudit.length === 0) {
       this.auditZoneEl.classList.add("hidden");
       this.auditZoneEl.innerHTML = "";
     } else {
       this.auditZoneEl.classList.remove("hidden");
       // Newest 6 wins — the audit log is intended as a rolling
       // recent-history strip, not a full timeline.
-      const visible = this.audit.slice(-6).reverse();
+      const visible = visibleAudit.slice(-6).reverse();
       this.auditZoneEl.innerHTML = `<div class="spp-section-subtitle">Auto-continue · last ${visible.length}</div>${visible
         .map((entry) => renderAuditRowHtml(entry))
         .join("")}`;
     }
+  }
+
+  private getVisibleAudit(): AutoContinueAuditEntry[] {
+    if (!this.autoContinueAuditVisible) return [];
+    return this.audit.filter((entry) => entry.engine !== "off");
   }
 }

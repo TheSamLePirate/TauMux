@@ -74,7 +74,12 @@ export function createPlanPanelMirror(
     // Only the pre-first-snapshot empty case stays hidden — once the
     // server has spoken, even an empty list means "no plans right now"
     // and the user benefits from seeing the panel exists.
-    if (!receivedInitialSnapshot && plans.length === 0 && audit.length === 0) {
+    const visibleAudit = audit.filter((entry) => entry.engine !== "off");
+    if (
+      !receivedInitialSnapshot &&
+      plans.length === 0 &&
+      visibleAudit.length === 0
+    ) {
       root.classList.add("hidden");
       return;
     }
@@ -84,12 +89,12 @@ export function createPlanPanelMirror(
     } else {
       plansZoneEl.innerHTML = plans.map((p) => renderPlanCardHtml(p)).join("");
     }
-    if (audit.length === 0) {
+    if (visibleAudit.length === 0) {
       auditZoneEl.classList.add("hidden");
       auditZoneEl.innerHTML = "";
     } else {
       auditZoneEl.classList.remove("hidden");
-      const visible = audit.slice(-6).reverse();
+      const visible = visibleAudit.slice(-6).reverse();
       auditZoneEl.innerHTML = `<div class="sb-plan-audit-title">Auto-continue · last ${visible.length}</div>${visible
         .map((entry) => renderAuditRowHtml(entry))
         .join("")}`;

@@ -1,0 +1,57 @@
+{
+  "enabled": true,
+  "provider": "anthropic",
+  "modelId": "claude-haiku-4-5",
+  "minWords": 3,
+  "maxWords": 5,
+  "htBinary": "ht",
+  "notifySubtitle": "pi agent",
+  "statusKey": "Pi",
+  "statusIcon": "bolt",
+  "statusColor": "#a6e3a1",
+
+  "tickerEnabled": true,
+  "tickerStatusKey": "ctx",
+  "tickerStatusIcon": "chart",
+  "tickerStatusColor": "#89b4fa",
+  "tickerShowCost": true,
+  "tickerCostDecimals": 3,
+  "tickerCostUnit": 1000000,
+  "tickerFormat": "compact",
+
+  "toolBadgeEnabled": true,
+  "toolBadgeStatusKey": "pi_tool",
+  "toolBadgeStatusIcon": "tool",
+  "toolBadgeStatusColor": "#fab387",
+
+  "planMirrorEnabled": true,
+
+  "activityLogEnabled": true,
+  "activityLogSource": "pi",
+
+  "tuiHeartbeatEnabled": true,
+  "tuiHeartbeatIntervalMs": 80,
+  "tuiHeartbeatLength": 8,
+
+  "tuiStatusEnabled": true,
+
+  "bashSafetyMode": "confirmRisky",
+  "bashSafetyTimeoutMs": 60000,
+
+  "toolsEnabled": true,
+  "toolAskUserEnabled": true,
+  "toolPlanEnabled": true,
+  "toolBrowserEnabled": true,
+  "toolNotifyEnabled": true,
+  "toolScreenshotEnabled": true,
+  "toolRunInSplitEnabled": true,
+
+  "systemPromptPrimerEnabled": true,
+
+  "commandsEnabled": true,
+  "lifecycleCompactionEnabled": true,
+  "lifecycleResumeEnabled": true,
+
+  "socketEnabled": true,
+  "socketPath": ""
+}

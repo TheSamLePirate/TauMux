@@ -439,6 +439,7 @@ function afterTransition(
 function applySettings(settings: AppSettings): void {
   currentSettings = settings;
   surfaceManager.applySettings(settings);
+  planPanel.setAutoContinueAuditVisible(settings.autoContinue.engine !== "off");
   if (settingsPanel.isVisible()) settingsPanel.updateSettings(settings);
   // Plan #03 — push the latest overlay knobs to the manager. A flip
   // of `notificationOverlayEnabled` to false dismisses every live

@@ -10,6 +10,9 @@ import { writeFileAtomic } from "./atomic-write";
 export class SettingsManager {
   private settings: AppSettings;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private subscribers = new Set<
+    (settings: AppSettings, previous: AppSettings) => void
+  >();
 
   constructor(
     private dir: string,
@@ -23,9 +26,18 @@ export class SettingsManager {
   }
 
   update(partial: Partial<AppSettings>): AppSettings {
+    const previous = this.settings;
     this.settings = mergeSettings(this.settings, partial);
     this.scheduleSave();
+    this.notify(previous);
     return this.settings;
+  }
+
+  subscribe(
+    fn: (settings: AppSettings, previous: AppSettings) => void,
+  ): () => void {
+    this.subscribers.add(fn);
+    return () => this.subscribers.delete(fn);
   }
 
   saveNow(): void {
@@ -39,6 +51,16 @@ export class SettingsManager {
   private scheduleSave(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this.writeToDisk(), 500);
+  }
+
+  private notify(previous: AppSettings): void {
+    for (const fn of this.subscribers) {
+      try {
+        fn(this.settings, previous);
+      } catch {
+        /* don't let a buggy subscriber break settings persistence */
+      }
+    }
   }
 
   private writeWarned = false;

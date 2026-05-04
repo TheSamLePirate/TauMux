@@ -31,6 +31,7 @@ import type {
   PersistedLayout,
   PaneNode,
   TelegramWireMessage,
+  AutoContinueAuditEntry,
 } from "../shared/types";
 import { SessionManager } from "./session-manager";
 import { BrowserSurfaceManager } from "./browser-surface-manager";
@@ -2668,14 +2669,31 @@ const autoContinue = new AutoContinueEngine({
     }
   },
 });
+function visibleAutoContinueAudit(
+  audit = autoContinue.getAudit(),
+): AutoContinueAuditEntry[] {
+  if (settingsManager.get().autoContinue.engine === "off") return [];
+  return audit.filter((entry) => entry.engine !== "off");
+}
+
+function broadcastAutoContinueAudit(audit = autoContinue.getAudit()): void {
+  const visibleAudit = visibleAutoContinueAudit(audit);
+  rpc.send("autoContinueAudit", { audit: visibleAudit });
+  app.webServer?.broadcast({ type: "autoContinueAudit", audit: visibleAudit });
+}
+
 let autoContinueAuditTimer: ReturnType<typeof setTimeout> | null = null;
 autoContinue.subscribeAudit((audit) => {
   if (autoContinueAuditTimer) return;
   autoContinueAuditTimer = setTimeout(() => {
     autoContinueAuditTimer = null;
-    rpc.send("autoContinueAudit", { audit });
-    app.webServer?.broadcast({ type: "autoContinueAudit", audit });
+    broadcastAutoContinueAudit(audit);
   }, 100);
+});
+settingsManager.subscribe((updated, previous) => {
+  if (updated.autoContinue.engine !== previous.autoContinue.engine) {
+    broadcastAutoContinueAudit();
+  }
 });
 
 // Plan #09 commit C — host helpers extracted to `auto-continue-host.ts`

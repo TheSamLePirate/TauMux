@@ -12,7 +12,7 @@ import {
   test,
 } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import type { Plan } from "../src/shared/types";
+import type { AutoContinueAuditEntry, Plan } from "../src/shared/types";
 
 beforeAll(() => {
   GlobalRegistrator.register();
@@ -33,6 +33,16 @@ const samplePlan: Plan = {
     { id: "M2", title: "Implement", state: "active" },
   ],
   updatedAt: 0,
+};
+
+const sampleAudit: AutoContinueAuditEntry = {
+  at: 0,
+  surfaceId: "surface:1",
+  agentId: "claude:1",
+  outcome: "skipped",
+  reason: "ok",
+  engine: "heuristic",
+  modelConsulted: false,
 };
 
 describe("PlanPanel destroy()", () => {
@@ -64,21 +74,44 @@ describe("PlanPanel destroy()", () => {
 
     panel.destroy();
     panel.setPlans([samplePlan]);
-    panel.setAudit([
-      {
-        workspaceId: "ws-1",
-        agentId: "claude:1",
-        action: "continued",
-        reason: "ok",
-        at: 0,
-      },
-    ]);
+    panel.setAudit([sampleAudit]);
 
     // Root is gone, and the panel's internal zone elements (still
     // referenced by the closure) hold no card markup.
     expect(host.querySelector(".sidebar-plan-panel")).toBeNull();
     expect(panel.getElement().querySelector(".spp-plans")?.innerHTML).toBe("");
     expect(panel.getElement().querySelector(".spp-audit")?.innerHTML).toBe("");
+  });
+
+  test("auto-continue audit section hides when engine visibility is off", async () => {
+    const { PlanPanel } = await loadPanel();
+    const host = document.getElementById("host")!;
+    const panel = new PlanPanel({ onSelectWorkspace: () => {} });
+    host.appendChild(panel.getElement());
+
+    panel.setAudit([sampleAudit]);
+    expect(host.querySelector(".spp-section-subtitle")?.textContent).toContain(
+      "Auto-continue",
+    );
+
+    panel.setAutoContinueAuditVisible(false);
+    expect(host.querySelector(".spp-section-subtitle")).toBeNull();
+    expect(host.querySelector(".sidebar-plan-panel")!.classList.contains("hidden")).toBe(
+      true,
+    );
+  });
+
+  test("off-engine audit entries never render the auto-continue section", async () => {
+    const { PlanPanel } = await loadPanel();
+    const host = document.getElementById("host")!;
+    const panel = new PlanPanel({ onSelectWorkspace: () => {} });
+    host.appendChild(panel.getElement());
+
+    panel.setAudit([{ ...sampleAudit, engine: "off" }]);
+    expect(host.querySelector(".spp-section-subtitle")).toBeNull();
+    expect(host.querySelector(".sidebar-plan-panel")!.classList.contains("hidden")).toBe(
+      true,
+    );
   });
 
   test("destroy is idempotent", async () => {
