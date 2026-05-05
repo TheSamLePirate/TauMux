@@ -7,7 +7,7 @@ Goal: bring `src/web-client/` to UI/UX parity with `src/views/terminal/` (sideba
 
 | Milestone | Status | Commit | Date | Notes |
 | --- | --- | --- | --- | --- |
-| M11 — theme + settings broadcast | not started | — | — | — |
+| M11 — theme + settings broadcast | done | `7d8e097` | 2026-05-05 | 0.2.85; theme/font/density now reach browser; sensitive fields dropped by `pickWebSettings`; 1670 tests pass |
 | M12 — bottom status bar | not started | — | — | — |
 | M13 — sidebar workspace cards (sparkline, cwd, panes) | not started | — | — | — |
 | M14 — manifest cards (npm + cargo) | not started | — | — | — |
