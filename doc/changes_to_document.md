@@ -28,3 +28,11 @@ _Backlog cleared 2026-05-05 — pi-extensions/ht-bridge "follow the pi session m
 - **Per-manifest expand/collapse persists in localStorage** under `tau-mux.sidebar.ui-state` → `manifestsExpanded` keyed `<workspaceId>:npm` / `<workspaceId>:cargo`, mirroring the native sidebar's `expandedPackages` Set.
 - **`runScript` is deferred for the web mirror v1.** Action-button clicks dispatch the same `ht-run-script` window CustomEvent the native sidebar uses, but the web client only logs + fires a Web Notification. Real surface spawning is tracked in `doc/deferred_items.md` as item M14-1 (v1.1).
 - Surface in `website-doc/src/content/docs/api/system.md` (no API change but bump version) and `cli/system.md` (same). Translate both content blocks into French.
+
+## Pending — M15 web mirror parity notification overlay (0.2.89)
+
+- **Web mirror gains the floating notification overlay.** When a notification arrives carrying a `surfaceId`, the browser mirror anchors a card stack inside that pane container (top-right) — same DOM + auto-dismiss + hover-pause + +N overflow pill semantics as the native overlay. Up to 3 cards visible per surface; older cards collapse into the overflow pill which opens the sidebar on click.
+- **Shared `NotificationOverlay`.** The 398-LOC overlay manager moved from `src/views/terminal/notification-overlay.ts` to `src/shared/notification-overlay.ts`. The native side keeps its existing `new NotificationOverlay(hooks)` call surface via a thin subclass shim that pre-binds the native `createIcon`; the web bridge passes its own 1-glyph inline-SVG shim for the close button.
+- **Settings-driven.** `notificationOverlayEnabled` + `notificationOverlayMs` from the `settingsSnapshot` envelope (M11) flow into the bridge; flipping the toggle off tears down every live card immediately.
+- **Surface lifecycle integration.** Notifications arriving before a pane mounts are queued and replayed by `flushQueueForSurface` from main.ts; closing a pane runs `forgetSurface` to drop the per-surface stack DOM + timers.
+- Surface in `website-doc/src/content/docs/api/system.md` (no API change but bump version) and `cli/system.md` (same). Translate both content blocks into French.

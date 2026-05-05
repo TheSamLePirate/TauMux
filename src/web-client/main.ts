@@ -61,6 +61,10 @@ import {
   buildTermOptionsFromSettings,
 } from "./theme-bridge";
 import { createStatusBarView, type StatusBarView } from "./status-bar";
+import {
+  createNotificationOverlayBridge,
+  type NotificationOverlayBridge,
+} from "./notification-overlay-bridge";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -310,6 +314,17 @@ function boot() {
       hostEl: statusBarEl,
     });
   }
+
+  // M15 — floating per-surface notification overlay. Subscribes to
+  // `state.sidebar.notifications` and anchors a stack of cards inside
+  // each pane container (lookup deferred to show-time so notifications
+  // arriving before a pane mounts are queued + replayed).
+  const overlayBridge: NotificationOverlayBridge =
+    createNotificationOverlayBridge({
+      store,
+      sendMsg,
+      getSurfaceContainer: (surfaceId) => terms[surfaceId]?.el ?? null,
+    });
 
   // Apply the persisted sidebar width before first render so the pane
   // container lands on its final left offset instead of jumping mid-
@@ -575,6 +590,10 @@ function boot() {
     // Paint chips from existing metadata, if any.
     const meta = surf?.metadata;
     if (meta) renderPaneChips(chipsEl, meta);
+
+    // M15 — drain any notifications that arrived for this surface
+    // before its pane mounted.
+    overlayBridge.flushQueueForSurface(surfaceId);
   }
 
   function disposePane(surfaceId: string) {
@@ -596,6 +615,11 @@ function boot() {
     }
     ref.el.remove();
     delete terms[surfaceId];
+    // M15 — drop any notification overlay stack anchored on this
+    // surface so the next time a notification arrives for the same
+    // id (after a recreate) we mount a fresh stack instead of
+    // appending to a detached one.
+    overlayBridge.forgetSurface(surfaceId);
   }
 
   /** Build a Telegram pane DOM. Mirrors the structure of the native
@@ -798,6 +822,10 @@ function boot() {
       chipsEl,
       telegram: { messagesEl, composerEl, statusPillEl, chatSelectEl, render },
     };
+
+    // M15 — drain any notifications queued for this surface before
+    // its pane mounted (same path as terminal panes).
+    overlayBridge.flushQueueForSurface(surfaceId);
 
     // Initial paint + ensure we have history for whatever chat is active.
     render(store.getState());
@@ -1368,6 +1396,11 @@ function boot() {
         statusBarView?.dispose();
       } catch {
         /* never let teardown noise reach the user */
+      }
+      try {
+        overlayBridge.dispose();
+      } catch {
+        /* same — keep teardown silent */
       }
     },
     { once: true },
