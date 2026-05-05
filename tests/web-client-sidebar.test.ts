@@ -38,7 +38,7 @@ type SetupOpts = {
   }[];
   activeWorkspaceId?: string | null;
   notifications?: { id: string; title: string; body?: string }[];
-  logs?: { level?: string; message: string }[];
+  logs?: { level?: string; message: string; source?: string; at?: number }[];
   status?: Record<string, Record<string, { value: string }>>;
   progress?: Record<string, { value: number }>;
 };
@@ -100,6 +100,8 @@ async function setup(opts: SetupOpts = {}) {
         id: String(i),
         level: l.level ?? "info",
         message: l.message,
+        source: l.source,
+        at: l.at ?? 0,
         time: 0,
       })),
       status: opts.status ?? {},
@@ -404,7 +406,9 @@ describe("createSidebarView.render", () => {
     view.render(store.getState());
     const logEls = sidebarEl.querySelectorAll(".sb-log");
     expect(logEls.length).toBe(2);
-    expect(logEls[0]?.textContent).toBe("ok");
+    // M17 — log row is now a structured grid (badge / time / source /
+    // msg). The newest entry (info "ok") is on top via slice(-10).reverse().
+    expect(logEls[0]?.querySelector(".sb-log-msg")?.textContent).toBe("ok");
     expect(logEls[1]?.classList.contains("error")).toBe(true);
   });
 
@@ -413,8 +417,58 @@ describe("createSidebarView.render", () => {
       logs: [{ level: "info", message: "<script>alert(1)</script>" }],
     });
     view.render(store.getState());
+    // The user-facing body is escaped — `<script>` lives as text,
+    // not as a parseable element.
+    const msgEl = sidebarEl.querySelector(".sb-log-msg");
+    expect(msgEl?.textContent).toBe("<script>alert(1)</script>");
+    expect(msgEl?.querySelector("script")).toBeNull();
     expect(sidebarEl.innerHTML).toContain("&lt;script&gt;");
-    expect(sidebarEl.innerHTML).not.toContain("<script>alert");
+    // No live <script> tag should land in the parsed DOM. (happy-dom's
+    // attribute-value serializer keeps `<` literal in an attribute,
+    // which is safe — the browser never parses attribute values as
+    // HTML — but the M11 assertion that the *element body* is
+    // escape-encoded still holds.)
+    const liveScript = sidebarEl.querySelector(
+      ".sb-log-msg script, .sb-log script",
+    );
+    expect(liveScript).toBeNull();
+  });
+
+  test("M17 — log row carries level badge + HH:MM:SS time + source label", async () => {
+    const logs = [
+      {
+        level: "warning",
+        message: "slow compile",
+        source: "tsc",
+      },
+    ];
+    const { view, sidebarEl, store } = await setup({ logs });
+    view.render(store.getState());
+    const row = sidebarEl.querySelector(".sb-log") as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.classList.contains("warning")).toBe(true);
+    expect(
+      row.querySelector(".sb-log-badge.sb-log-badge-warning"),
+    ).not.toBeNull();
+    // Source label is uppercase via CSS, but textContent stays
+    // lowercase — the test fixture's level isn't a setup time field
+    // so timestamp lands as "--:--:--" (at: 0 → fallback).
+    expect(row.querySelector(".sb-log-source")?.textContent).toBe("tsc");
+    // Time column is always present, formatted "HH:MM:SS" or fallback.
+    const time = row.querySelector(".sb-log-time")?.textContent ?? "";
+    expect(/^\d{2}:\d{2}:\d{2}$/.test(time) || time === "--:--:--").toBe(true);
+  });
+
+  test("M17 — logs header shows total count + (showing N) when capped to 10", async () => {
+    const logs = Array.from({ length: 12 }, (_, i) => ({
+      level: "info",
+      message: `log ${i}`,
+    }));
+    const { view, sidebarEl, store } = await setup({ logs });
+    view.render(store.getState());
+    const title = sidebarEl.querySelector(".sb-log-zone .sb-section-title");
+    expect(title?.textContent).toContain("Logs (12)");
+    expect(title?.textContent).toContain("(showing 10)");
   });
 });
 

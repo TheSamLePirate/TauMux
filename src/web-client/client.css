@@ -809,15 +809,78 @@ body.sidebar-resizing {
   animation: sb-notification-glow 2s ease-in-out infinite;
 }
 
+/* M17 — log row is a button so click-to-copy lights up keyboard
+ * focus; layout is grid so the level badge / timestamp / source /
+ * message stay aligned. */
 .sb-log {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
   padding: 4px 8px;
   font: 11px / 1.4 var(--ht-font-mono);
   color: var(--ht-text-muted);
+  border: 1px solid transparent;
   border-radius: var(--ht-radius-control);
   margin-bottom: 2px;
   background: var(--ht-bg-card);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--ht-t-fast),
+    border-color var(--ht-t-fast);
+}
+.sb-log:hover {
+  background: var(--ht-bg-card-raised);
+  border-color: var(--ht-border-soft);
+}
+.sb-log:active {
+  border-color: var(--ht-accent-strong);
 }
 
+.sb-log-badge {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--ht-text-dim);
+}
+.sb-log-badge-info {
+  background: var(--ht-sem-info);
+}
+.sb-log-badge-warning {
+  background: var(--ht-sem-warning);
+}
+.sb-log-badge-error {
+  background: var(--ht-sem-error);
+}
+.sb-log-badge-success {
+  background: var(--ht-sem-success);
+}
+
+.sb-log-time {
+  font-size: 10px;
+  color: var(--ht-text-dim);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.sb-log-source {
+  font-size: 10px;
+  color: var(--ht-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.sb-log-msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Level-specific accents on the row itself — kept for readability
+ * even with the new badge. */
 .sb-log.error {
   color: var(--ht-sem-error);
   border-left: 2px solid var(--ht-sem-error);

@@ -1,9 +1,12 @@
 // Web-mirror sidebar renderer.
 //
-// Split into three independent zones so the notification subtree stays
+// Split into four independent zones so the notification subtree stays
 // stable across re-renders (which keeps the glow CSS animation running
 // instead of snapping back to frame zero every time workspaces change):
 //
+//   sb-plan-zone    — agent plans + auto-continue audit (M17). Sits
+//                     above everything else so an active plan stays
+//                     visible while the user scrolls past workspaces.
 //   sb-notif-zone   — notifications. Incremental per-id DOM; rows are
 //                     reused across renders. Matches the native
 //                     sidebar's actionable-notification UX: click body
@@ -12,9 +15,9 @@
 //   sb-main-zone    — workspaces. innerHTML rebuild on each render.
 //   sb-log-zone     — logs. innerHTML rebuild on each render.
 //
-// Zone order puts notifications at the top, mirroring the native
-// sidebar in doc/system-webview-ui.md §4.
+// Zone order matches the native sidebar in doc/system-webview-ui.md §4.
 
+import type { AutoContinueAuditEntry, Plan } from "../shared/types";
 import type { AppState, Store } from "./store";
 import { ICONS } from "./icons";
 import { escapeHtml } from "../shared/escape-html";
@@ -27,6 +30,10 @@ import {
   loadSelectedCwds,
   persistSelectedCwds,
 } from "./sidebar/local-ui-state";
+import {
+  createPlanPanelMirror,
+  type PlanPanelMirrorView,
+} from "./plan-panel-mirror";
 
 export { escapeHtml };
 
@@ -42,6 +49,13 @@ export interface SidebarView {
   applyVisibility(state: AppState): void;
   updateWorkspaceSelect(state: AppState): void;
   render(state: AppState): void;
+  /** M17 — plan-panel setters live on the sidebar view itself so the
+   *  panel survives the inner zone rebuilds (M11/M13). The protocol
+   *  dispatcher routes `plansSnapshot` and `autoContinueAudit`
+   *  envelopes here. */
+  setPlans(plans: readonly Plan[]): void;
+  setAutoContinueAudit(audit: readonly AutoContinueAuditEntry[]): void;
+  setAutoContinueAuditVisible(visible: boolean): void;
 }
 
 export function createSidebarView(deps: SidebarDeps): SidebarView {
@@ -54,16 +68,37 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
   // M13 — main zone now hosts a `WorkspaceCardBuilder` that owns its
   // own per-card DOM cache and reuses unchanged sections across 1 Hz
   // metadata ticks.
+  // M17 — plan zone is the new top-of-sidebar slot, owned by this
+  // view so its DOM survives every inner zone rebuild.
   sidebarEl.innerHTML = "";
+  const planZoneEl = document.createElement("div");
+  planZoneEl.className = "sb-plan-zone";
   const notifZoneEl = document.createElement("div");
   notifZoneEl.className = "sb-notif-zone";
   const mainZoneEl = document.createElement("div");
   mainZoneEl.className = "sb-main-zone";
   const logZoneEl = document.createElement("div");
   logZoneEl.className = "sb-log-zone";
+  sidebarEl.appendChild(planZoneEl);
   sidebarEl.appendChild(notifZoneEl);
   sidebarEl.appendChild(mainZoneEl);
   sidebarEl.appendChild(logZoneEl);
+
+  // M17 — instantiate the plan panel inside the sidebar so the
+  // dispatcher's `plansSnapshot` + `autoContinueAudit` envelopes flow
+  // through `sidebarView.setPlans` / `setAutoContinueAudit`. The panel
+  // owns its own DOM under the plan zone; the sidebar render path
+  // never touches it.
+  const planPanel: PlanPanelMirrorView = createPlanPanelMirror({
+    hostEl: planZoneEl,
+    onSelectWorkspace: (workspaceId) => {
+      if (workspaceId === store.getState().activeWorkspaceId) return;
+      store.dispatch({ kind: "workspace/active", workspaceId });
+      store.dispatch({ kind: "fullscreen/exit" });
+      sendMsg("selectWorkspace", { workspaceId });
+      sendMsg("subscribeWorkspace", { workspaceId });
+    },
+  });
 
   // Persistent workspace-list host inside the main zone. The card
   // builder appends/moves cards in place; the section title above
@@ -156,6 +191,19 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
         action: "__clearLogs",
         payload: {},
       });
+      return;
+    }
+    if (action === "copy-log") {
+      // M17 — click on a log row copies a tab-separated
+      // `[HH:MM:SS] [source] [level] message` line to the clipboard
+      // so the user can paste a sample into a bug report. The
+      // `Clipboard` API may be unavailable on `http://` origins
+      // without HTTPS; fall back to a hidden textarea + execCommand
+      // so non-secure contexts still work.
+      e.stopPropagation();
+      const payload = btn.getAttribute("data-copy");
+      if (!payload) return;
+      void copyTextToClipboard(payload);
       return;
     }
     if (action === "dismiss-notif") {
@@ -452,7 +500,17 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
       for (const c of n.children) walkLayout(c, out);
   }
 
-  // ── Logs ─── string-concat; clear button still routes via data-action
+  // ── Logs ─── M17 polished renderer.
+  //
+  // Each row carries: a coloured level badge (info/warning/error/
+  // success), the optional source label (`pi-bridge`, `ht`, …), an
+  // `HH:MM:SS` timestamp from the entry's `at` field, and the
+  // message body. Click anywhere on a row copies the underlying
+  // `[HH:MM:SS] [source] [level] message` line to the clipboard so
+  // a remote user can paste a snippet into a bug report. Up to 10
+  // rows are rendered for perf even though the store retains 200;
+  // the header shows `Logs (count) (showing 10)` so the cap is
+  // explicit.
 
   function renderLogs(state: AppState) {
     const logs = state.sidebar.logs;
@@ -460,24 +518,91 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
       logZoneEl.innerHTML = "";
       return;
     }
+    const visible = logs.slice(-10).reverse();
+    const showingNote =
+      logs.length > visible.length ? ` (showing ${visible.length})` : "";
     let html =
       '<div class="sb-section"><div class="sb-section-title">Logs (' +
       logs.length +
-      ')<button class="sb-section-clear" data-action="clear-logs">' +
+      ")" +
+      showingNote +
+      '<button class="sb-section-clear" data-action="clear-logs">' +
       ICONS.close +
       "</button></div>";
-    const visible = logs.slice(-10).reverse();
     for (const l of visible) {
-      const cls =
-        l.level === "error" || l.level === "warning" || l.level === "success"
-          ? " " + l.level
-          : "";
+      const level =
+        l.level === "error" ||
+        l.level === "warning" ||
+        l.level === "success" ||
+        l.level === "info"
+          ? l.level
+          : "info";
+      const ts = formatLogTimestamp(l.at);
+      const source = l.source ? l.source : "";
+      const copyPayload = `[${ts}]${source ? ` [${source}]` : ""} [${level}] ${l.message}`;
       html +=
-        '<div class="sb-log' + cls + '">' + escapeHtml(l.message) + "</div>";
+        `<button class="sb-log ${level}" data-action="copy-log" ` +
+        `data-copy="${escapeHtml(copyPayload)}" title="Click to copy">` +
+        `<span class="sb-log-badge sb-log-badge-${level}" aria-label="${level}"></span>` +
+        `<span class="sb-log-time tau-mono">${escapeHtml(ts)}</span>` +
+        (source
+          ? `<span class="sb-log-source">${escapeHtml(source)}</span>`
+          : "") +
+        `<span class="sb-log-msg">${escapeHtml(l.message)}</span>` +
+        "</button>";
     }
     html += "</div>";
     logZoneEl.innerHTML = html;
   }
 
-  return { applyVisibility, updateWorkspaceSelect, render };
+  /** `HH:MM:SS` formatter — `Date.toLocaleTimeString` gives 12-hour
+   *  on en-US locales which is the wrong density for a debug log.
+   *  Pad each component to 2 digits and pin to the user's local
+   *  timezone (no UTC drift while debugging). */
+  function formatLogTimestamp(ms: number): string {
+    if (!Number.isFinite(ms) || ms <= 0) return "--:--:--";
+    const d = new Date(ms);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    return `${hh}:${mm}:${ss}`;
+  }
+
+  /** Copy text to the clipboard. Prefers the modern async API,
+   *  falls back to a hidden textarea + `execCommand("copy")` on
+   *  non-secure origins (the web mirror commonly runs over plain
+   *  `http://` on a LAN, which disables `navigator.clipboard`). */
+  async function copyTextToClipboard(text: string): Promise<void> {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+    } catch {
+      /* fall through to legacy path */
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    } catch {
+      /* every browser path failed — silently no-op so we don't
+       * crash the click handler. */
+    }
+  }
+
+  return {
+    applyVisibility,
+    updateWorkspaceSelect,
+    render,
+    setPlans: (plans) => planPanel.setPlans(plans),
+    setAutoContinueAudit: (audit) => planPanel.setAudit(audit),
+    setAutoContinueAuditVisible: (visible) =>
+      planPanel.setAutoContinueAuditVisible(visible),
+  };
 }

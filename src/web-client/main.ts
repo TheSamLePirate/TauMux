@@ -55,7 +55,8 @@ import {
   refreshServiceWorker,
   registerServiceWorker,
 } from "./pwa";
-import { createPlanPanelMirror } from "./plan-panel-mirror";
+// M17 — `createPlanPanelMirror` moved into `createSidebarView`; the
+// dispatcher routes plan / audit envelopes through `sidebarView`.
 import {
   applyThemeFromSettings,
   buildTermOptionsFromSettings,
@@ -249,20 +250,15 @@ function boot() {
     onBinaryFrame: (id, data) => renderPanelData(id, data, true),
   });
   const sendMsg = transport.send;
-  // Plan #09 commit B — read-only plan + auto-continue widget. Mounts
-  // into the sidebar zone the moment the page boots so a fresh
-  // connection's `plansSnapshot` finds a host element to paint into.
-  const planPanelMirror = createPlanPanelMirror({
-    hostEl: sidebarEl,
-    onSelectWorkspace: (workspaceId) => {
-      const state = store.getState();
-      if (workspaceId === state.activeWorkspaceId) return;
-      store.dispatch({ kind: "workspace/active", workspaceId });
-      store.dispatch({ kind: "fullscreen/exit" });
-      sendMsg("selectWorkspace", { workspaceId });
-      sendMsg("subscribeWorkspace", { workspaceId });
-    },
-  });
+  // M17 — the plan panel now lives inside `createSidebarView` as a
+  // persistent first zone (Plan #09 commit B's standalone mount got
+  // wiped by sidebar's inner zone rebuild). Dispatcher routes the
+  // `plansSnapshot` + `autoContinueAudit` envelopes through the
+  // sidebar's setters; we forward through this `let` so the
+  // closure captured below picks up the value once `sidebarView` is
+  // constructed at the bottom of boot.
+
+  let sidebarViewRef: import("./sidebar").SidebarView | null = null;
 
   handleServerMessage = createProtocolDispatcher({
     store,
@@ -273,8 +269,9 @@ function boot() {
       ref.term.write(data);
     },
     subscribeSurface: (surfaceId) => sendMsg("subscribeSurface", { surfaceId }),
-    setPlans: (plans) => planPanelMirror.setPlans(plans),
-    setAutoContinueAudit: (audit) => planPanelMirror.setAudit(audit),
+    setPlans: (plans) => sidebarViewRef?.setPlans(plans),
+    setAutoContinueAudit: (audit) =>
+      sidebarViewRef?.setAutoContinueAudit(audit),
   });
 
   // ------------------------------------------------------------------
@@ -303,6 +300,11 @@ function boot() {
     sidebarToggleBtn,
     workspaceSelectEl: wsSelectEl,
   });
+  // M17 — close the forward-decl loop so `plansSnapshot` /
+  // `autoContinueAudit` envelopes that landed before this line (they
+  // can't, given dispatcher creation order, but be defensive) and
+  // every later one route through the sidebar's plan-panel setters.
+  sidebarViewRef = sidebarView;
 
   const layoutView = createLayoutView({
     container,
@@ -411,6 +413,14 @@ function boot() {
    *  no-op (the reducer already deep-compares) so this is cheap. */
   function applySettings(state: AppState, prev: AppState) {
     applyThemeFromSettings(state.settings, document.documentElement);
+    // M17 — flip the auto-continue audit zone visibility to match the
+    // host's engine. When the user disables auto-continue natively,
+    // the audit strip in the web mirror's plan panel hides on the
+    // next tick. The setter is idempotent — same-value calls are a
+    // no-op.
+    sidebarView.setAutoContinueAuditVisible(
+      (state.settings?.autoContinueEngine ?? "off") !== "off",
+    );
     if (!state.settings) return;
     const opts = buildTermOptionsFromSettings(state.settings);
     for (const sid in terms) {
@@ -866,7 +876,6 @@ function boot() {
       }
     }
   }
-
 
   // ------------------------------------------------------------------
   // Fullscreen

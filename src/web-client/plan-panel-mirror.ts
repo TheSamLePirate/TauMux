@@ -27,6 +27,12 @@ export interface PlanPanelMirrorDeps {
 export interface PlanPanelMirrorView {
   setPlans(plans: readonly Plan[]): void;
   setAudit(audit: readonly AutoContinueAuditEntry[]): void;
+  /** M17 — hide the audit strip when the host's auto-continue engine
+   *  is `"off"`. The audit entries themselves carry their own
+   *  `engine` field (the engine in use when the decision was made),
+   *  so a recent flip-off would still leave non-off entries visible
+   *  without this gate. */
+  setAutoContinueAuditVisible(visible: boolean): void;
 }
 
 export function createPlanPanelMirror(
@@ -42,6 +48,13 @@ export function createPlanPanelMirror(
   // first time (even with an empty array — the server explicitly told
   // us "no plans" rather than "haven't sent yet").
   let receivedInitialSnapshot = false;
+  // M17 — global gate driven by `state.settings.autoContinueEngine`.
+  // When the host's engine is `"off"`, the audit strip stays hidden
+  // even if the audit ring still carries decisions made under a
+  // previous engine setting. Default `true` so a server that never
+  // sends a settings snapshot keeps the previous behaviour.
+   
+  let autoContinueAuditVisible = true;
 
   const root = document.createElement("div");
   root.className = "sb-plan-panel hidden";
@@ -71,10 +84,16 @@ export function createPlanPanelMirror(
   });
 
   function repaint(): void {
+    // M17 — apply the global engine-off gate first. When the host's
+    // auto-continue engine is `"off"`, hide the audit strip entirely;
+    // the per-entry filter below still removes individual stale "off"
+    // entries when the gate is open.
+    const visibleAudit = autoContinueAuditVisible
+      ? audit.filter((entry) => entry.engine !== "off")
+      : [];
     // Only the pre-first-snapshot empty case stays hidden — once the
     // server has spoken, even an empty list means "no plans right now"
     // and the user benefits from seeing the panel exists.
-    const visibleAudit = audit.filter((entry) => entry.engine !== "off");
     if (
       !receivedInitialSnapshot &&
       plans.length === 0 &&
@@ -109,6 +128,11 @@ export function createPlanPanelMirror(
     },
     setAudit(next) {
       audit = [...next];
+      repaint();
+    },
+    setAutoContinueAuditVisible(visible) {
+      if (autoContinueAuditVisible === visible) return;
+      autoContinueAuditVisible = visible;
       repaint();
     },
   };

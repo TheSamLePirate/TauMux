@@ -127,4 +127,23 @@ describe("PlanPanelMirror — empty-state placeholder (C.3)", () => {
       host.querySelector(".sb-plan-panel")!.classList.contains("hidden"),
     ).toBe(true);
   });
+
+  test("M17 — setAutoContinueAuditVisible(false) hides the audit strip even with non-off entries", async () => {
+    const { createPlanPanelMirror } = await loadModule();
+    const view = createPlanPanelMirror({
+      hostEl: host,
+      onSelectWorkspace: () => {},
+    });
+    view.setPlans([]);
+    view.setAudit([sampleAudit]);
+    // Strip is visible by default (engine: "heuristic", non-off).
+    expect(host.querySelector(".sb-plan-audit-title")).not.toBeNull();
+    // Flipping the gate off — mirrors what main.ts does when the
+    // host's `state.settings.autoContinueEngine === "off"`.
+    view.setAutoContinueAuditVisible(false);
+    expect(host.querySelector(".sb-plan-audit-title")).toBeNull();
+    // And re-flipping on restores the strip.
+    view.setAutoContinueAuditVisible(true);
+    expect(host.querySelector(".sb-plan-audit-title")).not.toBeNull();
+  });
 });
