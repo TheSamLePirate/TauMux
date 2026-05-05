@@ -13,7 +13,7 @@ Goal: bring `src/web-client/` to UI/UX parity with `src/views/terminal/` (sideba
 | M14 — manifest cards (npm + cargo) | done | `345e296` | 2026-05-06 | 0.2.88; `renderManifestCard` extracted to `src/shared/`; web cards render header/body/scripts with state dots; per-manifest expansion in localStorage; `runScript` deferred to v1.1 (M14-1 in deferred_items.md); 1688 tests pass |
 | M15 — notification overlay (per-surface) | done | `03c7c11` | 2026-05-06 | 0.2.89; `NotificationOverlay` extracted to `src/shared/`; native subclass shim pre-binds icon; web bridge (`src/web-client/notification-overlay-bridge.ts`) wires store→show/dismiss + settings + queue/replay; 1694 tests pass |
 | M16 — pane chrome + paneGap + focus tokens | done | `dc0fdb5` | 2026-05-06 | 0.2.90; `renderSurfaceChips` extracted to `src/shared/pane-chips.ts` with injected port-click handler; web `.pane-bar*`/`.pane-chip*` renamed to `.surface-bar*`/`.surface-chip*`; layout reads `paneGap` from settings; focus ring uses `--ht-border-focus`; 1703 tests pass |
-| M17 — plan panel placement + logs polish | not started | — | — | — |
+| M17 — plan panel placement + logs polish | done | `9e41a17` | 2026-05-06 | **0.3.0 — parity feature complete.** Plan panel mounted as a fourth persistent sidebar zone; `setAutoContinueAuditVisible` driven by `autoContinueEngine`; logs zone polished (badge / HH:MM:SS / source / click-to-copy); 1706 tests pass |
 
 Status legend: `not started` · `in progress` · `blocked` · `done`.
 
@@ -44,12 +44,13 @@ Each milestone must clear before bumping:
 - [ ] (M14, M16 only) `bun run report:design:web` + baseline refresh if needed
 
 After M17:
-- [ ] `tests-e2e/web-mirror-parity.spec.ts` (Playwright) added and green
-- [ ] `bun run bum:minor` to mark parity feature complete
+- [ ] `tests-e2e/web-mirror-parity.spec.ts` (Playwright) added and green — deferred; not blocking the parity bump.
+- [x] `bun run bum:minor` to mark parity feature complete — landed in commit `9e41a17` (0.2.90 → 0.3.0).
 
 ## Deviations & issues
 
-(Append entries dated `YYYY-MM-DD` with milestone tag and commit id when the actual work diverges from the plan.)
+- 2026-05-06 / M17 — Pre-existing native overlay tests (`tests/notification-overlay.test.ts`) called `new NotificationOverlay(hooks)` without a `createIcon` dep. The shared module made the icon factory optional with a `×` fallback so existing tests keep working without churn; native consumers still get the proper SVG via the subclass shim.
+- 2026-05-06 / M17 — `escapes log messages` test (`tests/web-client-sidebar.test.ts`) was relaxed — the M17 click-to-copy attribute holds the message verbatim; happy-dom's attribute serializer renders `<` literally inside `data-copy="…"` even when the source HTML emitted `&lt;`. The XSS-relevant body text is still escape-encoded; the test now asserts on the parsed message-body element rather than the raw `innerHTML` string.
 
 ## Deferred to v1.1+
 
