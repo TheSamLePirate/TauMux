@@ -12,7 +12,7 @@ Goal: bring `src/web-client/` to UI/UX parity with `src/views/terminal/` (sideba
 | M13 — sidebar workspace cards (sparkline, cwd, panes) | done | `c706c15` | 2026-05-05 | 0.2.87; `buildSidebarWorkspaces` extracted to `src/shared/`; web cards render stripe/header/meta/stats/sparkline/cwds/panes/status/progress with section signature caching; `selectWorkspaceCwd` envelope; manifest cards stubbed for M14; 1681 tests pass |
 | M14 — manifest cards (npm + cargo) | done | `345e296` | 2026-05-06 | 0.2.88; `renderManifestCard` extracted to `src/shared/`; web cards render header/body/scripts with state dots; per-manifest expansion in localStorage; `runScript` deferred to v1.1 (M14-1 in deferred_items.md); 1688 tests pass |
 | M15 — notification overlay (per-surface) | done | `03c7c11` | 2026-05-06 | 0.2.89; `NotificationOverlay` extracted to `src/shared/`; native subclass shim pre-binds icon; web bridge (`src/web-client/notification-overlay-bridge.ts`) wires store→show/dismiss + settings + queue/replay; 1694 tests pass |
-| M16 — pane chrome + paneGap + focus tokens | not started | — | — | — |
+| M16 — pane chrome + paneGap + focus tokens | done | `dc0fdb5` | 2026-05-06 | 0.2.90; `renderSurfaceChips` extracted to `src/shared/pane-chips.ts` with injected port-click handler; web `.pane-bar*`/`.pane-chip*` renamed to `.surface-bar*`/`.surface-chip*`; layout reads `paneGap` from settings; focus ring uses `--ht-border-focus`; 1703 tests pass |
 | M17 — plan panel placement + logs polish | not started | — | — | — |
 
 Status legend: `not started` · `in progress` · `blocked` · `done`.
@@ -30,7 +30,7 @@ These extractions un-block multiple milestones. Track separately so they can lan
 | Meter primitive → `src/shared/tau-meter.ts` | done | `4db592c` | M12 — `tau-primitives.ts` re-exports |
 | Manifest card → `src/shared/sidebar-manifest-card.ts` | done | `345e296` | M14 — `createIcon` injected; native adapter shim |
 | Notification overlay → `src/shared/notification-overlay.ts` | done | `03c7c11` | M15 — `createIcon` injected; native subclass shim pre-binds |
-| Pane chips → `src/shared/pane-chips.ts` | not started | — | needed by M16 |
+| Pane chips → `src/shared/pane-chips.ts` | done | `dc0fdb5` | M16 — `onPortClick` injected; `chipsSignature` exported |
 
 ## Per-milestone gates
 
