@@ -164,7 +164,11 @@ button {
 }
 
 .pane.focused {
-  border-color: var(--ht-accent-strong);
+  /* M16 — focus ring follows the dedicated `--ht-border-focus` token
+   * so a theme that wants a different focus tint (e.g. cyan-only
+   * builds for τ-mux variant) can override it without disturbing
+   * accent-driven chrome. */
+  border-color: var(--ht-border-focus);
   box-shadow: 0 0 0 1px var(--ht-accent-soft);
 }
 
@@ -188,7 +192,7 @@ button {
   z-index: 4;
 }
 
-.pane-bar {
+.surface-bar {
   position: relative;
   height: 34px;
   display: flex;
@@ -207,7 +211,7 @@ button {
   flex-shrink: 0;
 }
 
-.pane-bar-title {
+.surface-bar-title {
   flex: 0 0 auto;
   max-width: 35%;
   overflow: hidden;
@@ -217,7 +221,7 @@ button {
   font-weight: 500;
 }
 
-.pane-bar-btn {
+.surface-bar-btn {
   width: 24px;
   height: 24px;
   display: grid;
@@ -232,17 +236,17 @@ button {
   flex-shrink: 0;
 }
 
-.pane-bar-btn:hover {
+.surface-bar-btn:hover {
   background: var(--ht-bg-card-raised);
   color: var(--ht-text-strong);
   border-color: var(--ht-border-soft);
 }
 
-.pane-bar-btn svg {
+.surface-bar-btn svg {
   display: block;
 }
 
-.pane-bar-chips {
+.surface-bar-chips {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -252,7 +256,7 @@ button {
   min-width: 0;
 }
 
-.pane-chip {
+.surface-chip {
   display: inline-flex;
   align-items: center;
   height: 20px;
@@ -270,24 +274,24 @@ button {
   flex-shrink: 0;
 }
 
-.pane-chip.chip-command {
+.surface-chip.chip-command {
   color: var(--ht-text-strong);
   background: var(--ht-accent-soft);
   border-color: rgba(234, 179, 8, 0.28);
 }
 
-.pane-chip.chip-cwd {
+.surface-chip.chip-cwd {
   max-width: 220px;
 }
 
-.pane-chip.chip-git {
+.surface-chip.chip-git {
   color: var(--ht-sem-info);
   background: var(--ht-secondary-soft);
   border-color: rgba(161, 161, 170, 0.32);
   gap: 6px;
 }
 
-.pane-chip.chip-git.dirty {
+.surface-chip.chip-git.dirty {
   color: var(--ht-sem-warning);
   background: var(--ht-accent-soft);
   border-color: rgba(234, 179, 8, 0.3);
@@ -314,7 +318,7 @@ button {
   font-weight: 600;
 }
 
-.pane-chip.chip-port {
+.surface-chip.chip-port {
   color: var(--ht-sem-success);
   background: rgba(74, 222, 128, 0.08);
   border-color: rgba(74, 222, 128, 0.26);
@@ -322,7 +326,7 @@ button {
   transition: background var(--ht-t-fast), border-color var(--ht-t-fast);
 }
 
-.pane-chip.chip-port:hover {
+.surface-chip.chip-port:hover {
   background: rgba(74, 222, 128, 0.18);
   border-color: rgba(74, 222, 128, 0.42);
 }
@@ -380,7 +384,7 @@ body.fullscreen-mode #pane-container .pane.fullscreen-active {
   border-radius: 0;
   box-shadow: none;
 }
-body.fullscreen-mode .pane.fullscreen-active .pane-bar {
+body.fullscreen-mode .pane.fullscreen-active .surface-bar {
   display: none;
 }
 body.fullscreen-mode .pane.fullscreen-active .pane-term {
@@ -1420,7 +1424,7 @@ body.wm-kbd-active #pane-container {
     width: 40px;
     height: 40px;
   }
-  .pane-bar-btn {
+  .surface-bar-btn {
     width: 32px;
     height: 32px;
   }
@@ -1622,7 +1626,7 @@ body.wm-kbd-active #pane-container {
     --ht-border-strong: rgba(111, 233, 255, 0.85);
   }
   .pane,
-  .pane-bar,
+  .surface-bar,
   .panel,
   .sidebar,
   .toolbar-btn {

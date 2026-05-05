@@ -521,6 +521,22 @@ describe("web-client store / reducer", () => {
     expect(drift.settings!.fontSize).toBe(payload.fontSize + 1);
   });
 
+  test("M16 — paneGap drift produces a new state object so subscribers re-run applyLayout", async () => {
+    const { pickWebSettings, DEFAULT_SETTINGS } =
+      await import("../src/shared/settings");
+    const initial = pickWebSettings({ ...DEFAULT_SETTINGS, paneGap: 2 });
+    const seeded = reducer(initialState(), {
+      kind: "settings/apply",
+      settings: initial,
+    });
+    const next = reducer(seeded, {
+      kind: "settings/apply",
+      settings: { ...initial, paneGap: 12 },
+    });
+    expect(next).not.toBe(seeded);
+    expect(next.settings!.paneGap).toBe(12);
+  });
+
   test("ht-keys-seen replaces the list; identical content is a no-op", () => {
     const seeded = reducer(initialState(), {
       kind: "ht-keys-seen",

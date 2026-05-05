@@ -36,3 +36,11 @@ _Backlog cleared 2026-05-05 — pi-extensions/ht-bridge "follow the pi session m
 - **Settings-driven.** `notificationOverlayEnabled` + `notificationOverlayMs` from the `settingsSnapshot` envelope (M11) flow into the bridge; flipping the toggle off tears down every live card immediately.
 - **Surface lifecycle integration.** Notifications arriving before a pane mounts are queued and replayed by `flushQueueForSurface` from main.ts; closing a pane runs `forgetSurface` to drop the per-surface stack DOM + timers.
 - Surface in `website-doc/src/content/docs/api/system.md` (no API change but bump version) and `cli/system.md` (same). Translate both content blocks into French.
+
+## Pending — M16 web mirror parity pane chrome chips + paneGap (0.2.90)
+
+- **Pane chrome class names match native.** Web mirror's pane DOM renamed from `.pane-bar*` / `.pane-chip*` to `.surface-bar*` / `.surface-chip*`, mirroring native. Same DOM + same class names → CSS rules can be shared without aliases.
+- **Shared chip renderer.** `renderSurfaceChips` extracted from `src/views/terminal/surface-manager.ts` to `src/shared/pane-chips.ts`. Both surfaces produce identical DOM (foreground command, cwd, git, port chips) and identical signature-cached re-render skip behaviour. Port-chip click semantics differ between surfaces — handled via an injected `onPortClick(port, event)` callback so native dispatches `ht-open-external` while web opens the user's host (`window.location.hostname`) in a new tab.
+- **`paneGap` flows from settings.** `LayoutView.applyLayout` now reads `state.settings.paneGap` on every frame so a host-side settings change re-distributes the panes on the next render. Constructor `gap` is the fallback before the first `settingsSnapshot` envelope lands.
+- **Focus ring follows `--ht-border-focus` token.** A theme that wants a different focus tint can override the dedicated token without disturbing accent-driven chrome.
+- Surface in `website-doc/src/content/docs/api/system.md` (no API change but bump version) and `cli/system.md` (same). Translate both content blocks into French.

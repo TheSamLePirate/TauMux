@@ -103,6 +103,9 @@ export interface LayoutDeps {
   container: HTMLElement;
   sidebarEl: HTMLElement;
   terms: Record<string, TermRef>;
+  /** Default gap when `state.settings` hasn't loaded yet. Once the
+   *  host's settings broadcast lands, `state.settings.paneGap` takes
+   *  over (M16). */
   gap: number;
   sidebarWidth: number;
   toolbarHeight: number;
@@ -114,8 +117,14 @@ export interface LayoutView {
 }
 
 export function createLayoutView(deps: LayoutDeps): LayoutView {
-  const { container, sidebarEl, terms, gap, sidebarWidth, toolbarHeight } =
-    deps;
+  const {
+    container,
+    sidebarEl,
+    terms,
+    gap: defaultGap,
+    sidebarWidth,
+    toolbarHeight,
+  } = deps;
 
   function applyMirrorScale(state: AppState) {
     if (!state.nativeViewport) {
@@ -159,6 +168,10 @@ export function createLayoutView(deps: LayoutDeps): LayoutView {
     const cw = state.nativeViewport?.width ?? container.offsetWidth;
     const ch = state.nativeViewport?.height ?? container.offsetHeight;
     if (!cw || !ch) return;
+    // M16 — `paneGap` flows from the host's settings broadcast. Falls
+    // back to the constructor's default until the first
+    // `settingsSnapshot` envelope lands.
+    const gap = state.settings?.paneGap ?? defaultGap;
     const rects = computeRects(
       ws.layout as unknown as LayoutNode,
       { x: 0, y: 0, w: cw, h: ch },

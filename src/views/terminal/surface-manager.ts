@@ -72,6 +72,24 @@ import type {
   TelegramWireMessage,
 } from "../../shared/types";
 
+// M16 — surface chip rendering moved to src/shared/pane-chips.ts
+// so the web mirror produces identical chip DOM. Native binds the
+// `ht-open-external` event for port-chip clicks; the web client
+// passes its own `window.open` variant.
+import {
+  renderSurfaceChips,
+  type PaneChipsDeps,
+} from "../../shared/pane-chips";
+
+const NATIVE_CHIP_DEPS: PaneChipsDeps = {
+  onPortClick: (port) => {
+    const url = `http://localhost:${port}`;
+    window.dispatchEvent(
+      new CustomEvent("ht-open-external", { detail: { url } }),
+    );
+  },
+};
+
 const defaultGlassTheme = {
   background: "rgba(10, 10, 10, 0)",
   foreground: "#f5f7fb",
@@ -860,7 +878,7 @@ export class SurfaceManager {
     const prev = this.metadata.get(surfaceId);
     this.metadata.set(surfaceId, metadata);
     const view = this.surfaces.get(surfaceId);
-    if (view) renderSurfaceChips(view.chipsEl, metadata);
+    if (view) renderSurfaceChips(view.chipsEl, metadata, NATIVE_CHIP_DEPS);
     // Rebuild the sidebar when any field the card displays may have changed:
     // the port set, the focused-pane fg command, the cwd (multi-cwd chip
     // row), or the package.json (header + scripts + running status). Tree
@@ -2499,181 +2517,6 @@ export class SurfaceManager {
   }
 }
 
-// --- Surface chips renderer -------------------------------------------------
-
-function renderSurfaceChips(host: HTMLElement, meta: SurfaceMetadata): void {
-  // Bail if the chips row would be byte-identical to the last render.
-  // Metadata broadcasts at 1 Hz per surface and the poller already
-  // de-dupes equivalent snapshots — but workspace switches, focus
-  // changes, and web-mirror replays all trigger a re-render, so it's
-  // still worth skipping the DOM churn when the visible data is
-  // unchanged. Cheap hash, no JSON.stringify.
-  const sig = chipsSignature(meta);
-  if (host.dataset["chipsSig"] === sig) return;
-  host.dataset["chipsSig"] = sig;
-
-  host.replaceChildren();
-
-  const fg = meta.tree.find((n) => n.pid === meta.foregroundPid);
-  // Hide command chip when the foreground IS the shell itself — rendering
-  // "zsh" / "bash" forever is noise.
-  const showCommand =
-    fg && meta.foregroundPid !== meta.pid && fg.command.length > 0;
-  if (showCommand) {
-    host.appendChild(buildChip("chip-command", truncate(fg.command, 48)));
-  }
-
-  if (meta.cwd) {
-    const chip = buildChip("chip-cwd", shortenCwd(meta.cwd));
-    chip.title = meta.cwd;
-    host.appendChild(chip);
-  }
-
-  if (meta.git) {
-    const chip = document.createElement("span");
-    chip.className = "surface-chip chip-git";
-    if (isDirtyGit(meta.git)) chip.classList.add("dirty");
-    chip.title = formatGitTooltip(meta.git);
-    fillGitChip(chip, meta.git);
-    host.appendChild(chip);
-  }
-
-  // Dedup ports shown in the chip row by port number (a single proc often
-  // binds both v4 and v6 for the same port).
-  const seen = new Set<number>();
-  for (const p of meta.listeningPorts) {
-    if (seen.has(p.port)) continue;
-    seen.add(p.port);
-    const chip = buildChip("chip-port", `:${p.port}`);
-    chip.title = `${p.proto} ${p.address}:${p.port} (pid ${p.pid}) — click to open`;
-    chip.setAttribute("role", "button");
-    chip.tabIndex = 0;
-    const url = `http://localhost:${p.port}`;
-    const open = (e: Event): void => {
-      e.stopPropagation();
-      window.dispatchEvent(
-        new CustomEvent("ht-open-external", { detail: { url } }),
-      );
-    };
-    chip.addEventListener("click", open);
-    chip.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") open(e);
-    });
-    host.appendChild(chip);
-  }
-}
-
-function buildChip(cls: string, text: string): HTMLSpanElement {
-  const el = document.createElement("span");
-  el.className = `surface-chip ${cls}`;
-  el.textContent = text;
-  return el;
-}
-
-/** Terse signature of the rendered chip row. Any change in the inputs
- *  that renderSurfaceChips actually reads produces a different string;
- *  unchanged inputs produce the same string. Used to skip redundant
- *  DOM rebuilds. */
-function chipsSignature(meta: SurfaceMetadata): string {
-  const fg = meta.tree.find((n) => n.pid === meta.foregroundPid);
-  const cmd = fg && meta.foregroundPid !== meta.pid ? fg.command : "";
-  const ports = meta.listeningPorts
-    .map((p) => p.port)
-    .filter((p, i, a) => a.indexOf(p) === i)
-    .join(",");
-  const git = meta.git
-    ? `${meta.git.branch ?? ""}|${meta.git.ahead}|${meta.git.behind}|` +
-      `${meta.git.staged}|${meta.git.unstaged}|${meta.git.untracked}|` +
-      `${meta.git.conflicts}|${meta.git.insertions}|${meta.git.deletions}`
-    : "";
-  return `${cmd}\u0001${meta.cwd ?? ""}\u0001${git}\u0001${ports}`;
-}
-
-/**
- * Compact cwd for the chip — last 2 path segments are almost always enough
- * context. Full absolute path lives on the chip's title attribute.
- */
-function shortenCwd(cwd: string): string {
-  if (cwd === "/") return "/";
-  const parts = cwd.replace(/\/+$/, "").split("/").filter(Boolean);
-  if (parts.length <= 2)
-    return cwd.startsWith("/") ? "/" + parts.join("/") : parts.join("/");
-  return "\u2026/" + parts.slice(-2).join("/");
-}
-
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 1) + "\u2026" : s;
-}
-
-function isDirtyGit(g: NonNullable<SurfaceMetadata["git"]>): boolean {
-  return (
-    g.staged > 0 ||
-    g.unstaged > 0 ||
-    g.untracked > 0 ||
-    g.conflicts > 0 ||
-    g.insertions > 0 ||
-    g.deletions > 0
-  );
-}
-
-/**
- * Build the git chip DOM: branch (neutral), optional ahead/behind + conflicts,
- * then green `+insertions` and red `-deletions` (from `git diff HEAD`). We
- * show line counts instead of staged/unstaged/untracked file counts because
- * +/- lines is what most prompts use and it's the most at-a-glance useful
- * signal; the full file-count breakdown lives in the hover tooltip.
- */
-function fillGitChip(
-  el: HTMLSpanElement,
-  g: NonNullable<SurfaceMetadata["git"]>,
-): void {
-  el.replaceChildren();
-
-  const branch = document.createElement("span");
-  branch.className = "chip-git-branch";
-  branch.textContent = "\u2387 " + g.branch;
-  el.appendChild(branch);
-
-  if (g.ahead > 0)
-    el.appendChild(gitSpan("chip-git-ahead", `\u2191${g.ahead}`));
-  if (g.behind > 0)
-    el.appendChild(gitSpan("chip-git-behind", `\u2193${g.behind}`));
-  if (g.conflicts > 0)
-    el.appendChild(gitSpan("chip-git-conflicts", `!${g.conflicts}`));
-  if (g.insertions > 0)
-    el.appendChild(gitSpan("chip-git-add", `+${g.insertions}`));
-  if (g.deletions > 0)
-    el.appendChild(gitSpan("chip-git-del", `\u2212${g.deletions}`));
-}
-
-function gitSpan(cls: string, text: string): HTMLSpanElement {
-  const s = document.createElement("span");
-  s.className = cls;
-  s.textContent = text;
-  return s;
-}
-
-function formatGitTooltip(g: NonNullable<SurfaceMetadata["git"]>): string {
-  const lines: string[] = [];
-  lines.push(`branch: ${g.branch}${g.head ? " @ " + g.head : ""}`);
-  if (g.upstream) {
-    const ab: string[] = [];
-    if (g.ahead > 0) ab.push(`↑${g.ahead}`);
-    if (g.behind > 0) ab.push(`↓${g.behind}`);
-    lines.push(
-      `upstream: ${g.upstream}${ab.length ? " (" + ab.join(" ") + ")" : ""}`,
-    );
-  }
-  if (g.staged || g.unstaged || g.untracked || g.conflicts) {
-    lines.push(
-      `files: ${g.staged} staged, ${g.unstaged} unstaged, ${g.untracked} untracked${g.conflicts ? `, ${g.conflicts} conflicts` : ""}`,
-    );
-  }
-  if (g.insertions || g.deletions) {
-    lines.push(`diff vs HEAD: +${g.insertions} -${g.deletions}`);
-  }
-  return lines.join("\n");
-}
 
 /**
  * Fit a terminal to its parent container's full width/height — no 14 px

@@ -65,6 +65,7 @@ import {
   createNotificationOverlayBridge,
   type NotificationOverlayBridge,
 } from "./notification-overlay-bridge";
+import { renderSurfaceChips, type PaneChipsDeps } from "../shared/pane-chips";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -195,6 +196,18 @@ function boot() {
     string,
     { el: HTMLElement; contentEl: HTMLElement; panelId: string }
   > = {};
+
+  // M16 — port-chip click handler for the shared chip renderer. The
+  // web mirror runs at the user's browser, not on the host machine,
+  // so we open `http://${location.hostname}:${port}` rather than
+  // `localhost:${port}` (the user might be on a different LAN host
+  // than the τ-mux process). Native uses the `ht-open-external`
+  // dispatch path; that's wired in `src/views/terminal/surface-manager.ts`.
+  const WEB_CHIP_DEPS: PaneChipsDeps = {
+    onPortClick: (port) => {
+      window.open(`http://${location.hostname}:${port}`, "_blank");
+    },
+  };
   // Binary sideband frames arrive synchronously from the WebSocket but
   // DOM creation is deferred to rAF via the store subscription. If a
   // frame arrives before `ensurePanelDom` has run for its id, buffer it
@@ -480,18 +493,18 @@ function boot() {
     el.setAttribute("data-surface", surfaceId);
 
     const bar = document.createElement("div");
-    bar.className = "pane-bar";
+    bar.className = "surface-bar";
     const barTitle = document.createElement("span");
-    barTitle.className = "pane-bar-title";
+    barTitle.className = "surface-bar-title";
     barTitle.textContent = surf?.title ?? surfaceId;
     bar.appendChild(barTitle);
 
     const chipsEl = document.createElement("div");
-    chipsEl.className = "pane-bar-chips";
+    chipsEl.className = "surface-bar-chips";
     bar.appendChild(chipsEl);
 
     const paneFsBtn = document.createElement("button");
-    paneFsBtn.className = "pane-bar-btn";
+    paneFsBtn.className = "surface-bar-btn";
     paneFsBtn.title = "Fullscreen";
     paneFsBtn.innerHTML = ICONS.fullscreen;
     paneFsBtn.addEventListener("click", (e) => {
@@ -589,7 +602,7 @@ function boot() {
 
     // Paint chips from existing metadata, if any.
     const meta = surf?.metadata;
-    if (meta) renderPaneChips(chipsEl, meta);
+    if (meta) renderSurfaceChips(chipsEl, meta, WEB_CHIP_DEPS);
 
     // M15 — drain any notifications that arrived for this surface
     // before its pane mounted.
@@ -633,13 +646,13 @@ function boot() {
     el.setAttribute("data-surface", surfaceId);
 
     const bar = document.createElement("div");
-    bar.className = "pane-bar";
+    bar.className = "surface-bar";
     const barTitle = document.createElement("span");
-    barTitle.className = "pane-bar-title";
+    barTitle.className = "surface-bar-title";
     barTitle.textContent = "Telegram";
     bar.appendChild(barTitle);
     const chipsEl = document.createElement("div");
-    chipsEl.className = "pane-bar-chips";
+    chipsEl.className = "surface-bar-chips";
     bar.appendChild(chipsEl);
     el.appendChild(bar);
 
@@ -845,7 +858,8 @@ function boot() {
       const surf = state.surfaces[sid];
       const prevSurf = prev.surfaces[sid];
       if (surf && (surf.metadata !== prevSurf?.metadata || !prevSurf)) {
-        if (surf.metadata) renderPaneChips(ref.chipsEl, surf.metadata);
+        if (surf.metadata)
+          renderSurfaceChips(ref.chipsEl, surf.metadata, WEB_CHIP_DEPS);
       }
       if (surf && surf.title !== prevSurf?.title) {
         ref.barTitle.textContent = surf.title;
@@ -853,114 +867,6 @@ function boot() {
     }
   }
 
-  function renderPaneChips(host: HTMLElement, meta: any) {
-    host.innerHTML = "";
-    let fg: any = null;
-    for (let i = 0; i < meta.tree.length; i++) {
-      if (meta.tree[i].pid === meta.foregroundPid) {
-        fg = meta.tree[i];
-        break;
-      }
-    }
-    if (fg && meta.foregroundPid !== meta.pid && fg.command) {
-      const c = document.createElement("span");
-      c.className = "pane-chip chip-command";
-      c.textContent =
-        fg.command.length > 48
-          ? fg.command.slice(0, 47) + "\u2026"
-          : fg.command;
-      c.title = fg.command;
-      host.appendChild(c);
-    }
-    if (meta.cwd) {
-      const parts = meta.cwd
-        .replace(/\/+$/, "")
-        .split("/")
-        .filter((s: string) => s);
-      const short =
-        parts.length <= 2
-          ? meta.cwd.charAt(0) === "/"
-            ? "/" + parts.join("/")
-            : parts.join("/")
-          : "\u2026/" + parts.slice(-2).join("/");
-      const cc = document.createElement("span");
-      cc.className = "pane-chip chip-cwd";
-      cc.textContent = short;
-      cc.title = meta.cwd;
-      host.appendChild(cc);
-    }
-    if (meta.git) {
-      const g = meta.git;
-      const dirty =
-        g.staged +
-          g.unstaged +
-          g.untracked +
-          g.conflicts +
-          g.insertions +
-          g.deletions >
-        0;
-      const gc = document.createElement("span");
-      gc.className = "pane-chip chip-git" + (dirty ? " dirty" : "");
-      const gitPart = (cls: string, text: string) => {
-        const s = document.createElement("span");
-        s.className = cls;
-        s.textContent = text;
-        return s;
-      };
-      gc.appendChild(gitPart("chip-git-branch", "\u2387 " + g.branch));
-      if (g.ahead > 0)
-        gc.appendChild(gitPart("chip-git-ahead", "\u2191" + g.ahead));
-      if (g.behind > 0)
-        gc.appendChild(gitPart("chip-git-behind", "\u2193" + g.behind));
-      if (g.conflicts > 0)
-        gc.appendChild(gitPart("chip-git-conflicts", "!" + g.conflicts));
-      if (g.insertions > 0)
-        gc.appendChild(gitPart("chip-git-add", "+" + g.insertions));
-      if (g.deletions > 0)
-        gc.appendChild(gitPart("chip-git-del", "\u2212" + g.deletions));
-      let tip = "branch: " + g.branch + (g.head ? " @ " + g.head : "");
-      if (g.upstream) tip += "\nupstream: " + g.upstream;
-      tip +=
-        "\nfiles: " +
-        g.staged +
-        " staged \u00b7 " +
-        g.unstaged +
-        " unstaged \u00b7 " +
-        g.untracked +
-        " untracked" +
-        (g.conflicts ? " \u00b7 " + g.conflicts + " conflicts" : "");
-      if (g.insertions || g.deletions)
-        tip += "\ndiff vs HEAD: +" + g.insertions + " -" + g.deletions;
-      gc.title = tip;
-      host.appendChild(gc);
-    }
-    const seen: Record<string, true> = {};
-    for (let j = 0; j < meta.listeningPorts.length; j++) {
-      const lp = meta.listeningPorts[j];
-      if (seen[lp.port]) continue;
-      seen[lp.port] = true;
-      const pc = document.createElement("span");
-      pc.className = "pane-chip chip-port";
-      pc.textContent = ":" + lp.port;
-      pc.title =
-        lp.proto +
-        " " +
-        lp.address +
-        ":" +
-        lp.port +
-        " (pid " +
-        lp.pid +
-        ") \u2014 click to open";
-      pc.setAttribute("role", "button");
-      pc.tabIndex = 0;
-      const port = lp.port;
-      pc.addEventListener("click", (e) => {
-        e.stopPropagation();
-        window.open("http://" + location.hostname + ":" + port, "_blank");
-      });
-      host.appendChild(pc);
-    }
-  }
 
   // ------------------------------------------------------------------
   // Fullscreen
