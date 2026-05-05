@@ -18,6 +18,15 @@
 import { tauIcon, type TauIconName } from "./tau-icons";
 import type { TauIdentity } from "./tau-tokens";
 
+// M12 — Meter moved to `src/shared/tau-meter.ts` so the web mirror can
+// reuse it without pulling in the rest of the native-only primitives.
+// Existing callers import `Meter` from this module unchanged.
+export {
+  Meter,
+  type MeterOptions,
+  type MeterSemantic,
+} from "../../shared/tau-meter";
+
 const NS_SVG = "http://www.w3.org/2000/svg";
 
 // ─────────────────────────────────────────────────────────────
@@ -95,49 +104,6 @@ export function Tab(opts: TabOptions): HTMLButtonElement {
   if (opts.badge) el.appendChild(TabBadge(opts.badge));
   if (opts.onClick) el.addEventListener("click", opts.onClick);
   return el;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Meter (§8.4) — 4 px tall, 50 px wide default.
-// Fill colour semantic: ok / warn / err. Label-paired (never solo).
-// ─────────────────────────────────────────────────────────────
-export type MeterSemantic = "ok" | "warn" | "err";
-export interface MeterOptions {
-  value: number;
-  max: number;
-  semantic?: MeterSemantic;
-  width?: number;
-  label?: string;
-  valueText?: string;
-}
-export function Meter(opts: MeterOptions): HTMLDivElement {
-  const wrap = document.createElement("div");
-  wrap.className = "tau-meter-wrap";
-  if (opts.label) {
-    const l = document.createElement("span");
-    l.className = "tau-meter-label tau-mono";
-    l.textContent = opts.label;
-    wrap.appendChild(l);
-  }
-  const bar = document.createElement("div");
-  bar.className = `tau-meter tau-meter-${opts.semantic ?? "ok"}`;
-  bar.style.width = `${opts.width ?? 50}px`;
-  const fill = document.createElement("div");
-  fill.className = "tau-meter-fill";
-  const pct = Math.max(
-    0,
-    Math.min(1, opts.max > 0 ? opts.value / opts.max : 0),
-  );
-  fill.style.width = `${(pct * 100).toFixed(1)}%`;
-  bar.appendChild(fill);
-  wrap.appendChild(bar);
-  if (opts.valueText !== undefined) {
-    const v = document.createElement("span");
-    v.className = "tau-meter-value tau-mono";
-    v.textContent = opts.valueText;
-    wrap.appendChild(v);
-  }
-  return wrap;
 }
 
 // ─────────────────────────────────────────────────────────────

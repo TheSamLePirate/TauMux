@@ -60,6 +60,7 @@ import {
   applyThemeFromSettings,
   buildTermOptionsFromSettings,
 } from "./theme-bridge";
+import { createStatusBarView, type StatusBarView } from "./status-bar";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -294,6 +295,21 @@ function boot() {
     sidebarWidth: SIDEBAR_WIDTH,
     toolbarHeight: TOOLBAR_HEIGHT,
   });
+
+  // M12 — bottom status bar. Mounts into the page-shell `<div
+  // id="tau-status-bar">` and wakes on every store dispatch + a 1 Hz
+  // tick (clock / uptime keys). The shared registry handles
+  // identity / load / focus / system keys; native registers `model`
+  // + `kind` on top — those resolve to `null` here, which the bar
+  // silently skips.
+  let statusBarView: StatusBarView | null = null;
+  const statusBarEl = document.getElementById("tau-status-bar");
+  if (statusBarEl) {
+    statusBarView = createStatusBarView({
+      store,
+      hostEl: statusBarEl,
+    });
+  }
 
   // Apply the persisted sidebar width before first render so the pane
   // container lands on its final left offset instead of jumping mid-
@@ -1340,6 +1356,22 @@ function boot() {
   Promise.resolve().then(() => {
     void registerServiceWorker();
   });
+
+  // Page lifecycle teardown — modern browsers fire `pagehide` on tab
+  // close + bfcache eviction, so this is the cleanest hook to drop
+  // long-lived timers (the status bar's 1 Hz clock tick, the store
+  // subscription) before the GC runs.
+  window.addEventListener(
+    "pagehide",
+    () => {
+      try {
+        statusBarView?.dispose();
+      } catch {
+        /* never let teardown noise reach the user */
+      }
+    },
+    { once: true },
+  );
 
   transport.connect();
 }

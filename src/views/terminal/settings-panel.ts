@@ -5,7 +5,11 @@ import {
   presetToPartial,
 } from "../../shared/settings";
 import { createIcon } from "./icons";
-import { STATUS_KEY_META, STATUS_KEY_GROUPS } from "./status-keys";
+import {
+  STATUS_KEY_GROUPS,
+  getStatusKeyMeta,
+  type StatusKeyMeta,
+} from "./status-keys";
 
 type SettingChangeHandler = (partial: Partial<AppSettings>) => void;
 
@@ -456,9 +460,10 @@ export class SettingsPanel {
     );
 
     const activeKeys = s.statusBarKeys ?? [];
-    const grouped: Record<string, typeof STATUS_KEY_META> = {};
+    const allMeta = getStatusKeyMeta();
+    const grouped: Record<string, StatusKeyMeta[]> = {};
     for (const g of STATUS_KEY_GROUPS) grouped[g] = [];
-    for (const meta of STATUS_KEY_META) grouped[meta.group]!.push(meta);
+    for (const meta of allMeta) grouped[meta.group]!.push(meta);
 
     const grid = document.createElement("div");
     grid.className = "status-key-grid";
@@ -509,7 +514,7 @@ export class SettingsPanel {
       const orderList = document.createElement("div");
       orderList.className = "status-key-order";
       activeKeys.forEach((id, i) => {
-        const meta = STATUS_KEY_META.find((m) => m.id === id);
+        const meta = allMeta.find((m) => m.id === id);
         if (!meta) return;
         const row = document.createElement("div");
         row.className = "status-key-order-row";

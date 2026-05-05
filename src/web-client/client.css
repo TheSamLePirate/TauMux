@@ -1671,3 +1671,183 @@ body.wm-kbd-active #pane-container {
     scroll-behavior: auto !important;
   }
 }
+
+/* ─── M12 — Bottom status bar (parity with native §8.3) ───────────
+ *
+ * Class names match `src/views/terminal/index.css` so the shared
+ * `renderStatusKey` registry produces identical DOM in both surfaces.
+ * Tokens follow the web mirror's `--ht-*` system instead of the
+ * native `--tau-*` palette, so a theme switch driven by `theme-bridge`
+ * recolours the bar without a separate path.
+ *
+ * Push the pane container up so a fixed-bottom 26 px bar doesn't
+ * eat the bottom row of the focused terminal. The web mirror's
+ * pane container is positioned absolutely (see top of this file);
+ * we hard-code the compensating bottom inset here.
+ */
+#pane-container {
+  bottom: 26px !important;
+}
+.tau-status-bar {
+  position: fixed;
+  left: var(--ht-sidebar-width, 304px);
+  right: 0;
+  bottom: 0;
+  height: 26px;
+  z-index: 78;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: var(--ht-bg-titlebar);
+  color: var(--ht-text-muted);
+  font-family: var(--ht-font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  border-top: 1px solid var(--ht-border-soft);
+  user-select: none;
+  white-space: nowrap;
+  overflow-x: hidden;
+}
+#sidebar.collapsed ~ .tau-status-bar,
+body.sidebar-hidden .tau-status-bar {
+  /* When the sidebar is hidden the bar reaches the left edge. */
+  left: 0;
+}
+.tau-status-bar > * {
+  flex: 0 0 auto;
+}
+.tau-status-bar .tau-status-zone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.tau-status-bar .tau-status-zone + .tau-status-zone::before {
+  content: "·";
+  color: var(--ht-text-dim);
+  margin-right: 2px;
+}
+.tau-status-bar .tau-status-spacer {
+  flex: 1 1 auto;
+}
+.tau-status-bar .tau-status-label {
+  color: var(--ht-text-muted);
+  text-transform: none;
+  font-weight: 500;
+}
+.tau-status-bar .tau-status-value {
+  color: var(--ht-text-main);
+  font-variant-numeric: tabular-nums;
+}
+.tau-status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ht-accent);
+  flex-shrink: 0;
+  box-shadow: 0 0 4px currentColor;
+}
+.tau-status-kv {
+  display: inline;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.tau-status-kv .tau-status-label {
+  color: var(--ht-text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+.tau-status-kv .tau-status-value {
+  color: var(--ht-text-main);
+  font-variant-numeric: tabular-nums;
+}
+.tau-status-kv .tau-status-dot {
+  margin-right: 4px;
+}
+.tau-status-kv.tau-status-warn .tau-status-value {
+  color: var(--ht-sem-warning);
+  font-weight: 600;
+}
+.tau-hud-sep {
+  color: var(--ht-text-dim);
+  flex: 0 0 auto;
+}
+
+/* ── Meter (§8.4) — drives the cpu / mem / gauge keys ── */
+.tau-meter-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  font-family: var(--ht-font-mono);
+  font-size: 10.5px;
+  color: var(--ht-text-muted);
+}
+.tau-meter-label {
+  text-transform: lowercase;
+  color: var(--ht-text-muted);
+}
+.tau-meter {
+  position: relative;
+  height: 4px;
+  min-width: 30px;
+  background: var(--ht-border-bright);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.tau-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: 1px;
+}
+.tau-meter-ok .tau-meter-fill {
+  background: var(--ht-sem-success);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.4);
+}
+.tau-meter-warn .tau-meter-fill {
+  background: var(--ht-sem-warning);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+.tau-meter-err .tau-meter-fill {
+  background: var(--ht-sem-error);
+  box-shadow: 0 0 6px rgba(248, 113, 113, 0.4);
+}
+.tau-meter-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--ht-text-main);
+}
+.tau-mono {
+  font-family: var(--ht-font-mono);
+}
+
+/* ── `ht set-status` surfaces in the bottom bar ── */
+.tau-ht-status {
+  font-family: var(--ht-font-mono);
+  font-size: 10.5px;
+}
+.tau-ht-status .tau-status-label {
+  color: var(--ht-text-muted);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.tau-ht-status-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.tau-status-link {
+  color: var(--ht-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.tau-status-link:hover {
+  color: var(--ht-text-strong);
+}

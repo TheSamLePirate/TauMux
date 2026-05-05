@@ -102,4 +102,5 @@ const APP_HTML = `\
 <div id="sidebar" class="collapsed"></div>
 <div id="sidebar-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" title="Drag to resize · double-click to reset" tabindex="0"></div>
 <div id="sidebar-scrim"></div>
-<div id="pane-container"></div>`;
+<div id="pane-container"></div>
+<div id="tau-status-bar" role="status" aria-live="off"></div>`;
