@@ -9,7 +9,7 @@ Goal: bring `src/web-client/` to UI/UX parity with `src/views/terminal/` (sideba
 | --- | --- | --- | --- | --- |
 | M11 — theme + settings broadcast | done | `7d8e097` | 2026-05-05 | 0.2.85; theme/font/density now reach browser; sensitive fields dropped by `pickWebSettings`; 1670 tests pass |
 | M12 — bottom status bar | done | `4db592c` | 2026-05-05 | 0.2.86; status-keys + status-render + Meter extracted to `src/shared/`; native-only `model`/`kind` keys via `registerStatusKey()`; web mirror gains three-zone bottom bar; 1676 tests pass |
-| M13 — sidebar workspace cards (sparkline, cwd, panes) | not started | — | — | — |
+| M13 — sidebar workspace cards (sparkline, cwd, panes) | done | `c706c15` | 2026-05-05 | 0.2.87; `buildSidebarWorkspaces` extracted to `src/shared/`; web cards render stripe/header/meta/stats/sparkline/cwds/panes/status/progress with section signature caching; `selectWorkspaceCwd` envelope; manifest cards stubbed for M14; 1681 tests pass |
 | M14 — manifest cards (npm + cargo) | not started | — | — | — |
 | M15 — notification overlay (per-surface) | not started | — | — | — |
 | M16 — pane chrome + paneGap + focus tokens | not started | — | — | — |
@@ -24,7 +24,7 @@ These extractions un-block multiple milestones. Track separately so they can lan
 | Move | Status | Commit | Notes |
 | --- | --- | --- | --- |
 | Icons → `src/shared/icons.ts` | not started | — | needed by M14/M15; web client has its own minimal icon set today |
-| `buildSidebarWorkspaces` → `src/shared/sidebar-state.ts` | not started | — | needed by M13 |
+| `buildSidebarWorkspaces` → `src/shared/sidebar-state.ts` | done | `c706c15` | M13 — generalised over `SidebarStateWorkspace`; native re-exports |
 | Status renderers → `src/shared/status-render.ts` | done | `4db592c` | M12 — re-export shim left in `views/terminal/status-renderers.ts` |
 | Status key registry → `src/shared/status-keys.ts` | done | `4db592c` | M12 — `model`+`kind` re-registered in `views/terminal/native-status-keys.ts` |
 | Meter primitive → `src/shared/tau-meter.ts` | done | `4db592c` | M12 — `tau-primitives.ts` re-exports |
