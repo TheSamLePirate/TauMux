@@ -90,7 +90,7 @@ import {
   parseAskCallbackData,
   type AskUserAttribution,
 } from "./ask-user-telegram";
-import { parseAllowedTelegramIds } from "../shared/settings";
+import { parseAllowedTelegramIds, pickWebSettings } from "../shared/settings";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -2404,6 +2404,13 @@ function toggleWebServer(): void {
       setupWebServerCallbacks(app.webServer);
     }
     app.webServer.start();
+    // M11 — seed the state-store with the current settings + ht keys
+    // before the first WS upgrade so a freshly-connected client's
+    // hello snapshot carries them. The broadcast call is a no-op when
+    // there are no live clients, but the store-side cache is what
+    // ultimately ends up in `buildSnapshot()`.
+    app.webServer.sendSettingsSnapshot(pickWebSettings(settingsManager.get()));
+    app.webServer.sendHtKeysSeen([...app.htKeysSeen]);
   }
   sendWebServerStatus();
 }
@@ -2694,6 +2701,12 @@ settingsManager.subscribe((updated, previous) => {
   if (updated.autoContinue.engine !== previous.autoContinue.engine) {
     broadcastAutoContinueAudit();
   }
+  // M11 — fan out the wire-safe subset to every connected web mirror.
+  // `subscribe` fires for every settings change regardless of source
+  // (RPC, settings file edit, programmatic update), so this is the
+  // canonical broadcast point. Sensitive fields are dropped by
+  // `pickWebSettings`, so it's safe on every tick.
+  app.webServer?.sendSettingsSnapshot(pickWebSettings(updated));
 });
 
 // Plan #09 commit C — host helpers extracted to `auto-continue-host.ts`
@@ -2864,6 +2877,11 @@ if (autoStartWebMirror) {
   );
   setupWebServerCallbacks(app.webServer);
   app.webServer.start();
+  // M11 — seed the state-store with the current settings + ht keys
+  // before the first WS upgrade so a freshly-connected client's hello
+  // snapshot carries them. Same logic as toggleWebServer.
+  app.webServer.sendSettingsSnapshot(pickWebSettings(settingsManager.get()));
+  app.webServer.sendHtKeysSeen([...app.htKeysSeen]);
 }
 sendWebServerStatus();
 

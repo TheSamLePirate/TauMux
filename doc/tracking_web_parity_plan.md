@@ -1,0 +1,57 @@
+# Web Mirror Parity — Progress Tracker
+
+Plan: `~/.claude/plans/make-the-http-web-logical-lynx.md`
+Goal: bring `src/web-client/` to UI/UX parity with `src/views/terminal/` (sidebar full, bottom bar, same style, better layout parity — nothing more).
+
+## Milestones
+
+| Milestone | Status | Commit | Date | Notes |
+| --- | --- | --- | --- | --- |
+| M11 — theme + settings broadcast | not started | — | — | — |
+| M12 — bottom status bar | not started | — | — | — |
+| M13 — sidebar workspace cards (sparkline, cwd, panes) | not started | — | — | — |
+| M14 — manifest cards (npm + cargo) | not started | — | — | — |
+| M15 — notification overlay (per-surface) | not started | — | — | — |
+| M16 — pane chrome + paneGap + focus tokens | not started | — | — | — |
+| M17 — plan panel placement + logs polish | not started | — | — | — |
+
+Status legend: `not started` · `in progress` · `blocked` · `done`.
+
+## Pre-flight architectural moves
+
+These extractions un-block multiple milestones. Track separately so they can land before the milestone that needs them.
+
+| Move | Status | Commit | Notes |
+| --- | --- | --- | --- |
+| Icons → `src/shared/icons.ts` | not started | — | needed by M11/M12/M14/M15 |
+| `buildSidebarWorkspaces` → `src/shared/sidebar-state.ts` | not started | — | needed by M13 |
+| Status renderers → `src/shared/status-render.ts` | not started | — | needed by M12 |
+| Status key registry → `src/shared/status-keys.ts` | not started | — | needed by M12 |
+| Manifest card → `src/shared/sidebar-manifest-card.ts` | not started | — | needed by M14 |
+| Notification overlay → `src/shared/notification-overlay.ts` | not started | — | needed by M15 |
+| Pane chips → `src/shared/pane-chips.ts` | not started | — | needed by M16 |
+
+## Per-milestone gates
+
+Each milestone must clear before bumping:
+- [ ] `bun test` green
+- [ ] `bun run typecheck` green
+- [ ] `bun start` smoke (manual exercise listed in plan)
+- [ ] `bun run bum:patch`
+- [ ] one-liner appended to `doc/changes_to_document.md`
+- [ ] this tracker updated with commit id + date
+- [ ] (M14, M16 only) `bun run report:design:web` + baseline refresh if needed
+
+After M17:
+- [ ] `tests-e2e/web-mirror-parity.spec.ts` (Playwright) added and green
+- [ ] `bun run bum:minor` to mark parity feature complete
+
+## Deviations & issues
+
+(Append entries dated `YYYY-MM-DD` with milestone tag and commit id when the actual work diverges from the plan.)
+
+## Deferred to v1.1+
+
+- `runScript` from manifest action buttons in web mirror (currently logs + toasts only) — entry pending in `doc/deferred_items.md`.
+- `onSelectWorkspaceCwd` server-side round-trip (web v1 mutates only its local manifest projection).
+- `model` / `kind` status-bar keys in shared registry (depend on agent panel state; out of scope).

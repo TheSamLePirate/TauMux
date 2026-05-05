@@ -117,9 +117,75 @@ describe("web protocol v2", () => {
       "logs",
       "status",
       "progress",
+      "settings",
+      "htKeysSeen",
     ]) {
       expect(snap).toHaveProperty(key);
     }
+    // M11 — a fresh server with no settings broadcast yet should
+    // surface settings: null + htKeysSeen: [] in the snapshot.
+    expect(snap["settings"]).toBeNull();
+    expect(Array.isArray(snap["htKeysSeen"])).toBe(true);
+    expect((snap["htKeysSeen"] as unknown[]).length).toBe(0);
+    ws.close();
+  });
+
+  test("settings snapshot + htKeysSeen are cached and surfaced on hello", async () => {
+    const { server: srv } = startServer();
+    const { pickWebSettings, DEFAULT_SETTINGS } =
+      await import("../src/shared/settings");
+    srv.sendSettingsSnapshot(pickWebSettings(DEFAULT_SETTINGS));
+    srv.sendHtKeysSeen(["build", "deploy"]);
+
+    const { messages, ws } = await collectMessages(
+      `ws://127.0.0.1:${TEST_PORT}`,
+      1,
+    );
+    const hello = messages[0]!;
+    const snap = (hello.payload as Record<string, unknown>)[
+      "snapshot"
+    ] as Record<string, unknown>;
+    const settings = snap["settings"] as Record<string, unknown> | null;
+    expect(settings).not.toBeNull();
+    expect(settings!["themePreset"]).toBe(DEFAULT_SETTINGS.themePreset);
+    expect(settings!["fontSize"]).toBe(DEFAULT_SETTINGS.fontSize);
+    expect(snap["htKeysSeen"]).toEqual(["build", "deploy"]);
+    // Sensitive fields must not leak.
+    expect(settings).not.toHaveProperty("webMirrorAuthToken");
+    expect(settings).not.toHaveProperty("telegramBotToken");
+    expect(settings).not.toHaveProperty("telegramAllowedUserIds");
+    ws.close();
+  });
+
+  test("settingsSnapshot envelope reaches an open client", async () => {
+    const { server: srv } = startServer();
+    const ws = new WebSocket(`ws://127.0.0.1:${TEST_PORT}`);
+    const collected: Env[] = [];
+    await new Promise<void>((resolve, reject) => {
+      ws.onopen = () => resolve();
+      ws.onerror = () => reject(new Error("ws error"));
+    });
+    ws.onmessage = (e) => {
+      if (typeof e.data === "string") collected.push(JSON.parse(e.data) as Env);
+    };
+    // Hello is already in flight; wait for it before broadcasting.
+    await Bun.sleep(80);
+    const { pickWebSettings, mergeSettings, presetToPartial, THEME_PRESETS } =
+      await import("../src/shared/settings");
+    const tokyo = THEME_PRESETS.find((p) => p.id === "tokyo-night")!;
+    const tokyoSettings = pickWebSettings(
+      mergeSettings(
+        (await import("../src/shared/settings")).DEFAULT_SETTINGS,
+        presetToPartial(tokyo),
+      ),
+    );
+    srv.sendSettingsSnapshot(tokyoSettings);
+    await Bun.sleep(80);
+    const settingsEnv = collected.find((m) => m.type === "settingsSnapshot");
+    expect(settingsEnv).toBeDefined();
+    expect(
+      (settingsEnv!.payload as Record<string, unknown>)["themePreset"],
+    ).toBe("tokyo-night");
     ws.close();
   });
 

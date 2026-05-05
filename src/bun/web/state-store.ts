@@ -6,6 +6,7 @@ import type {
   LogEntry,
   NotificationEntry,
   PanelState,
+  SettingsSnapshotPayload,
   SidebarProgressEntry,
   SidebarStatusEntry,
 } from "../../shared/web-protocol";
@@ -28,6 +29,15 @@ export class WebStateStore {
   private status: Record<string, Record<string, SidebarStatusEntry>> = {};
   private progress: Record<string, SidebarProgressEntry> = {};
   private notifCounter = 0;
+  /** M11 — last settings subset broadcast to clients. `null` until the
+   *  host runs `setSettings` for the first time; included verbatim in
+   *  every `Snapshot` so a fresh client sees the same theme/font/density
+   *  the existing clients see without waiting for the next change. */
+  private settings: SettingsSnapshotPayload | null = null;
+  /** M11 — discovered `ht set-status` keys. Mirrors the bun-side
+   *  `htKeysSeen` Set so the web mirror can render the same `ht-all`
+   *  ordering as native. */
+  private htKeysSeen: string[] = [];
 
   setMetadata(surfaceId: string, metadata: SurfaceMetadata): void {
     this.metadata[surfaceId] = metadata;
@@ -191,5 +201,21 @@ export class WebStateStore {
 
   getProgress(): Record<string, SidebarProgressEntry> {
     return this.progress;
+  }
+
+  setSettings(s: SettingsSnapshotPayload): void {
+    this.settings = s;
+  }
+
+  getSettings(): SettingsSnapshotPayload | null {
+    return this.settings;
+  }
+
+  setHtKeysSeen(keys: readonly string[]): void {
+    this.htKeysSeen = keys.slice();
+  }
+
+  getHtKeysSeen(): string[] {
+    return this.htKeysSeen;
   }
 }

@@ -11,6 +11,7 @@ import {
   type HelloPayload,
   type ServerMessageType,
   type ServerWorkspaceRef,
+  type SettingsSnapshotPayload,
   type Snapshot,
 } from "../../shared/web-protocol";
 import {
@@ -674,6 +675,8 @@ export class WebServer {
       logs: this.store.getLogs(),
       status: this.store.getStatus(),
       progress: this.store.getProgress(),
+      settings: this.store.getSettings(),
+      htKeysSeen: this.store.getHtKeysSeen(),
     };
   }
 
@@ -898,6 +901,22 @@ export class WebServer {
     this.broadcastEnvelope("sidebarAction", { action, payload });
   }
 
+  /** M11 — push the wire-safe settings subset to every connected client.
+   *  Also caches it on the state store so a later `hello` snapshot
+   *  carries the same payload (no flash of default theme on reconnect). */
+  sendSettingsSnapshot(payload: SettingsSnapshotPayload): void {
+    this.store.setSettings(payload);
+    this.broadcastEnvelope("settingsSnapshot", payload);
+  }
+
+  /** M11 — push the cumulative `ht set-status` key list. The host already
+   *  broadcasts an untyped pass-through; this typed entry point lets the
+   *  state store cache the keys for inclusion in `Snapshot.htKeysSeen`. */
+  sendHtKeysSeen(keys: readonly string[]): void {
+    this.store.setHtKeysSeen(keys);
+    this.broadcastEnvelope("htKeysSeen", { keys: keys.slice() });
+  }
+
   broadcast(msg: Record<string, unknown>): void {
     const type = msg["type"];
     if (typeof type !== "string") return;
@@ -1003,6 +1022,21 @@ export class WebServer {
           width: payload["width"] as number | undefined,
           height: payload["height"] as number | undefined,
         });
+        return;
+      }
+      case "settingsSnapshot":
+        this.sendSettingsSnapshot(
+          payload as unknown as SettingsSnapshotPayload,
+        );
+        return;
+      case "htKeysSeen": {
+        // Host broadcasts `{ type: "htKeysSeen", keys }` (no `payload`
+        // wrapper) so the keys land here as a top-level field. Accept
+        // both shapes for safety.
+        const keys = Array.isArray(payload["keys"])
+          ? (payload["keys"] as string[])
+          : [];
+        this.sendHtKeysSeen(keys);
         return;
       }
     }

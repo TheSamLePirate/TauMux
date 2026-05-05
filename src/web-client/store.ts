@@ -22,6 +22,7 @@ import type {
   NotificationEntry,
   PanelState as SnapshotPanelState,
   ServerWorkspaceRef,
+  SettingsSnapshotPayload,
   SidebarProgressEntry,
   SidebarStatusEntry,
   Snapshot,
@@ -84,6 +85,14 @@ export interface AppState {
   /** Per-surface "notify" glow pulses triggered by notification messages. */
   glowingSurfaceIds: string[];
   telegram: TelegramState;
+  /** M11 — wire-safe subset of `AppSettings` from the host. `null`
+   *  before the first `settingsSnapshot` envelope arrives; views fall
+   *  back to their built-in Graphite defaults until then. */
+  settings: SettingsSnapshotPayload | null;
+  /** M11 — discovered `ht set-status` keys from the host. Used by the
+   *  bottom status bar (M12) and the workspace-card status grid (M13)
+   *  to honor the user's `ht-all` ordering. */
+  htKeysSeen: string[];
 }
 
 export function initialState(): AppState {
@@ -115,6 +124,8 @@ export function initialState(): AppState {
       messagesByChat: {},
       activeChatId: null,
     },
+    settings: null,
+    htKeysSeen: [],
   };
 }
 
@@ -182,7 +193,9 @@ export type Action =
     }
   | { kind: "telegram/message"; message: TelegramWireMessage }
   | { kind: "telegram/select-chat"; chatId: string }
-  | { kind: "telegram/glow-incoming" };
+  | { kind: "telegram/glow-incoming" }
+  | { kind: "settings/apply"; settings: SettingsSnapshotPayload }
+  | { kind: "ht-keys-seen"; keys: string[] };
 
 // ---------------------------------------------------------------------------
 // Reducer
@@ -272,6 +285,12 @@ export function reducer(state: AppState, action: Action): AppState {
         },
         fullscreenSurfaceId: null,
         glowingSurfaceIds: [],
+        // M11 — settings/htKeysSeen are optional in older snapshots
+        // (servers running pre-M11) so fall back to current state.
+        settings: s.settings ?? state.settings,
+        htKeysSeen: Array.isArray(s.htKeysSeen)
+          ? s.htKeysSeen.slice()
+          : state.htKeysSeen,
       };
     }
 
@@ -665,6 +684,30 @@ export function reducer(state: AppState, action: Action): AppState {
         telegram: { ...state.telegram, activeChatId: action.chatId },
       };
 
+    case "settings/apply": {
+      // Skip the dispatch round-trip when nothing changed. The host
+      // re-broadcasts on every settings.json save which can be noisy
+      // (e.g. workspace persistence ticks); we keep the listener wake
+      // count down by deep-comparing here.
+      if (
+        state.settings &&
+        shallowEqualSettings(state.settings, action.settings)
+      )
+        return state;
+      return { ...state, settings: action.settings };
+    }
+
+    case "ht-keys-seen": {
+      const next = action.keys.slice();
+      if (
+        state.htKeysSeen.length === next.length &&
+        state.htKeysSeen.every((k, i) => k === next[i])
+      ) {
+        return state;
+      }
+      return { ...state, htKeysSeen: next };
+    }
+
     case "telegram/glow-incoming": {
       // Glow every telegram surface that isn't currently focused. The
       // store knows surfaces by id but not by kind — telegram surface
@@ -707,6 +750,64 @@ function cloneRecord<V>(
   const out: Record<string, Record<string, V>> = {};
   for (const k in r) out[k] = { ...r[k]! };
   return out;
+}
+
+/** M11 — same-shape, same-content check on the wire-safe settings
+ *  payload. Compares scalars by `===`, ansiColors by per-key `===`,
+ *  array fields by length + per-index `===`. Used by the reducer to
+ *  skip listener wakeups when the host re-broadcasts unchanged
+ *  settings (e.g. workspace persistence ticks rewrite settings.json
+ *  whose values match what we already have). */
+function shallowEqualSettings(
+  a: SettingsSnapshotPayload,
+  b: SettingsSnapshotPayload,
+): boolean {
+  // Scalar fast-path: list every primitive field. Any drift here
+  // breaks the equality check; that's the desired behaviour.
+  if (
+    a.themePreset !== b.themePreset ||
+    a.accentColor !== b.accentColor ||
+    a.secondaryColor !== b.secondaryColor ||
+    a.foregroundColor !== b.foregroundColor ||
+    a.bgBase !== b.bgBase ||
+    a.terminalBgOpacity !== b.terminalBgOpacity ||
+    a.fontFamily !== b.fontFamily ||
+    a.fontSize !== b.fontSize ||
+    a.lineHeight !== b.lineHeight ||
+    a.cursorStyle !== b.cursorStyle ||
+    a.cursorBlink !== b.cursorBlink ||
+    a.scrollbackLines !== b.scrollbackLines ||
+    a.paneGap !== b.paneGap ||
+    a.sidebarWidth !== b.sidebarWidth ||
+    a.notificationOverlayEnabled !== b.notificationOverlayEnabled ||
+    a.notificationOverlayMs !== b.notificationOverlayMs ||
+    a.workspaceCardDensity !== b.workspaceCardDensity ||
+    a.workspaceCardShowMeta !== b.workspaceCardShowMeta ||
+    a.workspaceCardShowStats !== b.workspaceCardShowStats ||
+    a.workspaceCardShowPanes !== b.workspaceCardShowPanes ||
+    a.workspaceCardShowManifests !== b.workspaceCardShowManifests ||
+    a.workspaceCardShowStatusPills !== b.workspaceCardShowStatusPills ||
+    a.workspaceCardShowProgress !== b.workspaceCardShowProgress ||
+    a.terminalOsc94Enabled !== b.terminalOsc94Enabled ||
+    a.autoContinueEngine !== b.autoContinueEngine
+  ) {
+    return false;
+  }
+  // ANSI palette — 16 entries, fixed shape.
+  for (const k of Object.keys(a.ansiColors) as (keyof typeof a.ansiColors)[]) {
+    if (a.ansiColors[k] !== b.ansiColors[k]) return false;
+  }
+  // Array fields — order-sensitive equality.
+  const arrPairs: [readonly string[], readonly string[]][] = [
+    [a.statusBarKeys, b.statusBarKeys],
+    [a.htStatusKeyOrder, b.htStatusKeyOrder],
+    [a.htStatusKeyHidden, b.htStatusKeyHidden],
+  ];
+  for (const [x, y] of arrPairs) {
+    if (x.length !== y.length) return false;
+    for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------

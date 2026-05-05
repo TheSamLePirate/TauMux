@@ -21,6 +21,7 @@ import type {
   TelegramStatusWire,
   TelegramWireMessage,
 } from "./types";
+import type { AnsiColors } from "./settings";
 
 export const WEB_PROTOCOL_VERSION = 2;
 
@@ -96,6 +97,45 @@ export interface PanelState {
   meta: SidebandContentMessage;
 }
 
+/** M11 — subset of `AppSettings` projected onto the wire so the web
+ *  mirror can render with the same theme/font/density as the native
+ *  webview. Sensitive fields (auth token, telegram token) and
+ *  webview-only fields (audit expectations, web mirror bind/port) are
+ *  intentionally omitted. */
+export interface SettingsSnapshotPayload {
+  themePreset: string;
+  accentColor: string;
+  secondaryColor: string;
+  foregroundColor: string;
+  bgBase: string;
+  terminalBgOpacity: number;
+  ansiColors: AnsiColors;
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  cursorStyle: "block" | "bar" | "underline";
+  cursorBlink: boolean;
+  scrollbackLines: number;
+  paneGap: number;
+  sidebarWidth: number;
+  notificationOverlayEnabled: boolean;
+  notificationOverlayMs: number;
+  workspaceCardDensity: "compact" | "comfortable" | "spacious";
+  workspaceCardShowMeta: boolean;
+  workspaceCardShowStats: boolean;
+  workspaceCardShowPanes: boolean;
+  workspaceCardShowManifests: boolean;
+  workspaceCardShowStatusPills: boolean;
+  workspaceCardShowProgress: boolean;
+  statusBarKeys: string[];
+  htStatusKeyOrder: string[];
+  htStatusKeyHidden: string[];
+  terminalOsc94Enabled: boolean;
+  /** From `AppSettings.autoContinue.engine` so the plan-panel mirror
+   *  can hide the audit strip when the engine is off. */
+  autoContinueEngine: "off" | "heuristic" | "model" | "hybrid";
+}
+
 export interface Snapshot {
   /** Native window dimensions when the server is a mirror of the desktop app. */
   nativeViewport: { width: number; height: number } | null;
@@ -116,6 +156,13 @@ export interface Snapshot {
   status: Record<string, Record<string, SidebarStatusEntry>>;
   /** Sidebar progress, keyed by workspace id. */
   progress: Record<string, SidebarProgressEntry>;
+  /** M11 — settings subset broadcast to the web client. `null` until
+   *  the host runs `sendSettingsSnapshot` for the first time; the
+   *  client falls back to its own Graphite token defaults. */
+  settings: SettingsSnapshotPayload | null;
+  /** M11 — list of `ht set-status` keys discovered by the host so the
+   *  web client can render the same `ht-all` ordering as native. */
+  htKeysSeen: string[];
 }
 
 export interface HelloPayload {
@@ -270,6 +317,14 @@ export interface AskUserResolvedPayload {
   response: AskUserResponse;
 }
 
+// M11 — settings + ht-keys-seen broadcast types. Both have already been
+// sent over the wire as untyped pass-throughs before now (the
+// `htKeysSeen` broadcast in `src/bun/index.ts` predates this typing);
+// adding them to the `ServerMessage` union closes the protocol contract.
+export interface HtKeysSeenPayload {
+  keys: string[];
+}
+
 export type ServerMessage =
   | Envelope<"hello", HelloPayload>
   | Envelope<"snapshot", Snapshot>
@@ -299,7 +354,9 @@ export type ServerMessage =
   | Envelope<"plansSnapshot", PlansSnapshotPayload>
   | Envelope<"autoContinueAudit", AutoContinueAuditPayload>
   | Envelope<"askUserShown", AskUserShownPayload>
-  | Envelope<"askUserResolved", AskUserResolvedPayload>;
+  | Envelope<"askUserResolved", AskUserResolvedPayload>
+  | Envelope<"settingsSnapshot", SettingsSnapshotPayload>
+  | Envelope<"htKeysSeen", HtKeysSeenPayload>;
 
 export type ServerMessageType = ServerMessage["type"];
 

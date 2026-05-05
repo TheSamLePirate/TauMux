@@ -56,6 +56,10 @@ import {
   registerServiceWorker,
 } from "./pwa";
 import { createPlanPanelMirror } from "./plan-panel-mirror";
+import {
+  applyThemeFromSettings,
+  buildTermOptionsFromSettings,
+} from "./theme-bridge";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -64,42 +68,14 @@ declare const WebLinksAddon: any;
 // ---------------------------------------------------------------------------
 // Terminal theme / options
 // ---------------------------------------------------------------------------
-
-const TERM_THEME = {
-  background: "#1e1e2e",
-  foreground: "#cdd6f4",
-  cursor: "#f5e0dc",
-  cursorAccent: "#1e1e2e",
-  selectionBackground: "#585b70",
-  selectionForeground: "#cdd6f4",
-  black: "#45475a",
-  red: "#f38ba8",
-  green: "#a6e3a1",
-  yellow: "#f9e2af",
-  blue: "#89b4fa",
-  magenta: "#f5c2e7",
-  cyan: "#94e2d5",
-  white: "#bac2de",
-  brightBlack: "#585b70",
-  brightRed: "#f38ba8",
-  brightGreen: "#a6e3a1",
-  brightYellow: "#f9e2af",
-  brightBlue: "#89b4fa",
-  brightMagenta: "#f5c2e7",
-  brightCyan: "#94e2d5",
-  brightWhite: "#a6adc8",
-};
-
-const TERM_OPTS = {
-  theme: TERM_THEME,
-  fontFamily:
-    "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Fira Code', monospace",
-  fontSize: 13,
-  lineHeight: 1.0,
-  cursorBlink: true,
-  cursorStyle: "bar",
-  scrollback: 10000,
-};
+//
+// M11 — The hard-coded Catppuccin theme is gone; we now derive xterm
+// options from the broadcast `state.settings` payload. `getTermOpts`
+// is called per-pane creation; the returned object is a fresh
+// `{ theme, fontFamily, fontSize, lineHeight, cursorBlink, cursorStyle,
+// scrollback }` so subsequent settings changes can rebuild it without
+// shared mutable state. Pre-snapshot, settings are null → Graphite
+// defaults from the theme bridge.
 
 const GAP = 2;
 const TOOLBAR_HEIGHT = 36;
@@ -383,6 +359,36 @@ function boot() {
     applyFullscreen(state, prev);
     applyGlow(state, prev);
     if (state.telegram !== prev.telegram) renderTelegramPanes(state);
+    if (state.settings !== prev.settings) applySettings(state, prev);
+  }
+
+  /** M11 — re-skin chrome + open terminals when the host broadcasts a
+   *  fresh `settingsSnapshot`. Identity-equality short-circuits a
+   *  no-op (the reducer already deep-compares) so this is cheap. */
+  function applySettings(state: AppState, prev: AppState) {
+    applyThemeFromSettings(state.settings, document.documentElement);
+    if (!state.settings) return;
+    const opts = buildTermOptionsFromSettings(state.settings);
+    for (const sid in terms) {
+      const ref = terms[sid]!;
+      if (!ref.term) continue;
+      const t = ref.term;
+      try {
+        t.options.theme = opts.theme;
+        t.options.fontFamily = opts.fontFamily;
+        t.options.fontSize = opts.fontSize;
+        t.options.lineHeight = opts.lineHeight;
+        t.options.cursorBlink = opts.cursorBlink;
+        t.options.cursorStyle = opts.cursorStyle;
+        t.options.scrollback = opts.scrollback;
+        // Force a redraw so the new palette lands without waiting for
+        // the next stdout chunk.
+        t.refresh(0, t.rows - 1);
+      } catch {
+        /* xterm not yet ready / disposed — skip */
+      }
+    }
+    void prev;
   }
 
   /** Re-render every Telegram pane on every store change. The pane's
@@ -469,7 +475,13 @@ function boot() {
     el.appendChild(termEl);
     container.appendChild(el);
 
-    const term = new Terminal(TERM_OPTS);
+    // M11 — pull options from current settings (or Graphite fallback
+    // if the host hasn't broadcast yet). The xterm theme + font live
+    // here so later `settings/apply` dispatches can re-skin existing
+    // terminals via `term.options.theme = …`.
+    const term = new Terminal(
+      buildTermOptionsFromSettings(store.getState().settings),
+    );
     const fitAddon = new FitAddon.FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon.WebLinksAddon());

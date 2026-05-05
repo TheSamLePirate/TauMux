@@ -247,6 +247,17 @@ export function createProtocolDispatcher(
       case "askUserShown":
       case "askUserResolved":
         break;
+      // M11 — settings + ht-keys-seen broadcasts. Wired so the web
+      // client's theme bridge (theme-bridge.ts) and bottom status bar
+      // (M12) react to host changes without a reload.
+      case "settingsSnapshot":
+        if (p && typeof p === "object")
+          store.dispatch({ kind: "settings/apply", settings: p });
+        break;
+      case "htKeysSeen":
+        if (Array.isArray(p?.keys))
+          store.dispatch({ kind: "ht-keys-seen", keys: p.keys as string[] });
+        break;
       default: {
         // Issue N2 in doc/full_analysis.md — the dispatcher used to
         // silently drop unknown message types, which made it hard to

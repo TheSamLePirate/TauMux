@@ -37,6 +37,8 @@ function snapshotWith(overrides: Partial<Snapshot> = {}): Snapshot {
     logs: [],
     status: {},
     progress: {},
+    settings: null,
+    htKeysSeen: [],
     ...overrides,
   };
 }
@@ -492,5 +494,72 @@ describe("web-client store / reducer", () => {
     const next = reducer(seeded, { kind: "telegram/glow-incoming" });
     // The focused tg:1 + non-tg surface:1 are skipped; only tg:2 glows.
     expect(next.glowingSurfaceIds).toEqual(["tg:2"]);
+  });
+
+  test("settings/apply replaces the slice; identical payload is a no-op", async () => {
+    const { pickWebSettings, DEFAULT_SETTINGS } =
+      await import("../src/shared/settings");
+    const payload = pickWebSettings(DEFAULT_SETTINGS);
+    const seeded = reducer(initialState(), {
+      kind: "settings/apply",
+      settings: payload,
+    });
+    expect(seeded.settings).toEqual(payload);
+    // A re-apply of the *same* payload returns the same state object —
+    // the reducer's deep-compare avoids waking subscribers needlessly.
+    const same = reducer(seeded, {
+      kind: "settings/apply",
+      settings: { ...payload, ansiColors: { ...payload.ansiColors } },
+    });
+    expect(same).toBe(seeded);
+    // A drift in any field bypasses the cache and produces a new state.
+    const drift = reducer(seeded, {
+      kind: "settings/apply",
+      settings: { ...payload, fontSize: payload.fontSize + 1 },
+    });
+    expect(drift).not.toBe(seeded);
+    expect(drift.settings!.fontSize).toBe(payload.fontSize + 1);
+  });
+
+  test("ht-keys-seen replaces the list; identical content is a no-op", () => {
+    const seeded = reducer(initialState(), {
+      kind: "ht-keys-seen",
+      keys: ["build", "deploy"],
+    });
+    expect(seeded.htKeysSeen).toEqual(["build", "deploy"]);
+    const same = reducer(seeded, {
+      kind: "ht-keys-seen",
+      keys: ["build", "deploy"],
+    });
+    expect(same).toBe(seeded);
+    const drift = reducer(seeded, {
+      kind: "ht-keys-seen",
+      keys: ["build", "deploy", "release"],
+    });
+    expect(drift.htKeysSeen).toEqual(["build", "deploy", "release"]);
+  });
+
+  test("snapshot/apply respects optional settings/htKeysSeen for forward-compat", async () => {
+    const { pickWebSettings, DEFAULT_SETTINGS } =
+      await import("../src/shared/settings");
+    // Server pre-M11 sends a snapshot without these fields. The
+    // reducer should keep whatever was already in state instead of
+    // wiping it back to null.
+    let state = reducer(initialState(), {
+      kind: "settings/apply",
+      settings: pickWebSettings(DEFAULT_SETTINGS),
+    });
+    state = reducer(state, {
+      kind: "ht-keys-seen",
+      keys: ["build"],
+    });
+    const snap = snapshotWith({});
+    // Drop the M11 fields to simulate a pre-M11 server.
+    (snap as unknown as Record<string, unknown>)["settings"] = undefined;
+    (snap as unknown as Record<string, unknown>)["htKeysSeen"] =
+      undefined as unknown as string[];
+    state = reducer(state, { kind: "snapshot/apply", snapshot: snap });
+    expect(state.settings).not.toBeNull();
+    expect(state.htKeysSeen).toEqual(["build"]);
   });
 });

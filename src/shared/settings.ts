@@ -1041,6 +1041,77 @@ export function presetToPartial(preset: ThemePreset): Partial<AppSettings> {
   };
 }
 
+/** M11 — project an `AppSettings` record onto the wire-safe subset
+ *  delivered to the web mirror. Sensitive values (auth tokens, telegram
+ *  bot token, allowed user ids) and webview-only fields (audit
+ *  expectations, web mirror bind/port, package runner) are intentionally
+ *  omitted: the web client renders with these settings, it does not own
+ *  them. The shape mirrors `SettingsSnapshotPayload` in
+ *  `src/shared/web-protocol.ts`; keep them in lockstep. */
+export function pickWebSettings(s: AppSettings): {
+  themePreset: string;
+  accentColor: string;
+  secondaryColor: string;
+  foregroundColor: string;
+  bgBase: string;
+  terminalBgOpacity: number;
+  ansiColors: AnsiColors;
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  cursorStyle: "block" | "bar" | "underline";
+  cursorBlink: boolean;
+  scrollbackLines: number;
+  paneGap: number;
+  sidebarWidth: number;
+  notificationOverlayEnabled: boolean;
+  notificationOverlayMs: number;
+  workspaceCardDensity: "compact" | "comfortable" | "spacious";
+  workspaceCardShowMeta: boolean;
+  workspaceCardShowStats: boolean;
+  workspaceCardShowPanes: boolean;
+  workspaceCardShowManifests: boolean;
+  workspaceCardShowStatusPills: boolean;
+  workspaceCardShowProgress: boolean;
+  statusBarKeys: string[];
+  htStatusKeyOrder: string[];
+  htStatusKeyHidden: string[];
+  terminalOsc94Enabled: boolean;
+  autoContinueEngine: "off" | "heuristic" | "model" | "hybrid";
+} {
+  return {
+    themePreset: s.themePreset,
+    accentColor: s.accentColor,
+    secondaryColor: s.secondaryColor,
+    foregroundColor: s.foregroundColor,
+    bgBase: s.bgBase,
+    terminalBgOpacity: s.terminalBgOpacity,
+    ansiColors: { ...s.ansiColors },
+    fontFamily: s.fontFamily,
+    fontSize: s.fontSize,
+    lineHeight: s.lineHeight,
+    cursorStyle: s.cursorStyle,
+    cursorBlink: s.cursorBlink,
+    scrollbackLines: s.scrollbackLines,
+    paneGap: s.paneGap,
+    sidebarWidth: s.sidebarWidth,
+    notificationOverlayEnabled: s.notificationOverlayEnabled,
+    notificationOverlayMs: s.notificationOverlayMs,
+    workspaceCardDensity: s.workspaceCardDensity,
+    workspaceCardShowMeta: s.workspaceCardShowMeta,
+    workspaceCardShowStats: s.workspaceCardShowStats,
+    workspaceCardShowPanes: s.workspaceCardShowPanes,
+    workspaceCardShowManifests: s.workspaceCardShowManifests,
+    workspaceCardShowStatusPills: s.workspaceCardShowStatusPills,
+    workspaceCardShowProgress: s.workspaceCardShowProgress,
+    statusBarKeys: s.statusBarKeys.slice(),
+    htStatusKeyOrder: s.htStatusKeyOrder.slice(),
+    htStatusKeyHidden: s.htStatusKeyHidden.slice(),
+    terminalOsc94Enabled: s.terminalOsc94Enabled,
+    autoContinueEngine: s.autoContinue.engine,
+  };
+}
+
 /** Convert a hex color (#rrggbb) to "r, g, b" for use in rgba(). */
 export function hexToRgb(hex: string): string {
   const h = hex.replace("#", "");
