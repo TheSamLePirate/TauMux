@@ -61,14 +61,33 @@ async function setup(opts: SetupOpts = {}) {
   const seed = {
     ...initialState(),
     sidebarVisible: opts.sidebarVisible ?? true,
-    workspaces: (opts.workspaces ?? []).map((w) => ({
-      id: w.id,
-      name: w.name ?? w.id,
-      color: w.color ?? "#89b4fa",
-      surfaceIds: w.surfaceIds ?? [],
-      focusedSurfaceId: null,
-      layout: { type: "leaf" as const, surfaceId: w.surfaceIds?.[0] ?? "x" },
-    })),
+    workspaces: (opts.workspaces ?? []).map((w) => {
+      const ids = w.surfaceIds ?? [];
+      // Build a layout tree that contains every surfaceId so the
+      // shared `buildSidebarWorkspaces` (and the M13 card builder
+      // that consumes its output) reports the right pane count.
+      const layout =
+        ids.length === 0
+          ? { type: "leaf" as const, surfaceId: "x" }
+          : ids.length === 1
+            ? { type: "leaf" as const, surfaceId: ids[0]! }
+            : {
+                type: "split" as const,
+                direction: "horizontal" as const,
+                children: ids.map((sid) => ({
+                  type: "leaf" as const,
+                  surfaceId: sid,
+                })),
+              };
+      return {
+        id: w.id,
+        name: w.name ?? w.id,
+        color: w.color ?? "#89b4fa",
+        surfaceIds: ids,
+        focusedSurfaceId: null,
+        layout,
+      };
+    }),
     activeWorkspaceId: opts.activeWorkspaceId ?? null,
     sidebar: {
       notifications: (opts.notifications ?? []).map((n) => ({
@@ -167,16 +186,20 @@ describe("createSidebarView.render", () => {
     expect(sidebarEl.querySelector(".sb-empty")).not.toBeNull();
   });
 
-  test("renders a workspace row with dot + meta", async () => {
+  test("renders a workspace card with dot + name + pane-count badge", async () => {
     const { view, sidebarEl, store } = await setup({
       workspaces: [{ id: "ws1", name: "Alpha", surfaceIds: ["s1", "s2"] }],
       activeWorkspaceId: "ws1",
     });
     view.render(store.getState());
-    const row = sidebarEl.querySelector(".sb-ws");
-    expect(row?.classList.contains("active")).toBe(true);
-    expect(row?.querySelector(".sb-ws-name")?.textContent).toContain("Alpha");
-    expect(row?.querySelector(".sb-ws-meta")?.textContent).toContain("2 panes");
+    const card = sidebarEl.querySelector(".workspace-item");
+    expect(card?.classList.contains("active")).toBe(true);
+    expect(card?.querySelector(".workspace-name")?.textContent).toContain(
+      "Alpha",
+    );
+    expect(card?.querySelector(".workspace-pane-count")?.textContent).toContain(
+      "2 panes",
+    );
   });
 
   test("pluralizes single pane correctly", async () => {
@@ -185,21 +208,37 @@ describe("createSidebarView.render", () => {
       activeWorkspaceId: "ws1",
     });
     view.render(store.getState());
-    expect(sidebarEl.querySelector(".sb-ws-meta")?.textContent).toContain(
-      "1 pane",
-    );
+    expect(
+      sidebarEl.querySelector(".workspace-pane-count")?.textContent,
+    ).toContain("1 pane");
   });
 
-  test("renders status pills and escapes values", async () => {
+  test("stripe paints with the workspace's accent colour", async () => {
+    const { view, sidebarEl, store } = await setup({
+      workspaces: [
+        { id: "ws1", name: "Alpha", color: "#eab308", surfaceIds: ["s1"] },
+      ],
+      activeWorkspaceId: "ws1",
+    });
+    view.render(store.getState());
+    const card = sidebarEl.querySelector(".workspace-item") as HTMLElement;
+    // The card sets the stripe colour via a CSS custom property.
+    expect(card?.style.getPropertyValue("--workspace-color")).toBe("#eab308");
+    expect(card?.querySelector(".workspace-stripe")).not.toBeNull();
+  });
+
+  test("renders status pills via the shared renderStatusEntry dispatcher", async () => {
     const { view, sidebarEl, store } = await setup({
       workspaces: [{ id: "ws1" }],
       activeWorkspaceId: "ws1",
       status: { ws1: { build: { value: "<fail>" } } },
     });
     view.render(store.getState());
-    const pill = sidebarEl.querySelector(".sb-pill");
-    expect(pill?.textContent).toBe("build: <fail>");
-    expect(sidebarEl.innerHTML).toContain("&lt;fail&gt;");
+    const status = sidebarEl.querySelector(".workspace-status");
+    expect(status).not.toBeNull();
+    // The shared renderer escapes the value text.
+    expect(status?.textContent).toContain("<fail>");
+    expect(status?.innerHTML).toContain("&lt;fail&gt;");
   });
 
   test("renders progress bar clamped to 0–100", async () => {
@@ -209,7 +248,9 @@ describe("createSidebarView.render", () => {
       progress: { ws1: { value: 250 } },
     });
     view.render(store.getState());
-    const bar = sidebarEl.querySelector(".sb-progress-bar") as HTMLElement;
+    const bar = sidebarEl.querySelector(
+      ".workspace-progress-fill",
+    ) as HTMLElement;
     expect(bar?.style.width).toBe("100%");
   });
 
@@ -220,8 +261,124 @@ describe("createSidebarView.render", () => {
       progress: { ws1: { value: -50 } },
     });
     view.render(store.getState());
-    const bar = sidebarEl.querySelector(".sb-progress-bar") as HTMLElement;
+    const bar = sidebarEl.querySelector(
+      ".workspace-progress-fill",
+    ) as HTMLElement;
     expect(bar?.style.width).toBe("0%");
+  });
+
+  test("manifest section is hidden when no package.json or Cargo.toml is present", async () => {
+    const { view, sidebarEl, store } = await setup({
+      workspaces: [{ id: "ws1", surfaceIds: ["s1"] }],
+      activeWorkspaceId: "ws1",
+    });
+    view.render(store.getState());
+    const section = sidebarEl.querySelector(".workspace-manifests");
+    expect(section?.classList.contains("empty")).toBe(true);
+    // No package card rendered.
+    expect(sidebarEl.querySelector(".workspace-package")).toBeNull();
+  });
+
+  test("sparkline renders for the active card once a CPU sample lands", async () => {
+    const { view, sidebarEl, store } = await setup({
+      workspaces: [{ id: "ws1", surfaceIds: ["s1"] }],
+      activeWorkspaceId: "ws1",
+    });
+    view.render(store.getState());
+    // First render — flat baseline (only one sample).
+    expect(
+      sidebarEl.querySelector(".workspace-sparkline-flat") ??
+        sidebarEl.querySelector(".workspace-sparkline-line"),
+    ).not.toBeNull();
+    // A second render with the same workspace bumps the history to 2
+    // samples — the line variant takes over.
+    view.render(store.getState());
+    expect(sidebarEl.querySelector(".workspace-sparkline-line")).not.toBeNull();
+  });
+
+  test("ports row collapses to +N pill past 3 entries", async () => {
+    const { view, sidebarEl, store } = await setup({
+      workspaces: [{ id: "ws1", surfaceIds: ["s1"] }],
+      activeWorkspaceId: "ws1",
+    });
+    // Dispatch metadata with 5 listening ports so the card's
+    // `WorkspaceInfo.listeningPorts` lands at length 5.
+    store.dispatch({
+      kind: "surface/metadata",
+      surfaceId: "s1",
+      metadata: {
+        pid: 1,
+        foregroundPid: 1,
+        cwd: "/tmp",
+        tree: [],
+        listeningPorts: [3000, 3001, 3002, 8080, 9000].map((port) => ({
+          pid: 1,
+          port,
+          proto: "tcp" as const,
+          address: "127.0.0.1",
+        })),
+        git: null,
+        packageJson: null,
+        updatedAt: 0,
+      },
+    });
+    view.render(store.getState());
+    const chips = sidebarEl.querySelectorAll(".workspace-port-chip");
+    // 3 visible port chips + 1 "+N" overflow chip.
+    expect(chips.length).toBe(4);
+    const more = sidebarEl.querySelector(".workspace-port-chip.more");
+    expect(more?.textContent).toBe("+2");
+  });
+
+  test("cwd chip click pins the cwd locally and emits selectWorkspaceCwd", async () => {
+    const { view, sidebarEl, store, sendMsg } = await setup({
+      workspaces: [{ id: "ws1", surfaceIds: ["s1", "s2"] }],
+      activeWorkspaceId: "ws1",
+    });
+    // Two cwds across the workspace's surfaces.
+    store.dispatch({
+      kind: "surface/metadata",
+      surfaceId: "s1",
+      metadata: {
+        pid: 1,
+        foregroundPid: 1,
+        cwd: "/home/alice/proj-a",
+        tree: [],
+        listeningPorts: [],
+        git: null,
+        packageJson: null,
+        updatedAt: 0,
+      },
+    });
+    store.dispatch({
+      kind: "surface/metadata",
+      surfaceId: "s2",
+      metadata: {
+        pid: 2,
+        foregroundPid: 2,
+        cwd: "/home/alice/proj-b",
+        tree: [],
+        listeningPorts: [],
+        git: null,
+        packageJson: null,
+        updatedAt: 0,
+      },
+    });
+    view.render(store.getState());
+    const chips = sidebarEl.querySelectorAll(".workspace-cwd-chip");
+    expect(chips.length).toBe(2);
+    // Click the second chip — it becomes active, the first deactivates,
+    // and the client emits the selectWorkspaceCwd envelope.
+    (chips[1] as HTMLElement).dispatchEvent(
+      new Event("click", { bubbles: true }),
+    );
+    const refreshed = sidebarEl.querySelectorAll(".workspace-cwd-chip");
+    expect(refreshed[1]!.classList.contains("active")).toBe(true);
+    expect(refreshed[0]!.classList.contains("active")).toBe(false);
+    expect(sendMsg).toHaveBeenCalledWith("selectWorkspaceCwd", {
+      workspaceId: "ws1",
+      cwd: "/home/alice/proj-b",
+    });
   });
 
   test("notifications section shows the last five in reverse", async () => {

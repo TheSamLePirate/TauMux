@@ -11,7 +11,7 @@ export default {
     // surprises in CI / shell scripts.
     name: "tau-mux",
     identifier: "dev.hyperterm.canvas",
-    version: "0.2.86",
+    version: "0.2.87",
     description:
       "A hybrid terminal emulator with floating canvas overlays for images, charts, and interactive widgets.",
   },

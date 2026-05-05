@@ -18,6 +18,15 @@
 import type { AppState, Store } from "./store";
 import { ICONS } from "./icons";
 import { escapeHtml } from "../shared/escape-html";
+import {
+  buildSidebarWorkspaces,
+  type SidebarStateWorkspace,
+} from "../shared/sidebar-state";
+import { WorkspaceCardBuilder } from "./sidebar/workspace-card";
+import {
+  loadSelectedCwds,
+  persistSelectedCwds,
+} from "./sidebar/local-ui-state";
 
 export { escapeHtml };
 
@@ -40,8 +49,11 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
     deps;
 
   // ── Zones ────────────────────────────────────────────────────────
-  // Three persistent siblings inside #sidebar. Notifications live in
+  // Four persistent siblings inside #sidebar. Notifications live in
   // their own zone so the main / log rebuilds don't wipe them out.
+  // M13 — main zone now hosts a `WorkspaceCardBuilder` that owns its
+  // own per-card DOM cache and reuses unchanged sections across 1 Hz
+  // metadata ticks.
   sidebarEl.innerHTML = "";
   const notifZoneEl = document.createElement("div");
   notifZoneEl.className = "sb-notif-zone";
@@ -52,6 +64,45 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
   sidebarEl.appendChild(notifZoneEl);
   sidebarEl.appendChild(mainZoneEl);
   sidebarEl.appendChild(logZoneEl);
+
+  // Persistent workspace-list host inside the main zone. The card
+  // builder appends/moves cards in place; the section title above
+  // it never re-renders.
+  const wsHostEl = document.createElement("div");
+  wsHostEl.className = "sb-workspace-list";
+  const mainSectionTitle = document.createElement("div");
+  mainSectionTitle.className = "sb-section-title";
+  mainSectionTitle.textContent = "Workspaces";
+  mainZoneEl.appendChild(mainSectionTitle);
+  mainZoneEl.appendChild(wsHostEl);
+
+  const selectedCwds = loadSelectedCwds();
+
+  const cardBuilder = new WorkspaceCardBuilder({
+    onSelectWorkspace: (workspaceId) => {
+      if (workspaceId === store.getState().activeWorkspaceId) return;
+      store.dispatch({ kind: "workspace/active", workspaceId });
+      store.dispatch({ kind: "fullscreen/exit" });
+      sendMsg("selectWorkspace", { workspaceId });
+      sendMsg("subscribeWorkspace", { workspaceId });
+    },
+    onSelectCwd: (workspaceId, cwd) => {
+      // M13 v1 — pin is web-local. Persist immediately so a reload
+      // restores the user's selection. Server-side wiring is deferred
+      // to v1.1 (the host's hook is null-safe).
+      const current = selectedCwds.get(workspaceId);
+      if (current === cwd) {
+        selectedCwds.delete(workspaceId);
+      } else {
+        selectedCwds.set(workspaceId, cwd);
+      }
+      persistSelectedCwds(selectedCwds);
+      sendMsg("selectWorkspaceCwd", { workspaceId, cwd });
+      // The store doesn't track cwd selection directly; re-rendering
+      // the sidebar picks up the change through `buildSidebarWorkspaces`.
+      render(store.getState());
+    },
+  });
 
   // ── Notification state ───────────────────────────────────────────
   const notifItemEls = new Map<string, HTMLElement>();
@@ -303,65 +354,99 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
     if (btn && n.surfaceId) btn.setAttribute("data-surface-id", n.surfaceId);
   }
 
-  // ── Main (workspaces) ─── string-concat; cheap, tiny subtree ─────
+  // ── Main (workspaces) — structured per-card builder with section
+  // signature caching. Replaces M11 string-concat so 1 Hz metadata
+  // ticks don't blow away the card subtree (focus rings, expansion
+  // state, sparkline DOM all survive across renders).
+
+  // Web mirror v1 has no script-error tracking — manifest cards are
+  // deferred to M14 anyway, so we feed an empty map and let the
+  // shared builder skip the error-pill branch.
+  const SCRIPT_ERRORS_EMPTY = new Map<string, number>();
 
   function renderMain(state: AppState) {
-    const { workspaces, activeWorkspaceId, sidebar } = state;
-    let html = "";
-    html +=
-      '<div class="sb-section"><div class="sb-section-title">Workspaces</div>';
+    const { workspaces, sidebar } = state;
     if (workspaces.length === 0) {
-      html += '<div class="sb-empty">No workspaces</div>';
-    } else {
-      workspaces.forEach((ws, i) => {
-        const active = ws.id === activeWorkspaceId;
-        const color = ws.color || "#89b4fa";
-        html +=
-          '<div class="sb-ws' +
-          (active ? " active" : "") +
-          '" data-action="select-workspace" data-workspace-id="' +
-          escapeHtml(ws.id) +
-          '">';
-        html +=
-          '<div class="sb-ws-name"><span class="sb-ws-dot" style="background:' +
-          color +
-          '"></span>' +
-          escapeHtml(ws.name || "Workspace " + (i + 1)) +
-          "</div>";
-        const count = ws.surfaceIds?.length ?? 0;
-        html +=
-          '<div class="sb-ws-meta">' +
-          (active ? "Active" : "Standby") +
-          " \u00b7 " +
-          count +
-          " pane" +
-          (count !== 1 ? "s" : "") +
-          "</div>";
-        const st = sidebar.status[ws.id];
-        if (st) {
-          html += '<div class="sb-ws-pills">';
-          for (const k in st)
-            html +=
-              '<span class="sb-pill">' +
-              escapeHtml(k) +
-              ": " +
-              escapeHtml(st[k]!.value) +
-              "</span>";
-          html += "</div>";
-        }
-        const pr = sidebar.progress[ws.id];
-        if (pr) {
-          html +=
-            '<div class="sb-progress"><div class="sb-progress-bar" style="width:' +
-            Math.min(100, Math.max(0, pr.value)) +
-            '%"></div></div>';
-        }
-        html += "</div>";
-      });
+      wsHostEl.replaceChildren();
+      const empty = document.createElement("div");
+      empty.className = "sb-empty";
+      empty.textContent = "No workspaces";
+      wsHostEl.appendChild(empty);
+      return;
     }
-    html += "</div>";
-    mainZoneEl.innerHTML = html;
+    // Project the wire workspaces + AppState slices into the abstract
+    // shape `buildSidebarWorkspaces` expects. Cheap because every
+    // input is already in `state` — we just wrap arrays as Sets and
+    // status records as Maps.
+    const surfaces = new Map<string, { title: string }>();
+    const metadata = new Map<
+      string,
+      import("../shared/types").SurfaceMetadata
+    >();
+    for (const sid in state.surfaces) {
+      const s = state.surfaces[sid]!;
+      surfaces.set(sid, { title: s.title });
+      if (s.metadata) metadata.set(sid, s.metadata);
+    }
+
+    const adaptedWorkspaces: SidebarStateWorkspace[] = workspaces.map((w) => {
+      const statusMap = new Map<
+        string,
+        { value: string; icon?: string; color?: string }
+      >();
+      const bucket = sidebar.status[w.id] ?? {};
+      for (const k of Object.keys(bucket)) statusMap.set(k, bucket[k]!);
+      return {
+        id: w.id,
+        name: w.name,
+        color: w.color,
+        surfaceIdsInLayoutOrder: collectSurfaceIdsInOrder(w.layout),
+        surfaceIdSet: new Set(w.surfaceIds),
+        status: statusMap,
+        progress: sidebar.progress[w.id] ?? null,
+      };
+    });
+
+    const activeIdx = workspaces.findIndex(
+      (w) => w.id === state.activeWorkspaceId,
+    );
+    const infos = buildSidebarWorkspaces({
+      workspaces: adaptedWorkspaces,
+      surfaces,
+      focusedSurfaceId: state.focusedSurfaceId,
+      activeWorkspaceIndex: activeIdx,
+      metadata,
+      selectedCwds,
+      scriptErrors: SCRIPT_ERRORS_EMPTY,
+      htStatusKeyOrder: state.settings?.htStatusKeyOrder ?? [],
+      htStatusKeyHidden: state.settings?.htStatusKeyHidden ?? [],
+    });
+
+    cardBuilder.render(infos, wsHostEl);
   }
+
+  // Helper: walk a wire `PaneNode` tree depth-first to extract the
+  // surface id list in display order. Mirrors PaneLayout.getAllSurfaceIds.
+  function collectSurfaceIdsInOrder(node: unknown): string[] {
+    const out: string[] = [];
+    walkLayout(node, out);
+    return out;
+  }
+  function walkLayout(node: unknown, out: string[]): void {
+    if (!node || typeof node !== "object") return;
+    const n = node as {
+      type?: string;
+      surfaceId?: string;
+      children?: unknown[];
+    };
+    if (n.type === "leaf" && typeof n.surfaceId === "string") {
+      out.push(n.surfaceId);
+      return;
+    }
+    if (Array.isArray(n.children))
+      for (const c of n.children) walkLayout(c, out);
+  }
+
 
   // ── Logs ─── string-concat; clear button still routes via data-action
 

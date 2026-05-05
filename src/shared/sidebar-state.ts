@@ -1,0 +1,393 @@
+/**
+ * Pure transformer from sidebar inputs → `WorkspaceInfo[]`.
+ *
+ * Originally lived under `src/views/terminal/sidebar-state.ts` as a
+ * native-side helper consumed by `SurfaceManager.updateSidebar`. M13
+ * of the web-mirror parity plan moved it to `src/shared/` so the web
+ * client can compute the same rich projection from its own protocol
+ * snapshot — same scripts-running detection, same CPU history, same
+ * pinned-cwd resolution, same status-pill ordering.
+ *
+ * The shape that USED to live here was `Workspace[]` (native domain
+ * object owning a `PaneLayout` instance + a `Set<string>` of surface
+ * ids + a `Map<string, SidebarStatusEntry>` of status entries). The
+ * web mirror has none of those — its workspaces come off the wire as
+ * `ServerWorkspaceRef` records with arrays for surfaces and plain
+ * objects for status. Rather than ship `PaneLayout` + `Workspace` to
+ * the browser, this module accepts an abstract `SidebarStateWorkspace`
+ * shape that both surfaces project into.
+ *
+ * The one intentional side effect (pruning stale `selectedCwds`
+ * pins) is preserved — we receive the Map by reference and delete
+ * entries whose target cwd no longer exists in any pane.
+ */
+
+import type { CargoInfo, PackageInfo, SurfaceMetadata } from "./types";
+import { applyHtStatusKeySettings } from "./settings";
+
+/** Minimal projection of a surface that the sidebar needs — just
+ *  the display title. Keeping the type narrow means callers don't
+ *  need to hand over terminal/browser/agent handles. */
+export interface SidebarSurfaceSummary {
+  title: string;
+}
+
+/** The status-entry shape the sidebar reads. Identical to the wire
+ *  type `SidebarStatusEntry` from `src/shared/web-protocol.ts`; we
+ *  redeclare it locally to avoid a circular import (web-protocol
+ *  imports types from this file in turn would loop). */
+export interface SidebarStatusValue {
+  value: string;
+  icon?: string;
+  color?: string;
+}
+
+/** Abstract workspace projection — what `buildSidebarWorkspaces`
+ *  reads. Native builds it from `Workspace`; web builds it from
+ *  `ServerWorkspaceRef + state.sidebar.status[id] + state.sidebar.progress[id]`. */
+export interface SidebarStateWorkspace {
+  id: string;
+  name: string;
+  color: string;
+  /** All surface ids in display (layout-traversal) order. Native
+   *  pulls this from `PaneLayout.getAllSurfaceIds()`; web walks the
+   *  wire `PaneNode` tree. */
+  surfaceIdsInLayoutOrder: readonly string[];
+  /** Set membership for fast lookup. Both surfaces precompute this. */
+  surfaceIdSet: ReadonlySet<string>;
+  /** Workspace-scoped `ht set-status` entries, keyed by user-defined
+   *  status key. */
+  status: ReadonlyMap<string, SidebarStatusValue>;
+  /** Workspace progress bar (`ht set-progress` / OSC 9;4). */
+  progress: { value: number; label?: string } | null;
+}
+
+export interface SidebarStateInput {
+  workspaces: readonly SidebarStateWorkspace[];
+  surfaces: ReadonlyMap<string, SidebarSurfaceSummary>;
+  focusedSurfaceId: string | null;
+  activeWorkspaceIndex: number;
+  metadata: ReadonlyMap<string, SurfaceMetadata>;
+  /** workspaceId → pinned cwd. Stale entries (cwd no longer hosted
+   *  by any surface) are removed in place. */
+  selectedCwds: Map<string, string>;
+  /** "<workspaceId>:<scriptKey>" → epoch ms of last non-zero exit.
+   *  Drives the red dot on a package.json script pill. */
+  scriptErrors: ReadonlyMap<string, number>;
+  /** User's customised display order for `ht set-status` keys, from
+   *  `AppSettings.htStatusKeyOrder`. Empty / omitted = pure insertion
+   *  order. Optional so legacy test fixtures don't have to specify
+   *  it. */
+  htStatusKeyOrder?: readonly string[];
+  /** Subset of seen keys to hide. Filtered out of every workspace's
+   *  status grid. Optional for the same reason as `htStatusKeyOrder`. */
+  htStatusKeyHidden?: readonly string[];
+}
+
+/** What the sidebar renderer ultimately consumes per workspace. */
+export interface WorkspaceInfo {
+  id: string;
+  name: string;
+  color?: string;
+  active: boolean;
+  surfaceTitles: string[];
+  focusedSurfaceTitle?: string | null;
+  /** Full argv of the focused surface's foreground process, if it differs
+   *  from the shell. E.g. "bun run dev", "vim src/foo.ts". */
+  focusedSurfaceCommand?: string | null;
+  statusPills: { key: string; value: string; color?: string; icon?: string }[];
+  progress: { value: number; label?: string } | null;
+  /** Unique TCP ports listening across all panes in this workspace. */
+  listeningPorts: number[];
+  /** Nearest package.json for this workspace's surfaces (or null). */
+  packageJson: PackageInfo | null;
+  /** Script names from package.json that are currently running in any surface. */
+  runningScripts: string[];
+  /** Script names whose most recent run exited non-zero within the last ~10 s. */
+  erroredScripts: string[];
+  /** Nearest Cargo.toml for this workspace's surfaces (or null). */
+  cargoToml: CargoInfo | null;
+  /** Cargo subcommands currently running in the process tree. */
+  runningCargoActions: string[];
+  /** Cargo subcommands whose most recent run exited non-zero. */
+  erroredCargoActions: string[];
+  /** Distinct cwds across all surfaces in this workspace, in stable order. */
+  cwds: string[];
+  /** The cwd currently driving the manifest cards. */
+  selectedCwd: string | null;
+  /** Sum of %cpu across every descendant of every surface. */
+  cpuPercent: number;
+  /** Sum of resident-set-size in KB across every descendant. */
+  memRssKb: number;
+  /** Total process count across every surface. */
+  processCount: number;
+  /** Rolling CPU% history. Drives the sparkline in the active card. */
+  cpuHistory: number[];
+}
+
+/** Build the `WorkspaceInfo[]` array that `Sidebar.setWorkspaces`
+ *  consumes. See the module header for the side effect on
+ *  `selectedCwds`. */
+export function buildSidebarWorkspaces(
+  input: SidebarStateInput,
+): WorkspaceInfo[] {
+  const out = input.workspaces.map((ws, i) => buildOneWorkspace(ws, i, input));
+  pruneCpuHistories(new Set(input.workspaces.map((w) => w.id)));
+  return out;
+}
+
+function buildOneWorkspace(
+  ws: SidebarStateWorkspace,
+  index: number,
+  input: SidebarStateInput,
+): WorkspaceInfo {
+  const {
+    surfaces,
+    focusedSurfaceId,
+    activeWorkspaceIndex,
+    metadata,
+    selectedCwds,
+    scriptErrors,
+  } = input;
+
+  const surfaceTitles = ws.surfaceIdsInLayoutOrder.map(
+    (surfaceId) => surfaces.get(surfaceId)?.title ?? surfaceId,
+  );
+
+  const focusedSurfaceTitle =
+    focusedSurfaceId && ws.surfaceIdSet.has(focusedSurfaceId)
+      ? (surfaces.get(focusedSurfaceId)?.title ?? focusedSurfaceId)
+      : (surfaceTitles[0] ?? null);
+
+  const portSet = new Set<number>();
+  for (const surfaceId of ws.surfaceIdSet) {
+    const meta = metadata.get(surfaceId);
+    if (!meta) continue;
+    for (const p of meta.listeningPorts) portSet.add(p.port);
+  }
+  const listeningPorts = [...portSet].sort((a, b) => a - b);
+
+  const focusedMeta =
+    focusedSurfaceId && ws.surfaceIdSet.has(focusedSurfaceId)
+      ? (metadata.get(focusedSurfaceId) ?? null)
+      : null;
+  const focusedSurfaceCommand =
+    focusedMeta && focusedMeta.foregroundPid !== focusedMeta.pid
+      ? (focusedMeta.tree.find((n) => n.pid === focusedMeta.foregroundPid)
+          ?.command ?? null)
+      : null;
+
+  // Collect the distinct cwds across this workspace's surfaces.
+  const cwdSet: string[] = [];
+  const seen = new Set<string>();
+  for (const sid of ws.surfaceIdSet) {
+    const m = metadata.get(sid);
+    if (!m?.cwd) continue;
+    if (seen.has(m.cwd)) continue;
+    seen.add(m.cwd);
+    cwdSet.push(m.cwd);
+  }
+
+  // The user may have pinned a cwd; if it's gone stale (no surface
+  // still at that path), drop the pin and fall back to focused.
+  const pinned = selectedCwds.get(ws.id);
+  if (pinned && !seen.has(pinned)) selectedCwds.delete(ws.id);
+  const effectivePin = selectedCwds.get(ws.id) ?? null;
+  const selectedCwd = effectivePin ?? focusedMeta?.cwd ?? null;
+
+  // Resolve package.json / Cargo.toml by locating the surface whose
+  // cwd matches the selected cwd — that surface's snapshot already
+  // has both manifests computed upstream by the poller. The poller
+  // walks up from cwd, so a project with BOTH manifests (wasm-pack,
+  // Tauri, napi-rs) surfaces both cards.
+  let packageJson: PackageInfo | null = null;
+  let cargoToml: CargoInfo | null = null;
+  if (selectedCwd) {
+    for (const sid of ws.surfaceIdSet) {
+      const m = metadata.get(sid);
+      if (m?.cwd !== selectedCwd) continue;
+      if (!packageJson && m.packageJson) packageJson = m.packageJson;
+      if (!cargoToml && m.cargoToml) cargoToml = m.cargoToml;
+      if (packageJson && cargoToml) break;
+    }
+  }
+
+  const runningScripts: string[] = [];
+  const erroredScripts: string[] = [];
+  if (packageJson?.scripts) {
+    const knownScripts = Object.keys(packageJson.scripts);
+    const running = new Set<string>();
+    for (const sid of ws.surfaceIdSet) {
+      const m = metadata.get(sid);
+      if (!m) continue;
+      for (const node of m.tree) {
+        const name = extractScriptName(node.command);
+        if (name && knownScripts.includes(name)) running.add(name);
+      }
+    }
+    for (const s of knownScripts) {
+      if (running.has(s)) runningScripts.push(s);
+      else if (scriptErrors.has(`${ws.id}:${s}`)) erroredScripts.push(s);
+    }
+  }
+
+  // Cargo subcommands aren't declared anywhere — we surface a fixed
+  // set of common ones at render time. Running detection looks at
+  // every command in the process tree and pulls the cargo subcommand
+  // word ("cargo build --release" → "build"); the sidebar renderer
+  // matches it against the same fixed list.
+  // Aggregate live process metrics across every surface in the
+  // workspace. These feed the mini sparkline + RAM chip in the active
+  // workspace header. We sum across all descendants of every surface
+  // so a 2-pane workspace reflects the combined load.
+  let cpuPercent = 0;
+  let memRssKb = 0;
+  let procCount = 0;
+  for (const sid of ws.surfaceIdSet) {
+    const m = metadata.get(sid);
+    if (!m) continue;
+    for (const node of m.tree) {
+      cpuPercent += node.cpu;
+      memRssKb += node.rssKb;
+      procCount++;
+    }
+  }
+  const cpuHistory = pushCpuSample(ws.id, cpuPercent);
+
+  const runningCargoActions: string[] = [];
+  const erroredCargoActions: string[] = [];
+  if (cargoToml) {
+    const found = new Set<string>();
+    for (const sid of ws.surfaceIdSet) {
+      const m = metadata.get(sid);
+      if (!m) continue;
+      for (const node of m.tree) {
+        const sub = extractCargoSubcommand(node.command);
+        if (sub) found.add(sub);
+      }
+    }
+    for (const sub of found) runningCargoActions.push(sub);
+    // Errored-action set mirrors the npm path — it uses the shared
+    // scriptErrors map keyed "<workspaceId>:cargo:<subcommand>".
+    for (const [key] of scriptErrors) {
+      const prefix = `${ws.id}:cargo:`;
+      if (key.startsWith(prefix)) {
+        const sub = key.slice(prefix.length);
+        if (!found.has(sub)) erroredCargoActions.push(sub);
+      }
+    }
+  }
+
+  return {
+    id: ws.id,
+    name: ws.name,
+    color: ws.color,
+    active: index === activeWorkspaceIndex,
+    surfaceTitles,
+    focusedSurfaceTitle,
+    focusedSurfaceCommand,
+    statusPills: buildStatusPillsForWorkspace(ws, input),
+    progress: ws.progress,
+    listeningPorts,
+    packageJson,
+    runningScripts,
+    erroredScripts,
+    cargoToml,
+    runningCargoActions,
+    erroredCargoActions,
+    cwds: cwdSet,
+    selectedCwd,
+    cpuPercent,
+    memRssKb,
+    processCount: procCount,
+    cpuHistory,
+  };
+}
+
+/** Compose the workspace-card statusPills array from the
+ *  Workspace's `status` map and the user's ht-key settings. We
+ *  preserve the script-supplied value/color/icon and just decide
+ *  *which* keys appear and *in what order*. Pure projection so it's
+ *  trivial to test alongside `applyHtStatusKeySettings`. */
+function buildStatusPillsForWorkspace(
+  ws: SidebarStateWorkspace,
+  input: SidebarStateInput,
+): WorkspaceInfo["statusPills"] {
+  const seen = [...ws.status.keys()];
+  const ordered = applyHtStatusKeySettings(
+    seen,
+    input.htStatusKeyOrder ?? [],
+    input.htStatusKeyHidden ?? [],
+  );
+  const pills: WorkspaceInfo["statusPills"] = [];
+  for (const key of ordered) {
+    const entry = ws.status.get(key);
+    if (!entry) continue;
+    pills.push({
+      key,
+      value: entry.value,
+      color: entry.color,
+      icon: entry.icon,
+    });
+  }
+  return pills;
+}
+
+/** Rolling CPU% history per workspace — fed to the mini sparkline in
+ *  the sidebar card header. Keyed by workspaceId. The map is pruned
+ *  lazily by `buildSidebarWorkspaces` (any id not seen in the current
+ *  pass is dropped). */
+const CPU_HISTORY_LIMIT = 32;
+const cpuHistories = new Map<string, number[]>();
+
+function pushCpuSample(wsId: string, sample: number): number[] {
+  const existing = cpuHistories.get(wsId) ?? [];
+  const next =
+    existing.length >= CPU_HISTORY_LIMIT
+      ? [...existing.slice(1), sample]
+      : [...existing, sample];
+  cpuHistories.set(wsId, next);
+  return next;
+}
+
+/** Drop CPU-history entries for workspaces that no longer exist. Called
+ *  from `buildSidebarWorkspaces` each pass so the map can't grow
+ *  unbounded across a long session with many short-lived workspaces. */
+function pruneCpuHistories(keep: Set<string>): void {
+  for (const id of [...cpuHistories.keys()]) {
+    if (!keep.has(id)) cpuHistories.delete(id);
+  }
+}
+
+/** Extract the script name from commands like "bun run build",
+ *  "npm run dev", "pnpm test", "yarn run start". Returns null when
+ *  no recognizable runner is at the head of the command. */
+export function extractScriptName(command: string): string | null {
+  const m = command.match(
+    /^(?:bun|npm|pnpm|yarn)(?:\s+run(?:-script)?)?\s+(\S+)/,
+  );
+  return m?.[1] ?? null;
+}
+
+/** Extract the cargo subcommand from a process command line. Matches
+ *  `cargo build`, `cargo build --release`, `cargo run --bin foo`,
+ *  `cargo test --workspace`, `cargo clippy --all-targets`, etc.
+ *  Returns the subcommand token (first non-flag argument after
+ *  `cargo`) or null when the command isn't a cargo invocation. */
+export function extractCargoSubcommand(command: string): string | null {
+  const m = command.match(/^(?:\S*\/)?cargo(?:\s+\+\S+)?\s+([a-z][a-z0-9-]*)/);
+  return m?.[1] ?? null;
+}
+
+/** Set equality on port numbers only — used by the metadata differ
+ *  to decide whether a port change is worth notifying the sidebar
+ *  for (pid-level changes alone don't affect what's rendered). */
+export function samePortSet(
+  a: { port: number }[],
+  b: { port: number }[],
+): boolean {
+  if (a.length !== b.length) return false;
+  const aSet = new Set(a.map((x) => x.port));
+  for (const x of b) if (!aSet.has(x.port)) return false;
+  return true;
+}

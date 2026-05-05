@@ -1,0 +1,446 @@
+// Per-workspace sidebar card builder.
+//
+// Mirrors the native `populateWorkspaceCard` (src/views/terminal/sidebar.ts)
+// but rendered against the web mirror's projected `WorkspaceInfo`.
+// Each section caches its DOM by a stable signature so a 1 Hz
+// metadata tick that doesn't actually change visible content reuses
+// the existing nodes — no flicker, no re-layout.
+//
+// Sections:
+//   - stripe       : 3 px coloured left rail
+//   - header       : workspace name, dot, pane-count badge
+//   - meta         : focused command + listening ports
+//   - stats        : aggregated CPU + RAM + sparkline
+//   - cwds         : pinned-cwd chip row
+//   - panes        : collapsible pane list
+//   - status       : ht set-status pill grid
+//   - progress     : OSC 9;4 / ht set-progress bar
+//   - manifests    : (deferred to M14 — placeholder rendered when
+//                    package.json or Cargo.toml is present so the
+//                    user sees the workspace surfaces a manifest)
+//
+// Manifest action buttons (run / build / dev / …) ship in M14.
+
+import { renderStatusEntry } from "../../shared/status-render";
+import { parseStatusKey } from "../../shared/status-key";
+import type { WorkspaceInfo } from "../../shared/sidebar-state";
+import { escapeHtml } from "../../shared/escape-html";
+import { buildCpuSparkline } from "./cpu-sparkline";
+import { getWorkspaceUi, setWorkspaceUi } from "./local-ui-state";
+
+export interface WorkspaceCardCallbacks {
+  onSelectWorkspace: (workspaceId: string) => void;
+  onSelectCwd: (workspaceId: string, cwd: string) => void;
+}
+
+type SectionKey =
+  | "stripe"
+  | "header"
+  | "meta"
+  | "stats"
+  | "cwds"
+  | "panes"
+  | "manifests"
+  | "status"
+  | "progress";
+
+interface CardCache {
+  el: HTMLElement;
+  /** Per-section DOM + signature. Hit → reuse element, skip rebuild. */
+  slots: Partial<Record<SectionKey, { el: HTMLElement; sig: string }>>;
+}
+
+/** Section signature builders — small functions that summarise the
+ *  slice of `WorkspaceInfo` driving each section. Two consecutive
+ *  ticks producing the same signature short-circuit the rebuild. */
+const sigStripe = (ws: WorkspaceInfo) => `${ws.color ?? ""}|${ws.active}`;
+const sigHeader = (ws: WorkspaceInfo) =>
+  `${ws.id}|${ws.name}|${ws.color ?? ""}|${ws.active}|${ws.surfaceTitles.length}`;
+const sigMeta = (ws: WorkspaceInfo) =>
+  `${ws.focusedSurfaceCommand ?? ""}|${ws.listeningPorts.join(",")}`;
+const sigStats = (ws: WorkspaceInfo) =>
+  `${ws.cpuPercent.toFixed(1)}|${ws.memRssKb}|${ws.processCount}|${ws.cpuHistory.join(",")}`;
+const sigCwds = (ws: WorkspaceInfo) =>
+  `${ws.cwds.join("|")}|${ws.selectedCwd ?? ""}`;
+const sigPanes = (ws: WorkspaceInfo) =>
+  `${ws.surfaceTitles.join("|")}|${ws.focusedSurfaceTitle ?? ""}`;
+const sigStatus = (ws: WorkspaceInfo) =>
+  ws.statusPills
+    .map((p) => `${p.key}=${p.value}|${p.color ?? ""}|${p.icon ?? ""}`)
+    .join(";");
+const sigProgress = (ws: WorkspaceInfo) =>
+  ws.progress ? `${ws.progress.value}|${ws.progress.label ?? ""}` : "";
+const sigManifests = (ws: WorkspaceInfo) =>
+  `${ws.packageJson?.path ?? ""}|${ws.packageJson?.version ?? ""}|${ws.cargoToml?.path ?? ""}|${ws.cargoToml?.version ?? ""}`;
+
+export class WorkspaceCardBuilder {
+  private caches = new Map<string, CardCache>();
+
+  constructor(private callbacks: WorkspaceCardCallbacks) {}
+
+  /** Render the full workspace list into `host`. Each card is a
+   *  long-lived DOM node whose section children get rebuilt only on
+   *  signature drift. New / removed workspaces are added / pruned as
+   *  needed; the order matches the input array. */
+  render(workspaces: readonly WorkspaceInfo[], host: HTMLElement): void {
+    const seen = new Set<string>();
+    for (let i = 0; i < workspaces.length; i++) {
+      const ws = workspaces[i]!;
+      seen.add(ws.id);
+      const card = this.ensureCard(ws);
+      this.populateCard(card, ws);
+      // Move the card into the right slot. `host.appendChild(existing)`
+      // is a no-op if it's already in the right place.
+      host.appendChild(card.el);
+    }
+    // Drop cards for workspaces no longer present.
+    for (const [id, card] of this.caches) {
+      if (!seen.has(id)) {
+        card.el.remove();
+        this.caches.delete(id);
+      }
+    }
+  }
+
+  private ensureCard(ws: WorkspaceInfo): CardCache {
+    let card = this.caches.get(ws.id);
+    if (card) return card;
+    const el = document.createElement("div");
+    el.className = "workspace-item";
+    el.setAttribute("data-workspace-id", ws.id);
+    el.setAttribute("data-action", "select-workspace");
+    el.addEventListener("click", (e) => {
+      // Inner controls (cwd chips, pane list toggle) stop their own
+      // events; the bare card click selects the workspace.
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-stop]") || target.closest("[data-action]"))
+        return;
+      this.callbacks.onSelectWorkspace(ws.id);
+    });
+    card = { el, slots: {} };
+    this.caches.set(ws.id, card);
+    return card;
+  }
+
+  private populateCard(card: CardCache, ws: WorkspaceInfo): void {
+    card.el.classList.toggle("active", ws.active);
+    card.el.style.setProperty(
+      "--workspace-color",
+      ws.color ?? "var(--ht-accent)",
+    );
+
+    this.section(card, "stripe", sigStripe(ws), () => buildStripe(ws));
+    this.section(card, "header", sigHeader(ws), () => buildHeader(ws));
+    this.section(card, "meta", sigMeta(ws), () => buildMeta(ws));
+    if (ws.active) {
+      this.section(card, "stats", sigStats(ws), () => buildStats(ws));
+      this.section(card, "cwds", sigCwds(ws), () =>
+        buildCwds(ws, this.callbacks.onSelectCwd),
+      );
+      this.section(card, "panes", sigPanes(ws), () => buildPanes(ws));
+      this.section(card, "manifests", sigManifests(ws), () =>
+        buildManifestsPlaceholder(ws),
+      );
+      this.section(card, "status", sigStatus(ws), () => buildStatus(ws));
+      this.section(card, "progress", sigProgress(ws), () => buildProgress(ws));
+    } else {
+      // Inactive cards collapse to stripe + header + meta only —
+      // matches the native sidebar density.
+      this.removeSlot(card, "stats");
+      this.removeSlot(card, "cwds");
+      this.removeSlot(card, "panes");
+      this.removeSlot(card, "manifests");
+      this.removeSlot(card, "status");
+      this.removeSlot(card, "progress");
+    }
+  }
+
+  private section(
+    card: CardCache,
+    key: SectionKey,
+    sig: string,
+    build: () => HTMLElement,
+  ): void {
+    const slot = card.slots[key];
+    if (slot && slot.sig === sig) {
+      // Already in DOM at the right place; nothing to do.
+      card.el.appendChild(slot.el);
+      return;
+    }
+    const el = build();
+    el.setAttribute("data-section", key);
+    if (slot) slot.el.replaceWith(el);
+    else card.el.appendChild(el);
+    card.slots[key] = { el, sig };
+  }
+
+  private removeSlot(card: CardCache, key: SectionKey): void {
+    const slot = card.slots[key];
+    if (!slot) return;
+    slot.el.remove();
+    delete card.slots[key];
+  }
+}
+
+// ── Section builders ─────────────────────────────────────────────
+
+function buildStripe(_ws: WorkspaceInfo): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "workspace-stripe";
+  return el;
+}
+
+function buildHeader(ws: WorkspaceInfo): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "workspace-card-header";
+  const dot = document.createElement("span");
+  dot.className = "workspace-dot";
+  dot.style.background = ws.color ?? "var(--ht-accent)";
+  el.appendChild(dot);
+  const name = document.createElement("span");
+  name.className = "workspace-name";
+  name.textContent = ws.name || ws.id;
+  el.appendChild(name);
+  const badge = document.createElement("span");
+  badge.className = "workspace-pane-count";
+  badge.textContent = `${ws.surfaceTitles.length} pane${
+    ws.surfaceTitles.length !== 1 ? "s" : ""
+  }`;
+  el.appendChild(badge);
+  return el;
+}
+
+function buildMeta(ws: WorkspaceInfo): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "workspace-meta";
+  if (ws.focusedSurfaceCommand) {
+    const cmd = document.createElement("div");
+    cmd.className = "workspace-focused-cmd tau-mono";
+    cmd.title = ws.focusedSurfaceCommand;
+    cmd.textContent = ws.focusedSurfaceCommand;
+    el.appendChild(cmd);
+  }
+  if (ws.listeningPorts.length > 0) {
+    const portsEl = document.createElement("div");
+    portsEl.className = "workspace-ports";
+    const visible = ws.listeningPorts.slice(0, 3);
+    for (const p of visible) {
+      const chip = document.createElement("a");
+      chip.className = "workspace-port-chip";
+      chip.textContent = `:${p}`;
+      chip.href = `http://localhost:${p}`;
+      chip.target = "_blank";
+      chip.rel = "noreferrer noopener";
+      chip.setAttribute("data-stop", "1");
+      portsEl.appendChild(chip);
+    }
+    if (ws.listeningPorts.length > visible.length) {
+      const more = document.createElement("span");
+      more.className = "workspace-port-chip more";
+      more.textContent = `+${ws.listeningPorts.length - visible.length}`;
+      portsEl.appendChild(more);
+    }
+    el.appendChild(portsEl);
+  }
+  return el;
+}
+
+function buildStats(ws: WorkspaceInfo): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "workspace-stats";
+
+  const cpuRow = document.createElement("div");
+  cpuRow.className = "workspace-cpu-row";
+  const cpuLabel = document.createElement("span");
+  cpuLabel.className = "workspace-cpu-label";
+  cpuLabel.textContent = "cpu";
+  cpuRow.appendChild(cpuLabel);
+  const cpuValue = document.createElement("span");
+  cpuValue.className = "workspace-cpu-value tau-mono";
+  cpuValue.textContent = `${Math.round(ws.cpuPercent)}%`;
+  cpuRow.appendChild(cpuValue);
+  cpuRow.appendChild(buildCpuSparkline(ws.cpuHistory));
+  el.appendChild(cpuRow);
+
+  const chips = document.createElement("div");
+  chips.className = "workspace-stat-chips";
+  chips.appendChild(makeChip("ram", formatMem(ws.memRssKb)));
+  chips.appendChild(makeChip("procs", String(ws.processCount)));
+  el.appendChild(chips);
+  return el;
+}
+
+function makeChip(label: string, value: string): HTMLElement {
+  const chip = document.createElement("span");
+  chip.className = "workspace-stat-chip";
+  const l = document.createElement("span");
+  l.className = "chip-label";
+  l.textContent = label;
+  const v = document.createElement("span");
+  v.className = "chip-value tau-mono";
+  v.textContent = value;
+  chip.append(l, v);
+  return chip;
+}
+
+function formatMem(rssKb: number): string {
+  const mb = rssKb / 1024;
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)}G`;
+  return `${Math.round(mb)}M`;
+}
+
+function buildCwds(
+  ws: WorkspaceInfo,
+  onSelectCwd: (workspaceId: string, cwd: string) => void,
+): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "workspace-cwds";
+  if (ws.cwds.length === 0) return el;
+  for (const cwd of ws.cwds) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "workspace-cwd-chip";
+    chip.setAttribute("data-stop", "1");
+    if (ws.selectedCwd === cwd) chip.classList.add("active");
+    chip.title = cwd;
+    chip.textContent = shortenCwd(cwd);
+    chip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onSelectCwd(ws.id, cwd);
+    });
+    el.appendChild(chip);
+  }
+  return el;
+}
+
+function shortenCwd(cwd: string): string {
+  const m = cwd.match(/^(\/Users\/[^/]+)(.*)$/);
+  let short = m ? "~" + m[2] : cwd;
+  if (short.length > 32) {
+    const parts = short.split("/");
+    if (parts.length > 3) short = `${parts[0]}/…/${parts.slice(-2).join("/")}`;
+  }
+  return short;
+}
+
+function buildPanes(ws: WorkspaceInfo): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "workspace-section workspace-panes";
+  const open = !!getWorkspaceUi(ws.id, "panesOpen");
+  el.classList.toggle("open", open);
+
+  const header = document.createElement("button");
+  header.type = "button";
+  header.className = "workspace-section-header";
+  header.setAttribute("data-stop", "1");
+  header.textContent = `Panes (${ws.surfaceTitles.length})`;
+  header.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const next = !el.classList.contains("open");
+    el.classList.toggle("open", next);
+    setWorkspaceUi(ws.id, "panesOpen", next);
+  });
+  el.appendChild(header);
+
+  const list = document.createElement("div");
+  list.className = "workspace-panes-list";
+  for (const title of ws.surfaceTitles) {
+    const row = document.createElement("div");
+    row.className = "workspace-pane-row";
+    if (title === ws.focusedSurfaceTitle) row.classList.add("focused");
+    const t = document.createElement("span");
+    t.className = "workspace-pane-title";
+    t.textContent = title;
+    row.appendChild(t);
+    list.appendChild(row);
+  }
+  el.appendChild(list);
+  return el;
+}
+
+function buildManifestsPlaceholder(ws: WorkspaceInfo): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "workspace-section workspace-manifests";
+  if (!ws.packageJson && !ws.cargoToml) {
+    // Render an empty marker so signature comparison still works
+    // (and so the tests can confirm "manifest absent" leaves nothing
+    // visible). M14 will replace this with the real manifest cards.
+    el.classList.add("empty");
+    return el;
+  }
+  if (ws.packageJson) {
+    const card = document.createElement("div");
+    card.className = "workspace-package workspace-package-npm";
+    card.innerHTML = `
+      <div class="workspace-package-header">
+        <span class="workspace-package-icon">📦</span>
+        <span class="workspace-package-name">${escapeHtml(
+          ws.packageJson.name ?? "package.json",
+        )}</span>
+        <span class="workspace-package-version tau-mono">${escapeHtml(
+          ws.packageJson.version ?? "",
+        )}</span>
+      </div>
+      <div class="workspace-package-deferred">scripts available natively (web mirror v1.1)</div>
+    `;
+    el.appendChild(card);
+  }
+  if (ws.cargoToml) {
+    const card = document.createElement("div");
+    card.className = "workspace-package workspace-package-cargo";
+    card.innerHTML = `
+      <div class="workspace-package-header">
+        <span class="workspace-package-icon">🦀</span>
+        <span class="workspace-package-name">${escapeHtml(
+          ws.cargoToml.name ?? "Cargo.toml",
+        )}</span>
+        <span class="workspace-package-version tau-mono">${escapeHtml(
+          ws.cargoToml.version ?? "",
+        )}</span>
+      </div>
+      <div class="workspace-package-deferred">cargo subcommands available natively (web mirror v1.1)</div>
+    `;
+    el.appendChild(card);
+  }
+  return el;
+}
+
+function buildStatus(ws: WorkspaceInfo): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "workspace-section workspace-status";
+  if (ws.statusPills.length === 0) {
+    el.classList.add("empty");
+    return el;
+  }
+  for (const pill of ws.statusPills) {
+    const parsed = parseStatusKey(pill.key);
+    const node = renderStatusEntry({
+      parsed,
+      value: pill.value,
+      color: pill.color,
+      icon: pill.icon,
+      context: "card",
+    });
+    node.title = `ht ${pill.key}: ${pill.value}`;
+    el.appendChild(node);
+  }
+  return el;
+}
+
+function buildProgress(ws: WorkspaceInfo): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "workspace-progress";
+  if (!ws.progress) {
+    el.classList.add("empty");
+    return el;
+  }
+  const pct = Math.min(100, Math.max(0, ws.progress.value));
+  el.innerHTML = `<div class="workspace-progress-track"><div class="workspace-progress-fill" style="width:${pct}%"></div></div>`;
+  if (ws.progress.label) {
+    const lbl = document.createElement("div");
+    lbl.className = "workspace-progress-label";
+    lbl.textContent = ws.progress.label;
+    el.appendChild(lbl);
+  }
+  return el;
+}

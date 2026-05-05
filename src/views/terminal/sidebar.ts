@@ -12,6 +12,12 @@ import {
   type ManifestActionState,
 } from "./sidebar-manifest-card";
 import { renderStatusEntry } from "./status-renderers";
+import type { WorkspaceInfo as SharedWorkspaceInfo } from "../../shared/sidebar-state";
+
+// Re-export `WorkspaceInfo` from shared so existing native callers
+// (and the test suite) keep importing it from this module unchanged.
+// M13 made `src/shared/sidebar-state.ts` the canonical source.
+export type WorkspaceInfo = SharedWorkspaceInfo;
 
 /** Per-card slot cache used by Phase 3 of the perf pass. Each slot
  *  is a section of the workspace card; the matching `sigs` entry is
@@ -76,46 +82,6 @@ function stableWorkspacesSignature(list: unknown): string {
 //   .notification-body-btn / .notification-dismiss /
 //   .sidebar-section-header with text "Notifications (N)"
 // ─────────────────────────────────────────────────────────────────────
-
-export interface WorkspaceInfo {
-  id: string;
-  name: string;
-  color?: string;
-  active: boolean;
-  surfaceTitles: string[];
-  focusedSurfaceTitle?: string | null;
-  /** Full argv of the focused surface's foreground process, if it differs
-   *  from the shell. E.g. "bun run dev", "vim src/foo.ts". */
-  focusedSurfaceCommand?: string | null;
-  statusPills: { key: string; value: string; color?: string; icon?: string }[];
-  progress: { value: number; label?: string } | null;
-  /** Unique TCP ports listening across all panes in this workspace. */
-  listeningPorts: number[];
-  /** Nearest package.json for this workspace's surfaces (or null). */
-  packageJson: PackageInfo | null;
-  /** Script names from package.json that are currently running in any surface. */
-  runningScripts: string[];
-  /** Script names whose most recent run exited non-zero within the last ~10 s. */
-  erroredScripts: string[];
-  /** Nearest Cargo.toml for this workspace's surfaces (or null). */
-  cargoToml: CargoInfo | null;
-  /** Cargo subcommands currently running in the process tree. */
-  runningCargoActions: string[];
-  /** Cargo subcommands whose most recent run exited non-zero. */
-  erroredCargoActions: string[];
-  /** Distinct cwds across all surfaces in this workspace, in stable order. */
-  cwds: string[];
-  /** The cwd currently driving the manifest cards. */
-  selectedCwd: string | null;
-  /** Sum of %cpu across every descendant of every surface. */
-  cpuPercent: number;
-  /** Sum of resident-set-size in KB across every descendant. */
-  memRssKb: number;
-  /** Total process count across every surface. */
-  processCount: number;
-  /** Rolling CPU% history. Drives the sparkline in the active card. */
-  cpuHistory: number[];
-}
 
 interface SidebarCallbacks {
   onSelectWorkspace: (id: string) => void;

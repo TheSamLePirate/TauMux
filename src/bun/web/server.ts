@@ -108,6 +108,12 @@ export class WebServer {
     | null = null;
   /** Web client (re)requests the chat list + service status. */
   onTelegramRequestState: (() => void) | null = null;
+  /** M13 — web client pinned a cwd for a workspace's manifest cards.
+   *  Default null = ignore (web v1 keeps the selection client-local).
+   *  v1.1 will wire this to call into surface-manager's same-name
+   *  hook so a click on web syncs into native. */
+  onSelectWorkspaceCwd: ((workspaceId: string, cwd: string) => void) | null =
+    null;
 
   /** Plan #09 commit C — fired before every web-mirror stdin packet
    *  so the auto-continue engine can reset its runaway counter when
@@ -1203,6 +1209,19 @@ export class WebServer {
       }
       case "telegramRequestState": {
         this.onTelegramRequestState?.();
+        break;
+      }
+      case "selectWorkspaceCwd": {
+        const workspaceId = fields["workspaceId"];
+        const cwd = fields["cwd"];
+        if (
+          typeof workspaceId === "string" &&
+          workspaceId &&
+          typeof cwd === "string" &&
+          cwd
+        ) {
+          this.onSelectWorkspaceCwd?.(workspaceId, cwd);
+        }
         break;
       }
       case "subscribeWorkspace": {

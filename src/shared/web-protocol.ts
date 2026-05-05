@@ -393,6 +393,16 @@ export interface SidebarTogglePayload {
   visible: boolean;
 }
 
+/** M13 — client tells the host which cwd it has pinned for a
+ *  workspace's manifest cards. v1 stores it locally and uses it to
+ *  drive `WorkspaceInfo.selectedCwd`; the host hook is null-safe so
+ *  bun-side wiring is deferred to v1.1 without breaking the
+ *  protocol contract. */
+export interface SelectWorkspaceCwdPayload {
+  workspaceId: string;
+  cwd: string;
+}
+
 export interface PanelMouseEventPayload {
   surfaceId: string;
   id: string;
@@ -420,7 +430,8 @@ export type ClientMessage =
   | ClientEnvelope<"sidebarToggle", SidebarTogglePayload>
   | ClientEnvelope<"clearNotifications", Record<string, never>>
   | ClientEnvelope<"dismissNotification", DismissNotificationClientPayload>
-  | ClientEnvelope<"panelMouseEvent", PanelMouseEventPayload>;
+  | ClientEnvelope<"panelMouseEvent", PanelMouseEventPayload>
+  | ClientEnvelope<"selectWorkspaceCwd", SelectWorkspaceCwdPayload>;
 
 export type ClientMessageType = ClientMessage["type"];
 
