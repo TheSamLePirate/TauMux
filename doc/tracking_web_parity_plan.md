@@ -10,7 +10,7 @@ Goal: bring `src/web-client/` to UI/UX parity with `src/views/terminal/` (sideba
 | M11 — theme + settings broadcast | done | `7d8e097` | 2026-05-05 | 0.2.85; theme/font/density now reach browser; sensitive fields dropped by `pickWebSettings`; 1670 tests pass |
 | M12 — bottom status bar | done | `4db592c` | 2026-05-05 | 0.2.86; status-keys + status-render + Meter extracted to `src/shared/`; native-only `model`/`kind` keys via `registerStatusKey()`; web mirror gains three-zone bottom bar; 1676 tests pass |
 | M13 — sidebar workspace cards (sparkline, cwd, panes) | done | `c706c15` | 2026-05-05 | 0.2.87; `buildSidebarWorkspaces` extracted to `src/shared/`; web cards render stripe/header/meta/stats/sparkline/cwds/panes/status/progress with section signature caching; `selectWorkspaceCwd` envelope; manifest cards stubbed for M14; 1681 tests pass |
-| M14 — manifest cards (npm + cargo) | not started | — | — | — |
+| M14 — manifest cards (npm + cargo) | done | `345e296` | 2026-05-06 | 0.2.88; `renderManifestCard` extracted to `src/shared/`; web cards render header/body/scripts with state dots; per-manifest expansion in localStorage; `runScript` deferred to v1.1 (M14-1 in deferred_items.md); 1688 tests pass |
 | M15 — notification overlay (per-surface) | not started | — | — | — |
 | M16 — pane chrome + paneGap + focus tokens | not started | — | — | — |
 | M17 — plan panel placement + logs polish | not started | — | — | — |
@@ -28,7 +28,7 @@ These extractions un-block multiple milestones. Track separately so they can lan
 | Status renderers → `src/shared/status-render.ts` | done | `4db592c` | M12 — re-export shim left in `views/terminal/status-renderers.ts` |
 | Status key registry → `src/shared/status-keys.ts` | done | `4db592c` | M12 — `model`+`kind` re-registered in `views/terminal/native-status-keys.ts` |
 | Meter primitive → `src/shared/tau-meter.ts` | done | `4db592c` | M12 — `tau-primitives.ts` re-exports |
-| Manifest card → `src/shared/sidebar-manifest-card.ts` | not started | — | needed by M14 |
+| Manifest card → `src/shared/sidebar-manifest-card.ts` | done | `345e296` | M14 — `createIcon` injected; native adapter shim |
 | Notification overlay → `src/shared/notification-overlay.ts` | not started | — | needed by M15 |
 | Pane chips → `src/shared/pane-chips.ts` | not started | — | needed by M16 |
 
@@ -53,6 +53,6 @@ After M17:
 
 ## Deferred to v1.1+
 
-- `runScript` from manifest action buttons in web mirror (currently logs + toasts only) — entry pending in `doc/deferred_items.md`.
-- `onSelectWorkspaceCwd` server-side round-trip (web v1 mutates only its local manifest projection).
+- `runScript` from manifest action buttons in web mirror (currently logs + Web Notification only) — tracked in `doc/deferred_items.md` as **M14-1**.
+- `onSelectWorkspaceCwd` server-side round-trip (web v1 mutates only its local manifest projection) — tracked in `doc/deferred_items.md` as **M14-2**.
 - `model` / `kind` status-bar keys in shared registry (depend on agent panel state; out of scope).
