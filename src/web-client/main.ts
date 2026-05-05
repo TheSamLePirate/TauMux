@@ -1373,6 +1373,30 @@ function boot() {
     { once: true },
   );
 
+  // M14 — manifest cards still dispatch `ht-run-script` on script-run
+  // click (same contract as native), but the web mirror v1 is read-
+  // only for workspace mutation: spawning a fresh surface with the
+  // command would diverge from the native session and the user would
+  // see a phantom pane. Instead we surface the deferred behaviour as
+  // a console.info + an OS notification (gated by the user's
+  // Web Notifications opt-in via Settings). v1.1 will route the
+  // request through the new `selectWorkspaceCwd`-shaped envelope so
+  // native spawns the surface and the web mirror just reflects it.
+  window.addEventListener("ht-run-script", (e) => {
+    const detail = (e as CustomEvent<{ command?: string; scriptKey?: string }>)
+      .detail;
+    const cmd = detail?.command ?? detail?.scriptKey ?? "(unknown)";
+    console.info(
+      "[mirror] runScript deferred to v1.1 — would have launched:",
+      cmd,
+    );
+    fireNotification({
+      title: "τ-mux mirror",
+      body: `Run \`${cmd}\` natively — the web mirror is read-only for v1.`,
+      tag: "mirror-run-script-deferred",
+    });
+  });
+
   transport.connect();
 }
 

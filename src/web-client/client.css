@@ -2107,39 +2107,222 @@ body.sidebar-hidden .tau-status-bar {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* ── M14 — manifest cards (npm + cargo) ── parity with native
+ * `.workspace-package*` rules. Same class names so the shared
+ * `renderManifestCard` produces identical DOM in both surfaces.
+ * Tokens follow the web mirror's `--ht-*` system; the cargo icon
+ * uses the brand orange to differentiate at a glance, matching
+ * native. */
 .workspace-package {
-  background: var(--ht-bg-card-raised);
+  margin: 6px 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--ht-border-soft);
-  border-radius: var(--ht-radius-control);
-  padding: 6px 8px;
-  margin-bottom: 4px;
+  overflow: hidden;
 }
 .workspace-package-header {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  padding: 6px 10px;
+  font-size: 10px;
+  color: var(--ht-text-muted);
+  background: var(--ht-bg-titlebar);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background var(--ht-t-fast),
+    color var(--ht-t-fast);
+}
+.workspace-package-header:hover {
+  background: var(--ht-bg-card-raised);
+  color: var(--ht-text-strong);
+}
+.workspace-package.expanded .workspace-package-header {
+  border-bottom: 1px solid var(--ht-border-soft);
+}
+.workspace-package-caret {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--ht-text-dim);
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color var(--ht-t-fast);
+}
+.workspace-package-header:hover .workspace-package-caret {
+  color: var(--ht-text-strong);
+}
+.workspace-package-body {
+  padding: 8px 10px;
 }
 .workspace-package-icon {
-  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ht-secondary);
+}
+/* Cargo's signature orange so the eye can tell the cargo card from
+ * the npm card at a glance. Only the leading icon is tinted —
+ * everything else inherits the shared manifest-card styling. */
+.workspace-manifest-cargo .workspace-package-icon {
+  color: #f38020;
 }
 .workspace-package-name {
-  flex: 1 1 auto;
   color: var(--ht-text-strong);
   font-weight: 500;
+  letter-spacing: 0.02em;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .workspace-package-version {
+  font-size: 9px;
+  color: var(--ht-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.workspace-package-type {
+  font-size: 9px;
+  color: var(--ht-accent);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--ht-accent-soft);
+  border: 1px solid var(--ht-accent-strong);
+  margin-left: auto;
+}
+.workspace-package-desc {
   font-size: 10px;
   color: var(--ht-text-muted);
-}
-.workspace-package-deferred {
   margin-top: 4px;
-  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.workspace-package-bin {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.workspace-package-bin-label {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: var(--ht-text-dim);
-  font-style: italic;
+  margin-right: 2px;
+}
+.workspace-package-bin-chip {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--ht-font-mono);
+  color: var(--ht-secondary);
+  background: var(--ht-secondary-soft);
+  border: 1px solid var(--ht-border-bright);
+}
+.workspace-package-scripts {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.workspace-script-btn {
+  display: grid;
+  grid-template-columns: 10px auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--ht-text-muted);
+  background: var(--ht-bg-titlebar);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background var(--ht-t-fast),
+    border-color var(--ht-t-fast),
+    color var(--ht-t-fast);
+}
+.workspace-script-btn:hover {
+  background: var(--ht-bg-card-raised);
+  border-color: var(--ht-border-soft);
+  color: var(--ht-text-strong);
+}
+.workspace-script-btn[data-state="running"] {
+  background: rgba(74, 222, 128, 0.05);
+  border-color: rgba(74, 222, 128, 0.16);
+  color: var(--ht-text-strong);
+}
+.workspace-script-btn[data-state="error"] {
+  background: rgba(248, 113, 113, 0.05);
+  border-color: rgba(248, 113, 113, 0.2);
+}
+.workspace-script-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
+}
+.workspace-script-dot.running {
+  background: var(--ht-sem-success);
+  animation: ht-script-pulse 1.4s ease-in-out infinite;
+}
+.workspace-script-dot.error {
+  background: var(--ht-sem-error);
+}
+@keyframes ht-script-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.9);
+  }
+}
+.workspace-script-name {
+  color: var(--ht-text-strong);
+  font-weight: 500;
+  font-family: var(--ht-font-mono);
+  font-size: 10px;
+}
+.workspace-script-cmd {
+  color: var(--ht-text-dim);
+  font-family: var(--ht-font-mono);
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.workspace-script-run {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ht-accent);
+  opacity: 0.4;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.workspace-script-btn:hover .workspace-script-run {
+  opacity: 1;
+}
+.workspace-script-btn[data-state="running"] .workspace-script-run {
+  color: #86efac;
+  opacity: 0.9;
+}
+.workspace-script-btn[data-state="error"] .workspace-script-run {
+  color: #fca5a5;
+  opacity: 0.9;
 }
 .workspace-status {
   display: flex;

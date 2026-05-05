@@ -102,6 +102,11 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
       // the sidebar picks up the change through `buildSidebarWorkspaces`.
       render(store.getState());
     },
+    onRequestRerender: () => {
+      // M14 — manifest expand/collapse persists in localStorage, so a
+      // re-render with the same store state shows the new state.
+      render(store.getState());
+    },
   });
 
   // ── Notification state ───────────────────────────────────────────
@@ -446,7 +451,6 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
     if (Array.isArray(n.children))
       for (const c of n.children) walkLayout(c, out);
   }
-
 
   // ── Logs ─── string-concat; clear button still routes via data-action
 

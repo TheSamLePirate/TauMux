@@ -24,13 +24,17 @@
 import { renderStatusEntry } from "../../shared/status-render";
 import { parseStatusKey } from "../../shared/status-key";
 import type { WorkspaceInfo } from "../../shared/sidebar-state";
-import { escapeHtml } from "../../shared/escape-html";
 import { buildCpuSparkline } from "./cpu-sparkline";
 import { getWorkspaceUi, setWorkspaceUi } from "./local-ui-state";
+import { buildManifestsSection } from "./card-manifests";
 
 export interface WorkspaceCardCallbacks {
   onSelectWorkspace: (workspaceId: string) => void;
   onSelectCwd: (workspaceId: string, cwd: string) => void;
+  /** M14 — re-render the sidebar after a manifest expand/collapse so
+   *  the open/closed flip lands on screen without waiting for the
+   *  next 1 Hz tick. */
+  onRequestRerender: () => void;
 }
 
 type SectionKey =
@@ -70,8 +74,21 @@ const sigStatus = (ws: WorkspaceInfo) =>
     .join(";");
 const sigProgress = (ws: WorkspaceInfo) =>
   ws.progress ? `${ws.progress.value}|${ws.progress.label ?? ""}` : "";
-const sigManifests = (ws: WorkspaceInfo) =>
-  `${ws.packageJson?.path ?? ""}|${ws.packageJson?.version ?? ""}|${ws.cargoToml?.path ?? ""}|${ws.cargoToml?.version ?? ""}`;
+const sigManifests = (ws: WorkspaceInfo, expandedSig: string) =>
+  [
+    ws.packageJson?.path ?? "",
+    ws.packageJson?.version ?? "",
+    Object.keys(ws.packageJson?.scripts ?? {}).join(","),
+    ws.runningScripts.join(","),
+    ws.erroredScripts.join(","),
+    ws.cargoToml?.path ?? "",
+    ws.cargoToml?.version ?? "",
+    ws.cargoToml?.isWorkspace ? "ws" : "crate",
+    (ws.cargoToml?.binaries ?? []).join(","),
+    ws.runningCargoActions.join(","),
+    ws.erroredCargoActions.join(","),
+    expandedSig,
+  ].join("|");
 
 export class WorkspaceCardBuilder {
   private caches = new Map<string, CardCache>();
@@ -138,8 +155,15 @@ export class WorkspaceCardBuilder {
         buildCwds(ws, this.callbacks.onSelectCwd),
       );
       this.section(card, "panes", sigPanes(ws), () => buildPanes(ws));
-      this.section(card, "manifests", sigManifests(ws), () =>
-        buildManifestsPlaceholder(ws),
+      // Manifest section signature factors in the per-key
+      // expand/collapse state (read from local-ui-state) so a click
+      // on the chevron rebuilds the right card without forcing a
+      // full sidebar re-render.
+      const expandedSig = manifestExpandedSignature(ws);
+      this.section(card, "manifests", sigManifests(ws, expandedSig), () =>
+        buildManifestsSection(ws, {
+          requestRerender: this.callbacks.onRequestRerender,
+        }),
       );
       this.section(card, "status", sigStatus(ws), () => buildStatus(ws));
       this.section(card, "progress", sigProgress(ws), () => buildProgress(ws));
@@ -358,51 +382,36 @@ function buildPanes(ws: WorkspaceInfo): HTMLElement {
   return el;
 }
 
-function buildManifestsPlaceholder(ws: WorkspaceInfo): HTMLElement {
-  const el = document.createElement("div");
-  el.className = "workspace-section workspace-manifests";
-  if (!ws.packageJson && !ws.cargoToml) {
-    // Render an empty marker so signature comparison still works
-    // (and so the tests can confirm "manifest absent" leaves nothing
-    // visible). M14 will replace this with the real manifest cards.
-    el.classList.add("empty");
-    return el;
+/** M14 — signature contribution from the per-card manifest expand/
+ *  collapse state. Each manifest key gets `npm` or `cargo` plus the
+ *  `<wsId>:<kind>` boolean from local-ui-state, so a click that
+ *  flips one expansion bumps the signature and rebuilds only the
+ *  right card. */
+function manifestExpandedSignature(ws: WorkspaceInfo): string {
+  const parts: string[] = [];
+  if (ws.packageJson)
+    parts.push(`npm:${getWorkspaceUi(ws.id, "manifestsOpen") ? 1 : 0}`);
+  // Per-manifest open state lives under `manifestsExpanded` in
+  // local-ui-state — keyed by the same `<wsId>:npm` / `<wsId>:cargo`
+  // strings the `card-manifests` builder uses. We don't import the
+  // getter here to avoid circular module loads; instead read the raw
+  // localStorage entry the same way the builder does.
+  parts.push(readManifestExpandedRaw(`${ws.id}:npm`));
+  parts.push(readManifestExpandedRaw(`${ws.id}:cargo`));
+  return parts.join(",");
+}
+
+function readManifestExpandedRaw(key: string): string {
+  try {
+    const raw = localStorage.getItem("tau-mux.sidebar.ui-state");
+    if (!raw) return "0";
+    const parsed = JSON.parse(raw) as {
+      manifestsExpanded?: Record<string, boolean>;
+    };
+    return parsed.manifestsExpanded?.[key] ? "1" : "0";
+  } catch {
+    return "0";
   }
-  if (ws.packageJson) {
-    const card = document.createElement("div");
-    card.className = "workspace-package workspace-package-npm";
-    card.innerHTML = `
-      <div class="workspace-package-header">
-        <span class="workspace-package-icon">📦</span>
-        <span class="workspace-package-name">${escapeHtml(
-          ws.packageJson.name ?? "package.json",
-        )}</span>
-        <span class="workspace-package-version tau-mono">${escapeHtml(
-          ws.packageJson.version ?? "",
-        )}</span>
-      </div>
-      <div class="workspace-package-deferred">scripts available natively (web mirror v1.1)</div>
-    `;
-    el.appendChild(card);
-  }
-  if (ws.cargoToml) {
-    const card = document.createElement("div");
-    card.className = "workspace-package workspace-package-cargo";
-    card.innerHTML = `
-      <div class="workspace-package-header">
-        <span class="workspace-package-icon">🦀</span>
-        <span class="workspace-package-name">${escapeHtml(
-          ws.cargoToml.name ?? "Cargo.toml",
-        )}</span>
-        <span class="workspace-package-version tau-mono">${escapeHtml(
-          ws.cargoToml.version ?? "",
-        )}</span>
-      </div>
-      <div class="workspace-package-deferred">cargo subcommands available natively (web mirror v1.1)</div>
-    `;
-    el.appendChild(card);
-  }
-  return el;
 }
 
 function buildStatus(ws: WorkspaceInfo): HTMLElement {

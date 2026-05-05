@@ -6,6 +6,13 @@
 
 This document is a real plan, not a wishlist. Every item has scope, approach, files, tests, risk, effort, and the open questions that have to be answered before code is written. Items are grouped so they cluster into clean PRs.
 
+## M14 web-mirror parity carry-over (added 2026-05-06, version 0.2.87 → 0.2.88)
+
+| ID | What | Files | Effort | Risk |
+|----|------|-------|--------|------|
+| M14-1 | **`runScript` from web mirror manifest cards.** Action buttons render with the right state dots and dispatch `ht-run-script` on click, but the web client only `console.info`s + fires a Web Notification — it doesn't actually spawn the surface natively. v1.1: route the dispatched detail through a new client envelope so bun spawns a fresh surface and broadcasts `surfaceCreated` back to all clients (native + web). | `src/web-client/main.ts` (the `ht-run-script` listener), new envelope in `src/shared/web-protocol.ts`, dispatch in `src/bun/web/server.ts`, native run-script handler in `src/bun/index.ts` | M | medium |
+| M14-2 | **Server-side `selectWorkspaceCwd` wiring.** M13 added the envelope; the server hook is null-safe. v1.1 should call into surface-manager so a click on web syncs the manifest card source on native too. | `src/bun/web/server.ts` (`onSelectWorkspaceCwd` hook), `src/bun/index.ts` (wire to surface-manager `setSelectedCwd` + rebroadcast) | S | low |
+
 ## Effort and risk legend
 
 - **S** — < 30 min, single file, mechanical change.

@@ -107,6 +107,37 @@ export function persistSelectedCwds(map: Map<string, string>): void {
   saveJson(LS_SELECTED_CWDS, obj);
 }
 
+// ── Manifest expansion ─────────────────────────────────────────
+//
+// M14 — per-workspace per-manifest expand/collapse state. The native
+// sidebar tracks this on a `Set<string>` keyed `<workspaceId>:npm` /
+// `<workspaceId>:cargo` (`expandedPackages`). The web mirror persists
+// the same key in localStorage so a reload restores the user's
+// choice. Default is collapsed (matching native's `Set` starting
+// empty); a fresh install only opens manifests the user clicks open.
+
+export function getWorkspaceManifestExpanded(key: string): boolean {
+  const ui = loadUiState();
+  const map = (ui as unknown as Record<string, unknown>)["manifestsExpanded"];
+  if (map && typeof map === "object") {
+    return (map as Record<string, boolean>)[key] === true;
+  }
+  return false;
+}
+
+export function setWorkspaceManifestExpanded(
+  key: string,
+  expanded: boolean,
+): void {
+  const ui = loadUiState();
+  const slot = ((ui as unknown as Record<string, unknown>)[
+    "manifestsExpanded"
+  ] ??= {}) as Record<string, boolean>;
+  if (expanded) slot[key] = true;
+  else delete slot[key];
+  persistUiState();
+}
+
 /** Test seam — drop the cached objects so a fresh `loadJson` runs.
  *  Production callers never need this. */
 export function __resetForTests(): void {
