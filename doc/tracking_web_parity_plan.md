@@ -11,7 +11,7 @@ Goal: bring `src/web-client/` to UI/UX parity with `src/views/terminal/` (sideba
 | M12 — bottom status bar | done | `4db592c` | 2026-05-05 | 0.2.86; status-keys + status-render + Meter extracted to `src/shared/`; native-only `model`/`kind` keys via `registerStatusKey()`; web mirror gains three-zone bottom bar; 1676 tests pass |
 | M13 — sidebar workspace cards (sparkline, cwd, panes) | done | `c706c15` | 2026-05-05 | 0.2.87; `buildSidebarWorkspaces` extracted to `src/shared/`; web cards render stripe/header/meta/stats/sparkline/cwds/panes/status/progress with section signature caching; `selectWorkspaceCwd` envelope; manifest cards stubbed for M14; 1681 tests pass |
 | M14 — manifest cards (npm + cargo) | done | `345e296` | 2026-05-06 | 0.2.88; `renderManifestCard` extracted to `src/shared/`; web cards render header/body/scripts with state dots; per-manifest expansion in localStorage; `runScript` deferred to v1.1 (M14-1 in deferred_items.md); 1688 tests pass |
-| M15 — notification overlay (per-surface) | not started | — | — | — |
+| M15 — notification overlay (per-surface) | done | `03c7c11` | 2026-05-06 | 0.2.89; `NotificationOverlay` extracted to `src/shared/`; native subclass shim pre-binds icon; web bridge (`src/web-client/notification-overlay-bridge.ts`) wires store→show/dismiss + settings + queue/replay; 1694 tests pass |
 | M16 — pane chrome + paneGap + focus tokens | not started | — | — | — |
 | M17 — plan panel placement + logs polish | not started | — | — | — |
 
@@ -29,7 +29,7 @@ These extractions un-block multiple milestones. Track separately so they can lan
 | Status key registry → `src/shared/status-keys.ts` | done | `4db592c` | M12 — `model`+`kind` re-registered in `views/terminal/native-status-keys.ts` |
 | Meter primitive → `src/shared/tau-meter.ts` | done | `4db592c` | M12 — `tau-primitives.ts` re-exports |
 | Manifest card → `src/shared/sidebar-manifest-card.ts` | done | `345e296` | M14 — `createIcon` injected; native adapter shim |
-| Notification overlay → `src/shared/notification-overlay.ts` | not started | — | needed by M15 |
+| Notification overlay → `src/shared/notification-overlay.ts` | done | `03c7c11` | M15 — `createIcon` injected; native subclass shim pre-binds |
 | Pane chips → `src/shared/pane-chips.ts` | not started | — | needed by M16 |
 
 ## Per-milestone gates
