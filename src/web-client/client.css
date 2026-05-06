@@ -2437,10 +2437,14 @@ body.sidebar-hidden .tau-status-bar {
  * Anchored top-right inside `.pane`. The stack uses
  * `pointer-events: none` so empty stacks still let mouse events
  * through to the terminal; cards re-enable pointer events.
+ *
+ * Note: `.pane` already has `position: absolute` upstream — that's
+ * a valid containing block for `position: absolute` children, so
+ * the overlay stack anchors correctly without an explicit
+ * `position: relative` override here. (An earlier draft of this
+ * rule clobbered `.pane { position: absolute }` to relative, which
+ * collapsed the multi-pane layout into a single-row inline flow.)
  */
-.pane {
-  position: relative;
-}
 .tau-notif-overlay-stack {
   position: absolute;
   top: 36px; /* clear of the pane bar */
