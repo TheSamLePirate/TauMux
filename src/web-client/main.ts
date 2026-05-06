@@ -86,6 +86,12 @@ declare const WebLinksAddon: any;
 
 const GAP = 2;
 const TOOLBAR_HEIGHT = 36;
+// M17 sizing fix — must match the `.tau-status-bar { height: 26px }`
+// rule in client.css. The layout view subtracts this from the
+// available viewport height in nativeViewport-mirror mode and uses
+// it as the inline `bottom` offset for the pane container in
+// non-mirror mode.
+const STATUS_BAR_HEIGHT = 26;
 const SIDEBAR_WIDTH = 260;
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 600;
@@ -313,6 +319,7 @@ function boot() {
     gap: GAP,
     sidebarWidth: SIDEBAR_WIDTH,
     toolbarHeight: TOOLBAR_HEIGHT,
+    statusBarHeight: STATUS_BAR_HEIGHT,
   });
 
   // M12 — bottom status bar. Mounts into the page-shell `<div
@@ -471,19 +478,26 @@ function boot() {
     for (const sid of activeIds) {
       if (!terms[sid]) createPane(sid, state);
     }
-    // Resize to whatever the snapshot says.
-    for (const sid in terms) {
-      const ref = terms[sid]!;
-      if (!ref.term) continue;
-      const surf = state.surfaces[sid];
-      if (surf && surf.cols && surf.rows) {
+    // Fit each xterm to its pane container. We deliberately do NOT
+    // call `term.resize(state.surfaces[sid].cols, .rows)` here — that
+    // would force every pane to the SERVER's authoritative size, but
+    // on a multi-pane web client each pane is smaller than the
+    // server-side surface (split panes). FitAddon reads the rendered
+    // .pane-term box and computes the right cols/rows for THIS
+    // client. Server resize requests still flow through the per-pane
+    // ResizeObserver in `createPane`. The fit runs in rAF so it
+    // happens AFTER `applyLayout` has set the pane's pixel rect.
+    requestAnimationFrame(() => {
+      for (const sid in terms) {
+        const ref = terms[sid]!;
+        if (!ref.term || !ref.fitAddon) continue;
         try {
-          ref.term.resize(surf.cols, surf.rows);
+          ref.fitAddon.fit();
         } catch {
-          /* ignore */
+          /* ignore — pane may be hidden / detached */
         }
       }
-    }
+    });
   }
 
   function collectSurfaceIds(node: any, out: Set<string>) {
@@ -568,13 +582,23 @@ function boot() {
       sendMsg("focusSurface", { surfaceId });
     });
 
-    // Propose resize to the server when the rendered pane geometry
-    // changes. The server decides whether to honor it (native app is
-    // authoritative by default). Rate-limited to avoid spamming during
-    // window drags.
+    // When the rendered pane geometry changes (window resize, sidebar
+    // toggle, status-bar appear/disappear, split-pane drag), refit the
+    // local xterm AND propose the new dims to the server. The local
+    // fit is what makes the cells match the actual pixel size; the
+    // server-side proposal is advisory (the host decides whether to
+    // honor it — native is authoritative by default). Rate-limited to
+    // 250 ms so a continuous drag doesn't spam fits or proposals.
     let lastProposed: { cols: number; rows: number } | null = null;
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const ro = new ResizeObserver(() => {
+      // Fit immediately so the user sees a redrawn terminal at the
+      // new size; the server-side proposal can wait for the debounce.
+      try {
+        fitAddon.fit();
+      } catch {
+        /* ignore — pane may be hidden / detached */
+      }
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         try {

@@ -1752,8 +1752,12 @@ body.wm-kbd-active #pane-container {
  * pane container is positioned absolutely (see top of this file);
  * we hard-code the compensating bottom inset here.
  */
+/* Non-mirror mode: layout.ts sets `container.style.bottom = 26px`
+ * inline at runtime so the pane container clears the fixed status
+ * bar. CSS fallback for the brief window before the layout view
+ * mounts (e.g. font-load gate). */
 #pane-container {
-  bottom: 26px !important;
+  bottom: 26px;
 }
 .tau-status-bar {
   position: fixed;

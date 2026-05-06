@@ -109,6 +109,11 @@ export interface LayoutDeps {
   gap: number;
   sidebarWidth: number;
   toolbarHeight: number;
+  /** Height (px) of the bottom status bar so the mirror-scale and
+   *  pane container know how much vertical room to leave. Added in
+   *  the post-M17 sizing fix; defaults to 0 if the caller doesn't
+   *  set it (back-compat with tests). */
+  statusBarHeight?: number;
 }
 
 export interface LayoutView {
@@ -124,6 +129,7 @@ export function createLayoutView(deps: LayoutDeps): LayoutView {
     gap: defaultGap,
     sidebarWidth,
     toolbarHeight,
+    statusBarHeight = 0,
   } = deps;
 
   function applyMirrorScale(state: AppState) {
@@ -135,14 +141,20 @@ export function createLayoutView(deps: LayoutDeps): LayoutView {
       container.style.left = "";
       container.style.top = "";
       container.style.right = "0";
-      container.style.bottom = "0";
+      // M17 sizing fix — leave room for the bottom status bar so the
+      // last terminal row isn't clipped by the fixed-position bar.
+      container.style.bottom = `${statusBarHeight}px`;
       return;
     }
     const sidebarW = state.sidebarVisible
       ? sidebarEl.offsetWidth || sidebarWidth
       : 0;
     const availW = document.documentElement.clientWidth - sidebarW;
-    const availH = document.documentElement.clientHeight - toolbarHeight;
+    // M17 sizing fix — subtract the status bar so the scaled mirror
+    // fits between the toolbar and the bar instead of being half-
+    // hidden behind it.
+    const availH =
+      document.documentElement.clientHeight - toolbarHeight - statusBarHeight;
     if (availW <= 0 || availH <= 0) return;
     const scale = Math.min(
       availW / state.nativeViewport.width,
