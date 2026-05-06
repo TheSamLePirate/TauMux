@@ -67,6 +67,7 @@ import {
   type NotificationOverlayBridge,
 } from "./notification-overlay-bridge";
 import { renderSurfaceChips, type PaneChipsDeps } from "../shared/pane-chips";
+import { fitTerminal } from "../shared/xterm-fit";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -445,6 +446,14 @@ function boot() {
         // Force a redraw so the new palette lands without waiting for
         // the next stdout chunk.
         t.refresh(0, t.rows - 1);
+        // M18 — font / cell metrics changed (fontSize, fontFamily,
+        // lineHeight all invalidate xterm's render-service cell
+        // dimensions). Re-fit immediately so the new cell count
+        // matches the available pixels; without this, xterm keeps
+        // its old grid until the next geometry change. Mirrors
+        // `surface-manager.ts:applySettings` (line 1068) which calls
+        // `fitSurfaceTerminal(view)` in the same loop on native.
+        fitTerminal(t, ref.termEl);
       } catch {
         /* xterm not yet ready / disposed — skip */
       }
@@ -478,26 +487,13 @@ function boot() {
     for (const sid of activeIds) {
       if (!terms[sid]) createPane(sid, state);
     }
-    // Fit each xterm to its pane container. We deliberately do NOT
-    // call `term.resize(state.surfaces[sid].cols, .rows)` here — that
-    // would force every pane to the SERVER's authoritative size, but
-    // on a multi-pane web client each pane is smaller than the
-    // server-side surface (split panes). FitAddon reads the rendered
-    // .pane-term box and computes the right cols/rows for THIS
-    // client. Server resize requests still flow through the per-pane
-    // ResizeObserver in `createPane`. The fit runs in rAF so it
-    // happens AFTER `applyLayout` has set the pane's pixel rect.
-    requestAnimationFrame(() => {
-      for (const sid in terms) {
-        const ref = terms[sid]!;
-        if (!ref.term || !ref.fitAddon) continue;
-        try {
-          ref.fitAddon.fit();
-        } catch {
-          /* ignore — pane may be hidden / detached */
-        }
-      }
-    });
+    // M18 — fit happens inside `layoutView.applyLayout(state)` (which
+    // runs synchronously after this function in `render()`). No rAF
+    // race: the rect write + CSS flush + xterm resize land in the
+    // same tick. The previous deferred-fit pass collided with the
+    // per-pane ResizeObserver and poisoned xterm's render-service
+    // cache for any pane whose `.pane-term` hadn't finished CSS
+    // layout when the RO fired.
   }
 
   function collectSurfaceIds(node: any, out: Set<string>) {
@@ -589,15 +585,30 @@ function boot() {
     // server-side proposal is advisory (the host decides whether to
     // honor it — native is authoritative by default). Rate-limited to
     // 250 ms so a continuous drag doesn't spam fits or proposals.
+    // M18 — when the rendered pane geometry changes (window resize,
+    // sidebar toggle, status-bar appearance, split-pane drag), route
+    // the refit through `layoutView.applyLayout(state)` so it happens
+    // in the same code path as initial paint — single fit pipeline,
+    // no race with the deferred rAF.
+    //
+    // We schedule the layout call in `requestAnimationFrame` to
+    // coalesce bursty RO fires (a continuous drag fires the
+    // observer many times per second). The 250 ms debounce on the
+    // server-side `surfaceResizeRequest` proposal is unchanged.
     let lastProposed: { cols: number; rows: number } | null = null;
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    let layoutScheduled = false;
     const ro = new ResizeObserver(() => {
-      // Fit immediately so the user sees a redrawn terminal at the
-      // new size; the server-side proposal can wait for the debounce.
-      try {
-        fitAddon.fit();
-      } catch {
-        /* ignore — pane may be hidden / detached */
+      if (!layoutScheduled) {
+        layoutScheduled = true;
+        requestAnimationFrame(() => {
+          layoutScheduled = false;
+          try {
+            layoutView.applyLayout(store.getState());
+          } catch {
+            /* ignore — view torn down */
+          }
+        });
       }
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {

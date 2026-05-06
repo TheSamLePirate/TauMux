@@ -51,6 +51,7 @@ After M17:
 
 - 2026-05-06 / M17 — Pre-existing native overlay tests (`tests/notification-overlay.test.ts`) called `new NotificationOverlay(hooks)` without a `createIcon` dep. The shared module made the icon factory optional with a `×` fallback so existing tests keep working without churn; native consumers still get the proper SVG via the subclass shim.
 - 2026-05-06 / M17 — `escapes log messages` test (`tests/web-client-sidebar.test.ts`) was relaxed — the M17 click-to-copy attribute holds the message verbatim; happy-dom's attribute serializer renders `<` literally inside `data-copy="…"` even when the source HTML emitted `&lt;`. The XSS-relevant body text is still escape-encoded; the test now asserts on the parsed message-body element rather than the raw `innerHTML` string.
+- 2026-05-06 / M18 (commit pending) — terminal sizing parity. New `src/shared/xterm-fit.ts` ports native `fitSurfaceTerminal`. Web mirror's fit is centralized inside `applyLayout` (single synchronous pipeline) — drops the rAF/ResizeObserver race that was sizing pane "b" against a 0×0 `.pane-term` and poisoning xterm's render-service cache. Bumped 0.3.2 → 0.3.3.
 
 ## Deferred to v1.1+
 

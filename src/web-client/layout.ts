@@ -12,6 +12,7 @@
 //      the outer scale transform to the pane container.
 
 import type { AppState } from "./store";
+import { fitTerminal } from "../shared/xterm-fit";
 
 export interface Rect {
   x: number;
@@ -97,6 +98,11 @@ function walk(
 export interface TermRef {
   el: HTMLElement;
   termEl: HTMLElement;
+  /** M18 — xterm instance handle, optional so telegram panes (which
+   *  set `term: null`) and tests with stub refs still typecheck.
+   *  When present, `applyLayout` calls `fitTerminal(term, termEl)`
+   *  synchronously after writing the pane's pixel rect. */
+  term?: unknown;
 }
 
 export interface LayoutDeps {
@@ -198,6 +204,21 @@ export function createLayoutView(deps: LayoutDeps): LayoutView {
       ref.el.style.width = Math.round(r.w) + "px";
       ref.el.style.height = Math.round(r.h) + "px";
       ref.el.classList.toggle("focused", sid === state.focusedSurfaceId);
+    }
+    // M18 — fit each xterm to its pane container in the SAME tick as
+    // the rect write. Forcing one read of `offsetHeight` flushes the
+    // CSS layout engine so `fitTerminal` reads the post-write
+    // clientWidth/Height (avoids the M17 multi-pane race where pane
+    // "b"'s ResizeObserver fired before its `.pane-term` had been
+    // measured by CSS, poisoning xterm's render-service cache with
+    // a 0-cell resize).
+    for (const sid in rects) {
+      const ref = terms[sid];
+      if (!ref || !ref.term) continue;
+      // Read forces CSS layout flush — value is intentionally
+      // unused; the side effect is what matters.
+      void ref.termEl.offsetHeight;
+      fitTerminal(ref.term, ref.termEl);
     }
     scaleTerminals(state);
   }
