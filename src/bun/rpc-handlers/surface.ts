@@ -216,8 +216,20 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
           : dir === "down" || dir === "vertical"
             ? "vertical"
             : "horizontal";
-      dispatch("splitSurface", { direction });
-      return "OK";
+      const before = new Set(sessions.getAllSurfaces().map((s) => s.id));
+      const splitFrom = resolveSurfaceId(params, getState().focusedSurfaceId);
+      dispatch("splitSurface", {
+        direction,
+        surfaceId: splitFrom ?? undefined,
+        cwd: params["cwd"] ?? undefined,
+        shell: params["shell"] ?? undefined,
+        ratio: params["ratio"] ?? undefined,
+      });
+      const created = sessions
+        .getAllSurfaces()
+        .map((s) => s.id)
+        .find((id) => !before.has(id));
+      return created ? { id: created } : "OK";
     },
 
     "surface.close": (params) => {

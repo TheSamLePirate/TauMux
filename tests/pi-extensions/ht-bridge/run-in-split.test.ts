@@ -23,8 +23,10 @@ function recordingHt(replies: Record<string, any>, capture: any[]): HtClient {
       capture.push({ method, params });
       if (Object.prototype.hasOwnProperty.call(replies, method)) {
         const r = replies[method];
-        if (r instanceof Error) throw r;
-        return r;
+        const value =
+          typeof r === "function" ? r() : Array.isArray(r) ? r.shift() : r;
+        if (value instanceof Error) throw value;
+        return value;
       }
       return undefined;
     },
@@ -69,7 +71,7 @@ describe("executeRunInSplit", () => {
       { command: "npm run dev" },
       {
         "surface.split": { id: "surface:42" },
-        "surface.wait_ready": null,
+        "surface.wait_ready": { pid: 123 },
         "surface.send_text": { bytes: 13 },
       },
     );
@@ -89,6 +91,44 @@ describe("executeRunInSplit", () => {
     });
   });
 
+  test("resolves the new surface id when surface.split returns legacy OK", async () => {
+    let listCalls = 0;
+    const { result, calls } = await run(
+      { command: "npm run dev" },
+      {
+        "surface.list": () =>
+          listCalls++ === 0
+            ? [{ id: "surface:1" }]
+            : [{ id: "surface:1" }, { id: "surface:42" }],
+        "surface.split": "OK",
+        "surface.wait_ready": { pid: 123 },
+        "surface.send_text": "OK",
+      },
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.details).toMatchObject({ surfaceId: "surface:42" });
+    expect(calls.map((c) => c.method)).toEqual([
+      "surface.list",
+      "surface.split",
+      "surface.list",
+      "surface.wait_ready",
+      "surface.send_text",
+    ]);
+  });
+
+  test("does not send the command when the new surface never becomes ready", async () => {
+    const { result, calls } = await run(
+      { command: "npm run dev" },
+      {
+        "surface.split": { id: "surface:42" },
+        "surface.wait_ready": null,
+      },
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toMatch(/not ready/i);
+    expect(calls.find((c) => c.method === "surface.send_text")).toBeUndefined();
+  });
+
   test("propagates the chosen direction + cwd into surface.split", async () => {
     const { calls } = await run(
       {
@@ -96,7 +136,11 @@ describe("executeRunInSplit", () => {
         direction: "down",
         cwd: "/var/log",
       },
-      { "surface.split": { id: "surface:99" }, "surface.send_text": "OK" },
+      {
+        "surface.split": { id: "surface:99" },
+        "surface.wait_ready": { pid: 123 },
+        "surface.send_text": "OK",
+      },
     );
     const splitCall = calls.find((c) => c.method === "surface.split");
     expect(splitCall.params).toMatchObject({
@@ -144,6 +188,7 @@ describe("executeRunInSplit", () => {
       { command: "npm run dev" },
       {
         "surface.split": { id: "surface:42" },
+        "surface.wait_ready": { pid: 123 },
         "surface.send_text": new Error("PTY closed"),
       },
     );
@@ -157,6 +202,7 @@ describe("executeRunInSplit", () => {
       { command: "npm run dev", label: "dev server" },
       {
         "surface.split": { id: "surface:42" },
+        "surface.wait_ready": { pid: 123 },
         "surface.send_text": "OK",
       },
     );
