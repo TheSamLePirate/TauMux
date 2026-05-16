@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.16
+**Version:** 0.3.20
 **Generated:** 2026-05-16
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-After Phase 1, the modal-a11y leg of the AAA programme is largely closed: Process Manager, Command Palette, Settings Panel, Ask-user modal and Keyboard Cheatsheet all carry `role="dialog"` + `aria-modal` + focus trap + focus restore via the shared `ModalHost` helper. The sidebar workspace list is keyboard-reachable via roving-tabindex. Touch targets ≥ 44 × 44 px land on the mirror's coarse-pointer media block. Remaining blockers: stringly-typed dispatch (P2), test depth for the five biggest UI modules (P3 — agent-panel + terminal-effects + browser-pane + editor-pane still pending), sandbox sideband HTML/SVG in the mirror (P4), and the light-mode + high-contrast theme system (P5).
+After Phase 2 (architecture detoxification), both typed-dispatch regressions are gone: the bun-side `dispatch(action, payload)` uses a `WebviewActionEnvelope` discriminated union with a per-action `ActionPayloadByAction` lookup (A1); the mirror's `protocol-dispatcher.ts` uses a `ServerPayloadByType` lookup keyed on the `ServerMessage` union (A2). The pane-layout math is a single shared pure function in `src/shared/pane-layout-math.ts` so native + mirror rects can no longer drift (F.2 / A5). Chip rendering was already deduped in a prior sweep (F.1 verified). Remaining blockers: test depth for the four still-uncovered big UI modules (P3), sandbox sideband HTML/SVG in the mirror (P4), the light-mode + high-contrast theme system (P5), and the typed event bus + variant-context refactors (P7).
 
 ---
 
@@ -34,9 +34,9 @@ After Phase 1, the modal-a11y leg of the AAA programme is largely closed: Proces
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **1** | Best-in-class — 1 feature cleared every gap. |
-| A | **24** | Most "production-shaped" subsystems. |
-| B (incl. B+) | **21** | Functional, with named polish / test / lifecycle gaps. |
+| S (AAA) | **2** | Best-in-class — 2 features cleared every gap. |
+| A | **26** | Most "production-shaped" subsystems. |
+| B (incl. B+) | **18** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
 
@@ -60,8 +60,8 @@ After Phase 1, the modal-a11y leg of the AAA programme is largely closed: Proces
   - WebGL fallback silently noops with no diagnostic.
 
 ### Pane splits & layout
-- **Grade: A**
-- **Evidence:** `pane-layout.ts` — pure binary-tree, full rect math, neighbor finding, drag-reorder. Web `layout.ts:33-96` is param-injected (cleaner than the native module-level `setPaneGap`; A5 drift risk remains).
+- **Grade: S**
+- **Evidence:** `pane-layout.ts` — pure binary-tree, full rect math, neighbor finding, drag-reorder. Phase 2 (F.2 / A5) extracted `computeRects` into `src/shared/pane-layout-math.ts`; both native (`PaneLayout`) and mirror (`web-client/layout.ts`) wrap the same pure function so the rects can no longer drift. Parity tests in `tests/pane-layout-math-parity.test.ts`.
 - **Gaps to AAA:**
   - Serialize-roundtrip test (JSON → `PaneLayout.fromNode` → identical rects).
   - Stress on deeply nested trees.
@@ -251,12 +251,11 @@ After Phase 1, the modal-a11y leg of the AAA programme is largely closed: Proces
   - Idempotent shutdown guard (L6 landed — verify).
 
 ### Web mirror (WebSocket bridge)
-- **Grade: B+**
-- **Evidence:** M1–M10 shipped; session ring + resume-on-reconnect; reducer-driven store; @xterm/headless for state correctness; 16 ms coalescing; Graphite theme tokens. WS heartbeat + reconnect jitter landed (H.5). **S2 (HIGH):** `innerHTML` panel renderers still un-sandboxed in LAN-visible context.
+- **Grade: A**
+- **Evidence:** M1–M10 shipped; session ring + resume-on-reconnect; reducer-driven store; @xterm/headless for state correctness; 16 ms coalescing; Graphite theme tokens. WS heartbeat + reconnect jitter landed (H.5). Phase 2 (A2) typed `protocol-dispatcher.ts` via a `ServerPayloadByType` lookup keyed on the `ServerMessage` union — `any` is gone; adding a new server-message variant without a matching `case` now fails `tests/protocol-dispatcher-types.test.ts`.
 - **Gaps to AAA:**
-  - iframe-`srcdoc` sandbox + strict CSP for sideband HTML/SVG.
-  - Coverage gate.
-  - Protocol-dispatcher typed (A2).
+  - iframe-`srcdoc` sandbox + strict CSP for sideband HTML/SVG (S2 — HIGH, owned by P4).
+  - Coverage gate (P3).
 
 ### Telegram bridge
 - **Grade: A**
@@ -335,10 +334,10 @@ After Phase 1, the modal-a11y leg of the AAA programme is largely closed: Proces
   - Deeper tree-diff than `tree.length` (descendant swap goes undetected).
 
 ### Pane-bar chip rendering
-- **Grade: B**
-- **Evidence:** Extracted to `src/shared/pane-chips.ts:32-94` with signature cache to skip redundant DOM rebuilds; web-mirror parity tested. Port-click is inconsistent: native dispatches `ht-open-external` CustomEvent (`surface-manager.ts:949`); mirror routes to `http://${location.hostname}:${port}` which fails on `0.0.0.0` when hostname≠IP. Chips have `role="button"` + `tabIndex=0` but no ARIA labels or live-region.
+- **Grade: A**
+- **Evidence:** Extracted to `src/shared/pane-chips.ts:32-94` with signature cache to skip redundant DOM rebuilds; web-mirror parity tested. Phase 2 (F.1) verified the dual-implementation drift is closed — both native (`surface-manager.ts:949`) and mirror (`web-client/main.ts:650, :907`) import from the same shared module.
 - **Gaps to AAA:**
-  - Unified port-click handler / config.
+  - Unified port-click handler / config (native dispatches `ht-open-external` CustomEvent; mirror routes via `http://${location.hostname}:${port}` which fails on `0.0.0.0` when hostname≠IP).
   - ARIA labels + live-region for git status transitions.
   - Tooltip overflow tests.
 
@@ -359,12 +358,11 @@ After Phase 1, the modal-a11y leg of the AAA programme is largely closed: Proces
   - Structured log-level filter.
 
 ### RPC handlers (typed dispatch)
-- **Grade: B**
-- **Evidence:** 21 handler files under `src/bun/rpc-handlers/`; `rpc-handler.ts` aggregates via `createRpcHandler`; `METHOD_SCHEMAS` validated pre-dispatch; `satisfies BunMessageHandlers` gates the socket/RPC side. **A1 (HIGH):** `dispatch(action: string)` in `index.ts:2331-2508` is ~180 LOC of stringly-typed parallel router. **A2 (HIGH):** `web-client/protocol-dispatcher.ts:44` types Payload as `any`.
+- **Grade: A**
+- **Evidence:** 21 handler files under `src/bun/rpc-handlers/`; `rpc-handler.ts` aggregates via `createRpcHandler`; `METHOD_SCHEMAS` validated pre-dispatch; `satisfies BunMessageHandlers` gates the socket/RPC side. Phase 2 (A1) typed the parallel `dispatch(action, payload)` in `index.ts` via a `WebviewActionEnvelope` discriminated union + `ActionPayloadByAction` lookup; every branch now has a typed payload shape. Tests in `tests/webview-actions-types.test.ts`.
 - **Gaps to AAA:**
-  - Replace `dispatch` with a typed `WebviewActionEnvelope` discriminated union.
-  - Narrow `protocol-dispatcher` on `msg.type` to land the `ServerMessage` union win.
-  - End-to-end JSON-RPC shape test.
+  - End-to-end JSON-RPC shape test (deferred to P3 — assert every method declared in `TauMuxRPC` has a corresponding handler registered).
+  - Move remaining ad-hoc handlers into the per-domain `rpc-handlers/` directory (F.10 — most landed, audit the stragglers).
 
 ### Audits
 - **Grade: A**
@@ -452,16 +450,16 @@ After Phase 1, the modal-a11y leg of the AAA programme is largely closed: Proces
 
 Ranked by leverage — each lifts multiple features by one letter.
 
-1. **Kill stringly-typed dispatch in `index.ts:2331`** — with a typed `WebviewActionEnvelope` union — A1 unblocks RPC handlers grade, A2 unblocks web-mirror grade. Owned by P2.
-2. **Unit tests for the four still-uncovered big UI modules** — (agent-panel 1755 LOC, terminal-effects 1011, browser-pane 999, editor-pane 526). Phase 1 covered process-manager and settings-panel; T1 is half-closed. Owned by P3.
-3. **Sandbox sideband HTML/SVG in the web mirror** — via iframe-`srcdoc` + CSP. (S2). Owned by P4.
-4. **Light-mode + high-contrast palette + design tokens** — every colour token-driven; ship Graphite Light + High-Contrast themes. Owned by P5.
-5. **Verify `PiAgentManager._managerExit` cleanup under crash** — regression test — L1 was claimed landed but the regression test under forced crash is what makes the grade move. Owned by P6.
-6. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts. Owned by P8.
-7. **Coverage gate** — with an agreed lcov threshold against `tests/baselines/coverage-baseline.lcov`. Owned by P3.
-8. **Per-feature failure regression tests** — for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each). Owned by P6.
-9. **Mobile/web mirror runtime bounding-box gate** — Phase 1 added the 44 × 44 CSS-px shim on coarse pointers. P3 should add a Playwright mobile-viewport test asserting every interactive element clears the threshold. (I.5)
-10. **ARIA labels + live regions for git-status chips + notifications** — Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live="polite"` region for notification count changes.
+1. **Unit tests for the four still-uncovered big UI modules** — (agent-panel 1755 LOC, terminal-effects 1011, browser-pane 999, editor-pane 526). Phase 1 covered process-manager and settings-panel; T1 is half-closed. Owned by P3.
+2. **Sandbox sideband HTML/SVG in the web mirror** — via iframe-`srcdoc` + CSP. (S2). Owned by P4.
+3. **Light-mode + high-contrast palette + design tokens** — every colour token-driven; ship Graphite Light + High-Contrast themes. Owned by P5.
+4. **Verify `PiAgentManager._managerExit` cleanup under crash** — regression test — L1 was claimed landed but the regression test under forced crash is what makes the grade move. Owned by P6.
+5. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts. Owned by P8.
+6. **Coverage gate** — with an agreed lcov threshold against `tests/baselines/coverage-baseline.lcov`. Owned by P3.
+7. **Per-feature failure regression tests** — for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each). Owned by P6.
+8. **Mobile/web mirror runtime bounding-box gate** — Phase 1 added the 44 × 44 CSS-px shim on coarse pointers. P3 should add a Playwright mobile-viewport test asserting every interactive element clears the threshold. (I.5)
+9. **ARIA labels + live regions for git-status chips + notifications** — Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live="polite"` region for notification count changes. Owned by P7.
+10. **Typed EventBus + VariantContext (A6 + A7)** — Replace 47+ implicit `window.dispatchEvent("ht-…")` channels with a typed `EventBus<EventMap>`; drop the `__tau*` window globals in favour of a `VariantContext` interface. Owned by P7.
 
 ---
 

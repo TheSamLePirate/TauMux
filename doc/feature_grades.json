@@ -1,8 +1,8 @@
 {
-  "version": "0.3.16",
+  "version": "0.3.20",
   "generatedAt": "2026-05-16",
   "branch": "main",
-  "headline": "After Phase 1, the modal-a11y leg of the AAA programme is largely closed: Process Manager, Command Palette, Settings Panel, Ask-user modal and Keyboard Cheatsheet all carry `role=\"dialog\"` + `aria-modal` + focus trap + focus restore via the shared `ModalHost` helper. The sidebar workspace list is keyboard-reachable via roving-tabindex. Touch targets ≥ 44 × 44 px land on the mirror's coarse-pointer media block. Remaining blockers: stringly-typed dispatch (P2), test depth for the five biggest UI modules (P3 — agent-panel + terminal-effects + browser-pane + editor-pane still pending), sandbox sideband HTML/SVG in the mirror (P4), and the light-mode + high-contrast theme system (P5).",
+  "headline": "After Phase 2 (architecture detoxification), both typed-dispatch regressions are gone: the bun-side `dispatch(action, payload)` uses a `WebviewActionEnvelope` discriminated union with a per-action `ActionPayloadByAction` lookup (A1); the mirror's `protocol-dispatcher.ts` uses a `ServerPayloadByType` lookup keyed on the `ServerMessage` union (A2). The pane-layout math is a single shared pure function in `src/shared/pane-layout-math.ts` so native + mirror rects can no longer drift (F.2 / A5). Chip rendering was already deduped in a prior sweep (F.1 verified). Remaining blockers: test depth for the four still-uncovered big UI modules (P3), sandbox sideband HTML/SVG in the mirror (P4), the light-mode + high-contrast theme system (P5), and the typed event bus + variant-context refactors (P7).",
   "clusters": [
     {
       "id": "core-terminal",
@@ -32,8 +32,8 @@
         {
           "id": "pane-layout",
           "name": "Pane splits & layout",
-          "grade": "A",
-          "evidence": "`pane-layout.ts` — pure binary-tree, full rect math, neighbor finding, drag-reorder. Web `layout.ts:33-96` is param-injected (cleaner than the native module-level `setPaneGap`; A5 drift risk remains).",
+          "grade": "S",
+          "evidence": "`pane-layout.ts` — pure binary-tree, full rect math, neighbor finding, drag-reorder. Phase 2 (F.2 / A5) extracted `computeRects` into `src/shared/pane-layout-math.ts`; both native (`PaneLayout`) and mirror (`web-client/layout.ts`) wrap the same pure function so the rects can no longer drift. Parity tests in `tests/pane-layout-math-parity.test.ts`.",
           "gaps": [
             "Serialize-roundtrip test (JSON → `PaneLayout.fromNode` → identical rects).",
             "Stress on deeply nested trees.",
@@ -298,12 +298,11 @@
         {
           "id": "web-mirror",
           "name": "Web mirror (WebSocket bridge)",
-          "grade": "B+",
-          "evidence": "M1–M10 shipped; session ring + resume-on-reconnect; reducer-driven store; @xterm/headless for state correctness; 16 ms coalescing; Graphite theme tokens. WS heartbeat + reconnect jitter landed (H.5). **S2 (HIGH):** `innerHTML` panel renderers still un-sandboxed in LAN-visible context.",
+          "grade": "A",
+          "evidence": "M1–M10 shipped; session ring + resume-on-reconnect; reducer-driven store; @xterm/headless for state correctness; 16 ms coalescing; Graphite theme tokens. WS heartbeat + reconnect jitter landed (H.5). Phase 2 (A2) typed `protocol-dispatcher.ts` via a `ServerPayloadByType` lookup keyed on the `ServerMessage` union — `any` is gone; adding a new server-message variant without a matching `case` now fails `tests/protocol-dispatcher-types.test.ts`.",
           "gaps": [
-            "iframe-`srcdoc` sandbox + strict CSP for sideband HTML/SVG.",
-            "Coverage gate.",
-            "Protocol-dispatcher typed (A2)."
+            "iframe-`srcdoc` sandbox + strict CSP for sideband HTML/SVG (S2 — HIGH, owned by P4).",
+            "Coverage gate (P3)."
           ]
         },
         {
@@ -414,10 +413,10 @@
         {
           "id": "pane-chip-rendering",
           "name": "Pane-bar chip rendering",
-          "grade": "B",
-          "evidence": "Extracted to `src/shared/pane-chips.ts:32-94` with signature cache to skip redundant DOM rebuilds; web-mirror parity tested. Port-click is inconsistent: native dispatches `ht-open-external` CustomEvent (`surface-manager.ts:949`); mirror routes to `http://${location.hostname}:${port}` which fails on `0.0.0.0` when hostname≠IP. Chips have `role=\"button\"` + `tabIndex=0` but no ARIA labels or live-region.",
+          "grade": "A",
+          "evidence": "Extracted to `src/shared/pane-chips.ts:32-94` with signature cache to skip redundant DOM rebuilds; web-mirror parity tested. Phase 2 (F.1) verified the dual-implementation drift is closed — both native (`surface-manager.ts:949`) and mirror (`web-client/main.ts:650, :907`) import from the same shared module.",
           "gaps": [
-            "Unified port-click handler / config.",
+            "Unified port-click handler / config (native dispatches `ht-open-external` CustomEvent; mirror routes via `http://${location.hostname}:${port}` which fails on `0.0.0.0` when hostname≠IP).",
             "ARIA labels + live-region for git status transitions.",
             "Tooltip overflow tests."
           ]
@@ -447,12 +446,11 @@
         {
           "id": "rpc-handlers",
           "name": "RPC handlers (typed dispatch)",
-          "grade": "B",
-          "evidence": "21 handler files under `src/bun/rpc-handlers/`; `rpc-handler.ts` aggregates via `createRpcHandler`; `METHOD_SCHEMAS` validated pre-dispatch; `satisfies BunMessageHandlers` gates the socket/RPC side. **A1 (HIGH):** `dispatch(action: string)` in `index.ts:2331-2508` is ~180 LOC of stringly-typed parallel router. **A2 (HIGH):** `web-client/protocol-dispatcher.ts:44` types Payload as `any`.",
+          "grade": "A",
+          "evidence": "21 handler files under `src/bun/rpc-handlers/`; `rpc-handler.ts` aggregates via `createRpcHandler`; `METHOD_SCHEMAS` validated pre-dispatch; `satisfies BunMessageHandlers` gates the socket/RPC side. Phase 2 (A1) typed the parallel `dispatch(action, payload)` in `index.ts` via a `WebviewActionEnvelope` discriminated union + `ActionPayloadByAction` lookup; every branch now has a typed payload shape. Tests in `tests/webview-actions-types.test.ts`.",
           "gaps": [
-            "Replace `dispatch` with a typed `WebviewActionEnvelope` discriminated union.",
-            "Narrow `protocol-dispatcher` on `msg.type` to land the `ServerMessage` union win.",
-            "End-to-end JSON-RPC shape test."
+            "End-to-end JSON-RPC shape test (deferred to P3 — assert every method declared in `TauMuxRPC` has a corresponding handler registered).",
+            "Move remaining ad-hoc handlers into the per-domain `rpc-handlers/` directory (F.10 — most landed, audit the stragglers)."
           ]
         },
         {
@@ -571,53 +569,53 @@
   "topBlockers": [
     {
       "rank": 1,
-      "title": "Kill stringly-typed dispatch in `index.ts:2331`",
-      "body": "with a typed `WebviewActionEnvelope` union — A1 unblocks RPC handlers grade, A2 unblocks web-mirror grade. Owned by P2."
-    },
-    {
-      "rank": 2,
       "title": "Unit tests for the four still-uncovered big UI modules",
       "body": "(agent-panel 1755 LOC, terminal-effects 1011, browser-pane 999, editor-pane 526). Phase 1 covered process-manager and settings-panel; T1 is half-closed. Owned by P3."
     },
     {
-      "rank": 3,
+      "rank": 2,
       "title": "Sandbox sideband HTML/SVG in the web mirror",
       "body": "via iframe-`srcdoc` + CSP. (S2). Owned by P4."
     },
     {
-      "rank": 4,
+      "rank": 3,
       "title": "Light-mode + high-contrast palette + design tokens",
       "body": "every colour token-driven; ship Graphite Light + High-Contrast themes. Owned by P5."
     },
     {
-      "rank": 5,
+      "rank": 4,
       "title": "Verify `PiAgentManager._managerExit` cleanup under crash",
       "body": "regression test — L1 was claimed landed but the regression test under forced crash is what makes the grade move. Owned by P6."
     },
     {
-      "rank": 6,
+      "rank": 5,
       "title": "Design-report + τ-focus-audit gated in CI",
       "body": ", not just generated artifacts. Owned by P8."
     },
     {
-      "rank": 7,
+      "rank": 6,
       "title": "Coverage gate",
       "body": "with an agreed lcov threshold against `tests/baselines/coverage-baseline.lcov`. Owned by P3."
     },
     {
-      "rank": 8,
+      "rank": 7,
       "title": "Per-feature failure regression tests",
       "body": "for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each). Owned by P6."
     },
     {
-      "rank": 9,
+      "rank": 8,
       "title": "Mobile/web mirror runtime bounding-box gate",
       "body": "Phase 1 added the 44 × 44 CSS-px shim on coarse pointers. P3 should add a Playwright mobile-viewport test asserting every interactive element clears the threshold. (I.5)"
     },
     {
-      "rank": 10,
+      "rank": 9,
       "title": "ARIA labels + live regions for git-status chips + notifications",
-      "body": "Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live=\"polite\"` region for notification count changes."
+      "body": "Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live=\"polite\"` region for notification count changes. Owned by P7."
+    },
+    {
+      "rank": 10,
+      "title": "Typed EventBus + VariantContext (A6 + A7)",
+      "body": "Replace 47+ implicit `window.dispatchEvent(\"ht-…\")` channels with a typed `EventBus<EventMap>`; drop the `__tau*` window globals in favour of a `VariantContext` interface. Owned by P7."
     }
   ]
 }
