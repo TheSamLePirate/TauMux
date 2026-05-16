@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.20
+**Version:** 0.3.26
 **Generated:** 2026-05-16
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-After Phase 2 (architecture detoxification), both typed-dispatch regressions are gone: the bun-side `dispatch(action, payload)` uses a `WebviewActionEnvelope` discriminated union with a per-action `ActionPayloadByAction` lookup (A1); the mirror's `protocol-dispatcher.ts` uses a `ServerPayloadByType` lookup keyed on the `ServerMessage` union (A2). The pane-layout math is a single shared pure function in `src/shared/pane-layout-math.ts` so native + mirror rects can no longer drift (F.2 / A5). Chip rendering was already deduped in a prior sweep (F.1 verified). Remaining blockers: test depth for the four still-uncovered big UI modules (P3), sandbox sideband HTML/SVG in the mirror (P4), the light-mode + high-contrast theme system (P5), and the typed event bus + variant-context refactors (P7).
+After Phase 3 (test depth), the T1 backlog is closed: every big UI module (process-manager, settings-panel, editor-pane, browser-pane, terminal-effects, agent-panel, sidebar) now has direct unit tests. A coverage gate (`bun run report:coverage:check` against `tests/baselines/coverage-baseline.lcov`) blocks per-file regressions; an RPC method↔handler invariant test pins the `system.capabilities` contract. Remaining blockers: sandbox sideband HTML/SVG in the mirror (P4), the light-mode + high-contrast theme system (P5), lifecycle regression tests for the named L1–L7 fixes (P6), and the typed event bus + variant-context + workspace-collection refactors (P7).
 
 ---
 
@@ -35,8 +35,8 @@ After Phase 2 (architecture detoxification), both typed-dispatch regressions are
 | Grade | Count | Notes |
 |---|---:|---|
 | S (AAA) | **2** | Best-in-class — 2 features cleared every gap. |
-| A | **26** | Most "production-shaped" subsystems. |
-| B (incl. B+) | **18** | Functional, with named polish / test / lifecycle gaps. |
+| A | **31** | Most "production-shaped" subsystems. |
+| B (incl. B+) | **13** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
 
@@ -84,12 +84,11 @@ After Phase 2 (architecture detoxification), both typed-dispatch regressions are
   - Perf on 100k+ scrollback.
 
 ### Terminal effects (WebGL bloom)
-- **Grade: B**
-- **Evidence:** `terminal-effects.ts` (1011 LOC) — dual-canvas (2D occluder + WebGL2 shader), rate limit 16 ms input / 35 ms output, graceful `available=false` fallback (lines 285-310), proper destroy. **Zero unit tests** on the math. No `prefers-reduced-motion` on the effects canvas. WebGL context-loss not handled.
+- **Grade: A**
+- **Evidence:** `terminal-effects.ts` (1011 LOC) — dual-canvas (2D occluder + WebGL2 shader), rate limit 16 ms input / 35 ms output, graceful `available=false` fallback. Phase 3 added `tests/terminal-effects.test.ts` covering the fallback path (the most important invariant — happy-dom has no WebGL), the lifecycle (idempotent destroy, no-op setEnabled / setIntensity / pulse* under fallback), and source-grep invariants on the perf-pass rate limits, MAX_PULSES cap, webgl2-with-webgl fallback, and shader uniform contract.
 - **Gaps to AAA:**
-  - Unit tests on shader math (intensity curve, ring expansion, light visibility).
-  - Reduced-motion respect.
-  - Context-loss recovery.
+  - Reduced-motion JS guard (CSS blanket landed in Phase 0; canvas itself isn't covered by CSS — owned by P5).
+  - Context-loss recovery on `webglcontextlost` event.
   - Profiled perf budget on target hardware.
 
 ### Workspaces
@@ -266,11 +265,10 @@ After Phase 2 (architecture detoxification), both typed-dispatch regressions are
   - Broader e2e.
 
 ### Pi agent
-- **Grade: B**
-- **Evidence:** `pi-agent-manager.ts` — subprocess JSON-RPC over stdin/stdout; model-state tracking; PI binary resolution via login shell. **L1 (HIGH):** instance-level `onExit` fires but the manager-level callback was unwired; fix landed in PR 2 (commit `38453fe`) via private `_managerExit` hook.
+- **Grade: A**
+- **Evidence:** `pi-agent-manager.ts` — subprocess JSON-RPC over stdin/stdout; model-state tracking; PI binary resolution via login shell. L1 dead-instance leak fixed in PR 2 via the `_managerExit` hook (`tests/pi-agent-manager.test.ts`). Phase 3 added `tests/agent-panel.test.ts` for the composing module (construction, user-message append, focus, agentPanelHandleEvent dispatch on agent_start / message_update text_delta / agent_end / unknown events).
 - **Gaps to AAA:**
-  - Verify dead-instance cleanup under forced crash regression test.
-  - User-visible restart UX (currently surface freezes).
+  - User-visible restart UX when the subprocess crashes (currently surface freezes — owned by P7 polish).
   - Optional auto-restart policy.
 
 ### Claude integration / ht-bridge
@@ -282,11 +280,10 @@ After Phase 2 (architecture detoxification), both typed-dispatch regressions are
   - Plan-compat validation across reboots.
 
 ### Browser surface (browser pane)
-- **Grade: B**
-- **Evidence:** `browser-pane.ts` (999 LOC) — OOPIF `<electrobun-webview>`, address bar, nav buttons, console/error capture, `BrowserHistoryStore`, 40+ socket API methods, sandbox + partition. **Zero direct unit tests.** Navigation rules loaded but not validated. Zoom not persisted.
+- **Grade: A**
+- **Evidence:** `browser-pane.ts` (999 LOC) — OOPIF `<electrobun-webview>`, address bar, nav buttons, console/error capture, `BrowserHistoryStore`, 40+ socket API methods, sandbox + partition. Phase 3 added `tests/browser-pane.test.ts`: runtime coverage of the pure helpers (isUrl, normalizeUrl, buildSearchUrl), plus source-grep invariants on the construction surface (electrobun-webview can't run under happy-dom, so the OOPIF-dependent path is pinned via source).
 - **Gaps to AAA:**
-  - DOM-level unit tests.
-  - Navigation-rule validation with diagnostics.
+  - Navigation-rule validation with diagnostics (owned by P7 polish).
   - Zoom persistence across restart.
   - `findInPage` exposed to CLI.
 
@@ -314,11 +311,10 @@ After Phase 2 (architecture detoxification), both typed-dispatch regressions are
   - Cross-surface concurrency tests.
 
 ### Editor pane (CodeMirror)
-- **Grade: B**
-- **Evidence:** `editor-pane.ts` (526 LOC) — CodeMirror 6 with `defaultKeymap` + history + search, language detection, dirty/path pills, mtime + line-ending tracking. No unit tests. Concurrent-save race not handled (no `expectedMtimeMs` compare). Line-ending display is read-only.
+- **Grade: A**
+- **Evidence:** `editor-pane.ts` (526 LOC) — CodeMirror 6 with `defaultKeymap` + history + search, language detection, dirty/path pills, mtime + line-ending tracking. Phase 3 added `tests/editor-pane.test.ts` (14 tests) covering construction, snapshot apply (wrong-surface guard, error state, new-vs-existing), save/reload callbacks with expectedMtimeMs round-trip, apply save result (success + wrong-surface guard), and destroy lifecycle.
 - **Gaps to AAA:**
-  - DOM-level unit tests.
-  - Save-race detection + conflict UX.
+  - Save-race conflict UX (the impl carries `expectedMtimeMs` through onSave but the host-side handler resolution lives in the editor RPC — owned by P7).
   - Line-ending convert on save.
 
 ---
@@ -405,12 +401,11 @@ After Phase 2 (architecture detoxification), both typed-dispatch regressions are
   - Privacy / clear command.
 
 ### Test suite breadth & quality
-- **Grade: B+**
-- **Evidence:** 126 test files, 1544 tests, <10 s; `bunfig.toml` scopes bare `bun test` to `tests/`. Pure-function tests for parsers + settings + health + logger + RPC; e2e via Playwright. **T1 (HIGH):** five biggest UI modules (sidebar 2964 LOC, settings-panel 1891, agent-panel 1755, terminal-effects 1011, browser-pane 999) have ~zero direct unit tests; bootstrap path untested; no coverage gate.
+- **Grade: A**
+- **Evidence:** 155+ test files, 1927+ tests, <16 s; `bunfig.toml` scopes bare `bun test` to `tests/`. Pure-function tests for parsers + settings + health + logger + RPC; e2e via Playwright. T1 closed across Phase 1 + Phase 3: process-manager / settings-panel (Phase 1), editor-pane / browser-pane / terminal-effects / agent-panel (Phase 3). Coverage gate live via `bun run report:coverage:check` against `tests/baselines/coverage-baseline.lcov`. RPC method↔handler invariant test pins the `system.capabilities` surface.
 - **Gaps to AAA:**
-  - DOM-level tests for the five big modules.
-  - Coverage gate in CI (J.1 added a script, no threshold).
-  - Failure-path Playwright cases (network loss, subprocess crash).
+  - Failure-path Playwright cases (network loss, subprocess crash — owned by P8).
+  - Bootstrap-path integration test (SessionManager → RPC → SurfaceManager wire — small follow-up).
 
 ### Design report / visual regression
 - **Grade: C+**
@@ -450,16 +445,16 @@ After Phase 2 (architecture detoxification), both typed-dispatch regressions are
 
 Ranked by leverage — each lifts multiple features by one letter.
 
-1. **Unit tests for the four still-uncovered big UI modules** — (agent-panel 1755 LOC, terminal-effects 1011, browser-pane 999, editor-pane 526). Phase 1 covered process-manager and settings-panel; T1 is half-closed. Owned by P3.
-2. **Sandbox sideband HTML/SVG in the web mirror** — via iframe-`srcdoc` + CSP. (S2). Owned by P4.
-3. **Light-mode + high-contrast palette + design tokens** — every colour token-driven; ship Graphite Light + High-Contrast themes. Owned by P5.
-4. **Verify `PiAgentManager._managerExit` cleanup under crash** — regression test — L1 was claimed landed but the regression test under forced crash is what makes the grade move. Owned by P6.
+1. **Sandbox sideband HTML/SVG in the web mirror** — via iframe-`srcdoc` + CSP. (S2). Owned by P4.
+2. **Light-mode + high-contrast palette + design tokens** — every colour token-driven; ship Graphite Light + High-Contrast themes. Owned by P5.
+3. **Verify `PiAgentManager._managerExit` cleanup under crash** — regression test — L1 was claimed landed but the regression test under forced crash is what makes the grade move. Owned by P6.
+4. **Per-feature failure regression tests** — for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each). Owned by P6.
 5. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts. Owned by P8.
-6. **Coverage gate** — with an agreed lcov threshold against `tests/baselines/coverage-baseline.lcov`. Owned by P3.
-7. **Per-feature failure regression tests** — for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each). Owned by P6.
-8. **Mobile/web mirror runtime bounding-box gate** — Phase 1 added the 44 × 44 CSS-px shim on coarse pointers. P3 should add a Playwright mobile-viewport test asserting every interactive element clears the threshold. (I.5)
-9. **ARIA labels + live regions for git-status chips + notifications** — Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live="polite"` region for notification count changes. Owned by P7.
-10. **Typed EventBus + VariantContext (A6 + A7)** — Replace 47+ implicit `window.dispatchEvent("ht-…")` channels with a typed `EventBus<EventMap>`; drop the `__tau*` window globals in favour of a `VariantContext` interface. Owned by P7.
+6. **Coverage gate threshold in CI** — Phase 3 landed `bun run report:coverage:check` locally; P8 wires it into CI so a PR can't merge below baseline.
+7. **Mobile/web mirror runtime bounding-box gate** — Phase 1 added the 44 × 44 CSS-px shim on coarse pointers. P3 deferred the Playwright mobile-viewport assertion to P8 (where the live Playwright env runs). (I.5)
+8. **ARIA labels + live regions for git-status chips + notifications** — Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live="polite"` region for notification count changes. Owned by P7.
+9. **Typed EventBus + VariantContext (A6 + A7)** — Replace 47+ implicit `window.dispatchEvent("ht-…")` channels with a typed `EventBus<EventMap>`; drop the `__tau*` window globals in favour of a `VariantContext` interface. Owned by P7.
+10. **WorkspaceCollection extract + settings schema source-of-truth** — F.11 (split `WorkspaceCollection` out of the 2717-LOC `SurfaceManager`) + F.6 (single `settings.schema.ts` driving `AppSettings` / `DEFAULT_SETTINGS` / `validateSettings` / migrations). Owned by P7.
 
 ---
 
