@@ -37,6 +37,21 @@ export interface Transport {
   connect: () => void;
 }
 
+/** Triple-A H.5 / L5 — extracted reconnect-jitter math.
+ *
+ *  Apply ±25 % uniform jitter to the base delay so N peers
+ *  (laptop + phone + tablet) reconnecting after a server restart
+ *  don't all hit at the same step. The injection seam (`rand`) lets
+ *  tests drive the distribution deterministically — pinning a
+ *  spread invariant instead of just the formula. */
+export function applyReconnectJitter(
+  baseDelay: number,
+  rand: () => number = Math.random,
+): number {
+  const jitter = (rand() - 0.5) * 0.5; // ±25 %
+  return Math.round(baseDelay * (1 + jitter));
+}
+
 export function createTransport(deps: TransportDeps): Transport {
   const { store, onTextMessage, onBinaryFrame } = deps;
 
@@ -167,8 +182,7 @@ export function createTransport(deps: TransportDeps): Transport {
       // tablet) reconnecting after a server restart don't all hit at
       // the same step. Without this the LAN sees a thundering-herd
       // pattern at 1 s, 2 s, 4 s, 8 s, 16 s, 30 s, 30 s, …
-      const jitter = (Math.random() - 0.5) * 0.5; // ±25 %
-      const wait = Math.round(reconnectDelay * (1 + jitter));
+      const wait = applyReconnectJitter(reconnectDelay);
       console.warn(
         `[mirror] ws closed code=${event.code}${reason}${wasClean}; reconnecting in ${wait}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`,
       );

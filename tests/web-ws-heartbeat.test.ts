@@ -35,13 +35,15 @@ describe("[L5] WebSocket reconnect — client-side jitter + cap", () => {
     expect(CLIENT_SRC).toMatch(/MAX_RECONNECT_ATTEMPTS\s*=\s*30/);
   });
 
-  it("applies ±25% jitter to the backoff delay", () => {
-    // The jitter math: `(Math.random() - 0.5) * 0.5` produces a
-    // shift in [-0.25, +0.25], applied to `reconnectDelay * (1 + jitter)`.
-    // Pin both the magnitude (0.5) and the comment marker so a future
-    // refactor can't silently drop the jitter back to deterministic.
-    expect(CLIENT_SRC).toMatch(/\(Math\.random\(\)\s*-\s*0\.5\)\s*\*\s*0\.5/);
+  it("applies ±25% jitter to the backoff delay via the applyReconnectJitter helper", () => {
+    // Phase 6 — extracted the jitter math into a pure exported helper
+    // (`applyReconnectJitter`) so the spread invariant is behaviourally
+    // testable, not just source-grep-pinned. The helper is the only
+    // place the math lives; the reconnect path calls it. Pin both
+    // sides: the helper math + the caller using it.
+    expect(CLIENT_SRC).toMatch(/\(rand\(\)\s*-\s*0\.5\)\s*\*\s*0\.5/);
     expect(CLIENT_SRC).toContain("±25");
+    expect(CLIENT_SRC).toContain("applyReconnectJitter(reconnectDelay)");
   });
 
   it("doubles the base delay between retries (exponential backoff)", () => {
