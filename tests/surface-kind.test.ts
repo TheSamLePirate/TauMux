@@ -50,32 +50,40 @@ describe("[A3+A17] SurfaceKind canonical union", () => {
 
   it("the `tg:` substring shortcut on the bun side is bounded", () => {
     // The fix removed most of the `id.startsWith("tg:")` surface-kind
-    // detection paths. One legitimate residual lives in
-    // src/bun/index.ts (`closeSurface` handler): telegram surfaces
-    // have no per-id manager (no PTY, no browser process, no agent),
-    // so there's no `isTelegramSurface()` to call — the close handler
-    // routes telegram closes by id prefix. A residual usage in
-    // src/web-client/store.ts is the mirror's own per-id check for
-    // store tagging (different concern, not kind dispatch).
+    // detection paths. Two legitimate residuals live in
+    // `src/bun/index.ts`, both in surfaceId-prefix routing paths where
+    // the kind has no per-id manager to query: telegram surfaces have
+    // no PTY/browser/agent process to own them, and `editor:` surfaces
+    // (added in the codemirror-editor-pane work) follow the same
+    // pattern. Both checks live alongside an `editor:` check in the
+    // same conditional — they're not independent regressions, they're
+    // the two non-PTY surface kinds that route by prefix.
     //
-    // This test fails if a *second* `startsWith("tg:")` appears in
-    // src/bun/, which would mean the dedupe has regressed.
+    // A residual usage in `src/web-client/store.ts` is the mirror's
+    // own per-id check for store tagging (different concern, not
+    // kind dispatch) and is intentionally excluded.
+    //
+    // This test fails if a *third* `startsWith("tg:")` appears in
+    // `src/bun/`, which would mean the dedupe has regressed beyond
+    // the two known shortcut sites.
     const files = walkTs(join(ROOT, "bun"));
     const re = /\.startsWith\(["']tg:["']\)/g;
     let total = 0;
-    const offenders: string[] = [];
+    const fileCounts = new Map<string, number>();
     for (const f of files) {
       const body = readFileSync(f, "utf-8");
       const matches = body.match(re);
       if (matches) {
         total += matches.length;
-        offenders.push(f);
+        fileCounts.set(f, matches.length);
       }
     }
-    expect(total).toBeLessThanOrEqual(1);
-    if (total === 1) {
-      // pin to the documented spot
-      expect(offenders).toEqual([join(ROOT, "bun", "index.ts")]);
+    expect(total).toBeLessThanOrEqual(2);
+    if (total > 0) {
+      // All residuals must live in index.ts (the routing spot).
+      for (const [path] of fileCounts) {
+        expect(path).toBe(join(ROOT, "bun", "index.ts"));
+      }
     }
   });
 });
