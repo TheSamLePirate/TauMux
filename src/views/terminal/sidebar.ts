@@ -3,6 +3,8 @@ import type {
   PackageInfo,
   TelegramStatusWire,
   WorkspaceContextMenuRequest,
+  SidebarFileExplorerEntry,
+  SidebarFileExplorerListing,
 } from "../../shared/types";
 import { parseStatusKey } from "../../shared/status-key";
 import { ICON_TEMPLATES, createIcon, type IconName } from "./icons";
@@ -30,6 +32,7 @@ type CardSlotKey =
   | "meta"
   | "stats"
   | "cwds"
+  | "files"
   | "panes"
   | "manifests"
   | "status"
@@ -116,6 +119,7 @@ interface WorkspaceUiState {
   manifestsOpen: boolean;
   panesOpen: boolean;
   statusOpen: boolean;
+  filesOpen: boolean;
 }
 
 const LS_PREFIX = "tau-mux.sidebar.";
@@ -152,6 +156,7 @@ const DEFAULT_WS_UI: WorkspaceUiState = {
   manifestsOpen: true,
   panesOpen: false,
   statusOpen: true,
+  filesOpen: false,
 };
 
 const DEFAULT_ACCENT = "#89b4fa";
@@ -165,8 +170,13 @@ export interface WorkspaceCardOptions {
     stats: boolean;
     panes: boolean;
     manifests: boolean;
+    fileExplorer: boolean;
     statusPills: boolean;
     progress: boolean;
+  };
+  fileExplorer: {
+    showHidden: boolean;
+    maxEntries: number;
   };
 }
 
@@ -177,8 +187,13 @@ export const DEFAULT_WORKSPACE_CARD_OPTIONS: WorkspaceCardOptions = {
     stats: true,
     panes: true,
     manifests: true,
+    fileExplorer: true,
     statusPills: true,
     progress: true,
+  },
+  fileExplorer: {
+    showHidden: false,
+    maxEntries: 200,
   },
 };
 
@@ -224,6 +239,16 @@ export class Sidebar {
   private highlightIndex = -1;
   private renamingId: string | null = null;
   private expandedPackages: Set<string> = new Set();
+  private fileExplorerRequester: ((request: {
+    requestId: string;
+    path: string;
+    showHidden: boolean;
+    maxEntries: number;
+  }) => void) | null = null;
+  private fileExplorerListings = new Map<string, SidebarFileExplorerListing>();
+  private fileExplorerLoading = new Set<string>();
+  private fileExplorerOpenDirs = new Map<string, Set<string>>();
+  private fileExplorerRequestSeq = 0;
 
   /** Plan #06: per-section visibility + density for the workspace
    *  card. Surface-manager pushes the user's choices via
@@ -378,6 +403,23 @@ export class Sidebar {
   setWorkspaceCardOptions(options: WorkspaceCardOptions): void {
     this.cardOptions = options;
     this.container.setAttribute("data-ws-card-density", options.density);
+    if (this.workspaces.length > 0) this.renderWorkspaces();
+  }
+
+  setFileExplorerRequester(
+    requester: (request: {
+      requestId: string;
+      path: string;
+      showHidden: boolean;
+      maxEntries: number;
+    }) => void,
+  ): void {
+    this.fileExplorerRequester = requester;
+  }
+
+  setFileExplorerListing(listing: SidebarFileExplorerListing): void {
+    this.fileExplorerLoading.delete(listing.path);
+    this.fileExplorerListings.set(listing.path, listing);
     if (this.workspaces.length > 0) this.renderWorkspaces();
   }
 
@@ -1021,21 +1063,53 @@ export class Sidebar {
       delete cache.sigs.stats;
     }
 
+    // ── CWD row: always visible on every workspace card ─────────
+    {
+      const sig = ["c", ws.cwds.join("|"), ws.selectedCwd ?? ""].join("|");
+      if (cache.sigs.cwds !== sig || !cache.slots.cwds) {
+        cache.slots.cwds = this.buildCwdRow(ws);
+        cache.sigs.cwds = sig;
+      }
+      ordered.push(cache.slots.cwds);
+    }
+
+    // ── Native webview-only file explorer ───────────────────────
+    if (show.fileExplorer && this.getExplorerRoot(ws)) {
+      const root = this.getExplorerRoot(ws)!;
+      const open = ui?.filesOpen ?? false;
+      const openDirs = [...(this.fileExplorerOpenDirs.get(ws.id) ?? new Set())]
+        .sort()
+        .join("|");
+      const listingSig = this.fileExplorerListingSignature(root, new Set(openDirs ? openDirs.split("|") : []));
+      const sig = [
+        "f",
+        root,
+        open ? "1" : "0",
+        this.cardOptions.fileExplorer.showHidden ? "h" : "",
+        this.cardOptions.fileExplorer.maxEntries,
+        openDirs,
+        listingSig,
+      ].join("|");
+      if (cache.sigs.files !== sig || !cache.slots.files) {
+        cache.slots.files = this.buildCollapseSection({
+          wsId: ws.id,
+          key: "filesOpen",
+          title: "Files",
+          count: this.fileExplorerListings.get(root)?.entries.length,
+          build: () => this.buildFileExplorer(ws, root),
+          extraAction: () => this.buildFileExplorerRefresh(root),
+        });
+        cache.sigs.files = sig;
+      }
+      ordered.push(cache.slots.files);
+      if (open) this.ensureFileExplorerListing(root);
+    } else {
+      delete cache.slots.files;
+      delete cache.sigs.files;
+    }
+
     // ── active-only sections ────────────────────────────────────
     if (ws.active) {
-      // cwds row
-      if (ws.cwds.length > 1) {
-        const sig = ["c", ws.cwds.join("|"), ws.selectedCwd ?? ""].join("|");
-        if (cache.sigs.cwds !== sig || !cache.slots.cwds) {
-          cache.slots.cwds = this.buildCwdRow(ws);
-          cache.sigs.cwds = sig;
-        }
-        ordered.push(cache.slots.cwds);
-      } else {
-        delete cache.slots.cwds;
-        delete cache.sigs.cwds;
-      }
-
       // panes
       if (show.panes && ws.surfaceTitles.length > 1) {
         const open = ui?.panesOpen ?? false;
@@ -1150,12 +1224,10 @@ export class Sidebar {
       // Inactive cards drop their active-only sections from cache so
       // a re-activation rebuilds with fresh data (e.g. progress that
       // arrived while the card was inactive).
-      delete cache.slots.cwds;
       delete cache.slots.panes;
       delete cache.slots.manifests;
       delete cache.slots.status;
       delete cache.slots.progress;
-      delete cache.sigs.cwds;
       delete cache.sigs.panes;
       delete cache.sigs.manifests;
       delete cache.sigs.status;
@@ -1496,10 +1568,20 @@ export class Sidebar {
     label.className = "workspace-cwds-label";
     label.textContent = "CWD";
     row.appendChild(label);
+
+    if (ws.cwds.length === 0) {
+      const pending = document.createElement("span");
+      pending.className = "workspace-cwd-chip muted";
+      pending.textContent = ws.active ? "resolving…" : "unavailable";
+      pending.title = "No current working directory metadata yet";
+      row.appendChild(pending);
+      return row;
+    }
+
     for (const cwd of ws.cwds) {
       const chip = document.createElement("button");
       chip.type = "button";
-      chip.className = `workspace-cwd-chip${cwd === ws.selectedCwd ? " active" : ""}`;
+      chip.className = `workspace-cwd-chip${cwd === ws.selectedCwd || (ws.selectedCwd == null && cwd === ws.cwds[0]) ? " active" : ""}`;
       chip.textContent = shortCwd(cwd);
       chip.title = cwd;
       chip.addEventListener("click", (e) => {
@@ -1513,6 +1595,167 @@ export class Sidebar {
       row.appendChild(chip);
     }
     return row;
+  }
+
+  private getExplorerRoot(ws: WorkspaceInfo): string | null {
+    return ws.selectedCwd ?? ws.cwds[0] ?? null;
+  }
+
+  private ensureFileExplorerListing(path: string, force = false): void {
+    if (!this.fileExplorerRequester) return;
+    if (!force && (this.fileExplorerListings.has(path) || this.fileExplorerLoading.has(path))) {
+      return;
+    }
+    this.fileExplorerLoading.add(path);
+    this.fileExplorerRequester({
+      requestId: `sidebar-files-${++this.fileExplorerRequestSeq}`,
+      path,
+      showHidden: this.cardOptions.fileExplorer.showHidden,
+      maxEntries: this.cardOptions.fileExplorer.maxEntries,
+    });
+  }
+
+  private fileExplorerListingSignature(root: string, openDirs: Set<string>): string {
+    const paths = [root, ...openDirs];
+    return paths
+      .map((path) => {
+        const listing = this.fileExplorerListings.get(path);
+        const loading = this.fileExplorerLoading.has(path) ? "L" : "";
+        if (!listing) return `${path}:${loading}:none`;
+        return `${path}:${loading}:${listing.error ?? ""}:${listing.truncated ? "t" : ""}:${listing.entries.map((e) => `${e.kind}:${e.name}`).join(",")}`;
+      })
+      .join("|");
+  }
+
+  private buildFileExplorerRefresh(path: string): HTMLElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "workspace-file-refresh";
+    btn.title = "Refresh file explorer";
+    btn.setAttribute("aria-label", "Refresh file explorer");
+    btn.append(createIcon("reload", "", 10));
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.fileExplorerListings.delete(path);
+      this.ensureFileExplorerListing(path, true);
+      this.renderWorkspaces();
+    });
+    return btn;
+  }
+
+  private buildFileExplorer(ws: WorkspaceInfo, root: string): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "workspace-file-explorer";
+    wrap.appendChild(this.buildFileExplorerDir(ws.id, root, 0));
+    return wrap;
+  }
+
+  private buildFileExplorerDir(
+    wsId: string,
+    path: string,
+    depth: number,
+  ): HTMLElement {
+    const block = document.createElement("div");
+    block.className = "workspace-file-dir";
+    const listing = this.fileExplorerListings.get(path);
+    if (!listing) {
+      const loading = document.createElement("div");
+      loading.className = "workspace-file-state";
+      loading.textContent = this.fileExplorerLoading.has(path)
+        ? "Loading…"
+        : "Open to load directory";
+      block.appendChild(loading);
+      this.ensureFileExplorerListing(path);
+      return block;
+    }
+    if (listing.error) {
+      const error = document.createElement("div");
+      error.className = "workspace-file-state error";
+      error.textContent = listing.error;
+      block.appendChild(error);
+      return block;
+    }
+    if (listing.entries.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "workspace-file-state";
+      empty.textContent = "Empty directory";
+      block.appendChild(empty);
+      return block;
+    }
+
+    for (const entry of listing.entries) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = `workspace-file-row ${entry.kind}`;
+      row.style.setProperty("--file-depth", String(depth));
+      const visual = describeExplorerEntry(entry);
+      row.className = `workspace-file-row ${entry.kind} file-kind-${visual.kind}`;
+      row.title = visual.description
+        ? `${entry.path}\n${visual.description}`
+        : entry.path;
+      const isDir = entry.kind === "directory";
+      const openSet = this.fileExplorerOpenDirs.get(wsId) ?? new Set<string>();
+      const isOpen = openSet.has(entry.path);
+
+      const twisty = document.createElement("span");
+      twisty.className = "workspace-file-twisty";
+      if (isDir) {
+        twisty.append(createIcon(isOpen ? "chevronDown" : "chevronRight", "", 10));
+      }
+      row.appendChild(twisty);
+
+      const iconCell = document.createElement("span");
+      iconCell.className = `workspace-file-icon ${visual.badge ? "badge" : "svg"}`;
+      if (visual.badge) {
+        iconCell.textContent = visual.badge;
+      } else {
+        iconCell.append(createIcon(visual.icon, "", 11));
+      }
+      row.appendChild(iconCell);
+
+      const nameWrap = document.createElement("span");
+      nameWrap.className = "workspace-file-name-wrap";
+      const name = document.createElement("span");
+      name.className = "workspace-file-name";
+      name.textContent = entry.name;
+      nameWrap.appendChild(name);
+      if (visual.hint) {
+        const hint = document.createElement("span");
+        hint.className = "workspace-file-hint";
+        hint.textContent = visual.hint;
+        nameWrap.appendChild(hint);
+      }
+      row.appendChild(nameWrap);
+      if (!isDir && typeof entry.size === "number") {
+        const size = document.createElement("span");
+        size.className = "workspace-file-size";
+        size.textContent = humanFileSize(entry.size);
+        row.appendChild(size);
+      }
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!isDir) return;
+        const set = this.fileExplorerOpenDirs.get(wsId) ?? new Set<string>();
+        if (set.has(entry.path)) set.delete(entry.path);
+        else {
+          set.add(entry.path);
+          this.ensureFileExplorerListing(entry.path);
+        }
+        this.fileExplorerOpenDirs.set(wsId, set);
+        this.renderWorkspaces();
+      });
+      block.appendChild(row);
+      if (isDir && isOpen) {
+        block.appendChild(this.buildFileExplorerDir(wsId, entry.path, depth + 1));
+      }
+    }
+    if (listing.truncated) {
+      const more = document.createElement("div");
+      more.className = "workspace-file-state";
+      more.textContent = `Showing first ${listing.entries.length} entries`;
+      block.appendChild(more);
+    }
+    return block;
   }
 
   private buildPanesList(ws: WorkspaceInfo): HTMLElement {
@@ -1632,8 +1875,9 @@ export class Sidebar {
     wsId: string;
     key: keyof WorkspaceUiState;
     title: string;
-    count: number;
+    count?: number;
     build: () => HTMLElement;
+    extraAction?: () => HTMLElement;
   }): HTMLElement {
     const ui = this.ensureUiState(opts.wsId);
     const open = Boolean(ui[opts.key]);
@@ -1656,10 +1900,13 @@ export class Sidebar {
     titleEl.textContent = opts.title;
     header.appendChild(titleEl);
 
-    const countEl = document.createElement("span");
-    countEl.className = "workspace-section-count";
-    countEl.textContent = String(opts.count);
-    header.appendChild(countEl);
+    if (typeof opts.count === "number") {
+      const countEl = document.createElement("span");
+      countEl.className = "workspace-section-count";
+      countEl.textContent = String(opts.count);
+      header.appendChild(countEl);
+    }
+    if (opts.extraAction) header.appendChild(opts.extraAction());
 
     header.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -2465,6 +2712,194 @@ export class Sidebar {
   }
 }
 
+type ExplorerVisualKind =
+  | "folder"
+  | "symlink"
+  | "package"
+  | "lock"
+  | "config"
+  | "env"
+  | "doc"
+  | "test"
+  | "script"
+  | "style"
+  | "data"
+  | "image"
+  | "archive"
+  | "database"
+  | "binary"
+  | "source"
+  | "file";
+
+interface ExplorerEntryVisual {
+  kind: ExplorerVisualKind;
+  icon: IconName;
+  badge?: string;
+  hint?: string;
+  description?: string;
+}
+
+const EXACT_FILE_VISUALS: Record<string, ExplorerEntryVisual> = {
+  "package.json": {
+    kind: "package",
+    icon: "package",
+    badge: "npm",
+    hint: "manifest",
+    description: "Node package manifest",
+  },
+  "bun.lock": {
+    kind: "lock",
+    icon: "lock",
+    badge: "bun",
+    hint: "lock",
+    description: "Bun lockfile",
+  },
+  "bun.lockb": {
+    kind: "lock",
+    icon: "lock",
+    badge: "bun",
+    hint: "lock",
+    description: "Bun binary lockfile",
+  },
+  "package-lock.json": {
+    kind: "lock",
+    icon: "lock",
+    badge: "npm",
+    hint: "lock",
+    description: "npm lockfile",
+  },
+  "pnpm-lock.yaml": {
+    kind: "lock",
+    icon: "lock",
+    badge: "pnpm",
+    hint: "lock",
+    description: "pnpm lockfile",
+  },
+  "yarn.lock": {
+    kind: "lock",
+    icon: "lock",
+    badge: "yarn",
+    hint: "lock",
+    description: "Yarn lockfile",
+  },
+  "cargo.toml": {
+    kind: "package",
+    icon: "package",
+    badge: "rs",
+    hint: "manifest",
+    description: "Cargo manifest",
+  },
+  "cargo.lock": {
+    kind: "lock",
+    icon: "lock",
+    badge: "rs",
+    hint: "lock",
+    description: "Cargo lockfile",
+  },
+  "dockerfile": {
+    kind: "config",
+    icon: "server",
+    badge: "DOCK",
+    description: "Docker build file",
+  },
+  "makefile": {
+    kind: "script",
+    icon: "terminal",
+    badge: "make",
+    description: "Make build file",
+  },
+  "justfile": {
+    kind: "script",
+    icon: "terminal",
+    badge: "just",
+    description: "Just command file",
+  },
+};
+
+const EXTENSION_VISUALS: Record<string, ExplorerEntryVisual> = {
+  ts: { kind: "source", icon: "code", badge: "TS", description: "TypeScript" },
+  tsx: { kind: "source", icon: "code", badge: "TSX", description: "TypeScript React" },
+  js: { kind: "source", icon: "code", badge: "JS", description: "JavaScript" },
+  jsx: { kind: "source", icon: "code", badge: "JSX", description: "JavaScript React" },
+  mjs: { kind: "source", icon: "code", badge: "MJS", description: "JavaScript module" },
+  cjs: { kind: "source", icon: "code", badge: "CJS", description: "CommonJS module" },
+  json: { kind: "data", icon: "database", badge: "{}", description: "JSON data" },
+  css: { kind: "style", icon: "sparkles", badge: "CSS", description: "Stylesheet" },
+  scss: { kind: "style", icon: "sparkles", badge: "SCSS", description: "Sass stylesheet" },
+  sass: { kind: "style", icon: "sparkles", badge: "SASS", description: "Sass stylesheet" },
+  less: { kind: "style", icon: "sparkles", badge: "LESS", description: "Less stylesheet" },
+  html: { kind: "source", icon: "code", badge: "HTML", description: "HTML document" },
+  md: { kind: "doc", icon: "logs", badge: "MD", description: "Markdown document" },
+  mdx: { kind: "doc", icon: "logs", badge: "MDX", description: "MDX document" },
+  txt: { kind: "doc", icon: "logs", badge: "TXT", description: "Text document" },
+  yml: { kind: "config", icon: "wrench", badge: "YML", description: "YAML config" },
+  yaml: { kind: "config", icon: "wrench", badge: "YML", description: "YAML config" },
+  toml: { kind: "config", icon: "wrench", badge: "TOML", description: "TOML config" },
+  ini: { kind: "config", icon: "wrench", badge: "INI", description: "INI config" },
+  xml: { kind: "data", icon: "code", badge: "XML", description: "XML document" },
+  py: { kind: "source", icon: "code", badge: "PY", description: "Python" },
+  rb: { kind: "source", icon: "code", badge: "RB", description: "Ruby" },
+  rs: { kind: "source", icon: "code", badge: "RS", description: "Rust" },
+  go: { kind: "source", icon: "code", badge: "GO", description: "Go" },
+  java: { kind: "source", icon: "code", badge: "JAVA", description: "Java" },
+  kt: { kind: "source", icon: "code", badge: "KT", description: "Kotlin" },
+  swift: { kind: "source", icon: "code", badge: "SWFT", description: "Swift" },
+  c: { kind: "source", icon: "code", badge: "C", description: "C" },
+  h: { kind: "source", icon: "code", badge: "H", description: "C/C++ header" },
+  cpp: { kind: "source", icon: "code", badge: "C++", description: "C++" },
+  cc: { kind: "source", icon: "code", badge: "C++", description: "C++" },
+  sh: { kind: "script", icon: "terminal", badge: "SH", description: "Shell script" },
+  zsh: { kind: "script", icon: "terminal", badge: "ZSH", description: "Zsh script" },
+  bash: { kind: "script", icon: "terminal", badge: "BASH", description: "Bash script" },
+  sql: { kind: "database", icon: "database", badge: "SQL", description: "SQL" },
+  sqlite: { kind: "database", icon: "database", badge: "DB", description: "SQLite database" },
+  db: { kind: "database", icon: "database", badge: "DB", description: "Database" },
+  png: { kind: "image", icon: "eye", badge: "PNG", description: "PNG image" },
+  jpg: { kind: "image", icon: "eye", badge: "JPG", description: "JPEG image" },
+  jpeg: { kind: "image", icon: "eye", badge: "JPG", description: "JPEG image" },
+  gif: { kind: "image", icon: "eye", badge: "GIF", description: "GIF image" },
+  webp: { kind: "image", icon: "eye", badge: "WEBP", description: "WebP image" },
+  svg: { kind: "image", icon: "eye", badge: "SVG", description: "SVG image" },
+  pdf: { kind: "doc", icon: "logs", badge: "PDF", description: "PDF document" },
+  zip: { kind: "archive", icon: "package", badge: "ZIP", description: "Zip archive" },
+  gz: { kind: "archive", icon: "package", badge: "GZ", description: "Gzip archive" },
+  tgz: { kind: "archive", icon: "package", badge: "TGZ", description: "Tar archive" },
+  rar: { kind: "archive", icon: "package", badge: "RAR", description: "RAR archive" },
+  wasm: { kind: "binary", icon: "cpu", badge: "WASM", description: "WebAssembly binary" },
+  map: { kind: "data", icon: "database", badge: "MAP", description: "Source map" },
+};
+
+function describeExplorerEntry(entry: SidebarFileExplorerEntry): ExplorerEntryVisual {
+  if (entry.kind === "directory") {
+    return { kind: "folder", icon: "folder", description: "Directory" };
+  }
+  if (entry.kind === "symlink") {
+    return { kind: "symlink", icon: "gitBranch", badge: "↪", description: "Symbolic link" };
+  }
+  const lower = entry.name.toLowerCase();
+  if (lower.startsWith(".env")) {
+    return { kind: "env", icon: "key", badge: "ENV", hint: "secret", description: "Environment file" };
+  }
+  if (lower.startsWith("readme")) {
+    return { kind: "doc", icon: "logs", badge: "README", hint: "docs", description: "Readme document" };
+  }
+  if (lower.endsWith(".test.ts") || lower.endsWith(".test.tsx") || lower.endsWith(".spec.ts") || lower.endsWith(".spec.tsx")) {
+    return { kind: "test", icon: "check", badge: "TEST", description: "Test file" };
+  }
+  if (lower.endsWith(".stories.ts") || lower.endsWith(".stories.tsx") || lower.endsWith(".story.tsx")) {
+    return { kind: "test", icon: "sparkles", badge: "STORY", description: "Storybook story" };
+  }
+  const exact = EXACT_FILE_VISUALS[lower];
+  if (exact) return exact;
+  const ext = lower.includes(".") ? lower.split(".").pop()! : "";
+  const byExt = EXTENSION_VISUALS[ext];
+  if (byExt) return byExt;
+  if (entry.kind === "other") {
+    return { kind: "binary", icon: "cpu", badge: "BIN", description: "Special file" };
+  }
+  return { kind: "file", icon: "code", badge: ext ? ext.slice(0, 4).toUpperCase() : "FILE" };
+}
+
 function actionState(
   name: string,
   running: string[],
@@ -2490,6 +2925,16 @@ function shortCwd(cwd: string): string {
     return cwd.startsWith("/") ? "/" + parts.join("/") : parts.join("/");
   }
   return "\u2026/" + parts.slice(-2).join("/");
+}
+
+function humanFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)}K`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)}M`;
+  const gb = mb / 1024;
+  return `${gb < 10 ? gb.toFixed(1) : Math.round(gb)}G`;
 }
 
 function humanRss(kb: number): string {

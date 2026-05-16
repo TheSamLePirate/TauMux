@@ -472,6 +472,25 @@ export interface AutoContinueAuditEntry {
   modelConsulted: boolean;
 }
 
+export interface SidebarFileExplorerEntry {
+  name: string;
+  path: string;
+  kind: "directory" | "file" | "symlink" | "other";
+  size?: number;
+  mtimeMs?: number;
+  hidden: boolean;
+  truncated?: boolean;
+  error?: string;
+}
+
+export interface SidebarFileExplorerListing {
+  requestId: string;
+  path: string;
+  entries: SidebarFileExplorerEntry[];
+  truncated: boolean;
+  error?: string;
+}
+
 // webview.messages = what webview RECEIVES from bun
 
 export interface TauMuxRPC extends ElectrobunRPCSchema {
@@ -535,6 +554,15 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
 
       // Sidebar
       sidebarToggle: { visible: boolean };
+      /** Native webview-only file explorer listing request. The HTTP
+       *  mirror does not use this channel. Results are pushed back on
+       *  `webview.messages.sidebarFileExplorerListing`. */
+      sidebarFileExplorerList: {
+        requestId: string;
+        path: string;
+        showHidden: boolean;
+        maxEntries: number;
+      };
 
       // Notifications
       clearNotifications: void;
@@ -800,6 +828,9 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       // Settings
       restoreSettings: { settings: AppSettings };
       settingsChanged: { settings: AppSettings };
+
+      /** Native webview-only response for the sidebar CWD file explorer. */
+      sidebarFileExplorerListing: SidebarFileExplorerListing;
 
       // Static runtime paths surfaced to the Settings → Advanced panel.
       // Sent once at startup; values do not change for the lifetime of

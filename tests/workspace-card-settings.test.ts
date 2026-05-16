@@ -18,6 +18,9 @@ describe("AppSettings.workspaceCard*", () => {
     expect(DEFAULT_SETTINGS.workspaceCardShowStats).toBe(true);
     expect(DEFAULT_SETTINGS.workspaceCardShowPanes).toBe(true);
     expect(DEFAULT_SETTINGS.workspaceCardShowManifests).toBe(true);
+    expect(DEFAULT_SETTINGS.workspaceCardShowFileExplorer).toBe(true);
+    expect(DEFAULT_SETTINGS.workspaceFileExplorerShowHidden).toBe(false);
+    expect(DEFAULT_SETTINGS.workspaceFileExplorerMaxEntries).toBe(200);
     expect(DEFAULT_SETTINGS.workspaceCardShowStatusPills).toBe(true);
     expect(DEFAULT_SETTINGS.workspaceCardShowProgress).toBe(true);
   });
@@ -30,6 +33,9 @@ describe("AppSettings.workspaceCard*", () => {
       workspaceCardShowStats: true,
       workspaceCardShowPanes: false,
       workspaceCardShowManifests: false,
+      workspaceCardShowFileExplorer: false,
+      workspaceFileExplorerShowHidden: true,
+      workspaceFileExplorerMaxEntries: 75,
       workspaceCardShowStatusPills: true,
       workspaceCardShowProgress: false,
     } as AppSettings);
@@ -38,6 +44,9 @@ describe("AppSettings.workspaceCard*", () => {
     expect(out.workspaceCardShowStats).toBe(true);
     expect(out.workspaceCardShowPanes).toBe(false);
     expect(out.workspaceCardShowManifests).toBe(false);
+    expect(out.workspaceCardShowFileExplorer).toBe(false);
+    expect(out.workspaceFileExplorerShowHidden).toBe(true);
+    expect(out.workspaceFileExplorerMaxEntries).toBe(75);
     expect(out.workspaceCardShowStatusPills).toBe(true);
     expect(out.workspaceCardShowProgress).toBe(false);
   });
@@ -68,6 +77,9 @@ describe("AppSettings.workspaceCard*", () => {
     delete stripped["workspaceCardShowStats"];
     delete stripped["workspaceCardShowPanes"];
     delete stripped["workspaceCardShowManifests"];
+    delete stripped["workspaceCardShowFileExplorer"];
+    delete stripped["workspaceFileExplorerShowHidden"];
+    delete stripped["workspaceFileExplorerMaxEntries"];
     delete stripped["workspaceCardShowStatusPills"];
     delete stripped["workspaceCardShowProgress"];
     const out = validateSettings(stripped as AppSettings);
@@ -76,6 +88,9 @@ describe("AppSettings.workspaceCard*", () => {
     expect(out.workspaceCardShowStats).toBe(true);
     expect(out.workspaceCardShowPanes).toBe(true);
     expect(out.workspaceCardShowManifests).toBe(true);
+    expect(out.workspaceCardShowFileExplorer).toBe(true);
+    expect(out.workspaceFileExplorerShowHidden).toBe(false);
+    expect(out.workspaceFileExplorerMaxEntries).toBe(200);
     expect(out.workspaceCardShowStatusPills).toBe(true);
     expect(out.workspaceCardShowProgress).toBe(true);
   });
@@ -88,8 +103,14 @@ describe("AppSettings.workspaceCard*", () => {
       // garbage at the renderer's `show.*` lookup.
       workspaceCardShowMeta: 0 as unknown as boolean,
       workspaceCardShowStats: "yes" as unknown as boolean,
+      workspaceCardShowFileExplorer: "no" as unknown as boolean,
+      workspaceFileExplorerShowHidden: "yes" as unknown as boolean,
+      workspaceFileExplorerMaxEntries: 5,
     });
     expect(out.workspaceCardShowMeta).toBe(true);
     expect(out.workspaceCardShowStats).toBe(true);
+    expect(out.workspaceCardShowFileExplorer).toBe(true);
+    expect(out.workspaceFileExplorerShowHidden).toBe(false);
+    expect(out.workspaceFileExplorerMaxEntries).toBe(20);
   });
 });

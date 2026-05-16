@@ -80,6 +80,12 @@ export interface AppSettings {
   workspaceCardShowStats: boolean;
   workspaceCardShowPanes: boolean;
   workspaceCardShowManifests: boolean;
+  /** Native webview-only CWD-rooted file explorer in workspace cards. */
+  workspaceCardShowFileExplorer: boolean;
+  /** Show dotfiles in the native sidebar file explorer. */
+  workspaceFileExplorerShowHidden: boolean;
+  /** Per-directory entry cap for the native sidebar file explorer. */
+  workspaceFileExplorerMaxEntries: number;
   workspaceCardShowStatusPills: boolean;
   workspaceCardShowProgress: boolean;
 
@@ -686,6 +692,9 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   workspaceCardShowStats: true,
   workspaceCardShowPanes: true,
   workspaceCardShowManifests: true,
+  workspaceCardShowFileExplorer: true,
+  workspaceFileExplorerShowHidden: false,
+  workspaceFileExplorerMaxEntries: 200,
   workspaceCardShowStatusPills: true,
   workspaceCardShowProgress: true,
   bloomMigratedToTau: false,
@@ -896,6 +905,19 @@ export function validateSettings(s: AppSettings): AppSettings {
       typeof s.workspaceCardShowManifests === "boolean"
         ? s.workspaceCardShowManifests
         : true,
+    workspaceCardShowFileExplorer:
+      typeof s.workspaceCardShowFileExplorer === "boolean"
+        ? s.workspaceCardShowFileExplorer
+        : true,
+    workspaceFileExplorerShowHidden:
+      typeof s.workspaceFileExplorerShowHidden === "boolean"
+        ? s.workspaceFileExplorerShowHidden
+        : false,
+    workspaceFileExplorerMaxEntries:
+      typeof s.workspaceFileExplorerMaxEntries === "number" &&
+      Number.isFinite(s.workspaceFileExplorerMaxEntries)
+        ? clamp(Math.round(s.workspaceFileExplorerMaxEntries), 20, 1000)
+        : 200,
     workspaceCardShowStatusPills:
       typeof s.workspaceCardShowStatusPills === "boolean"
         ? s.workspaceCardShowStatusPills

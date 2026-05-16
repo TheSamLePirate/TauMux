@@ -1022,8 +1022,13 @@ export class SurfaceManager {
         stats: s.workspaceCardShowStats,
         panes: s.workspaceCardShowPanes,
         manifests: s.workspaceCardShowManifests,
+        fileExplorer: s.workspaceCardShowFileExplorer,
         statusPills: s.workspaceCardShowStatusPills,
         progress: s.workspaceCardShowProgress,
+      },
+      fileExplorer: {
+        showHidden: s.workspaceFileExplorerShowHidden,
+        maxEntries: s.workspaceFileExplorerMaxEntries,
       },
     });
     // Repaint the sidebar so the new ht-key visibility / order applies

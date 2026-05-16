@@ -282,6 +282,13 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
           console.error("[ask-user] state update failed:", err);
         }
       },
+      sidebarFileExplorerListing: (payload) => {
+        try {
+          surfaceManager?.getSidebar().setFileExplorerListing(payload);
+        } catch (err) {
+          console.error("[sidebar-file-explorer] apply failed:", err);
+        }
+      },
     },
     requests: {
       readScreen: (params) => {
@@ -304,6 +311,9 @@ surfaceManager = new SurfaceManager(
   loadFontSize(),
 );
 surfaceManager.setTerminalEffectsEnabled(loadTerminalEffectsEnabled());
+surfaceManager.getSidebar().setFileExplorerRequester((request) => {
+  rpc.send("sidebarFileExplorerList", request);
+});
 
 // τ-mux variants (Cockpit / Atlas) need a reference to surfaceManager
 // to read workspace state and dispatch workspace switches without

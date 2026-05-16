@@ -91,6 +91,7 @@ import {
   type AskUserAttribution,
 } from "./ask-user-telegram";
 import { parseAllowedTelegramIds, pickWebSettings } from "../shared/settings";
+import { listSidebarFileExplorerDirectory } from "./sidebar-file-explorer";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -711,6 +712,10 @@ const bunMessageHandlers = {
       type: "sidebarState",
       visible: payload.visible,
     });
+  },
+  sidebarFileExplorerList: (payload) => {
+    const listing = listSidebarFileExplorerDirectory(payload);
+    rpc.send("sidebarFileExplorerListing", listing);
   },
   clearNotifications: () => {
     socketHandler("notification.clear", {});
@@ -2425,7 +2430,13 @@ function dispatch(action: string, payload: Record<string, unknown>) {
   if (action === "createSurface") {
     createWorkspaceSurface(80, 24, payload["cwd"] as string | undefined);
   } else if (action === "splitSurface") {
-    splitSurface(payload["direction"] as "horizontal" | "vertical");
+    splitSurface(
+      payload["direction"] as "horizontal" | "vertical",
+      ((payload["surfaceId"] as string | undefined) ??
+        (payload["surface_id"] as string | undefined) ??
+        null),
+      payload["cwd"] as string | undefined,
+    );
   } else if (action === "runScript") {
     // Same flow as the webview-side `runScript` message: spawn a surface
     // in cwd, tag it with launchFor so the sidebar tracks the script as

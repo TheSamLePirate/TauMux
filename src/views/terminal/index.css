@@ -8880,6 +8880,13 @@ body::after {
   border-color: color-mix(in srgb, var(--workspace-accent) 48%, transparent);
 }
 
+#sidebar.sidebar-v2 .workspace-cwd-chip.muted {
+  cursor: default;
+  color: var(--sb-ink-faint);
+  border-style: dashed;
+  background: transparent;
+}
+
 /* ── Collapsible sub-sections inside a workspace card ────────────── */
 
 #sidebar.sidebar-v2 .workspace-section {
@@ -8932,8 +8939,203 @@ body::after {
   background: rgba(255, 255, 255, 0.05);
 }
 
+#sidebar.sidebar-v2 .workspace-file-refresh {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0.5px solid var(--sb-hairline);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--sb-ink-faint);
+  cursor: pointer;
+}
+
+#sidebar.sidebar-v2 .workspace-file-refresh:hover {
+  color: var(--workspace-accent);
+  border-color: color-mix(in srgb, var(--workspace-accent) 45%, transparent);
+}
+
 #sidebar.sidebar-v2 .workspace-section-body {
   padding: 0 4px 6px 0;
+}
+
+/* File explorer */
+
+#sidebar.sidebar-v2 .workspace-file-explorer {
+  padding: 2px 0 0 14px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+
+#sidebar.sidebar-v2 .workspace-file-dir {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#sidebar.sidebar-v2 .workspace-file-row {
+  --file-kind-color: var(--sb-ink-faint);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 20px;
+  padding: 0 4px 0 calc(var(--file-depth, 0) * 12px);
+  border: none;
+  border-left: 0.5px solid color-mix(in srgb, var(--workspace-accent) 22%, transparent);
+  background: transparent;
+  color: var(--sb-ink-soft);
+  text-align: left;
+  cursor: default;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+
+#sidebar.sidebar-v2 .workspace-file-row.directory {
+  cursor: pointer;
+  color: var(--sb-ink);
+}
+
+#sidebar.sidebar-v2 .workspace-file-row:hover {
+  background: color-mix(in srgb, var(--file-kind-color) 9%, transparent);
+  border-left-color: color-mix(in srgb, var(--file-kind-color) 52%, transparent);
+}
+
+#sidebar.sidebar-v2 .workspace-file-twisty {
+  display: inline-grid;
+  place-items: center;
+  width: 11px;
+  height: 16px;
+  flex: 0 0 11px;
+  color: var(--sb-ink-faint);
+}
+
+#sidebar.sidebar-v2 .workspace-file-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 15px;
+  flex: 0 0 24px;
+  color: var(--file-kind-color);
+}
+
+#sidebar.sidebar-v2 .workspace-file-icon.svg {
+  width: 16px;
+  flex-basis: 16px;
+}
+
+#sidebar.sidebar-v2 .workspace-file-icon.badge {
+  border: 0.5px solid color-mix(in srgb, var(--file-kind-color) 52%, transparent);
+  background: color-mix(in srgb, var(--file-kind-color) 14%, transparent);
+  color: color-mix(in srgb, var(--file-kind-color) 86%, #ffffff);
+  font-size: 7.5px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  font-family: var(--font-mono, monospace);
+  overflow: hidden;
+}
+
+#sidebar.sidebar-v2 .workspace-file-row .ht-icon {
+  flex: 0 0 auto;
+  color: var(--file-kind-color);
+  opacity: 0.95;
+}
+
+#sidebar.sidebar-v2 .workspace-file-name-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#sidebar.sidebar-v2 .workspace-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#sidebar.sidebar-v2 .workspace-file-hint {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--file-kind-color) 70%, var(--sb-ink-faint));
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+#sidebar.sidebar-v2 .workspace-file-size {
+  flex: 0 0 auto;
+  color: var(--sb-ink-faint);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+#sidebar.sidebar-v2 .workspace-file-state {
+  padding: 4px 4px 4px 2px;
+  color: var(--sb-ink-faint);
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  border-left: 0.5px solid var(--sb-hairline);
+}
+
+#sidebar.sidebar-v2 .workspace-file-state.error {
+  color: var(--tau-danger, #ff8a8a);
+}
+
+#sidebar.sidebar-v2 .file-kind-folder {
+  --file-kind-color: color-mix(in srgb, var(--workspace-accent) 74%, #ffd166);
+}
+#sidebar.sidebar-v2 .file-kind-source {
+  --file-kind-color: #6fe9ff;
+}
+#sidebar.sidebar-v2 .file-kind-test {
+  --file-kind-color: #8ce99a;
+}
+#sidebar.sidebar-v2 .file-kind-package {
+  --file-kind-color: #ffc56b;
+}
+#sidebar.sidebar-v2 .file-kind-lock {
+  --file-kind-color: #9aa7ad;
+}
+#sidebar.sidebar-v2 .file-kind-config {
+  --file-kind-color: #d6bfff;
+}
+#sidebar.sidebar-v2 .file-kind-env {
+  --file-kind-color: #ff8a8a;
+}
+#sidebar.sidebar-v2 .file-kind-doc {
+  --file-kind-color: #a7c7ff;
+}
+#sidebar.sidebar-v2 .file-kind-script {
+  --file-kind-color: #8ce99a;
+}
+#sidebar.sidebar-v2 .file-kind-style {
+  --file-kind-color: #ff9bd5;
+}
+#sidebar.sidebar-v2 .file-kind-data {
+  --file-kind-color: #83c5be;
+}
+#sidebar.sidebar-v2 .file-kind-image {
+  --file-kind-color: #f4d35e;
+}
+#sidebar.sidebar-v2 .file-kind-archive,
+#sidebar.sidebar-v2 .file-kind-binary {
+  --file-kind-color: #b8b8ff;
+}
+#sidebar.sidebar-v2 .file-kind-database {
+  --file-kind-color: #7dd3fc;
+}
+#sidebar.sidebar-v2 .file-kind-symlink {
+  --file-kind-color: #c3f584;
+}
+
+#sidebar.sidebar-v2 .file-kind-lock .workspace-file-name,
+#sidebar.sidebar-v2 .file-kind-binary .workspace-file-name {
+  color: var(--sb-ink-dim);
 }
 
 /* Panes sub-list */

@@ -617,6 +617,36 @@ export class SettingsPanel {
     );
     this.toggleField(
       c,
+      "Show CWD file explorer",
+      s.workspaceCardShowFileExplorer,
+      "workspaceCardShowFileExplorer",
+      {
+        note: "Native sidebar-only collapsible explorer rooted at the selected CWD.",
+      },
+    );
+    this.toggleField(
+      c,
+      "Explorer shows hidden files",
+      s.workspaceFileExplorerShowHidden,
+      "workspaceFileExplorerShowHidden",
+      {
+        note: "Dotfiles are hidden by default; heavy folders like .git and node_modules stay excluded.",
+      },
+    );
+    this.numberField(
+      c,
+      "Explorer max entries",
+      s.workspaceFileExplorerMaxEntries,
+      "workspaceFileExplorerMaxEntries",
+      {
+        min: 20,
+        max: 1000,
+        step: 10,
+        note: "Per-directory cap to keep huge folders responsive.",
+      },
+    );
+    this.toggleField(
+      c,
       "Show ht status pills",
       s.workspaceCardShowStatusPills,
       "workspaceCardShowStatusPills",

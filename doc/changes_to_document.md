@@ -65,3 +65,15 @@ _Backlog cleared 2026-05-05 — pi-extensions/ht-bridge "follow the pi session m
 - **Multi-pane terminals now refit per-pane.** Pre-fix, `reconcilePanes` called `term.resize(state.surfaces[sid].cols, .rows)` on every render — forcing every web-client xterm to the SERVER's authoritative size. On a multi-pane workspace (split panes) each pane's container is smaller, so xterm rendered at the wrong cell count and stale rows didn't redraw. The fix runs `fitAddon.fit()` per pane in a `requestAnimationFrame` after `applyLayout` lands the pixel rects, so each xterm matches its actual container. The per-pane `ResizeObserver` also calls `fit()` immediately on geometry change before debouncing the server-side `surfaceResizeRequest` proposal.
 - **Status bar no longer clips the last terminal row.** `applyMirrorScale` (used in nativeViewport mirror mode) now subtracts the `STATUS_BAR_HEIGHT = 26` from `availH` so the scaled mirror fits between the toolbar and the bar. Non-mirror mode still relies on the `#pane-container { bottom: 26px }` CSS rule for the initial frame; the layout view writes `container.style.bottom = "26px"` inline so JS-driven layout changes (sidebar toggle, fullscreen) keep the clearance.
 - Surface in `website-doc/src/content/docs/api/system.md` (no API change but bump version) and `cli/system.md` (same). Translate both content blocks into French.
+
+## Pending — ht_run_in_split pane readiness
+
+- **`ht_run_in_split` waits for the new pane before typing.** The pi `ht-bridge` extension now snapshots `surface.list`, handles legacy `surface.split` responses that only return `"OK"`, polls until the new surface appears, and only sends the command after `surface.wait_ready` confirms the new terminal metadata is observable. If readiness times out, it reports an error and does not send the command, avoiding lost input.
+- **`surface.split` returns the created surface id when available.** The socket RPC now passes the requested source surface/CWD through the internal split dispatch and returns `{ id }` for synchronous split creation, while keeping `"OK"` as a compatibility fallback.
+- Surface in website docs only if pi integration/tool semantics are refreshed in the next docs sweep.
+
+## Pending — native sidebar CWD file explorer
+
+- **Native sidebar workspace cards always show CWD.** The webview sidebar now renders a CWD row for every workspace card, including single-CWD cards and metadata-unavailable states.
+- **Native-only CWD file explorer.** The webview sidebar gained a collapsible file explorer rooted at the selected workspace CWD, with lazy per-directory listing, refresh, dotfile and max-entry Settings controls, and no HTTP mirror wiring.
+- Surface in website docs only if native sidebar settings/UI behaviour is documented in the next docs sweep.
