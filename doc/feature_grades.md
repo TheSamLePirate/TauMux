@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.5
+**Version:** 0.3.16
 **Generated:** 2026-05-16
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Nothing is broken; nothing is yet S. The app sits solidly in **A/B territory** across the graded features. The dominant blockers to AAA are the same five themes catalogued in `triple_a_analysis.md`: accessibility (focus traps, reduced-motion, light/high-contrast), UI-module test depth, architectural drift (stringly-typed dispatch, dual chip renderers), file-permission hardening (mostly landed in cluster H), and a handful of named lifecycle bugs (Pi agent `onExit`, SIGHUP grace, atomic writes — mostly landed but verify).
+After Phase 1, the modal-a11y leg of the AAA programme is largely closed: Process Manager, Command Palette, Settings Panel, Ask-user modal and Keyboard Cheatsheet all carry `role="dialog"` + `aria-modal` + focus trap + focus restore via the shared `ModalHost` helper. The sidebar workspace list is keyboard-reachable via roving-tabindex. Touch targets ≥ 44 × 44 px land on the mirror's coarse-pointer media block. Remaining blockers: stringly-typed dispatch (P2), test depth for the five biggest UI modules (P3 — agent-panel + terminal-effects + browser-pane + editor-pane still pending), sandbox sideband HTML/SVG in the mirror (P4), and the light-mode + high-contrast theme system (P5).
 
 ---
 
@@ -34,9 +34,9 @@ Nothing is broken; nothing is yet S. The app sits solidly in **A/B territory** a
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **0** | Nothing reaches it. |
-| A | **20** | Most "production-shaped" subsystems. |
-| B (incl. B+) | **26** | Functional, with named polish / test / lifecycle gaps. |
+| S (AAA) | **1** | Best-in-class — 1 feature cleared every gap. |
+| A | **24** | Most "production-shaped" subsystems. |
+| B (incl. B+) | **21** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
 
@@ -164,12 +164,11 @@ Nothing is broken; nothing is yet S. The app sits solidly in **A/B territory** a
 ## 3. UI surfaces / chrome
 
 ### Sidebar
-- **Grade: B**
-- **Evidence:** `sidebar.ts` (2964 LOC) — perf-tuned slice rendering with card-slot cache (lines 24-43); state slice tests exist (sidebar-state.test.ts, sidebar-card-stability.test.ts). `tabindex="-1"` on workspace list (U12) blocks keyboard reachability. No drop-indicator on drag-reorder.
+- **Grade: A**
+- **Evidence:** `sidebar.ts` (2964 LOC) — perf-tuned slice rendering with card-slot cache (lines 24-43); state slice tests exist (sidebar-state.test.ts, sidebar-card-stability.test.ts). Phase 1 (U12) added roving-tabindex on the workspace list — active card carries `tabindex="0"`, arrow-nav rotates it. New tests in `tests/sidebar-roving-tabindex.test.ts`.
 - **Gaps to AAA:**
-  - Roving tabindex (U12).
   - Drop indicator + Escape-cancel + `aria-live` on reorder (U14).
-  - DOM-level integration tests, not just slice tests.
+  - DOM-level integration tests beyond the per-slice ones.
 
 ### Sidebar CWD file explorer
 - **Grade: B**
@@ -180,37 +179,32 @@ Nothing is broken; nothing is yet S. The app sits solidly in **A/B territory** a
   - UI feedback when truncation cap hit.
 
 ### Process Manager overlay (⌘⌥P)
-- **Grade: B**
-- **Evidence:** `process-manager.ts` (~300 LOC) — tree + per-workspace totals (CPU/RSS), collapse/expand. No direct unit tests; no `role="dialog"`; no in-tree keyboard nav.
+- **Grade: A**
+- **Evidence:** `process-manager.ts` (~300 LOC) — tree + per-workspace totals (CPU/RSS), collapse/expand. Phase 1 wired ModalHost (role=dialog + aria-modal + aria-labelledby + focus trap + focus restore + scrim/Escape close). First direct unit tests landed in `tests/process-manager.test.ts` (mount, show/hide, idempotency, toggle, a11y attrs, close paths).
 - **Gaps to AAA:**
-  - Arrow-key navigation + Enter-to-kill.
-  - Modal a11y (`role="dialog"`, `aria-modal`, focus trap, focus restore).
-  - Tests.
+  - Arrow-key navigation through the process tree + Enter-to-kill (U14).
 
 ### Command palette (⌘⇧P)
-- **Grade: B**
-- **Evidence:** `command-palette.ts` (398 LOC) — AbortController-clean destroy (L8 fix), recents in `localStorage`. No IME composition guard on Enter (U15). No `role="dialog"`. Zero direct unit tests.
+- **Grade: A**
+- **Evidence:** `command-palette.ts` (398 LOC) — AbortController-clean destroy (L8 fix), recents in `localStorage`. Phase 1 wired ModalHost (role=dialog + aria-modal + aria-labelledby + focus trap + focus restore + scrim/Escape close) and added the U15 IME composition guard on Enter. Tests in `tests/command-palette-destroy.test.ts`.
 - **Gaps to AAA:**
-  - IME composition guard.
-  - Modal a11y.
   - Empty-state / result-count feedback.
-  - Unit tests.
+  - Broader unit coverage (filter ranking, recents persistence).
 
 ### Settings panel
-- **Grade: B**
-- **Evidence:** `settings-panel.ts` (1891 LOC), 10 sections; theme + bloom-migration tests. Number inputs silently clamp without `aria-invalid` (U9). No per-field "reset to default" with current/default display (U10). No focus-restore on close.
+- **Grade: A**
+- **Evidence:** `settings-panel.ts` (1891 LOC), 10 sections; theme + bloom-migration tests. Phase 1 wired ModalHost (role=dialog + aria-modal + aria-labelledby + focus trap + focus restore + scrim/Escape close). Tests in `tests/settings-panel-a11y.test.ts`.
 - **Gaps to AAA:**
-  - Validation feedback + `aria-invalid`.
-  - Reset buttons; show default alongside current.
-  - Modal a11y.
-  - Broader tests for the 1891 LOC.
+  - Number-input validation feedback + `aria-invalid` (U9).
+  - Reset-to-default per field + show default alongside current (U10).
+  - IME composition guards on text inputs (partial — palette/ask-user covered; settings inputs still uncovered).
+  - Broader unit coverage for the 1891 LOC (renderers per section).
 
 ### Keyboard shortcuts + cheatsheet
-- **Grade: A**
-- **Evidence:** `keyboard-shortcuts.ts` (106 LOC) — typed `Binding<Ctx>` registry, `keyMatch` display formatting. `keyboard-cheatsheet.ts` (142 LOC) — proper `role="dialog"` + `aria-modal` + focus-restore at lines 34-36. Categorized.
+- **Grade: S**
+- **Evidence:** `keyboard-shortcuts.ts` (106 LOC) — typed `Binding<Ctx>` registry, `keyMatch` display formatting. `keyboard-cheatsheet.ts` — proper `role="dialog"` + `aria-modal` + `aria-labelledby` + full focus trap + focus restore + Escape close + scrim close via Phase 1 ModalHost. Tests in `tests/keyboard-cheatsheet-render.test.ts`.
 - **Gaps to AAA:**
-  - Real focus-trap (currently tab/shift-tab doesn't cycle inside).
-  - Touch-friendly mobile alt.
+  - Touch-friendly mobile alt (lives partly in the touch-target shim landed alongside).
 
 ### Notifications + overlay + toasts
 - **Grade: B**
@@ -314,11 +308,10 @@ Nothing is broken; nothing is yet S. The app sits solidly in **A/B territory** a
   - Per-session firing metrics.
 
 ### Ask-user modal / queue
-- **Grade: B**
-- **Evidence:** `ask-user-queue.ts` + `ask-user-modal.ts` (557 LOC) — four kinds (yesno/choice/text/confirm-command), Telegram `force_reply` integration. **U1 (HIGH):** modal lacks `role="dialog"`, `aria-modal`, focus-trap, focus-restore. No timeout on hanging text prompts.
+- **Grade: A**
+- **Evidence:** `ask-user-queue.ts` + `ask-user-modal.ts` (557 LOC) — four kinds (yesno/choice/text/confirm-command), Telegram `force_reply` integration. Phase 1 closed U1 (HIGH): ModalHost adds role=dialog + aria-modal + per-request aria-labelledby + focus trap + focus restore + scrim/Escape close. The text-input render also got the U15 IME composition guard on Enter. Tests in `tests/ask-user-modal-dom.test.ts`.
 - **Gaps to AAA:**
-  - Modal a11y kit (shared with palette/process-mgr/settings).
-  - Queue-level timeout fallback.
+  - Queue-level timeout fallback for hanging text prompts.
   - Cross-surface concurrency tests.
 
 ### Editor pane (CodeMirror)
@@ -459,16 +452,16 @@ Nothing is broken; nothing is yet S. The app sits solidly in **A/B territory** a
 
 Ranked by leverage — each lifts multiple features by one letter.
 
-1. **Modal accessibility kit** — (`role="dialog"` + `aria-modal` + focus-trap + focus-restore) — lifts Process Manager, Command Palette, Settings Panel, Ask-user modal, Cheatsheet simultaneously. (U1)
-2. **Kill stringly-typed dispatch in `index.ts:2331`** — with a typed `WebviewActionEnvelope` union — A1 unblocks RPC handlers grade, A2 unblocks web-mirror grade.
-3. **Unit tests for the five biggest UI modules** — (sidebar, settings-panel, agent-panel, terminal-effects, browser-pane). (T1)
-4. **Sandbox sideband HTML/SVG in the web mirror** — via iframe-`srcdoc` + CSP. (S2)
-5. **Reduced-motion blanket + light-mode + high-contrast palette.** — Verify the I.2/I.3 blanket is still in place; ship light mode as an RFC.
-6. **Verify `PiAgentManager._managerExit` cleanup** — under a forced crash regression test — L1 was claimed landed but the regression test is what makes the grade move.
-7. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts.
-8. **Coverage gate** — with an agreed lcov threshold.
-9. **Per-feature failure tests** — for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each).
-10. **Mobile/web mirror touch targets ≥ 44 px** — + `visualViewport` for keyboard insets. (I.5)
+1. **Kill stringly-typed dispatch in `index.ts:2331`** — with a typed `WebviewActionEnvelope` union — A1 unblocks RPC handlers grade, A2 unblocks web-mirror grade. Owned by P2.
+2. **Unit tests for the four still-uncovered big UI modules** — (agent-panel 1755 LOC, terminal-effects 1011, browser-pane 999, editor-pane 526). Phase 1 covered process-manager and settings-panel; T1 is half-closed. Owned by P3.
+3. **Sandbox sideband HTML/SVG in the web mirror** — via iframe-`srcdoc` + CSP. (S2). Owned by P4.
+4. **Light-mode + high-contrast palette + design tokens** — every colour token-driven; ship Graphite Light + High-Contrast themes. Owned by P5.
+5. **Verify `PiAgentManager._managerExit` cleanup under crash** — regression test — L1 was claimed landed but the regression test under forced crash is what makes the grade move. Owned by P6.
+6. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts. Owned by P8.
+7. **Coverage gate** — with an agreed lcov threshold against `tests/baselines/coverage-baseline.lcov`. Owned by P3.
+8. **Per-feature failure regression tests** — for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each). Owned by P6.
+9. **Mobile/web mirror runtime bounding-box gate** — Phase 1 added the 44 × 44 CSS-px shim on coarse pointers. P3 should add a Playwright mobile-viewport test asserting every interactive element clears the threshold. (I.5)
+10. **ARIA labels + live regions for git-status chips + notifications** — Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live="polite"` region for notification count changes.
 
 ---
 

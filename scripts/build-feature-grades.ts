@@ -154,7 +154,13 @@ function render(doc: GradesDoc): string {
   lines.push("");
   lines.push("| Grade | Count | Notes |");
   lines.push("|---|---:|---|");
-  lines.push(`| S (AAA) | **${dist.S}** | Nothing reaches it. |`);
+  lines.push(
+    `| S (AAA) | **${dist.S}** | ${
+      dist.S === 0
+        ? "Nothing reaches it yet."
+        : `Best-in-class — ${dist.S} feature${dist.S === 1 ? "" : "s"} cleared every gap.`
+    } |`,
+  );
   lines.push(`| A | **${dist.A}** | Most "production-shaped" subsystems. |`);
   lines.push(
     `| B (incl. B+) | **${dist.B}** | Functional, with named polish / test / lifecycle gaps. |`,
