@@ -92,6 +92,7 @@ import {
 } from "./ask-user-telegram";
 import { parseAllowedTelegramIds, pickWebSettings } from "../shared/settings";
 import { listSidebarFileExplorerDirectory } from "./sidebar-file-explorer";
+import { readEditorFile, resolveEditorPath, saveEditorFile } from "./editor-files";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -605,10 +606,9 @@ const bunMessageHandlers = {
       });
     } else if (browserSurfaces.isBrowserSurface(payload.surfaceId)) {
       browserSurfaces.closeSurface(payload.surfaceId);
-    } else if (payload.surfaceId.startsWith("tg:")) {
-      // Telegram panes have no bun-side resource (no PTY, no browser
-      // process, no agent); echo the close back so the webview layout
-      // removes the pane. Without this the × does nothing.
+    } else if (payload.surfaceId.startsWith("tg:") || payload.surfaceId.startsWith("editor:")) {
+      // Non-PTY panes have no bun-side resource; echo the close back so
+      // the webview layout removes the pane.
       rpc.send("surfaceClosed", { surfaceId: payload.surfaceId });
       app.webServer?.broadcast({
         type: "surfaceClosed",
@@ -934,6 +934,24 @@ const bunMessageHandlers = {
   splitTelegramSurface: (payload) => {
     splitTelegramSurface(payload.direction);
   },
+
+  // ── Editor surface lifecycle ──
+  createEditorSurface: (payload) => {
+    createEditorWorkspaceSurface(payload.path, payload.cwd, payload.create);
+  },
+  splitEditorSurface: (payload) => {
+    splitEditorSurface(payload.direction, payload.path, payload.cwd, payload.create);
+  },
+  editorReadFile: (payload) => {
+    rpc.send("editorFileSnapshot", readEditorFile(payload));
+  },
+  editorSaveFile: (payload) => {
+    rpc.send("editorSaveResult", saveEditorFile(payload));
+  },
+  editorReloadFile: (payload) => {
+    rpc.send("editorFileSnapshot", readEditorFile(payload));
+  },
+
   telegramSend: (payload) => {
     if (!payload.chatId || !payload.text) return;
     void sendTelegramAndBroadcast(payload.chatId, payload.text);
@@ -1452,6 +1470,44 @@ function splitBrowserSurface(
     surfaceId,
     url: resolvedUrl,
   });
+}
+
+// ── Editor Surface Creation ──
+
+let editorSurfaceCounter = 0;
+function nextEditorSurfaceId(): string {
+  return `editor:${++editorSurfaceCounter}:${Date.now().toString(36)}`;
+}
+
+function createEditorWorkspaceSurface(path?: string, cwd?: string, create?: boolean): void {
+  const surfaceId = nextEditorSurfaceId();
+  const resolvedPath = path ? resolveEditorPath(path, cwd) : undefined;
+  app.focusedSurfaceId = surfaceId;
+  rpc.send("editorSurfaceCreated", { surfaceId, path: resolvedPath });
+  if (resolvedPath) {
+    rpc.send("editorFileSnapshot", readEditorFile({ surfaceId, path: resolvedPath, create }));
+  }
+}
+
+function splitEditorSurface(
+  direction: "horizontal" | "vertical",
+  path?: string,
+  cwd?: string,
+  create?: boolean,
+): void {
+  const splitFrom = app.focusedSurfaceId;
+  const surfaceId = nextEditorSurfaceId();
+  const resolvedPath = path ? resolveEditorPath(path, cwd) : undefined;
+  app.focusedSurfaceId = surfaceId;
+  rpc.send("editorSurfaceCreated", {
+    surfaceId,
+    path: resolvedPath,
+    splitFrom: splitFrom ?? undefined,
+    direction,
+  });
+  if (resolvedPath) {
+    rpc.send("editorFileSnapshot", readEditorFile({ surfaceId, path: resolvedPath, create }));
+  }
 }
 
 // ── Telegram Surface Creation ──
@@ -2437,6 +2493,13 @@ function dispatch(action: string, payload: Record<string, unknown>) {
         null),
       payload["cwd"] as string | undefined,
     );
+  } else if (action === "closeSurface") {
+    const surfaceId = payload["surfaceId"] as string | undefined;
+    if (surfaceId?.startsWith("editor:") || surfaceId?.startsWith("tg:")) {
+      rpc.send("surfaceClosed", { surfaceId });
+    } else if (surfaceId) {
+      sessions.closeSurface(surfaceId);
+    }
   } else if (action === "runScript") {
     // Same flow as the webview-side `runScript` message: spawn a surface
     // in cwd, tag it with launchFor so the sidebar tracks the script as
@@ -2599,6 +2662,19 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     splitBrowserSurface(
       (payload["direction"] as "horizontal" | "vertical") || "horizontal",
       payload["url"] as string | undefined,
+    );
+  } else if (action === "createEditorSurface") {
+    createEditorWorkspaceSurface(
+      payload["path"] as string | undefined,
+      payload["cwd"] as string | undefined,
+      payload["create"] === true,
+    );
+  } else if (action === "splitEditorSurface") {
+    splitEditorSurface(
+      (payload["direction"] as "horizontal" | "vertical") || "horizontal",
+      payload["path"] as string | undefined,
+      payload["cwd"] as string | undefined,
+      payload["create"] === true,
     );
   } else if (action === "openExternal") {
     const url = payload["url"];
@@ -3039,6 +3115,12 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
           type: "telegramSurfaceCreated",
           surfaceId: newId,
         });
+      } else if (surfType === "editor") {
+        const path = ws.surfaceEditorFiles?.[oldId];
+        const newId = nextEditorSurfaceId();
+        surfaceMapping[oldId] = newId;
+        rpc.send("editorSurfaceCreated", { surfaceId: newId, path });
+        if (path) rpc.send("editorFileSnapshot", readEditorFile({ surfaceId: newId, path }));
       } else {
         // Re-spawn in the surface's last known cwd so shells resume where they
         // left off (the metadata poller picks this up within a tick; without
@@ -3077,6 +3159,13 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
           if (newId) remappedCwds[newId] = cwd;
         }
       }
+      const remappedEditorFiles: Record<string, string> = {};
+      if (ws.surfaceEditorFiles) {
+        for (const [oldId, path] of Object.entries(ws.surfaceEditorFiles)) {
+          const newId = surfaceMapping[oldId];
+          if (newId) remappedEditorFiles[newId] = path;
+        }
+      }
       return {
         ...ws,
         layout: remapPaneNode(ws.layout, surfaceMapping),
@@ -3087,6 +3176,8 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
           Object.keys(remappedTitles).length > 0 ? remappedTitles : undefined,
         surfaceCwds:
           Object.keys(remappedCwds).length > 0 ? remappedCwds : undefined,
+        surfaceEditorFiles:
+          Object.keys(remappedEditorFiles).length > 0 ? remappedEditorFiles : undefined,
       };
     }),
   };

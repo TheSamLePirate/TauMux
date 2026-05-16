@@ -8939,21 +8939,24 @@ body::after {
   background: rgba(255, 255, 255, 0.05);
 }
 
-#sidebar.sidebar-v2 .workspace-file-refresh {
+#sidebar.sidebar-v2 .workspace-file-refresh,
+#sidebar.sidebar-v2 .workspace-file-new {
   display: inline-grid;
   place-items: center;
   width: 16px;
   height: 16px;
   padding: 0;
   border: 0.5px solid var(--sb-hairline);
-  background: rgba(255, 255, 255, 0.025);
+  background: color-mix(in srgb, var(--tau-text) 2.5%, transparent);
   color: var(--sb-ink-faint);
   cursor: pointer;
 }
 
-#sidebar.sidebar-v2 .workspace-file-refresh:hover {
+#sidebar.sidebar-v2 .workspace-file-refresh:hover,
+#sidebar.sidebar-v2 .workspace-file-new:hover {
   color: var(--workspace-accent);
   border-color: color-mix(in srgb, var(--workspace-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--workspace-accent) 9%, transparent);
 }
 
 #sidebar.sidebar-v2 .workspace-section-body {
@@ -8966,6 +8969,37 @@ body::after {
   padding: 2px 0 0 14px;
   font-family: var(--font-mono, monospace);
   font-size: 10px;
+}
+
+#sidebar.sidebar-v2 .workspace-file-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 20px;
+  padding: 0 4px 0 0;
+  color: var(--sb-ink-faint);
+  border-left: 0.5px solid color-mix(in srgb, var(--workspace-accent) 28%, transparent);
+}
+
+#sidebar.sidebar-v2 .workspace-file-root {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 4px;
+  color: var(--sb-ink-soft);
+}
+
+#sidebar.sidebar-v2 .workspace-file-summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sb-ink-faint);
+  font-size: 9px;
 }
 
 #sidebar.sidebar-v2 .workspace-file-dir {
@@ -8996,9 +9030,16 @@ body::after {
   color: var(--sb-ink);
 }
 
-#sidebar.sidebar-v2 .workspace-file-row:hover {
+#sidebar.sidebar-v2 .workspace-file-row:hover,
+#sidebar.sidebar-v2 .workspace-file-row:focus-visible {
   background: color-mix(in srgb, var(--file-kind-color) 9%, transparent);
   border-left-color: color-mix(in srgb, var(--file-kind-color) 52%, transparent);
+  color: var(--tau-text);
+}
+
+#sidebar.sidebar-v2 .workspace-file-row:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--file-kind-color) 70%, transparent);
+  outline-offset: -1px;
 }
 
 #sidebar.sidebar-v2 .workspace-file-twisty {
@@ -9027,7 +9068,7 @@ body::after {
 #sidebar.sidebar-v2 .workspace-file-icon.badge {
   border: 0.5px solid color-mix(in srgb, var(--file-kind-color) 52%, transparent);
   background: color-mix(in srgb, var(--file-kind-color) 14%, transparent);
-  color: color-mix(in srgb, var(--file-kind-color) 86%, #ffffff);
+  color: color-mix(in srgb, var(--file-kind-color) 86%, var(--tau-text));
   font-size: 7.5px;
   font-weight: 800;
   letter-spacing: -0.03em;
@@ -9067,11 +9108,16 @@ body::after {
   opacity: 0.72;
 }
 
-#sidebar.sidebar-v2 .workspace-file-size {
+#sidebar.sidebar-v2 .workspace-file-meta {
   flex: 0 0 auto;
+  max-width: 74px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--sb-ink-faint);
   font-size: 9px;
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 #sidebar.sidebar-v2 .workspace-file-state {
@@ -9083,54 +9129,54 @@ body::after {
 }
 
 #sidebar.sidebar-v2 .workspace-file-state.error {
-  color: var(--tau-danger, #ff8a8a);
+  color: var(--tau-err);
 }
 
 #sidebar.sidebar-v2 .file-kind-folder {
-  --file-kind-color: color-mix(in srgb, var(--workspace-accent) 74%, #ffd166);
+  --file-kind-color: color-mix(in srgb, var(--workspace-accent) 74%, var(--tau-warn));
 }
 #sidebar.sidebar-v2 .file-kind-source {
-  --file-kind-color: #6fe9ff;
+  --file-kind-color: var(--tau-cyan);
 }
 #sidebar.sidebar-v2 .file-kind-test {
-  --file-kind-color: #8ce99a;
+  --file-kind-color: var(--tau-ok);
 }
 #sidebar.sidebar-v2 .file-kind-package {
-  --file-kind-color: #ffc56b;
+  --file-kind-color: var(--tau-warn);
 }
 #sidebar.sidebar-v2 .file-kind-lock {
-  --file-kind-color: #9aa7ad;
+  --file-kind-color: var(--tau-text-mute);
 }
 #sidebar.sidebar-v2 .file-kind-config {
-  --file-kind-color: #d6bfff;
+  --file-kind-color: color-mix(in srgb, var(--tau-cyan) 45%, var(--tau-agent));
 }
 #sidebar.sidebar-v2 .file-kind-env {
-  --file-kind-color: #ff8a8a;
+  --file-kind-color: var(--tau-err);
 }
 #sidebar.sidebar-v2 .file-kind-doc {
-  --file-kind-color: #a7c7ff;
+  --file-kind-color: color-mix(in srgb, var(--tau-cyan) 55%, var(--tau-text));
 }
 #sidebar.sidebar-v2 .file-kind-script {
-  --file-kind-color: #8ce99a;
+  --file-kind-color: var(--tau-ok);
 }
 #sidebar.sidebar-v2 .file-kind-style {
-  --file-kind-color: #ff9bd5;
+  --file-kind-color: color-mix(in srgb, var(--tau-agent) 45%, var(--tau-err));
 }
 #sidebar.sidebar-v2 .file-kind-data {
-  --file-kind-color: #83c5be;
+  --file-kind-color: color-mix(in srgb, var(--tau-cyan) 55%, var(--tau-ok));
 }
 #sidebar.sidebar-v2 .file-kind-image {
-  --file-kind-color: #f4d35e;
+  --file-kind-color: var(--tau-warn);
 }
 #sidebar.sidebar-v2 .file-kind-archive,
 #sidebar.sidebar-v2 .file-kind-binary {
-  --file-kind-color: #b8b8ff;
+  --file-kind-color: color-mix(in srgb, var(--tau-cyan) 35%, var(--tau-text));
 }
 #sidebar.sidebar-v2 .file-kind-database {
-  --file-kind-color: #7dd3fc;
+  --file-kind-color: color-mix(in srgb, var(--tau-cyan) 75%, var(--tau-text));
 }
 #sidebar.sidebar-v2 .file-kind-symlink {
-  --file-kind-color: #c3f584;
+  --file-kind-color: color-mix(in srgb, var(--tau-ok) 70%, var(--tau-warn));
 }
 
 #sidebar.sidebar-v2 .file-kind-lock .workspace-file-name,
@@ -12036,4 +12082,199 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ── CodeMirror editor pane ─────────────────────────────────────── */
+.surface-editor .editor-dirty-chip.hidden {
+  display: none;
+}
+
+.surface-editor .editor-dirty-chip {
+  color: var(--tau-warn);
+  border-color: color-mix(in srgb, var(--tau-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--tau-warn) 10%, transparent);
+}
+
+.editor-pane-body {
+  position: absolute;
+  inset: var(--surface-bar-height, 28px) 0 0 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--tau-panel);
+}
+
+.editor-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.surface-editor .cm-editor {
+  height: 100%;
+  background: var(--tau-bg);
+  color: var(--tau-text);
+  font-family: var(--tau-font-mono);
+  font-size: 12px;
+}
+
+.surface-editor .cm-scroller {
+  font-family: var(--tau-font-mono);
+}
+
+.surface-editor .cm-gutters {
+  background: var(--tau-panel);
+  color: var(--tau-text-faint);
+  border-right: 1px solid var(--tau-edge);
+}
+
+.surface-editor .cm-activeLine,
+.surface-editor .cm-activeLineGutter {
+  background: color-mix(in srgb, var(--tau-cyan) 8%, transparent);
+}
+
+.surface-editor .cm-cursor {
+  border-left-color: var(--tau-cyan);
+}
+
+.surface-editor .cm-selectionBackground,
+.surface-editor .cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--tau-cyan) 24%, transparent);
+}
+
+.editor-status {
+  flex: 0 0 auto;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border-top: 1px solid var(--tau-edge);
+  color: var(--tau-text-dim);
+  font-family: var(--tau-font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.surface-editor .editor-path-chip {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tau-text-dim);
+}
+
+.surface-editor .editor-save-state.saved {
+  color: var(--tau-ok);
+  border-color: color-mix(in srgb, var(--tau-ok) 38%, transparent);
+}
+.surface-editor .editor-save-state.saving,
+.surface-editor .editor-save-state.conflict {
+  color: var(--tau-warn);
+  border-color: color-mix(in srgb, var(--tau-warn) 42%, transparent);
+}
+.surface-editor .editor-save-state.error {
+  color: var(--tau-err);
+  border-color: color-mix(in srgb, var(--tau-err) 42%, transparent);
+}
+
+.editor-conflict-banner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--tau-warn) 40%, transparent);
+  background: color-mix(in srgb, var(--tau-warn) 10%, var(--tau-panel));
+  color: var(--tau-text);
+  font-family: var(--tau-font-mono);
+  font-size: 11px;
+}
+
+.editor-conflict-banner span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-conflict-banner button,
+.editor-open-btn,
+.editor-error-actions button {
+  border: 1px solid var(--tau-edge);
+  background: var(--tau-panel-hi);
+  color: var(--tau-text);
+  font-family: var(--tau-font-mono);
+  font-size: 10px;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+
+.editor-conflict-banner button:hover,
+.editor-open-btn:hover,
+.editor-error-actions button:hover {
+  border-color: var(--tau-cyan);
+  color: var(--tau-cyan);
+}
+
+.editor-empty-state,
+.editor-error-state {
+  height: 100%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--tau-text-dim);
+  font-family: var(--tau-font-mono);
+  font-size: 12px;
+  text-align: center;
+}
+
+.editor-empty-title,
+.editor-error-title {
+  color: var(--tau-text);
+  font-family: var(--tau-font-sans);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.editor-empty-desc,
+.editor-error-body {
+  max-width: 420px;
+  color: var(--tau-text-dim);
+}
+
+.editor-open-form,
+.editor-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 560px;
+}
+
+.editor-open-input {
+  min-width: 280px;
+  height: 26px;
+  border: 1px solid var(--tau-edge);
+  background: var(--tau-bg);
+  color: var(--tau-text);
+  font-family: var(--tau-font-mono);
+  font-size: 11px;
+  padding: 0 8px;
+}
+
+.editor-open-input:focus-visible {
+  outline: 1px solid var(--tau-cyan);
+  outline-offset: 1px;
+}
+
+.editor-open-btn.secondary {
+  color: var(--tau-text-dim);
+}
+
+.editor-status.error {
+  color: var(--tau-err);
 }

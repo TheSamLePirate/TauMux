@@ -314,6 +314,33 @@ function mapCommand(): RpcCall {
     case "tree":
       return { method: "system.tree", params: {} };
 
+    case "edit":
+      return {
+        method: "editor.open",
+        params: {
+          path: positional[0],
+          split: true,
+          direction: flags["direction"] || "right",
+          create: flags["create"] === "true",
+          cwd: flags["cwd"],
+        },
+      };
+    case "editor": {
+      const sub = positional[0] || "open";
+      const target = positional[1];
+      if (sub === "open") {
+        return { method: "editor.open", params: { path: target, split: flags["split"] === "true", direction: flags["direction"] || "right", create: flags["create"] === "true", cwd: flags["cwd"] } };
+      }
+      if (sub === "split") {
+        return { method: "editor.split", params: { path: target, direction: flags["direction"] || "right", create: flags["create"] === "true", cwd: flags["cwd"] } };
+      }
+      if (sub === "list") return { method: "editor.list", params: {} };
+      if (sub === "save") return { method: "editor.save", params: { surface_id: target || flags["surface"] } };
+      if (sub === "reload") return { method: "editor.reload", params: { surface_id: target || flags["surface"] } };
+      if (sub === "close") return { method: "editor.close", params: { surface_id: target || flags["surface"] } };
+      throw new Error(`Unknown editor subcommand: ${sub}`);
+    }
+
     case "list-workspaces":
       return { method: "workspace.list", params: {} };
     case "current-workspace":
@@ -2123,6 +2150,13 @@ Surfaces & Panes:
   close-surface [--surface S]       Close surface
   focus-surface --surface S         Focus surface
   list-panes                        List panes
+
+Editor:
+  edit <path> [--create]            Open file in an editor split
+  editor open <path> [--split]      Open file in a new editor workspace/split
+  editor split <path> [--direction right|down] [--create]
+  editor list                       List editor panes
+  editor save|reload|close [editor:N]
 
 I/O:
   send [--surface S] "text"         Send text to terminal.

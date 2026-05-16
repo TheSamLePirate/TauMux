@@ -35,6 +35,7 @@ import { registerBrowserPage } from "./rpc-handlers/browser-page";
 import { registerBrowserCookies } from "./rpc-handlers/browser-cookies";
 import { registerBrowserDom } from "./rpc-handlers/browser-dom";
 import { registerTelegram } from "./rpc-handlers/telegram";
+import { registerEditor } from "./rpc-handlers/editor";
 import type { TelegramService } from "./telegram-service";
 import type { TelegramDatabase } from "./telegram-db";
 
@@ -171,6 +172,7 @@ export function createRpcHandler(
     registerBrowserCookies(deps),
     registerBrowserDom(deps),
     registerTelegram(deps),
+    registerEditor(deps),
     options.audits ? registerAudit(deps, options.audits) : {},
     options.plans ? registerPlan(deps, options.plans) : {},
     options.askUser ? registerAskUser(deps, options.askUser) : {},

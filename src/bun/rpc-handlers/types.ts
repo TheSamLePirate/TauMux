@@ -32,7 +32,9 @@ export interface WorkspaceSnapshot {
   selectedCwd?: string;
   /** Persisted URL per browser surface id for restore. */
   surfaceUrls?: Record<string, string>;
-  /** Surface type per surface id (only stored for "browser" or "agent"). */
+  /** Persisted file path per editor surface id for restore. */
+  surfaceEditorFiles?: Record<string, string>;
+  /** Surface type per surface id (only stored for non-terminal kinds). */
   surfaceTypes?: Record<string, SurfaceKind>;
 }
 

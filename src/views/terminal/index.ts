@@ -171,6 +171,26 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
           showToast(payload.message, "success");
         }
       },
+      editorSurfaceCreated: (payload) => {
+        if (payload.splitFrom && payload.direction) {
+          surfaceManager.addEditorSurfaceAsSplit(
+            payload.surfaceId,
+            payload.path,
+            payload.splitFrom,
+            payload.direction,
+          );
+        } else {
+          surfaceManager.addEditorSurface(payload.surfaceId, payload.path);
+        }
+      },
+      editorFileSnapshot: (payload) => {
+        surfaceManager.applyEditorFileSnapshot(payload);
+      },
+      editorSaveResult: (payload) => {
+        surfaceManager.applyEditorSaveResult(payload);
+        if (payload.ok) showToast("File saved", "success");
+        else showToast(payload.error ?? "Save failed", "error");
+      },
       // Agent surface messages are routed via socketAction (proven channel)
       // rather than dedicated RPC message types.
       sidebandMeta: (payload) => {
@@ -211,6 +231,14 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
         surfaceManager.restoreLayout(payload.layout, payload.surfaceMapping);
       },
       socketAction: (payload) => {
+        if (payload.action === "editorSave") {
+          surfaceManager.saveEditorSurface((payload.payload["surfaceId"] ?? payload.payload["surface_id"]) as string | undefined);
+          return;
+        }
+        if (payload.action === "editorReload") {
+          surfaceManager.reloadEditorSurface((payload.payload["surfaceId"] ?? payload.payload["surface_id"]) as string | undefined);
+          return;
+        }
         handleSocketAction(payload.action, payload.payload);
       },
       enableTestMode: (payload) => {
@@ -1132,6 +1160,35 @@ function buildPaletteCommands(): PaletteCommand[] {
       description:
         "Opens a fresh workspace containing a single browser pane (does not affect the current workspace).",
       action: () => rpc.send("createBrowserSurface", {}),
+    },
+    {
+      id: "editor-split",
+      category: "Editor",
+      label: "Open Editor Split",
+      description: "Creates a CodeMirror editor pane next to the focused pane.",
+      action: () => rpc.send("splitEditorSurface", { direction: "horizontal" }),
+    },
+    {
+      id: "editor-new",
+      category: "Editor",
+      label: "New Editor Workspace",
+      description: "Opens a fresh workspace containing an empty editor pane.",
+      action: () => rpc.send("createEditorSurface", {}),
+    },
+    {
+      id: "editor-save",
+      category: "Editor",
+      label: "Save Editor File",
+      description: "Save the active CodeMirror editor pane.",
+      shortcut: "⌘S",
+      action: () => surfaceManager.saveEditorSurface(),
+    },
+    {
+      id: "editor-reload",
+      category: "Editor",
+      label: "Reload Editor File",
+      description: "Reload the active CodeMirror editor pane from disk.",
+      action: () => surfaceManager.reloadEditorSurface(),
     },
     {
       id: "agent-new",
@@ -2197,6 +2254,67 @@ window.addEventListener("ht-telegram-request-history", (e: Event) => {
 
 window.addEventListener("ht-telegram-request-state", () => {
   rpc.send("telegramRequestState");
+});
+
+// ── Editor pane → bun ──
+window.addEventListener("ht-editor-read-file", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    | { surfaceId?: string; path?: string; create?: boolean }
+    | undefined;
+  if (!detail?.surfaceId || !detail.path) return;
+  rpc.send("editorReadFile", {
+    surfaceId: detail.surfaceId,
+    path: detail.path,
+    create: detail.create,
+  });
+});
+
+window.addEventListener("ht-editor-save-file", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    | {
+        surfaceId?: string;
+        path?: string;
+        content?: string;
+        expectedMtimeMs?: number | null;
+      }
+    | undefined;
+  if (!detail?.surfaceId || !detail.path || typeof detail.content !== "string") return;
+  rpc.send("editorSaveFile", {
+    surfaceId: detail.surfaceId,
+    path: detail.path,
+    content: detail.content,
+    expectedMtimeMs: detail.expectedMtimeMs ?? null,
+  });
+});
+
+window.addEventListener("ht-editor-reload-file", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    | { surfaceId?: string; path?: string }
+    | undefined;
+  if (!detail?.surfaceId || !detail.path) return;
+  rpc.send("editorReloadFile", { surfaceId: detail.surfaceId, path: detail.path });
+});
+
+window.addEventListener("ht-split-editor", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    | { path?: string; direction?: "horizontal" | "vertical" }
+    | undefined;
+  rpc.send("splitEditorSurface", {
+    direction: detail?.direction ?? "horizontal",
+    path: detail?.path,
+  });
+});
+
+window.addEventListener("ht-open-file-in-editor", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    | { path?: string; create?: boolean }
+    | undefined;
+  if (!detail?.path) return;
+  rpc.send("splitEditorSurface", {
+    direction: "horizontal",
+    path: detail.path,
+    create: detail.create,
+  });
 });
 
 window.addEventListener("ht-focus-notification-source", (e: Event) => {

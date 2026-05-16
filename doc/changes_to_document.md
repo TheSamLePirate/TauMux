@@ -76,4 +76,11 @@ _Backlog cleared 2026-05-05 — pi-extensions/ht-bridge "follow the pi session m
 
 - **Native sidebar workspace cards always show CWD.** The webview sidebar now renders a CWD row for every workspace card, including single-CWD cards and metadata-unavailable states.
 - **Native-only CWD file explorer.** The webview sidebar gained a collapsible file explorer rooted at the selected workspace CWD, with lazy per-directory listing, refresh, dotfile and max-entry Settings controls, and no HTTP mirror wiring.
+- **AAA explorer polish.** The explorer now exposes filtered-count summaries (shown / hidden / ignored), root path header, richer file metadata (size + modified time), accessible tree/treeitem semantics, stronger focus states, and a New File action that opens a create-enabled CodeMirror editor split.
 - Surface in website docs only if native sidebar settings/UI behaviour is documented in the next docs sweep.
+
+## Pending — CodeMirror editor pane
+
+- **Native CodeMirror editor pane.** τ-mux now has a native webview-only editor surface (`editor:*`) backed by CodeMirror 6. Files can be opened from the sidebar file explorer or with `ht edit` / `ht editor ...`, edited in a split pane, saved with Cmd+S, reloaded, closed, and restored across layout persistence.
+- **Editor file RPC.** Bun performs local text-file reads and atomic saves with binary/large-file guardrails and mtime conflict detection. The HTTP mirror is not wired for editor panes in this iteration.
+- Surface in `website-doc/src/content/docs/api/system.md` and `website-doc/src/content/docs/cli/system.md` with the app version; translate to French equivalents.

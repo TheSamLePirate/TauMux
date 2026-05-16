@@ -66,7 +66,18 @@ import {
   telegramPaneAppendMessage,
   destroyTelegramPaneView,
 } from "./telegram-pane";
+import {
+  type EditorPaneViewRef,
+  createEditorPaneView,
+  editorPaneApplySnapshot,
+  editorPaneApplySaveResult,
+  saveEditor,
+  reloadEditor,
+  destroyEditorPaneView,
+} from "./editor-pane";
 import type {
+  EditorFileSnapshot,
+  EditorSaveResult,
   TelegramChatWire,
   TelegramStatusWire,
   TelegramWireMessage,
@@ -131,6 +142,8 @@ interface SurfaceView {
   agentView: AgentPaneView | null;
   // Telegram-specific (null for non-telegram panes)
   telegramView: TelegramPaneView | null;
+  // Editor-specific (null for non-editor panes)
+  editorView: EditorPaneViewRef | null;
   // Shared
   container: HTMLDivElement;
   titleEl: HTMLSpanElement;
@@ -464,6 +477,59 @@ export class SurfaceManager {
     this.removeSurface(surfaceId);
   }
 
+  addEditorSurface(surfaceId: string, path?: string): void {
+    const view = this.createEditorSurfaceView(surfaceId, path);
+    this.addNewWorkspace(surfaceId, "Editor", view, () => this.focusSurface(surfaceId));
+  }
+
+  addEditorSurfaceAsSplit(
+    surfaceId: string,
+    path: string | undefined,
+    splitFrom: string,
+    direction: "horizontal" | "vertical",
+  ): void {
+    const view = this.createEditorSurfaceView(surfaceId, path);
+    this.addSurfaceAsSplitImpl(surfaceId, view, splitFrom, direction);
+  }
+
+  removeEditorSurface(surfaceId: string): void {
+    this.removeSurface(surfaceId);
+  }
+
+  applyEditorFileSnapshot(snapshot: EditorFileSnapshot): void {
+    const view = this.surfaces.get(snapshot.surfaceId)?.editorView;
+    if (view) {
+      editorPaneApplySnapshot(view, snapshot);
+      const surface = this.surfaces.get(snapshot.surfaceId);
+      if (surface) {
+        surface.title = view.title;
+        surface.titleEl.textContent = view.title;
+      }
+      this.updateSidebar();
+    }
+  }
+
+  applyEditorSaveResult(result: EditorSaveResult): void {
+    const view = this.surfaces.get(result.surfaceId)?.editorView;
+    if (view) editorPaneApplySaveResult(view, result);
+  }
+
+  saveEditorSurface(surfaceId?: string | null): boolean {
+    const id = surfaceId ?? this.focusedSurfaceId;
+    const view = id ? this.surfaces.get(id)?.editorView : null;
+    if (!view) return false;
+    saveEditor(view);
+    return true;
+  }
+
+  reloadEditorSurface(surfaceId?: string | null): boolean {
+    const id = surfaceId ?? this.focusedSurfaceId;
+    const view = id ? this.surfaces.get(id)?.editorView : null;
+    if (!view) return false;
+    reloadEditor(view);
+    return true;
+  }
+
   /** Push a freshly-arrived Telegram message into every Telegram pane.
    *  Multiple panes may show the same chat — broadcast keeps them in
    *  sync without round-tripping through the server. Inbound messages
@@ -663,6 +729,7 @@ export class SurfaceManager {
     // the lifetime of the electrobun <electrobun-webview> tag.
     if (view.browserView) destroyBrowserPaneView(view.browserView);
     if (view.telegramView) destroyTelegramPaneView(view.telegramView);
+    if (view.editorView) destroyEditorPaneView(view.editorView);
     view.container.remove();
     this.surfaces.delete(surfaceId);
     this.metadata.delete(surfaceId);
@@ -693,7 +760,8 @@ export class SurfaceManager {
     const focusedView = this.surfaces.get(surfaceId);
     if (
       focusedView?.surfaceType === "browser" ||
-      focusedView?.surfaceType === "telegram"
+      focusedView?.surfaceType === "telegram" ||
+      focusedView?.surfaceType === "editor"
     ) {
       // Non-terminal panes don't have a terminal to focus
     } else {
@@ -1453,6 +1521,7 @@ export class SurfaceManager {
       surfaceCwds?: Record<string, string>;
       selectedCwd?: string;
       surfaceUrls?: Record<string, string>;
+      surfaceEditorFiles?: Record<string, string>;
       surfaceTypes?: Record<string, SurfaceKind>;
     }[];
     activeWorkspaceId: string | null;
@@ -1463,6 +1532,7 @@ export class SurfaceManager {
         const surfaceTitles: Record<string, string> = {};
         const surfaceCwds: Record<string, string> = {};
         const surfaceUrls: Record<string, string> = {};
+        const surfaceEditorFiles: Record<string, string> = {};
         const surfaceTypes: Record<string, SurfaceKind> = {};
         for (const sid of surfaceIds) {
           const view = this.surfaces.get(sid);
@@ -1477,6 +1547,9 @@ export class SurfaceManager {
             surfaceTypes[sid] = "agent";
           } else if (view?.surfaceType === "telegram") {
             surfaceTypes[sid] = "telegram";
+          } else if (view?.surfaceType === "editor") {
+            surfaceTypes[sid] = "editor";
+            if (view.editorView?.path) surfaceEditorFiles[sid] = view.editorView.path;
           } else {
             const cwd = this.metadata.get(sid)?.cwd;
             if (cwd) surfaceCwds[sid] = cwd;
@@ -1500,6 +1573,8 @@ export class SurfaceManager {
           selectedCwd: pinned,
           surfaceUrls:
             Object.keys(surfaceUrls).length > 0 ? surfaceUrls : undefined,
+          surfaceEditorFiles:
+            Object.keys(surfaceEditorFiles).length > 0 ? surfaceEditorFiles : undefined,
           surfaceTypes:
             Object.keys(surfaceTypes).length > 0 ? surfaceTypes : undefined,
         };
@@ -1930,6 +2005,7 @@ export class SurfaceManager {
       browserView,
       agentView: null,
       telegramView: null,
+      editorView: null,
       container: browserView.container,
       titleEl: browserView.titleEl,
       chipsEl: browserView.chipsEl,
@@ -2019,6 +2095,7 @@ export class SurfaceManager {
       browserView: null,
       agentView,
       telegramView: null,
+      editorView: null,
       container: agentView.container,
       titleEl: agentView.titleEl,
       chipsEl: agentView.chipsEl,
@@ -2265,10 +2342,53 @@ export class SurfaceManager {
       browserView: null,
       agentView: null,
       telegramView: null,
+      editorView: null,
       container,
       titleEl: barTitle,
       chipsEl,
       title,
+    };
+  }
+
+  private createEditorSurfaceView(surfaceId: string, path?: string): SurfaceView {
+    const editorView = createEditorPaneView(surfaceId, path, {
+      onRead: (sid, filePath, create) => {
+        window.dispatchEvent(new CustomEvent("ht-editor-read-file", { detail: { surfaceId: sid, path: filePath, create } }));
+      },
+      onSave: (sid, filePath, content, expectedMtimeMs) => {
+        window.dispatchEvent(new CustomEvent("ht-editor-save-file", { detail: { surfaceId: sid, path: filePath, content, expectedMtimeMs } }));
+      },
+      onReload: (sid, filePath) => {
+        window.dispatchEvent(new CustomEvent("ht-editor-reload-file", { detail: { surfaceId: sid, path: filePath } }));
+      },
+      onClose: (sid) => {
+        window.dispatchEvent(new CustomEvent("ht-close-surface", { detail: { surfaceId: sid } }));
+      },
+      onSplit: (_sid, direction) => {
+        window.dispatchEvent(new CustomEvent("ht-split-editor", { detail: { path: editorView.path ?? undefined, direction } }));
+      },
+      onFocus: (sid) => this.focusSurface(sid),
+    });
+
+    this.terminalContainer.appendChild(editorView.container);
+
+    return {
+      id: surfaceId,
+      surfaceType: "editor",
+      term: null,
+      fitAddon: null,
+      searchAddon: null,
+      effects: null,
+      panelManager: null,
+      panelsEl: null,
+      browserView: null,
+      agentView: null,
+      telegramView: null,
+      editorView,
+      container: editorView.container,
+      titleEl: editorView.titleEl,
+      chipsEl: editorView.chipsEl,
+      title: editorView.title,
     };
   }
 
@@ -2320,6 +2440,7 @@ export class SurfaceManager {
       browserView: null,
       agentView: null,
       telegramView,
+      editorView: null,
       container: telegramView.container,
       titleEl: telegramView.titleEl,
       chipsEl: telegramView.chipsEl,

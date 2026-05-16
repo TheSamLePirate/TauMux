@@ -79,9 +79,18 @@ export function listSidebarFileExplorerDirectory(
       };
     }
 
-    const names = readdirSync(root).filter((name) => {
-      if (!request.showHidden && name.startsWith(".")) return false;
-      if (DEFAULT_IGNORED.has(name)) return false;
+    const allNames = readdirSync(root);
+    let hiddenExcluded = 0;
+    let ignoredExcluded = 0;
+    const names = allNames.filter((name) => {
+      if (!request.showHidden && name.startsWith(".")) {
+        hiddenExcluded++;
+        return false;
+      }
+      if (DEFAULT_IGNORED.has(name)) {
+        ignoredExcluded++;
+        return false;
+      }
       return true;
     });
     const entries = names
@@ -100,6 +109,9 @@ export function listSidebarFileExplorerDirectory(
       path: root,
       entries: truncated ? entries.slice(0, maxEntries) : entries,
       truncated,
+      totalEntries: allNames.length,
+      hiddenExcluded,
+      ignoredExcluded,
     };
   } catch (err) {
     return {

@@ -17,16 +17,13 @@ export interface PaneLeaf {
    *  "browser" = embedded web browser pane.
    *  "agent" = pi coding agent pane.
    *  "telegram" = telegram chat pane.
+   *  "editor" = CodeMirror file editor pane.
    *  See `SurfaceKind` for the canonical literal-string union. */
   surfaceType?: SurfaceKind;
 }
 
-/** The four kinds of pane surface. F.4 / A3 — single source of truth
- *  so adding a fifth kind is one edit instead of four. Previously
- *  this literal-string union was duplicated in `PaneLeaf.surfaceType`,
- *  `PersistedWorkspace.surfaceTypes`, the workspaceState RPC type,
- *  and `WorkspaceSnapshot.surfaceTypes`. */
-export type SurfaceKind = "terminal" | "browser" | "agent" | "telegram";
+/** Canonical surface-kind union shared by native, bun, persistence, and CLI. */
+export type SurfaceKind = "terminal" | "browser" | "agent" | "telegram" | "editor";
 
 export type PaneNode = PaneSplit | PaneLeaf;
 
@@ -54,7 +51,9 @@ export interface PersistedWorkspace {
   selectedCwd?: string;
   /** Persisted URL per browser surface id for restore. */
   surfaceUrls?: Record<string, string>;
-  /** Surface type per surface id (only stored for "browser" or "agent"; terminal is the default). */
+  /** Persisted file path per editor surface id for restore. */
+  surfaceEditorFiles?: Record<string, string>;
+  /** Surface type per surface id (only stored for non-terminal kinds; terminal is the default). */
   surfaceTypes?: Record<string, SurfaceKind>;
 }
 
@@ -488,7 +487,37 @@ export interface SidebarFileExplorerListing {
   path: string;
   entries: SidebarFileExplorerEntry[];
   truncated: boolean;
+  /** Total directory entries before filtering hidden / ignored names. */
+  totalEntries?: number;
+  /** Dotfiles excluded because showHidden=false. */
+  hiddenExcluded?: number;
+  /** Noisy project folders excluded by the explorer default ignore set. */
+  ignoredExcluded?: number;
   error?: string;
+}
+
+export interface EditorFileSnapshot {
+  surfaceId: string;
+  path: string;
+  content: string;
+  exists: boolean;
+  dirty?: boolean;
+  size: number;
+  mtimeMs: number | null;
+  language?: string;
+  error?: string;
+  binary?: boolean;
+  tooLarge?: boolean;
+}
+
+export interface EditorSaveResult {
+  surfaceId: string;
+  path: string;
+  ok: boolean;
+  mtimeMs: number | null;
+  size: number;
+  error?: string;
+  conflict?: boolean;
 }
 
 // webview.messages = what webview RECEIVES from bun
@@ -546,7 +575,9 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
           selectedCwd?: string;
           /** Persisted URL per browser surface id for restore. */
           surfaceUrls?: Record<string, string>;
-          /** Surface type per surface id (only stored for "browser" or "agent"). */
+          /** Persisted file path per editor surface id for restore. */
+          surfaceEditorFiles?: Record<string, string>;
+          /** Surface type per surface id (only stored for non-terminal kinds). */
           surfaceTypes?: Record<string, SurfaceKind>;
         }[];
         activeWorkspaceId: string | null;
@@ -744,6 +775,23 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
         direction: "horizontal" | "vertical";
         chatId?: string;
       };
+
+      // ── Editor surface lifecycle (webview → bun) ──
+      createEditorSurface: { path?: string; cwd?: string; create?: boolean };
+      splitEditorSurface: {
+        direction: "horizontal" | "vertical";
+        path?: string;
+        cwd?: string;
+        create?: boolean;
+      };
+      editorReadFile: { surfaceId: string; path: string; create?: boolean };
+      editorSaveFile: {
+        surfaceId: string;
+        path: string;
+        content: string;
+        expectedMtimeMs?: number | null;
+      };
+      editorReloadFile: { surfaceId: string; path: string };
       /** Send a message via the bot. */
       telegramSend: { chatId: string; text: string };
       /** Request history for a chat (used on pane open + scroll-up). */
@@ -929,6 +977,16 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       };
       /** Bun asks webview to close an agent surface. */
       agentSurfaceClosed: { surfaceId: string };
+
+      // ── Editor (bun → webview) ──
+      editorSurfaceCreated: {
+        surfaceId: string;
+        path?: string;
+        splitFrom?: string;
+        direction?: "horizontal" | "vertical";
+      };
+      editorFileSnapshot: EditorFileSnapshot;
+      editorSaveResult: EditorSaveResult;
 
       // ── Telegram (bun → webview) ──
       /** Open the Telegram pane in the webview. The pane manages its

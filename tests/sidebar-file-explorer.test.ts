@@ -27,6 +27,9 @@ describe("sidebar file explorer listing", () => {
     expect(out.entries.map((e) => e.name)).toEqual(["src", "README.md"]);
     expect(out.entries[0]?.kind).toBe("directory");
     expect(out.entries[1]?.kind).toBe("file");
+    expect(out.totalEntries).toBe(4);
+    expect(out.hiddenExcluded).toBe(1);
+    expect(out.ignoredExcluded).toBe(1);
   });
 
   test("can show dotfiles and caps entries", () => {
@@ -46,6 +49,8 @@ describe("sidebar file explorer listing", () => {
     expect(out.truncated).toBe(true);
     expect(out.entries).toHaveLength(20);
     expect(out.entries.some((e) => e.name === ".env")).toBe(true);
+    expect(out.hiddenExcluded).toBe(0);
+    expect(out.totalEntries).toBe(26);
   });
 
   test("returns structured errors for non-directories", () => {

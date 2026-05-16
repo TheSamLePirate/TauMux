@@ -1622,7 +1622,7 @@ export class Sidebar {
         const listing = this.fileExplorerListings.get(path);
         const loading = this.fileExplorerLoading.has(path) ? "L" : "";
         if (!listing) return `${path}:${loading}:none`;
-        return `${path}:${loading}:${listing.error ?? ""}:${listing.truncated ? "t" : ""}:${listing.entries.map((e) => `${e.kind}:${e.name}`).join(",")}`;
+        return `${path}:${loading}:${listing.error ?? ""}:${listing.truncated ? "t" : ""}:${listing.totalEntries ?? ""}:${listing.hiddenExcluded ?? ""}:${listing.ignoredExcluded ?? ""}:${listing.entries.map((e) => `${e.kind}:${e.name}:${e.size ?? ""}:${Math.round(e.mtimeMs ?? 0)}`).join(",")}`;
       })
       .join("|");
   }
@@ -1646,6 +1646,50 @@ export class Sidebar {
   private buildFileExplorer(ws: WorkspaceInfo, root: string): HTMLElement {
     const wrap = document.createElement("div");
     wrap.className = "workspace-file-explorer";
+    wrap.setAttribute("role", "tree");
+    wrap.setAttribute("aria-label", `Files in ${root}`);
+    const listing = this.fileExplorerListings.get(root);
+    const head = document.createElement("div");
+    head.className = "workspace-file-head";
+    const rootLabel = document.createElement("span");
+    rootLabel.className = "workspace-file-root";
+    rootLabel.textContent = shortCwd(root);
+    rootLabel.title = root;
+    head.appendChild(rootLabel);
+    if (listing && !listing.error) {
+      const bits = [`${listing.entries.length}${listing.truncated ? "+" : ""} shown`];
+      const hidden = listing.hiddenExcluded ?? 0;
+      const ignored = listing.ignoredExcluded ?? 0;
+      if (hidden > 0) bits.push(`${hidden} hidden`);
+      if (ignored > 0) bits.push(`${ignored} ignored`);
+      const meta = document.createElement("span");
+      meta.className = "workspace-file-summary";
+      meta.textContent = bits.join(" · ");
+      meta.title = `${listing.totalEntries ?? listing.entries.length} total entries before filters`;
+      head.appendChild(meta);
+    }
+    const newBtn = document.createElement("button");
+    newBtn.type = "button";
+    newBtn.className = "workspace-file-new";
+    newBtn.title = "Create a new file in this directory";
+    newBtn.setAttribute("aria-label", "Create a new file in this directory");
+    newBtn.append(createIcon("plus", "", 10));
+    newBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const name = prompt("New file name", "untitled.txt")?.trim();
+      if (!name) return;
+      if (name.includes("/")) {
+        alert("Use a file name without slashes.");
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent("ht-open-file-in-editor", {
+          detail: { path: `${root.replace(/\/+$/, "")}/${name}`, workspaceId: ws.id, create: true },
+        }),
+      );
+    });
+    head.appendChild(newBtn);
+    wrap.appendChild(head);
     wrap.appendChild(this.buildFileExplorerDir(ws.id, root, 0));
     return wrap;
   }
@@ -1690,12 +1734,24 @@ export class Sidebar {
       row.style.setProperty("--file-depth", String(depth));
       const visual = describeExplorerEntry(entry);
       row.className = `workspace-file-row ${entry.kind} file-kind-${visual.kind}`;
-      row.title = visual.description
-        ? `${entry.path}\n${visual.description}`
-        : entry.path;
+      const modified = entry.mtimeMs ? relativeTime(entry.mtimeMs) : "unknown time";
+      row.title = [
+        entry.path,
+        visual.description,
+        typeof entry.size === "number" ? humanFileSize(entry.size) : undefined,
+        entry.mtimeMs ? `modified ${modified}` : undefined,
+        entry.error,
+      ].filter(Boolean).join("\n");
       const isDir = entry.kind === "directory";
       const openSet = this.fileExplorerOpenDirs.get(wsId) ?? new Set<string>();
       const isOpen = openSet.has(entry.path);
+      row.setAttribute("role", "treeitem");
+      row.setAttribute("aria-level", String(depth + 1));
+      row.setAttribute(
+        "aria-label",
+        `${entry.name}, ${visual.description ?? entry.kind}${isDir ? (isOpen ? ", expanded" : ", collapsed") : ", opens in editor"}`,
+      );
+      if (isDir) row.setAttribute("aria-expanded", isOpen ? "true" : "false");
 
       const twisty = document.createElement("span");
       twisty.className = "workspace-file-twisty";
@@ -1726,15 +1782,23 @@ export class Sidebar {
         nameWrap.appendChild(hint);
       }
       row.appendChild(nameWrap);
-      if (!isDir && typeof entry.size === "number") {
-        const size = document.createElement("span");
-        size.className = "workspace-file-size";
-        size.textContent = humanFileSize(entry.size);
-        row.appendChild(size);
-      }
+      const meta = document.createElement("span");
+      meta.className = "workspace-file-meta";
+      const metaParts = [];
+      if (!isDir && typeof entry.size === "number") metaParts.push(humanFileSize(entry.size));
+      if (entry.mtimeMs) metaParts.push(relativeTime(entry.mtimeMs));
+      meta.textContent = metaParts.join(" · ");
+      row.appendChild(meta);
       row.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (!isDir) return;
+        if (!isDir) {
+          window.dispatchEvent(
+            new CustomEvent("ht-open-file-in-editor", {
+              detail: { path: entry.path, workspaceId: wsId },
+            }),
+          );
+          return;
+        }
         const set = this.fileExplorerOpenDirs.get(wsId) ?? new Set<string>();
         if (set.has(entry.path)) set.delete(entry.path);
         else {

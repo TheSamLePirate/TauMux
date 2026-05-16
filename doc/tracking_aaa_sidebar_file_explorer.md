@@ -21,3 +21,18 @@
 
 ## Commit
 - Committed in `88048c8` (`Add native sidebar CWD file explorer`).
+
+
+## AAA follow-up polish
+- Added directory-listing summary metadata (`totalEntries`, hidden-excluded count, ignored-excluded count) so the native explorer can explain what is shown vs filtered.
+- Added an explorer header with shortened root path, filtered-count summary, and a New File action that opens a create-enabled CodeMirror split.
+- Improved row accessibility with `role=tree/treeitem`, `aria-level`, directory `aria-expanded`, richer labels, focus-visible styling, and tooltips containing path, type, size, modified time, and errors.
+- Replaced the narrow size-only column with compact size + relative modified-time metadata.
+- Tightened editor integration so sidebar-created files pass `create: true` into `splitEditorSurface`.
+
+## Validation — AAA follow-up
+- `bun run typecheck` — passed.
+- `bun test tests/sidebar-file-explorer.test.ts tests/audit-guideline-do-donts.test.ts` — passed as part of combined validation.
+- `bun test` — passed (1724 tests).
+- `bun start` — launched in a τ-mux split labeled “Verify AAA sidebar file explorer”.
+- Follow-up commit: `1de11b9` (`Add native editor and polish file explorer`).
