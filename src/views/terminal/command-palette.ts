@@ -1,3 +1,5 @@
+import { ModalHost } from "./a11y/modal-host";
+
 const RECENTS_STORAGE_KEY = "hyperterm-canvas.palette.recents";
 
 export interface PaletteCommand {
@@ -11,6 +13,7 @@ export interface PaletteCommand {
 
 export class CommandPalette {
   private overlay: HTMLDivElement;
+  private container: HTMLDivElement;
   private input: HTMLInputElement;
   private resultsEl: HTMLDivElement;
   private resultsMetaEl: HTMLSpanElement;
@@ -19,18 +22,24 @@ export class CommandPalette {
   private selectedIndex = 0;
   private visible = false;
   private recentIds: string[];
+  /** Tracks IME composition so Enter while composing doesn't fire the
+   *  command. macOS/JP/CN users were submitting half-composed kanji /
+   *  combining marks as queries (U15). */
+  private composing = false;
   /** Single AbortController for every listener attached at the
    *  document/window level. `destroy()` aborts it, removing all of
    *  them at once. Without this the document-level Escape listener
    *  re-registered on every electrobun-dev hot-reload — N reloads = N
    *  listeners with stale `this` (G.6 / L8). */
   private abort = new AbortController();
+  private host: ModalHost;
 
   constructor() {
     this.overlay = document.createElement("div");
     this.overlay.className = "palette-overlay hidden";
 
-    const container = document.createElement("div");
+    this.container = document.createElement("div");
+    const container = this.container;
     container.className = "palette-container";
 
     const inputRow = document.createElement("div");
@@ -90,22 +99,42 @@ export class CommandPalette {
     this.overlay.appendChild(container);
     document.body.appendChild(this.overlay);
 
-    this.recentIds = this.loadRecents();
+    // Give the prompt a stable id so the host can label the dialog.
+    prompt.id = "palette-prompt";
+    this.input.setAttribute("aria-labelledby", "palette-prompt");
 
-    this.overlay.addEventListener("mousedown", (e) => {
-      if (e.target === this.overlay) this.hide();
+    this.host = new ModalHost({
+      overlay: this.overlay,
+      panel: container,
+      onClose: () => this.hide(),
+      // Palette has its own visible Esc hint, so let the host handle it.
     });
+
+    this.recentIds = this.loadRecents();
 
     this.input.addEventListener("input", () => {
       this.filter();
       this.render();
     });
 
+    // IME composition guards (U15) — `compositionend` fires immediately
+    // before the synthetic Enter key event that some IMEs use to
+    // commit the composed text. We swallow Enter while composing.
+    this.input.addEventListener("compositionstart", () => {
+      this.composing = true;
+    });
+    this.input.addEventListener("compositionend", () => {
+      this.composing = false;
+    });
+
     this.input.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        this.hide();
-      } else if (e.key === "ArrowDown") {
+      // Escape is routed via the host (overlay-level keydown). The input
+      // also receives it because it's nested in the panel; the host
+      // does preventDefault + stopPropagation, but happy-dom's stop
+      // doesn't always halt re-dispatch — so we re-check here too.
+      // (Native browsers handle it via the host alone.)
+      if (e.defaultPrevented) return;
+      if (e.key === "ArrowDown") {
         e.preventDefault();
         this.selectedIndex = Math.min(
           this.selectedIndex + 1,
@@ -117,34 +146,24 @@ export class CommandPalette {
         this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
         this.render();
       } else if (e.key === "Enter") {
+        // IME guard: skip when composing OR when the event's own
+        // isComposing flag is set (some browsers don't fire
+        // compositionend before the Enter that commits).
+        if (this.composing || (e as { isComposing?: boolean }).isComposing) {
+          return;
+        }
         e.preventDefault();
         const cmd = this.filtered[this.selectedIndex];
         if (cmd) this.execute(cmd);
       }
     });
-
-    // Fallback Escape listener — catches the case where the input lost
-    // focus (mouse click on a palette item, webview briefly lost OS
-    // focus, test fixture dispatching on document, …) so Escape still
-    // dismisses. Scoped to `this.visible` so it only fires when open;
-    // registered at the `document` level (capture phase) so it sees
-    // events dispatched on document itself, not just overlay descendants.
-    document.addEventListener(
-      "keydown",
-      (e) => {
-        if (this.visible && e.key === "Escape") {
-          e.preventDefault();
-          this.hide();
-        }
-      },
-      { capture: true, signal: this.abort.signal },
-    );
   }
 
   /** Detach every document/window-level listener and remove the
    *  overlay from the DOM. Wire onto `lifecycleDisposers` in `index.ts`
    *  so a webview reload doesn't accumulate stale palette instances. */
   destroy(): void {
+    this.host.destroy();
     this.abort.abort();
     if (this.overlay.parentElement) {
       this.overlay.parentElement.removeChild(this.overlay);
@@ -165,21 +184,26 @@ export class CommandPalette {
   }
 
   show(): void {
+    if (this.visible) return;
     this.visible = true;
     this.overlay.classList.remove("hidden");
     document.body.classList.add("palette-open");
     this.input.value = "";
     this.selectedIndex = 0;
+    this.composing = false;
     this.filter();
     this.render();
+    this.host.open();
     this.input.focus();
   }
 
   hide(): void {
+    if (!this.visible) return;
     this.visible = false;
     this.overlay.classList.add("hidden");
     document.body.classList.remove("palette-open");
     this.input.value = "";
+    this.host.close();
   }
 
   isVisible(): boolean {
