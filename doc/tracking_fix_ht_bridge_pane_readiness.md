@@ -22,5 +22,5 @@
 
 ## Commit
 
-- Commit: `a80cca2` (`fix ht run-in-split pane readiness`).
+- Commit: `2ade072` (`fix ht run-in-split pane readiness`).
 - Version bump: requested `bun run bum:patch`, but the repository has no `bum:*` scripts; ran the available `bun run bump:patch` instead (`0.3.4` → `0.3.5`).
