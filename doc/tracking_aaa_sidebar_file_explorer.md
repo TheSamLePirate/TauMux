@@ -35,4 +35,4 @@
 - `bun test tests/sidebar-file-explorer.test.ts tests/audit-guideline-do-donts.test.ts` — passed as part of combined validation.
 - `bun test` — passed (1724 tests).
 - `bun start` — launched in a τ-mux split labeled “Verify AAA sidebar file explorer”.
-- Follow-up commit: `1de11b9` (`Add native editor and polish file explorer`).
+- Follow-up commit: `aa181a9` (`Add native editor and polish file explorer`).

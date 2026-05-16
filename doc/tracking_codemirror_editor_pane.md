@@ -32,4 +32,4 @@
 ## Commit
 - Not committed yet.
 - No version bump run because no commit was made. For commit, run `bun run bump:minor` (recommended for new editor pane) or `bun run bump:patch` if treating as patch.
-- Follow-up commit: `1de11b9` (`Add native editor and polish file explorer`).
+- Follow-up commit: `aa181a9` (`Add native editor and polish file explorer`).
