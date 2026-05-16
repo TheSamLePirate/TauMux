@@ -54,7 +54,7 @@ export interface TelegramTransport {
      *  When set, the bot's text is rendered with formatting per
      *  the matching escape rules. Plan #10 uses MarkdownV2 for the
      *  ask-user prompt (bold title, monospace body fragments). */
-    parseMode?: "MarkdownV2" | "HTML";
+    parseMode?: "MarkdownV2";
   }): Promise<{ ok: boolean; messageId?: number; description?: string }>;
   /** Edit a previously-sent message in place — used by Plan #10
    *  to stamp resolution footers ("answered: yes") on top of the
@@ -64,7 +64,7 @@ export interface TelegramTransport {
     tgMessageId: number;
     text: string;
     replyMarkup?: ReplyMarkup;
-    parseMode?: "MarkdownV2" | "HTML";
+    parseMode?: "MarkdownV2";
     signal?: AbortSignal;
   }): Promise<{ ok: boolean; description?: string }>;
   /** Acknowledge a callback_query so Telegram stops nagging the user.
@@ -144,6 +144,33 @@ export class TelegramConflictError extends Error {
     super(detail);
     this.name = "TelegramConflictError";
   }
+}
+
+/**
+ * Triple-A S11 / H.11 — parse_mode allow-list.
+ *
+ * Telegram's `parse_mode` field selects how the message body is rendered.
+ * The valid values are "MarkdownV2" (per the docs) and the older
+ * "HTML" + "Markdown" — but the safe set today is just "MarkdownV2"
+ * with proper backslash-escaping (we ship `mdv2Escape` for that). HTML
+ * mode lets the bot render `<a href="…">`, which is an injection vector
+ * if the message body comes from a user-controlled notification or
+ * forwarded log line. Markdown (v1) is deprecated and Telegram itself
+ * recommends MarkdownV2.
+ *
+ * The sanitizer:
+ *   - Returns `"MarkdownV2"` only when the caller asked for it.
+ *   - Returns `undefined` for any other value (Telegram falls back to
+ *     plain text — safe, no rendering).
+ *
+ * Exported so tests can pin the contract and so future callers can run
+ * untrusted strings through it before constructing a transport call.
+ */
+export function sanitizeParseMode(mode: unknown): "MarkdownV2" | undefined {
+  if (mode === "MarkdownV2") return "MarkdownV2";
+  // Everything else — undefined, "HTML", "Markdown" (v1), a typo, an
+  // attacker payload — falls through to plain text.
+  return undefined;
 }
 
 export interface TelegramServiceStatus {
@@ -506,7 +533,7 @@ export class TelegramService {
     chatId: string,
     text: string,
     replyMarkup: ReplyMarkup | undefined,
-    parseMode?: "MarkdownV2" | "HTML",
+    parseMode?: "MarkdownV2",
   ): Promise<TelegramMessage> {
     const ts = Date.now();
     let tgMessageId: number | null = null;
@@ -556,7 +583,7 @@ export class TelegramService {
     tgMessageId: number,
     text: string,
     replyMarkup?: ReplyMarkup,
-    parseMode?: "MarkdownV2" | "HTML",
+    parseMode?: "MarkdownV2",
   ): Promise<boolean> {
     try {
       const result = await this.transport.editMessageText({
@@ -728,7 +755,13 @@ function createFetchTransport(token: string): TelegramTransport {
     async sendMessage({ chatId, text, signal, replyMarkup, parseMode }) {
       const payload: Record<string, unknown> = { chat_id: chatId, text };
       if (replyMarkup) payload["reply_markup"] = replyMarkup;
-      if (parseMode) payload["parse_mode"] = parseMode;
+      // Triple-A S11 / H.11 — runtime allow-list. The TS signature
+      // already constrains parseMode to "MarkdownV2" | "HTML", but
+      // future RPC handlers / external callers can erase that at the
+      // boundary. The validator drops anything outside the allow-list
+      // so the bot can't be tricked into rendering attacker HTML.
+      const safeMode = sanitizeParseMode(parseMode);
+      if (safeMode) payload["parse_mode"] = safeMode;
       const res = await fetch(`${base}/sendMessage`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -760,7 +793,9 @@ function createFetchTransport(token: string): TelegramTransport {
         text,
       };
       if (replyMarkup) payload["reply_markup"] = replyMarkup;
-      if (parseMode) payload["parse_mode"] = parseMode;
+      // Triple-A S11 / H.11 — runtime allow-list (same as sendMessage).
+      const safeMode = sanitizeParseMode(parseMode);
+      if (safeMode) payload["parse_mode"] = safeMode;
       const res = await fetch(`${base}/editMessageText`, {
         method: "POST",
         headers: { "content-type": "application/json" },
