@@ -5,6 +5,8 @@
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
 
+This doc is **generated** from `doc/feature_grades.json` by `bun run report:feature-grades`. Edit the JSON, not this file.
+
 This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which catalogues cross-cutting issues by severity). Where this doc cites a `U#`/`A#`/`L#`/`S#`/`T#` id, the detail lives in `triple_a_analysis.md`.
 
 ---
@@ -24,18 +26,18 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Nothing is broken; nothing is yet S. The app sits solidly in **A/B territory** across 40 graded features. The dominant blockers to AAA are the same five themes catalogued in `triple_a_analysis.md`: accessibility (focus traps, reduced-motion, light/high-contrast), UI-module test depth, architectural drift (stringly-typed dispatch, dual chip renderers), file-permission hardening (mostly landed in cluster H), and a handful of named lifecycle bugs (Pi agent `onExit`, SIGHUP grace, atomic writes — mostly landed but verify).
+Nothing is broken; nothing is yet S. The app sits solidly in **A/B territory** across the graded features. The dominant blockers to AAA are the same five themes catalogued in `triple_a_analysis.md`: accessibility (focus traps, reduced-motion, light/high-contrast), UI-module test depth, architectural drift (stringly-typed dispatch, dual chip renderers), file-permission hardening (mostly landed in cluster H), and a handful of named lifecycle bugs (Pi agent `onExit`, SIGHUP grace, atomic writes — mostly landed but verify).
 
 ---
 
-## Grade distribution
+## Grade distribution (49 features)
 
 | Grade | Count | Notes |
 |---|---:|---|
 | S (AAA) | **0** | Nothing reaches it. |
-| A | **14** | Most "production-shaped" subsystems. |
-| B | **20** | Functional, with named polish / test / lifecycle gaps. |
-| C | **3** | Half-wired audits & release plumbing. |
+| A | **20** | Most "production-shaped" subsystems. |
+| B (incl. B+) | **26** | Functional, with named polish / test / lifecycle gaps. |
+| C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
 
 ---
@@ -457,23 +459,23 @@ Nothing is broken; nothing is yet S. The app sits solidly in **A/B territory** a
 
 Ranked by leverage — each lifts multiple features by one letter.
 
-1. **Modal accessibility kit** (`role="dialog"` + `aria-modal` + focus-trap + focus-restore) — lifts Process Manager, Command Palette, Settings Panel, Ask-user modal, Cheatsheet simultaneously. (U1)
-2. **Kill stringly-typed dispatch in `index.ts:2331`** with a typed `WebviewActionEnvelope` union — A1 unblocks RPC handlers grade, A2 unblocks web-mirror grade.
-3. **Unit tests for the five biggest UI modules** (sidebar, settings-panel, agent-panel, terminal-effects, browser-pane). (T1)
-4. **Sandbox sideband HTML/SVG in the web mirror** via iframe-`srcdoc` + CSP. (S2)
-5. **Reduced-motion blanket + light-mode + high-contrast palette.** Verify the I.2/I.3 blanket is still in place; ship light mode as an RFC.
-6. **Verify `PiAgentManager._managerExit` cleanup** under a forced crash regression test — L1 was claimed landed but the regression test is what makes the grade move.
-7. **Design-report + τ-focus-audit gated in CI**, not just generated artifacts.
-8. **Coverage gate** with an agreed lcov threshold.
-9. **Per-feature failure tests** for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each).
-10. **Mobile/web mirror touch targets ≥ 44 px** + `visualViewport` for keyboard insets. (I.5)
+1. **Modal accessibility kit** — (`role="dialog"` + `aria-modal` + focus-trap + focus-restore) — lifts Process Manager, Command Palette, Settings Panel, Ask-user modal, Cheatsheet simultaneously. (U1)
+2. **Kill stringly-typed dispatch in `index.ts:2331`** — with a typed `WebviewActionEnvelope` union — A1 unblocks RPC handlers grade, A2 unblocks web-mirror grade.
+3. **Unit tests for the five biggest UI modules** — (sidebar, settings-panel, agent-panel, terminal-effects, browser-pane). (T1)
+4. **Sandbox sideband HTML/SVG in the web mirror** — via iframe-`srcdoc` + CSP. (S2)
+5. **Reduced-motion blanket + light-mode + high-contrast palette.** — Verify the I.2/I.3 blanket is still in place; ship light mode as an RFC.
+6. **Verify `PiAgentManager._managerExit` cleanup** — under a forced crash regression test — L1 was claimed landed but the regression test is what makes the grade move.
+7. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts.
+8. **Coverage gate** — with an agreed lcov threshold.
+9. **Per-feature failure tests** — for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each).
+10. **Mobile/web mirror touch targets ≥ 44 px** — + `visualViewport` for keyboard insets. (I.5)
 
 ---
 
 ## Companion docs
 
 - `doc/triple_a_analysis.md` — severity-ranked cross-cutting issue catalogue (the source for `A#`/`L#`/`S#`/`U#`/`T#` ids).
-- `doc/tracking_triple_a_analysis.md` — execution log for the F–J clusters.
-- `doc/full_analysis.md` — earlier round of audits.
-- `doc/issues_now.md` — short-term issue list.
-- `doc/deferred_items.md` — items intentionally deferred.
+- `doc/tracking_triple_a_analysis.md` — execution log for F–J clusters.
+- `doc/feature_upgrade_to_AAA/00_master_plan.md` — programme to move every feature to AAA.
+- `doc/full_analysis.md`, `doc/issues_now.md`, `doc/deferred_items.md` — earlier audit rounds (context only).
+- `doc/changes_to_document.md` — running website-doc changelog (per CLAUDE.md convention).

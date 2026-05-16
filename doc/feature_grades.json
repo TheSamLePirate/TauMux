@@ -1,0 +1,630 @@
+{
+  "version": "0.3.5",
+  "generatedAt": "2026-05-16",
+  "branch": "main",
+  "headline": "Nothing is broken; nothing is yet S. The app sits solidly in **A/B territory** across the graded features. The dominant blockers to AAA are the same five themes catalogued in `triple_a_analysis.md`: accessibility (focus traps, reduced-motion, light/high-contrast), UI-module test depth, architectural drift (stringly-typed dispatch, dual chip renderers), file-permission hardening (mostly landed in cluster H), and a handful of named lifecycle bugs (Pi agent `onExit`, SIGHUP grace, atomic writes — mostly landed but verify).",
+  "clusters": [
+    {
+      "id": "core-terminal",
+      "title": "Core terminal & pane management",
+      "features": [
+        {
+          "id": "pty-session-lifecycle",
+          "name": "PTY session lifecycle",
+          "grade": "B",
+          "evidence": "`pty-manager.ts:275-305` — SIGHUP → 500 ms grace → SIGKILL now in place (G.2 landed). Tests cover happy paths and exit codes; no crash-restart, ENOENT-shell, or low-memory spawn cases. Grace timeout hard-coded.",
+          "gaps": [
+            "Tests for failure spawns + zombie reaping.",
+            "Configurable grace; integration test that child `trap` handlers actually fire."
+          ]
+        },
+        {
+          "id": "xterm-integration",
+          "name": "xterm.js rendering integration",
+          "grade": "A",
+          "evidence": "`surface-manager.ts:140+` — FitAddon + SearchAddon + WebLinksAddon + Serialize; headless mirror in SessionManager for snapshot replay; streaming `TextDecoder` for split multi-byte chars.",
+          "gaps": [
+            "No stress test at >100 Hz throughput.",
+            "Large-paste perf not measured.",
+            "WebGL fallback silently noops with no diagnostic."
+          ]
+        },
+        {
+          "id": "pane-layout",
+          "name": "Pane splits & layout",
+          "grade": "A",
+          "evidence": "`pane-layout.ts` — pure binary-tree, full rect math, neighbor finding, drag-reorder. Web `layout.ts:33-96` is param-injected (cleaner than the native module-level `setPaneGap`; A5 drift risk remains).",
+          "gaps": [
+            "Serialize-roundtrip test (JSON → `PaneLayout.fromNode` → identical rects).",
+            "Stress on deeply nested trees.",
+            "Rapid divider-drag invariants."
+          ]
+        },
+        {
+          "id": "pane-focus-routing",
+          "name": "Pane focus / keyboard routing",
+          "grade": "B",
+          "evidence": "`focusSurface()` at `surface-manager.ts:739-778` — DOM class updates, glow clear, `ht-surface-focused` dispatch, sidebar sync. Keyboard routing is implicit through `keydown` listeners spread across modules; no focus-restoration test after modal close.",
+          "gaps": [
+            "Explicit focus-routing module / state machine.",
+            "Focus-restoration tests.",
+            "Ordering guarantees vs concurrent layout pass."
+          ]
+        },
+        {
+          "id": "terminal-search",
+          "name": "Terminal search",
+          "grade": "A",
+          "evidence": "`terminal-search.ts` — lean controller; `getActiveSearchAddon()` resolves per-focused-terminal; tests cover show/hide/next/prev/clear.",
+          "gaps": [
+            "Regex + case-sensitivity toggle in UI.",
+            "Persisted history.",
+            "Perf on 100k+ scrollback."
+          ]
+        },
+        {
+          "id": "terminal-effects",
+          "name": "Terminal effects (WebGL bloom)",
+          "grade": "B",
+          "evidence": "`terminal-effects.ts` (1011 LOC) — dual-canvas (2D occluder + WebGL2 shader), rate limit 16 ms input / 35 ms output, graceful `available=false` fallback (lines 285-310), proper destroy. **Zero unit tests** on the math. No `prefers-reduced-motion` on the effects canvas. WebGL context-loss not handled.",
+          "gaps": [
+            "Unit tests on shader math (intensity curve, ring expansion, light visibility).",
+            "Reduced-motion respect.",
+            "Context-loss recovery.",
+            "Profiled perf budget on target hardware."
+          ]
+        },
+        {
+          "id": "workspaces",
+          "name": "Workspaces",
+          "grade": "B",
+          "evidence": "`SurfaceManager` lines 173-1509 — `activeWorkspaceIndex`, `switchToWorkspace()`, `focusWorkspaceByIndex/ById`; persistence via `PersistedLayout` in `layout.json`. Race risk when `switchToWorkspace` interleaves with a `removeSurface` that deletes the active workspace.",
+          "gaps": [
+            "Invariant tests for concurrent mutations.",
+            "Recovery from truncated `layout.json`.",
+            "Drag-reorder coverage."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sideband-panels",
+      "title": "Sideband / canvas panels",
+      "features": [
+        {
+          "id": "sideband-parser",
+          "name": "Sideband FD 3/4/5 parser",
+          "grade": "A",
+          "evidence": "`sideband-parser.ts:340-378` — per-channel queue depth cap (`MAX_CHANNEL_QUEUE_DEPTH=64`), timeout, oversized-payload reject before allocation, leftover buffering between reads. 425 LOC of tests for the boundary cases.",
+          "gaps": [
+            "Fuzz corpus of malformed JSONL (T9).",
+            "e2e that spawns a real subprocess (T10).",
+            "Configurable backoff for slow producers."
+          ]
+        },
+        {
+          "id": "event-writer",
+          "name": "Event writer / RPC envelope",
+          "grade": "B",
+          "evidence": "`event-writer.ts:12-32` — JSONL serialization via `Bun.write`, error callback. `send()` returns true before writes complete; tests don't verify bytes reach fd5. No buffering or backpressure — a mousemove flood at 60 fps from a buggy panel can overflow.",
+          "gaps": [
+            "Queued writes with backpressure.",
+            "Per-channel rate limits.",
+            "Tests that read back the bytes."
+          ]
+        },
+        {
+          "id": "canvas-panels",
+          "name": "Canvas panels (float / inline / fixed)",
+          "grade": "A",
+          "evidence": "`panel.ts:25-96` constructor, `:147-153` cleanup; inline anchor-row tracking at `panel-manager.ts:89-92, 193-200`; RAF-throttled drag/resize; pending-data TTL pruning (`panel-manager.ts:10-11, 44-51`).",
+          "gaps": [
+            "Inline panels lose anchor when scrollback fills (design limitation, doc system-canvas-panels.md:103-104).",
+            "No \"bring to front on click\" (z-index collision).",
+            "No pan/zoom for large content."
+          ]
+        },
+        {
+          "id": "content-renderers",
+          "name": "Panel content renderers (SVG / HTML / image / canvas2d)",
+          "grade": "B",
+          "evidence": "`content-renderers.ts` — clean registry; blob-URL lifecycle managed; image element reused to avoid blank flashes; canvas pooled. **Security gap (S2):** SVG (line 123) and HTML (line 138) injected via `.innerHTML`. Web mirror has the same gap.",
+          "gaps": [
+            "iframe-`srcdoc` sandbox + strict CSP in mirror.",
+            "Renderer allow-list (any code with access to `registerRenderer` can register malicious ones).",
+            "PNG-decode failure path for canvas2d."
+          ]
+        },
+        {
+          "id": "panel-registry",
+          "name": "Panel registry",
+          "grade": "B",
+          "evidence": "`panel-registry.ts` — per-surface `Map<surfaceId, Map<id, PanelDescriptor>>`; create/update/clear via `handleMeta` (lines 33-64); RPC `list()` for e2e. Acknowledged not authoritative; webview is. No max-panels cap; no resync if Bun-side parser crashes.",
+          "gaps": [
+            "Authoritative model with versioning + resync protocol.",
+            "Max-panels cap.",
+            "`update` should support position-mode transitions."
+          ]
+        },
+        {
+          "id": "osc-progress",
+          "name": "OSC progress (OSC 9;4)",
+          "grade": "A",
+          "evidence": "`osc-progress.ts:51-78` — pure table-driven parser, 27-case test suite covering happy path, clamping, rounding, trailing junk; xterm OSC 9 fallback for non-`4` dialects.",
+          "gaps": [
+            "Per-pane chips, not just workspace-level bar.",
+            "e2e fixture emitting real frames."
+          ]
+        },
+        {
+          "id": "sideband-demos",
+          "name": "Demo scripts & sideband client libs",
+          "grade": "B",
+          "evidence": "Eight working demos under `scripts/`, Python (`hyperterm.py`) + TS (`hyperterm.ts`) client libs, docs `how-to-use-sideband.md` and protocol guide. None of the demos are in CI; Python/TS libs have minor API drift.",
+          "gaps": [
+            "Demos as CI smoke tests so they can't bit-rot.",
+            "Library parity gate.",
+            "True 50-line \"hello world\" tutorial."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ui-surfaces",
+      "title": "UI surfaces / chrome",
+      "features": [
+        {
+          "id": "sidebar",
+          "name": "Sidebar",
+          "grade": "B",
+          "evidence": "`sidebar.ts` (2964 LOC) — perf-tuned slice rendering with card-slot cache (lines 24-43); state slice tests exist (sidebar-state.test.ts, sidebar-card-stability.test.ts). `tabindex=\"-1\"` on workspace list (U12) blocks keyboard reachability. No drop-indicator on drag-reorder.",
+          "gaps": [
+            "Roving tabindex (U12).",
+            "Drop indicator + Escape-cancel + `aria-live` on reorder (U14).",
+            "DOM-level integration tests, not just slice tests."
+          ]
+        },
+        {
+          "id": "sidebar-file-explorer",
+          "name": "Sidebar CWD file explorer",
+          "grade": "B",
+          "evidence": "`sidebar-file-explorer.ts` (113 LOC) — lazy load, 1000-entry cap, dotfile filter, defaults collapsed. Native-only — no mirror protocol yet.",
+          "gaps": [
+            "Mirror parity (HTTP/WS protocol).",
+            "Symlink-cycle protection.",
+            "UI feedback when truncation cap hit."
+          ]
+        },
+        {
+          "id": "process-manager",
+          "name": "Process Manager overlay (⌘⌥P)",
+          "grade": "B",
+          "evidence": "`process-manager.ts` (~300 LOC) — tree + per-workspace totals (CPU/RSS), collapse/expand. No direct unit tests; no `role=\"dialog\"`; no in-tree keyboard nav.",
+          "gaps": [
+            "Arrow-key navigation + Enter-to-kill.",
+            "Modal a11y (`role=\"dialog\"`, `aria-modal`, focus trap, focus restore).",
+            "Tests."
+          ]
+        },
+        {
+          "id": "command-palette",
+          "name": "Command palette (⌘⇧P)",
+          "grade": "B",
+          "evidence": "`command-palette.ts` (398 LOC) — AbortController-clean destroy (L8 fix), recents in `localStorage`. No IME composition guard on Enter (U15). No `role=\"dialog\"`. Zero direct unit tests.",
+          "gaps": [
+            "IME composition guard.",
+            "Modal a11y.",
+            "Empty-state / result-count feedback.",
+            "Unit tests."
+          ]
+        },
+        {
+          "id": "settings-panel",
+          "name": "Settings panel",
+          "grade": "B",
+          "evidence": "`settings-panel.ts` (1891 LOC), 10 sections; theme + bloom-migration tests. Number inputs silently clamp without `aria-invalid` (U9). No per-field \"reset to default\" with current/default display (U10). No focus-restore on close.",
+          "gaps": [
+            "Validation feedback + `aria-invalid`.",
+            "Reset buttons; show default alongside current.",
+            "Modal a11y.",
+            "Broader tests for the 1891 LOC."
+          ]
+        },
+        {
+          "id": "keyboard-cheatsheet",
+          "name": "Keyboard shortcuts + cheatsheet",
+          "grade": "A",
+          "evidence": "`keyboard-shortcuts.ts` (106 LOC) — typed `Binding<Ctx>` registry, `keyMatch` display formatting. `keyboard-cheatsheet.ts` (142 LOC) — proper `role=\"dialog\"` + `aria-modal` + focus-restore at lines 34-36. Categorized.",
+          "gaps": [
+            "Real focus-trap (currently tab/shift-tab doesn't cycle inside).",
+            "Touch-friendly mobile alt."
+          ]
+        },
+        {
+          "id": "notifications",
+          "name": "Notifications + overlay + toasts",
+          "grade": "B",
+          "evidence": "Shared overlay in `src/shared/notification-overlay.ts` (mirror reuse, M15). Pure `composeStack` (lines 77-87) for unit testing. Toast uses `aria-live` polite + error-alert role. Auto-dismiss + hover pause.",
+          "gaps": [
+            "Error toasts: copy button + detail expansion (U8).",
+            "Persistent sidebar notification history (U7).",
+            "Older notifications evaporate silently when max-3 cap hit."
+          ]
+        },
+        {
+          "id": "native-menus",
+          "name": "Native menus",
+          "grade": "A",
+          "evidence": "`native-menus.ts` (322 LOC) — full menu tree, context menus with proper roles/accelerators, typed `MENU_ACTIONS`. Tests verify structure + colors.",
+          "gaps": [
+            "State-aware dynamic items (Undo, recent files).",
+            "Window list (standard macOS).",
+            "Per-variant icons."
+          ]
+        },
+        {
+          "id": "app-variants",
+          "name": "App variants (Atlas / Cockpit / Bridge)",
+          "grade": "B",
+          "evidence": "Cockpit (296 LOC) cleanly mounts/unmounts rail + HUDs on enter/exit. Atlas (596 LOC) renders SVG workspace graph. Both restore sidebar on exit. Coupling via global `window` events (A6/A7 — 47+ implicit channels).",
+          "gaps": [
+            "Typed `VariantContext` (drop the `__tau*` window globals).",
+            "Mount/unmount lifecycle tests.",
+            "Documented Bridge variant spec."
+          ]
+        },
+        {
+          "id": "tau-primitives",
+          "name": "Tau primitives / icons / tokens",
+          "grade": "A",
+          "evidence": "`tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables.",
+          "gaps": [
+            "Light mode + high-contrast palette (U2/U3).",
+            "Semantic icon-size scaling.",
+            "Reduced-motion in primitive components."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "integrations",
+      "title": "Integrations / external bridges",
+      "features": [
+        {
+          "id": "ht-cli",
+          "name": "ht CLI (socket RPC)",
+          "grade": "A",
+          "evidence": "`socket-server.ts` — 1 MiB buffer cap (L4 fix), live-peer probe before unlink, typed dispatch via `satisfies BunMessageHandlers`. ~40+ methods. Docs accurate.",
+          "gaps": [
+            "Brute-force throttle on token check (S5 landed — verify).",
+            "Reconnect jitter (L5 landed — verify).",
+            "Idempotent shutdown guard (L6 landed — verify)."
+          ]
+        },
+        {
+          "id": "web-mirror",
+          "name": "Web mirror (WebSocket bridge)",
+          "grade": "B+",
+          "evidence": "M1–M10 shipped; session ring + resume-on-reconnect; reducer-driven store; @xterm/headless for state correctness; 16 ms coalescing; Graphite theme tokens. WS heartbeat + reconnect jitter landed (H.5). **S2 (HIGH):** `innerHTML` panel renderers still un-sandboxed in LAN-visible context.",
+          "gaps": [
+            "iframe-`srcdoc` sandbox + strict CSP for sideband HTML/SVG.",
+            "Coverage gate.",
+            "Protocol-dispatcher typed (A2)."
+          ]
+        },
+        {
+          "id": "telegram-bridge",
+          "name": "Telegram bridge",
+          "grade": "A",
+          "evidence": "Three-table schema with atomic `kv.poll_offset` resume (`telegram-service.ts:225-226`); per-chat token bucket 1 msg/sec; partial-UNIQUE dedup; inbound allow-list; outbound chatId allow-list landed via H.6. Bidirectional flow with persistence.",
+          "gaps": [
+            "Message TTL / DB pruning.",
+            "`parse_mode` validation (S11).",
+            "Broader e2e."
+          ]
+        },
+        {
+          "id": "pi-agent",
+          "name": "Pi agent",
+          "grade": "B",
+          "evidence": "`pi-agent-manager.ts` — subprocess JSON-RPC over stdin/stdout; model-state tracking; PI binary resolution via login shell. **L1 (HIGH):** instance-level `onExit` fires but the manager-level callback was unwired; fix landed in PR 2 (commit `38453fe`) via private `_managerExit` hook.",
+          "gaps": [
+            "Verify dead-instance cleanup under forced crash regression test.",
+            "User-visible restart UX (currently surface freezes).",
+            "Optional auto-restart policy."
+          ]
+        },
+        {
+          "id": "claude-integration",
+          "name": "Claude integration / ht-bridge",
+          "grade": "A",
+          "evidence": "Both `claude-integration/` and `pi-extensions/ht-bridge/` mirror the same pattern: active label, cost ticker, idle pill, atomic state writes (temp+rename), skills system. Comprehensive — 16 capabilities in pi-extensions including bash-safety gate, ask-user tools, browser tools, plan mirror.",
+          "gaps": [
+            "Transcript-parse fallback when file missing/malformed.",
+            "Hard file-count cap on `$TMPDIR` session state (currently 24 h pruning only).",
+            "Plan-compat validation across reboots."
+          ]
+        },
+        {
+          "id": "browser-pane",
+          "name": "Browser surface (browser pane)",
+          "grade": "B",
+          "evidence": "`browser-pane.ts` (999 LOC) — OOPIF `<electrobun-webview>`, address bar, nav buttons, console/error capture, `BrowserHistoryStore`, 40+ socket API methods, sandbox + partition. **Zero direct unit tests.** Navigation rules loaded but not validated. Zoom not persisted.",
+          "gaps": [
+            "DOM-level unit tests.",
+            "Navigation-rule validation with diagnostics.",
+            "Zoom persistence across restart.",
+            "`findInPage` exposed to CLI."
+          ]
+        },
+        {
+          "id": "plan-panel",
+          "name": "Plan panel",
+          "grade": "A",
+          "evidence": "Shared `plan-panel-render.ts` used by both native + mirror; debounced 100 ms snapshot broadcast; per-surface audit ring cap 50.",
+          "gaps": [
+            "RPC input validation for `state` strings (currently any string accepted, normalized on `set`).",
+            "Configurable audit-ring size.",
+            "Mirror persists audit across page reload."
+          ]
+        },
+        {
+          "id": "auto-continue",
+          "name": "Auto-continue engine",
+          "grade": "A",
+          "evidence": "`auto-continue-engine.ts` (509 LOC) — typed `AutoContinueOutcome` discriminated union; per-surface runaway counter + cooldown; audit ring with throw-isolated subscribers; dry-run path; LLM-fail → heuristic fallback. 9 test files.",
+          "gaps": [
+            "Paused-surfaces list persists in-memory only — lost on restart.",
+            "Consecutive counter doesn't cleanly cap+warn at `maxConsecutive`.",
+            "Per-session firing metrics."
+          ]
+        },
+        {
+          "id": "ask-user",
+          "name": "Ask-user modal / queue",
+          "grade": "B",
+          "evidence": "`ask-user-queue.ts` + `ask-user-modal.ts` (557 LOC) — four kinds (yesno/choice/text/confirm-command), Telegram `force_reply` integration. **U1 (HIGH):** modal lacks `role=\"dialog\"`, `aria-modal`, focus-trap, focus-restore. No timeout on hanging text prompts.",
+          "gaps": [
+            "Modal a11y kit (shared with palette/process-mgr/settings).",
+            "Queue-level timeout fallback.",
+            "Cross-surface concurrency tests."
+          ]
+        },
+        {
+          "id": "editor-pane",
+          "name": "Editor pane (CodeMirror)",
+          "grade": "B",
+          "evidence": "`editor-pane.ts` (526 LOC) — CodeMirror 6 with `defaultKeymap` + history + search, language detection, dirty/path pills, mtime + line-ending tracking. No unit tests. Concurrent-save race not handled (no `expectedMtimeMs` compare). Line-ending display is read-only.",
+          "gaps": [
+            "DOM-level unit tests.",
+            "Save-race detection + conflict UX.",
+            "Line-ending convert on save."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "infra",
+      "title": "Process metadata / infra / dev/test tooling",
+      "features": [
+        {
+          "id": "surface-metadata",
+          "name": "SurfaceMetadataPoller",
+          "grade": "A",
+          "evidence": "`surface-metadata.ts:114-117` — `parsePs` / `parseListeningPorts` / `parseCwds` / `parseGitStatusV2` with 5 s subprocess timeouts; TTL caching (3 s git/`package.json`, stale-entry pruning at 12 s+ idle); focus-aware cadence (1 Hz visible, 3.3 Hz hidden). 126 tests; doc `system-process-metadata.md` exhaustive.",
+          "gaps": [
+            "Shared \"stale-git skip-tick\" guard so two parallel NFS hangs don't wedge a tick.",
+            "Metadata rot detection when WS is mute >10 s.",
+            "Deeper tree-diff than `tree.length` (descendant swap goes undetected)."
+          ]
+        },
+        {
+          "id": "pane-chip-rendering",
+          "name": "Pane-bar chip rendering",
+          "grade": "B",
+          "evidence": "Extracted to `src/shared/pane-chips.ts:32-94` with signature cache to skip redundant DOM rebuilds; web-mirror parity tested. Port-click is inconsistent: native dispatches `ht-open-external` CustomEvent (`surface-manager.ts:949`); mirror routes to `http://${location.hostname}:${port}` which fails on `0.0.0.0` when hostname≠IP. Chips have `role=\"button\"` + `tabIndex=0` but no ARIA labels or live-region.",
+          "gaps": [
+            "Unified port-click handler / config.",
+            "ARIA labels + live-region for git status transitions.",
+            "Tooltip overflow tests."
+          ]
+        },
+        {
+          "id": "settings-persistence",
+          "name": "Settings persistence & migration",
+          "grade": "B+",
+          "evidence": "`settings-manager.ts:53` — 500 ms debounced save; `atomic-write.ts:24-48` atomic writes (mode 0o600 since H.1); corrupt-file `.bak` recovery; partial-schema merge via `mergeSettings`. Bloom migration via `applyBloomMigration`.",
+          "gaps": [
+            "Schema-version field + ordered migrations (currently a single `applyBloomMigration` with no version metadata).",
+            "Sync-on-quit for security-critical fields (telegram token, mirror auth).",
+            "Defensive boolean coercion in validator, not just in tests."
+          ]
+        },
+        {
+          "id": "logging",
+          "name": "Logging",
+          "grade": "A",
+          "evidence": "`logger.ts` — daily rotation by UTC date; 14-day pruning matches pattern only; tee preserves TTY; `[boot]` banner sync; disposal restores writers. File mode 0o600 (H.1).",
+          "gaps": [
+            "Size-based rotation (multi-day runs can produce multi-GiB files).",
+            "Gzip of old logs.",
+            "Structured log-level filter."
+          ]
+        },
+        {
+          "id": "rpc-handlers",
+          "name": "RPC handlers (typed dispatch)",
+          "grade": "B",
+          "evidence": "21 handler files under `src/bun/rpc-handlers/`; `rpc-handler.ts` aggregates via `createRpcHandler`; `METHOD_SCHEMAS` validated pre-dispatch; `satisfies BunMessageHandlers` gates the socket/RPC side. **A1 (HIGH):** `dispatch(action: string)` in `index.ts:2331-2508` is ~180 LOC of stringly-typed parallel router. **A2 (HIGH):** `web-client/protocol-dispatcher.ts:44` types Payload as `any`.",
+          "gaps": [
+            "Replace `dispatch` with a typed `WebviewActionEnvelope` discriminated union.",
+            "Narrow `protocol-dispatcher` on `msg.type` to land the `ServerMessage` union win.",
+            "End-to-end JSON-RPC shape test."
+          ]
+        },
+        {
+          "id": "audits",
+          "name": "Audits",
+          "grade": "A",
+          "evidence": "`audits.ts:22-46` — async check + optional fix pattern; 5 s timeouts with explicit `proc.kill` on expiry (`:57-95`, G.10). Five audits: git author/email, clipboard read/write, shell path. Settings-driven.",
+          "gaps": [
+            "More audits (locale, node version, shell capabilities).",
+            "Auto-rerun on settings change.",
+            "Remediation UX hookup."
+          ]
+        },
+        {
+          "id": "health-checks",
+          "name": "Health checks",
+          "grade": "A",
+          "evidence": "`health.ts` — pure state machine; severity model (ok / degraded / error / disabled); idempotent set; subscriber notifications with error isolation; snapshot includes `updatedAt` for staleness.",
+          "gaps": [
+            "Remediation `fix()` equivalent (audits has it; health doesn't).",
+            "UI pill / badge wiring.",
+            "Staleness auto-demotion if entry goes silent N seconds."
+          ]
+        },
+        {
+          "id": "manifest-scanner",
+          "name": "Manifest scanner",
+          "grade": "A",
+          "evidence": "`manifest-scanner.ts` — generic walk-up + TTL cache; max-depth 40 to bound symlink cycles; per-cwd TTL (3 s default) with mtime invalidation; idle eviction at 4× TTL.",
+          "gaps": [
+            "Symlinked `$HOME` handling (real-path vs symlink-path mismatch).",
+            "Test for the 4× TTL eviction.",
+            "Symmetric depth between `Cargo.toml` parser (name+version only) and `package.json` parser."
+          ]
+        },
+        {
+          "id": "cookie-store",
+          "name": "Cookie store",
+          "grade": "B",
+          "evidence": "`cookie-store.ts` — JSON-persisted with domain index for O(k) lookup; LRU 50 k cap; debounced async save + sync `saveNow` on shutdown; atomic writes (H.1).",
+          "gaps": [
+            "Per-domain cap (currently only global).",
+            "Export/import (test-automation use case).",
+            "URL-host normalization on insert."
+          ]
+        },
+        {
+          "id": "browser-history",
+          "name": "Browser history",
+          "grade": "B",
+          "evidence": "`browser-history.ts` — JSON-persisted; relevance ranking = recency boost × visit count; LRU 10 k cap; atomic writes.",
+          "gaps": [
+            "Normalize URLs on insert (trailing slash, `www`) — currently dupes leak in.",
+            "Time-window filter.",
+            "Privacy / clear command."
+          ]
+        },
+        {
+          "id": "test-suite",
+          "name": "Test suite breadth & quality",
+          "grade": "B+",
+          "evidence": "126 test files, 1544 tests, <10 s; `bunfig.toml` scopes bare `bun test` to `tests/`. Pure-function tests for parsers + settings + health + logger + RPC; e2e via Playwright. **T1 (HIGH):** five biggest UI modules (sidebar 2964 LOC, settings-panel 1891, agent-panel 1755, terminal-effects 1011, browser-pane 999) have ~zero direct unit tests; bootstrap path untested; no coverage gate.",
+          "gaps": [
+            "DOM-level tests for the five big modules.",
+            "Coverage gate in CI (J.1 added a script, no threshold).",
+            "Failure-path Playwright cases (network loss, subprocess crash)."
+          ]
+        },
+        {
+          "id": "design-report",
+          "name": "Design report / visual regression",
+          "grade": "C+",
+          "evidence": "`bun run report:design:web` exists; `tau-focus-audit.ts` validates focus glow rules. Baseline workflow is manual via `bun run baseline:design`. `prefers-reduced-motion` blanket landed in I.2/I.3 — verify still active.",
+          "gaps": [
+            "Gate `bun run report:design:gate` in CI.",
+            "Light mode RFC.",
+            "High-contrast palette."
+          ]
+        },
+        {
+          "id": "release-tooling",
+          "name": "Version bumping / release",
+          "grade": "C",
+          "evidence": "`scripts/bump-version.ts` reads `package.json`, applies targeted regex replaces to 7 files. **Does not commit, tag, or generate changelog.** `scripts/post-package.ts` patches CFBundleDisplayName on macOS only; Linux release path undefined. No rollback on partial build failures.",
+          "gaps": [
+            "Changelog generator + tag/commit.",
+            "Cross-platform packaging.",
+            "Rollback on partial failure."
+          ]
+        },
+        {
+          "id": "tau-focus-audit",
+          "name": "Tau focus audit",
+          "grade": "C",
+          "evidence": "`tau-focus-audit.ts` walks DOM detecting chromatic glow leaks via box-shadow parsing. Lives in DevTools/REPL — **not wired into `bun test`** (line 22-26). Box-shadow only; filter drop-shadows excluded by design.",
+          "gaps": [
+            "Playwright-runnable assertion.",
+            "Report file output.",
+            "Broader focus-leak detection (outline + filter)."
+          ]
+        },
+        {
+          "id": "sound-notification",
+          "name": "Sound notification system",
+          "grade": "A",
+          "evidence": "`src/shared/sounds.ts` — clones `HTMLAudioElement` per play (WebKit reuse bug); template caching; volume clamp [0,1]; failure-isolated; native + mirror parity; tests cover cloning + clamping + failure + `__setAudioFactory` seam.",
+          "gaps": [
+            "App-level mute control.",
+            "File-existence check before play attempt.",
+            "Concurrent-play test."
+          ]
+        }
+      ]
+    }
+  ],
+  "topBlockers": [
+    {
+      "rank": 1,
+      "title": "Modal accessibility kit",
+      "body": "(`role=\"dialog\"` + `aria-modal` + focus-trap + focus-restore) — lifts Process Manager, Command Palette, Settings Panel, Ask-user modal, Cheatsheet simultaneously. (U1)"
+    },
+    {
+      "rank": 2,
+      "title": "Kill stringly-typed dispatch in `index.ts:2331`",
+      "body": "with a typed `WebviewActionEnvelope` union — A1 unblocks RPC handlers grade, A2 unblocks web-mirror grade."
+    },
+    {
+      "rank": 3,
+      "title": "Unit tests for the five biggest UI modules",
+      "body": "(sidebar, settings-panel, agent-panel, terminal-effects, browser-pane). (T1)"
+    },
+    {
+      "rank": 4,
+      "title": "Sandbox sideband HTML/SVG in the web mirror",
+      "body": "via iframe-`srcdoc` + CSP. (S2)"
+    },
+    {
+      "rank": 5,
+      "title": "Reduced-motion blanket + light-mode + high-contrast palette.",
+      "body": "Verify the I.2/I.3 blanket is still in place; ship light mode as an RFC."
+    },
+    {
+      "rank": 6,
+      "title": "Verify `PiAgentManager._managerExit` cleanup",
+      "body": "under a forced crash regression test — L1 was claimed landed but the regression test is what makes the grade move."
+    },
+    {
+      "rank": 7,
+      "title": "Design-report + τ-focus-audit gated in CI",
+      "body": ", not just generated artifacts."
+    },
+    {
+      "rank": 8,
+      "title": "Coverage gate",
+      "body": "with an agreed lcov threshold."
+    },
+    {
+      "rank": 9,
+      "title": "Per-feature failure tests",
+      "body": "for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each)."
+    },
+    {
+      "rank": 10,
+      "title": "Mobile/web mirror touch targets ≥ 44 px",
+      "body": "+ `visualViewport` for keyboard insets. (I.5)"
+    }
+  ]
+}

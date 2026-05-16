@@ -2,6 +2,7 @@
 
 import { describe, it, expect, afterEach } from "bun:test";
 import {
+  chmodSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -79,5 +80,38 @@ describe("writeFileAtomic", () => {
     expect(buf[0]).toBe(0xff);
     expect(buf[1]).toBe(0x00);
     expect(buf[2]).toBe(0x42);
+  });
+
+  // Triple-A H.1 / S1 — Phase 0 upgrade. The earlier tests covered
+  // atomicity but never asserted that `mode: 0o600` actually landed on
+  // the file. Sensitive callers (telegram token, browser cookies) rely
+  // on this. A regression where the chmod is silently skipped would
+  // not be caught without this assertion.
+  it("[S1] applies mode 0o600 when opts.mode is set", () => {
+    const dir = tmp();
+    const target = join(dir, "secret.json");
+    writeFileAtomic(target, "{}", { mode: 0o600 });
+    const mode = statSync(target).mode & 0o777;
+    expect(mode).toBe(0o600);
+  });
+
+  it("[S1] mode is re-applied on overwrite (idempotent)", () => {
+    const dir = tmp();
+    const target = join(dir, "secret.json");
+    writeFileAtomic(target, "first", { mode: 0o600 });
+    // Simulate a previous version written without mode — chmod weak.
+    chmodSync(target, 0o644);
+    writeFileAtomic(target, "second", { mode: 0o600 });
+    const mode = statSync(target).mode & 0o777;
+    expect(mode).toBe(0o600);
+  });
+
+  it("[S1] does not chmod when opts.mode is omitted", () => {
+    const dir = tmp();
+    const target = join(dir, "open.json");
+    writeFileAtomic(target, "{}"); // no mode opt
+    // Inherits the process umask; assert only that 0o600 wasn't forced.
+    const mode = statSync(target).mode & 0o777;
+    expect(mode).not.toBe(0o600);
   });
 });
