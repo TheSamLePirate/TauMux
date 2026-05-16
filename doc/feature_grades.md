@@ -1,7 +1,7 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.28
-**Generated:** 2026-05-16
+**Version:** 0.3.31
+**Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
 
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-After Phase 4 (security hardening), the LAN-mirror trust model is closed end-to-end: sideband HTML/SVG renders inside `<iframe sandbox="">` with strict CSP (S2/H.7), the Telegram transport runs every `parse_mode` through an allow-list (S11/H.11), and the trust model + 10-item red-team checklist live in `doc/system-security.md` (H.10). Remaining blockers: light-mode + high-contrast theme system (P5), lifecycle regression tests for the named L1–L7 fixes (P6), the typed event bus + variant-context + workspace-collection refactors (P7), and the design-report + coverage gate CI wiring (P8).
+After Phase 5 (theme system), the foundation for Graphite Light + High Contrast lands: `:root[data-theme="graphite-light"]` and `:root[data-theme="high-contrast"]` blocks layer onto the existing dark tokens, `prefers-color-scheme: light` + `forced-colors: active` wire OS preferences automatically, terminal-effects honours `prefers-reduced-motion: reduce` via a matchMedia listener, and `bun run audit:theming` reports hard-coded colour literals outside the token block. Remaining blockers: lifecycle regression tests for the named L1–L7 fixes (P6), the typed event bus + variant-context + workspace-collection refactors (P7), and the design-report + coverage gate CI wiring (P8).
 
 ---
 
@@ -34,8 +34,8 @@ After Phase 4 (security hardening), the LAN-mirror trust model is closed end-to-
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **4** | Best-in-class — 4 features cleared every gap. |
-| A | **30** | Most "production-shaped" subsystems. |
+| S (AAA) | **6** | Best-in-class — 6 features cleared every gap. |
+| A | **28** | Most "production-shaped" subsystems. |
 | B (incl. B+) | **12** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
@@ -84,11 +84,10 @@ After Phase 4 (security hardening), the LAN-mirror trust model is closed end-to-
   - Perf on 100k+ scrollback.
 
 ### Terminal effects (WebGL bloom)
-- **Grade: A**
-- **Evidence:** `terminal-effects.ts` (1011 LOC) — dual-canvas (2D occluder + WebGL2 shader), rate limit 16 ms input / 35 ms output, graceful `available=false` fallback. Phase 3 added `tests/terminal-effects.test.ts` covering the fallback path (the most important invariant — happy-dom has no WebGL), the lifecycle (idempotent destroy, no-op setEnabled / setIntensity / pulse* under fallback), and source-grep invariants on the perf-pass rate limits, MAX_PULSES cap, webgl2-with-webgl fallback, and shader uniform contract.
+- **Grade: S**
+- **Evidence:** `terminal-effects.ts` — dual-canvas (2D occluder + WebGL2 shader), rate-limited at 16 ms input / 35 ms output, graceful `available=false` fallback (Phase 3 unit tests). Phase 5 (U2) added a `matchMedia("(prefers-reduced-motion: reduce)")` listener with `change` re-evaluation: when reduced motion is on the canvas hides, pulses + lights drop, and the GPU framebuffer clears. `destroy()` detaches the listener. Tests in `tests/terminal-effects.test.ts` (16 total).
 - **Gaps to AAA:**
-  - Reduced-motion JS guard (CSS blanket landed in Phase 0; canvas itself isn't covered by CSS — owned by P5).
-  - Context-loss recovery on `webglcontextlost` event.
+  - Context-loss recovery on `webglcontextlost` event (defense-in-depth; rare GPU reset path).
   - Profiled perf budget on target hardware.
 
 ### Workspaces
@@ -230,12 +229,11 @@ After Phase 4 (security hardening), the LAN-mirror trust model is closed end-to-
   - Documented Bridge variant spec.
 
 ### Tau primitives / icons / tokens
-- **Grade: A**
-- **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables.
+- **Grade: S**
+- **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block.
 - **Gaps to AAA:**
-  - Light mode + high-contrast palette (U2/U3).
-  - Semantic icon-size scaling.
-  - Reduced-motion in primitive components.
+  - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
+  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens (audit:theming reports them; owned by P7 polish).
 
 ---
 
@@ -442,8 +440,8 @@ After Phase 4 (security hardening), the LAN-mirror trust model is closed end-to-
 
 Ranked by leverage — each lifts multiple features by one letter.
 
-1. **Light-mode + high-contrast palette + design tokens** — every colour token-driven; ship Graphite Light + High-Contrast themes. Owned by P5.
-2. **Verify `PiAgentManager._managerExit` cleanup under crash** — regression test — L1 was claimed landed but the regression test under forced crash is what makes the grade move. Owned by P6.
+1. **Verify `PiAgentManager._managerExit` cleanup under crash** — regression test — L1 was claimed landed but the regression test under forced crash is what makes the grade move. Owned by P6.
+2. **Theme switcher UI + boot-time data-theme application** — Phase 5 landed the token blocks + matchMedia wiring; the Settings panel field that lets users pick a theme is a small follow-up (P5 or P7 polish).
 3. **Per-feature failure regression tests** — for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each). Owned by P6.
 4. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts. Owned by P8.
 5. **Coverage gate threshold in CI** — Phase 3 landed `bun run report:coverage:check` locally; P8 wires it into CI so a PR can't merge below baseline.
