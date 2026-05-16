@@ -1,6 +1,6 @@
 {
   "name": "tau-mux",
-  "version": "0.2.99",
+  "version": "0.2.100",
   "type": "module",
   "description": "A hybrid terminal emulator with structured rendering channels",
   "bin": {
@@ -44,7 +44,9 @@
     "typecheck": "tsc --noEmit",
     "bump:patch": "bun scripts/bump-version.ts patch",
     "bump:minor": "bun scripts/bump-version.ts minor",
-    "bump:major": "bun scripts/bump-version.ts major"
+    "bump:major": "bun scripts/bump-version.ts major",
+    "report:feature-grades": "bun scripts/build-feature-grades.ts",
+    "report:feature-grades:check": "bun scripts/build-feature-grades.ts --check"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
