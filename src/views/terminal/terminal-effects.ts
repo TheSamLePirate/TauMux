@@ -208,6 +208,15 @@ export class TerminalEffects {
   private destroyed = false;
   private available = true;
   private active = true;
+  /** Phase 5 / U2 — when the OS asks for reduced motion, the WebGL
+   *  bloom layer should go quiet. The Phase 0 CSS blanket (`@media
+   *  prefers-reduced-motion`) doesn't reach a canvas with its own
+   *  rAF loop, so we listen to matchMedia directly and gate
+   *  `available` on the result. Re-evaluated on the `change` event
+   *  so toggling the OS setting takes effect without a reload. */
+  private reducedMotionQuery: MediaQueryList | null = null;
+  private reducedMotionListener: ((e: MediaQueryListEvent) => void) | null =
+    null;
   /** True after `draw()` has committed the most-recently-rasterised
    *  content. Lets the render loop skip the GPU draw call entirely
    *  when nothing's changed and no pulses are animating, instead of
@@ -250,6 +259,27 @@ export class TerminalEffects {
     private host: HTMLElement,
     private term: Terminal,
   ) {
+    // Phase 5 / U2 — honour `prefers-reduced-motion: reduce`. Wire
+    // before the WebGL setup so the very-first frame skips the GPU
+    // path if the user already opted in. The matchMedia API is widely
+    // supported (every modern browser + happy-dom stub); the try/catch
+    // is defensive against an unusually old runtime.
+    try {
+      this.reducedMotionQuery = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      );
+      this.reducedMotionListener = (e: MediaQueryListEvent) => {
+        this.setReducedMotion(e.matches);
+      };
+      this.reducedMotionQuery.addEventListener(
+        "change",
+        this.reducedMotionListener,
+      );
+    } catch {
+      // Older environments without matchMedia — just leave the
+      // listener null and the canvas active.
+    }
+
     this.canvas = document.createElement("canvas");
     this.canvas.className = "terminal-effects-layer";
     this.canvas.setAttribute("aria-hidden", "true");
@@ -334,10 +364,40 @@ export class TerminalEffects {
 
     this.resize();
     this.markDirty();
+
+    // Apply the initial reduced-motion state after the WebGL setup
+    // completes so the visibility class flips correctly on first paint.
+    if (this.reducedMotionQuery?.matches) {
+      this.setReducedMotion(true);
+    }
   }
 
   setFocused(_focused: boolean): void {
     // Ripple system doesn't need focus state — kept for API compat
+  }
+
+  /** Phase 5 / U2 — gate the WebGL bloom on `prefers-reduced-motion`.
+   *  When the user opts in, we clear the canvas, drop any in-flight
+   *  pulses, and refuse new ones until they opt out. The CSS blanket
+   *  from Phase 0 covers every other animation; this method is the
+   *  canvas-specific equivalent. */
+  setReducedMotion(reduce: boolean): void {
+    if (reduce) {
+      // Drop the pulse queue + lights so the canvas can't draw stale
+      // animation state when the user toggles back on.
+      this.pulses = [];
+      this.lights = [];
+      this.active = false;
+      this.canvas.style.display = "none";
+      if (this.gl) {
+        this.gl.clearColor(0, 0, 0, 0);
+        this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+      }
+    } else if (this.available) {
+      this.active = true;
+      this.canvas.style.display = "block";
+      this.markDirty();
+    }
   }
 
   pulseOutput(_size = 0): void {
@@ -393,6 +453,16 @@ export class TerminalEffects {
     if (this.rafId !== null) cancelAnimationFrame(this.rafId);
     for (const sub of this.subscriptions) sub.dispose();
     this.resizeObserver.disconnect();
+    // Phase 5 — detach the matchMedia listener so a destroyed effects
+    // instance doesn't keep a closure alive across hot reloads.
+    if (this.reducedMotionQuery && this.reducedMotionListener) {
+      this.reducedMotionQuery.removeEventListener(
+        "change",
+        this.reducedMotionListener,
+      );
+    }
+    this.reducedMotionQuery = null;
+    this.reducedMotionListener = null;
     if (this.available && this.gl) {
       if (this.positionBuffer) this.gl.deleteBuffer(this.positionBuffer);
       if (this.occluderTexture) this.gl.deleteTexture(this.occluderTexture);

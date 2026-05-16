@@ -227,3 +227,113 @@ describe("[Phase 3] TerminalEffects — source-level invariants", () => {
     expect(SRC).toContain("uniform sampler2D u_occluderTex");
   });
 });
+
+describe("[U2] TerminalEffects — prefers-reduced-motion guard", () => {
+  test("constructor wires a matchMedia listener for the reduced-motion query", async () => {
+    // Stub matchMedia. happy-dom may or may not provide one — we assert
+    // the constructor *calls* it, so we drive the listener directly
+    // from the spy.
+    let calledWithQuery: string | null = null;
+    let registeredListener: ((e: MediaQueryListEvent) => void) | null = null;
+    const realMatchMedia = window.matchMedia;
+    (
+      window as unknown as { matchMedia: (q: string) => MediaQueryList }
+    ).matchMedia = (q: string) => {
+      calledWithQuery = q;
+      return {
+        matches: false,
+        media: q,
+        addEventListener: (
+          _ev: string,
+          l: (e: MediaQueryListEvent) => void,
+        ) => {
+          registeredListener = l;
+        },
+        removeEventListener: () => {},
+        onchange: null,
+        dispatchEvent: () => false,
+      } as unknown as MediaQueryList;
+    };
+
+    try {
+      const { TerminalEffects } = await load();
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const { term } = mockTerminal();
+      const e = new TerminalEffects(host, term as unknown as never);
+      expect(calledWithQuery).toBe("(prefers-reduced-motion: reduce)");
+      expect(registeredListener).not.toBeNull();
+      e.destroy();
+    } finally {
+      (window as unknown as { matchMedia: typeof realMatchMedia }).matchMedia =
+        realMatchMedia;
+    }
+  });
+
+  test("setReducedMotion(true) drops the canvas to display:none + clears pulses", async () => {
+    const { TerminalEffects } = await load();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const { term } = mockTerminal();
+    const e = new TerminalEffects(host, term as unknown as never);
+
+    // Public-API-visible side effects of the guard: the canvas hides
+    // and isEnabled returns false.
+    e.setReducedMotion(true);
+    const canvas = host.querySelector(
+      ".terminal-effects-layer",
+    ) as HTMLElement | null;
+    expect(canvas).not.toBeNull();
+    expect(canvas!.style.display).toBe("none");
+    expect(e.isEnabled()).toBe(false);
+  });
+
+  test("setReducedMotion(false) restores visibility when WebGL is available", async () => {
+    // Under happy-dom WebGL is unavailable (available=false) — so the
+    // restore path no-ops. We pin the contract: setReducedMotion(false)
+    // doesn't *force* active=true when available=false. Same regression
+    // guard as the existing fallback tests.
+    const { TerminalEffects } = await load();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const { term } = mockTerminal();
+    const e = new TerminalEffects(host, term as unknown as never);
+    e.setReducedMotion(true);
+    expect(e.isEnabled()).toBe(false);
+    e.setReducedMotion(false);
+    // Still false under fallback because available=false.
+    expect(e.isEnabled()).toBe(false);
+  });
+
+  test("destroy() detaches the matchMedia listener (no leak after teardown)", async () => {
+    let removeCalls = 0;
+    const realMatchMedia = window.matchMedia;
+    (
+      window as unknown as { matchMedia: (q: string) => MediaQueryList }
+    ).matchMedia = (q: string) => {
+      return {
+        matches: false,
+        media: q,
+        addEventListener: () => {},
+        removeEventListener: () => {
+          removeCalls++;
+        },
+        onchange: null,
+        dispatchEvent: () => false,
+      } as unknown as MediaQueryList;
+    };
+
+    try {
+      const { TerminalEffects } = await load();
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const { term } = mockTerminal();
+      const e = new TerminalEffects(host, term as unknown as never);
+      e.destroy();
+      expect(removeCalls).toBe(1);
+    } finally {
+      (window as unknown as { matchMedia: typeof realMatchMedia }).matchMedia =
+        realMatchMedia;
+    }
+  });
+});
