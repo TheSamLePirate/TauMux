@@ -20,5 +20,4 @@
 - `bun start` — launched in a τ-mux split labeled “Verify AAA sidebar file icons”.
 
 ## Commit
-- Not committed yet.
-- No `bun run bum:patch` run because no commit was made. Run it before committing these changes.
+- Committed in `88048c8` (`Add native sidebar CWD file explorer`).

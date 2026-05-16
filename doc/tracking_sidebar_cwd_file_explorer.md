@@ -26,5 +26,4 @@
 - Design report not run; change is native webview sidebar work and the requested required checks passed. It can be run next if visual snapshots are desired.
 
 ## Commit
-- Not committed yet.
-- No `bun run bum:patch` run because no commit was made. Run it before committing these changes.
+- Committed in `88048c8` (`Add native sidebar CWD file explorer`).
