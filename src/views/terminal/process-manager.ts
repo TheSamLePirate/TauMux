@@ -1,4 +1,5 @@
 import type { ProcessNode, SurfaceMetadata } from "../../shared/types";
+import { ModalHost } from "./a11y/modal-host";
 import { createIcon } from "./icons";
 
 export interface ProcessManagerSurface {
@@ -27,6 +28,7 @@ interface ProcessManagerCallbacks {
 export class ProcessManagerPanel {
   private overlay: HTMLDivElement;
   private content: HTMLDivElement;
+  private host: ModalHost;
   private visible = false;
   private readonly getData: ProcessManagerDataSource;
   private readonly onKill: ProcessManagerCallbacks["onKill"];
@@ -38,9 +40,6 @@ export class ProcessManagerPanel {
 
     this.overlay = document.createElement("div");
     this.overlay.className = "process-manager-overlay";
-    this.overlay.addEventListener("click", (e) => {
-      if (e.target === this.overlay) this.hide();
-    });
 
     const panel = document.createElement("div");
     panel.className = "process-manager-panel";
@@ -52,6 +51,7 @@ export class ProcessManagerPanel {
     titleWrap.className = "process-manager-header-title";
     titleWrap.append(createIcon("terminal", "", 14));
     const title = document.createElement("span");
+    title.id = "process-manager-title";
     title.textContent = "Process Manager";
     titleWrap.appendChild(title);
     header.appendChild(titleWrap);
@@ -76,6 +76,13 @@ export class ProcessManagerPanel {
 
     this.overlay.appendChild(panel);
     document.body.appendChild(this.overlay);
+
+    this.host = new ModalHost({
+      overlay: this.overlay,
+      panel,
+      labelledBy: "process-manager-title",
+      onClose: () => this.hide(),
+    });
   }
 
   isVisible(): boolean {
@@ -83,14 +90,19 @@ export class ProcessManagerPanel {
   }
 
   show(): void {
+    if (this.visible) return;
     this.visible = true;
     this.render();
     this.overlay.classList.add("visible");
+    this.host.open();
+    this.host.focusFirst();
   }
 
   hide(): void {
+    if (!this.visible) return;
     this.visible = false;
     this.overlay.classList.remove("visible");
+    this.host.close();
   }
 
   toggle(): void {
