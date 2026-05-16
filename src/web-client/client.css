@@ -2578,3 +2578,49 @@ body.sidebar-hidden .tau-status-bar {
     transform: scaleX(0);
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────
+ * Touch target minimums — Phase 1 / I.5 / U5.
+ *
+ * On coarse pointers (phones, tablets, kiosks) every interactive
+ * element must have a hit area of at least 44 × 44 CSS pixels — the
+ * WCAG 2.5.5 / Apple HIG / Android Material baseline. The mirror
+ * targets phones first, so chips, toasts, sidebar pills, and the
+ * surface-tab close button all need an expanded tap zone in that
+ * mode. We keep the desktop visual exactly as-is by scoping every
+ * change behind `@media (pointer: coarse)`.
+ *
+ * The min-width / min-height pair is enough for most controls — they
+ * grow to a 44 × 44 box on phones and stay sized-to-content on
+ * desktops where the user has a fine pointer. For chips that are
+ * normally laid out tightly we also add a small padding to spread
+ * the hit zone visibly so a thumb tap doesn't land between them.
+ * ──────────────────────────────────────────────────────────────── */
+@media (pointer: coarse) {
+  .chip-port,
+  .chip-cwd,
+  .chip-git,
+  .chip-fg,
+  .chip-script,
+  .chip-mode,
+  .surface-tab-close,
+  .sidebar-pill,
+  .tau-notif-overlay-card .tau-notif-overlay-close,
+  button.tau-toast-close {
+    min-width: 44px;
+    min-height: 44px;
+    /* Center the visual content inside the expanded hit zone. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Chip rows stay readable — the per-chip min-width hits the row
+   * gap, not the chip content. Adjust the row's gap so taps don't
+   * land on adjacent chips by accident. */
+  .pane-bar-chips,
+  .surface-chips,
+  .sidebar-card-chips {
+    gap: 6px;
+  }
+}
