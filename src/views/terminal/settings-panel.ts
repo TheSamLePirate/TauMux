@@ -4,6 +4,7 @@ import {
   THEME_PRESETS,
   presetToPartial,
 } from "../../shared/settings";
+import { ModalHost } from "./a11y/modal-host";
 import { createIcon } from "./icons";
 import {
   STATUS_KEY_GROUPS,
@@ -31,6 +32,7 @@ export class SettingsPanel {
   private panel: HTMLDivElement;
   private nav: HTMLDivElement;
   private content: HTMLDivElement;
+  private host!: ModalHost;
   private settings: AppSettings = { ...DEFAULT_SETTINGS };
   /** Static runtime paths surfaced in the Advanced section. Populated
    *  when bun pushes `restoreDiagnostics` after the webview boots —
@@ -127,9 +129,6 @@ export class SettingsPanel {
     // Overlay
     this.overlay = document.createElement("div");
     this.overlay.className = "settings-overlay";
-    this.overlay.addEventListener("click", (e) => {
-      if (e.target === this.overlay) this.hide();
-    });
 
     // Panel
     this.panel = document.createElement("div");
@@ -148,6 +147,7 @@ export class SettingsPanel {
     titleCopy.appendChild(eyebrowEl);
 
     const titleEl = document.createElement("span");
+    titleEl.id = "settings-panel-title";
     titleEl.className = "settings-header-title";
     titleEl.textContent = "Settings";
     titleCopy.appendChild(titleEl);
@@ -185,19 +185,31 @@ export class SettingsPanel {
     this.overlay.appendChild(this.panel);
     document.body.appendChild(this.overlay);
 
+    this.host = new ModalHost({
+      overlay: this.overlay,
+      panel: this.panel,
+      labelledBy: "settings-panel-title",
+      onClose: () => this.hide(),
+    });
+
     this.buildNav();
   }
 
   show(settings: AppSettings): void {
+    if (this.visible) return;
     this.settings = { ...settings, ansiColors: { ...settings.ansiColors } };
     this.visible = true;
     this.renderActiveSection();
     this.overlay.classList.add("visible");
+    this.host.open();
+    this.host.focusFirst();
   }
 
   hide(): void {
+    if (!this.visible) return;
     this.visible = false;
     this.overlay.classList.remove("visible");
+    this.host.close();
   }
 
   isVisible(): boolean {
