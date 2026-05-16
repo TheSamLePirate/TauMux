@@ -239,12 +239,14 @@ export class Sidebar {
   private highlightIndex = -1;
   private renamingId: string | null = null;
   private expandedPackages: Set<string> = new Set();
-  private fileExplorerRequester: ((request: {
-    requestId: string;
-    path: string;
-    showHidden: boolean;
-    maxEntries: number;
-  }) => void) | null = null;
+  private fileExplorerRequester:
+    | ((request: {
+        requestId: string;
+        path: string;
+        showHidden: boolean;
+        maxEntries: number;
+      }) => void)
+    | null = null;
   private fileExplorerListings = new Map<string, SidebarFileExplorerListing>();
   private fileExplorerLoading = new Set<string>();
   private fileExplorerOpenDirs = new Map<string, Set<string>>();
@@ -930,6 +932,11 @@ export class Sidebar {
     item.className = "workspace-item";
     item.dataset["workspaceId"] = id;
     item.setAttribute("role", "button");
+    // U12 — roving-tabindex default. populateWorkspaceCard flips this
+    // to "0" on the active card so the workspace list is Tab-reachable
+    // (a Tab from outside lands on the active workspace; arrow keys
+    // move from there). Without this every card was tabindex="-1" and
+    // the list was effectively keyboard-invisible.
     item.setAttribute("tabindex", "-1");
     item.draggable = true;
 
@@ -970,6 +977,10 @@ export class Sidebar {
     }`;
     item.style.setProperty("--workspace-accent", accent);
     item.setAttribute("aria-current", ws.active ? "true" : "false");
+    // U12 — roving-tabindex: active workspace is the Tab landing point.
+    // Inactive cards stay tabindex="-1" so Tab cycles past the list
+    // rather than visiting every workspace in turn.
+    item.setAttribute("tabindex", ws.active ? "0" : "-1");
 
     let cache = this.cardSlots.get(ws.id);
     if (!cache) {
@@ -1080,7 +1091,10 @@ export class Sidebar {
       const openDirs = [...(this.fileExplorerOpenDirs.get(ws.id) ?? new Set())]
         .sort()
         .join("|");
-      const listingSig = this.fileExplorerListingSignature(root, new Set(openDirs ? openDirs.split("|") : []));
+      const listingSig = this.fileExplorerListingSignature(
+        root,
+        new Set(openDirs ? openDirs.split("|") : []),
+      );
       const sig = [
         "f",
         root,
@@ -1603,7 +1617,11 @@ export class Sidebar {
 
   private ensureFileExplorerListing(path: string, force = false): void {
     if (!this.fileExplorerRequester) return;
-    if (!force && (this.fileExplorerListings.has(path) || this.fileExplorerLoading.has(path))) {
+    if (
+      !force &&
+      (this.fileExplorerListings.has(path) ||
+        this.fileExplorerLoading.has(path))
+    ) {
       return;
     }
     this.fileExplorerLoading.add(path);
@@ -1615,7 +1633,10 @@ export class Sidebar {
     });
   }
 
-  private fileExplorerListingSignature(root: string, openDirs: Set<string>): string {
+  private fileExplorerListingSignature(
+    root: string,
+    openDirs: Set<string>,
+  ): string {
     const paths = [root, ...openDirs];
     return paths
       .map((path) => {
@@ -1657,7 +1678,9 @@ export class Sidebar {
     rootLabel.title = root;
     head.appendChild(rootLabel);
     if (listing && !listing.error) {
-      const bits = [`${listing.entries.length}${listing.truncated ? "+" : ""} shown`];
+      const bits = [
+        `${listing.entries.length}${listing.truncated ? "+" : ""} shown`,
+      ];
       const hidden = listing.hiddenExcluded ?? 0;
       const ignored = listing.ignoredExcluded ?? 0;
       if (hidden > 0) bits.push(`${hidden} hidden`);
@@ -1684,7 +1707,11 @@ export class Sidebar {
       }
       window.dispatchEvent(
         new CustomEvent("ht-open-file-in-editor", {
-          detail: { path: `${root.replace(/\/+$/, "")}/${name}`, workspaceId: ws.id, create: true },
+          detail: {
+            path: `${root.replace(/\/+$/, "")}/${name}`,
+            workspaceId: ws.id,
+            create: true,
+          },
         }),
       );
     });
@@ -1734,14 +1761,18 @@ export class Sidebar {
       row.style.setProperty("--file-depth", String(depth));
       const visual = describeExplorerEntry(entry);
       row.className = `workspace-file-row ${entry.kind} file-kind-${visual.kind}`;
-      const modified = entry.mtimeMs ? relativeTime(entry.mtimeMs) : "unknown time";
+      const modified = entry.mtimeMs
+        ? relativeTime(entry.mtimeMs)
+        : "unknown time";
       row.title = [
         entry.path,
         visual.description,
         typeof entry.size === "number" ? humanFileSize(entry.size) : undefined,
         entry.mtimeMs ? `modified ${modified}` : undefined,
         entry.error,
-      ].filter(Boolean).join("\n");
+      ]
+        .filter(Boolean)
+        .join("\n");
       const isDir = entry.kind === "directory";
       const openSet = this.fileExplorerOpenDirs.get(wsId) ?? new Set<string>();
       const isOpen = openSet.has(entry.path);
@@ -1756,7 +1787,9 @@ export class Sidebar {
       const twisty = document.createElement("span");
       twisty.className = "workspace-file-twisty";
       if (isDir) {
-        twisty.append(createIcon(isOpen ? "chevronDown" : "chevronRight", "", 10));
+        twisty.append(
+          createIcon(isOpen ? "chevronDown" : "chevronRight", "", 10),
+        );
       }
       row.appendChild(twisty);
 
@@ -1785,7 +1818,8 @@ export class Sidebar {
       const meta = document.createElement("span");
       meta.className = "workspace-file-meta";
       const metaParts = [];
-      if (!isDir && typeof entry.size === "number") metaParts.push(humanFileSize(entry.size));
+      if (!isDir && typeof entry.size === "number")
+        metaParts.push(humanFileSize(entry.size));
       if (entry.mtimeMs) metaParts.push(relativeTime(entry.mtimeMs));
       meta.textContent = metaParts.join(" · ");
       row.appendChild(meta);
@@ -1810,7 +1844,9 @@ export class Sidebar {
       });
       block.appendChild(row);
       if (isDir && isOpen) {
-        block.appendChild(this.buildFileExplorerDir(wsId, entry.path, depth + 1));
+        block.appendChild(
+          this.buildFileExplorerDir(wsId, entry.path, depth + 1),
+        );
       }
     }
     if (listing.truncated) {
@@ -2658,13 +2694,26 @@ export class Sidebar {
         (this.highlightIndex + dir + list.length) % list.length;
     }
     this.applyHighlight();
-    list[this.highlightIndex]?.scrollIntoView({ block: "nearest" });
+    const next = list[this.highlightIndex];
+    next?.scrollIntoView({ block: "nearest" });
+    // U12 — also move actual DOM focus so screen readers announce the
+    // new workspace and so subsequent Tabs leave the list properly.
+    next?.focus();
   }
 
   private applyHighlight(): void {
     const list = this.currentlyVisibleCards();
     list.forEach((el, i) => {
-      el.classList.toggle("keyboard-focus", i === this.highlightIndex);
+      const isHighlighted = i === this.highlightIndex;
+      el.classList.toggle("keyboard-focus", isHighlighted);
+      // U12 — keep the roving-tabindex in sync with the highlight.
+      // Only the highlighted card is Tab-reachable; the rest yield to
+      // arrow-key nav. Without this, a Tab after arrow-nav would land
+      // back on the *active* workspace (initial setting), not the
+      // one the user just keyboard-walked to.
+      if (this.highlightIndex !== -1) {
+        el.setAttribute("tabindex", isHighlighted ? "0" : "-1");
+      }
     });
   }
 
@@ -2860,19 +2909,19 @@ const EXACT_FILE_VISUALS: Record<string, ExplorerEntryVisual> = {
     hint: "lock",
     description: "Cargo lockfile",
   },
-  "dockerfile": {
+  dockerfile: {
     kind: "config",
     icon: "server",
     badge: "DOCK",
     description: "Docker build file",
   },
-  "makefile": {
+  makefile: {
     kind: "script",
     icon: "terminal",
     badge: "make",
     description: "Make build file",
   },
-  "justfile": {
+  justfile: {
     kind: "script",
     icon: "terminal",
     badge: "just",
@@ -2882,25 +2931,110 @@ const EXACT_FILE_VISUALS: Record<string, ExplorerEntryVisual> = {
 
 const EXTENSION_VISUALS: Record<string, ExplorerEntryVisual> = {
   ts: { kind: "source", icon: "code", badge: "TS", description: "TypeScript" },
-  tsx: { kind: "source", icon: "code", badge: "TSX", description: "TypeScript React" },
+  tsx: {
+    kind: "source",
+    icon: "code",
+    badge: "TSX",
+    description: "TypeScript React",
+  },
   js: { kind: "source", icon: "code", badge: "JS", description: "JavaScript" },
-  jsx: { kind: "source", icon: "code", badge: "JSX", description: "JavaScript React" },
-  mjs: { kind: "source", icon: "code", badge: "MJS", description: "JavaScript module" },
-  cjs: { kind: "source", icon: "code", badge: "CJS", description: "CommonJS module" },
-  json: { kind: "data", icon: "database", badge: "{}", description: "JSON data" },
-  css: { kind: "style", icon: "sparkles", badge: "CSS", description: "Stylesheet" },
-  scss: { kind: "style", icon: "sparkles", badge: "SCSS", description: "Sass stylesheet" },
-  sass: { kind: "style", icon: "sparkles", badge: "SASS", description: "Sass stylesheet" },
-  less: { kind: "style", icon: "sparkles", badge: "LESS", description: "Less stylesheet" },
-  html: { kind: "source", icon: "code", badge: "HTML", description: "HTML document" },
-  md: { kind: "doc", icon: "logs", badge: "MD", description: "Markdown document" },
+  jsx: {
+    kind: "source",
+    icon: "code",
+    badge: "JSX",
+    description: "JavaScript React",
+  },
+  mjs: {
+    kind: "source",
+    icon: "code",
+    badge: "MJS",
+    description: "JavaScript module",
+  },
+  cjs: {
+    kind: "source",
+    icon: "code",
+    badge: "CJS",
+    description: "CommonJS module",
+  },
+  json: {
+    kind: "data",
+    icon: "database",
+    badge: "{}",
+    description: "JSON data",
+  },
+  css: {
+    kind: "style",
+    icon: "sparkles",
+    badge: "CSS",
+    description: "Stylesheet",
+  },
+  scss: {
+    kind: "style",
+    icon: "sparkles",
+    badge: "SCSS",
+    description: "Sass stylesheet",
+  },
+  sass: {
+    kind: "style",
+    icon: "sparkles",
+    badge: "SASS",
+    description: "Sass stylesheet",
+  },
+  less: {
+    kind: "style",
+    icon: "sparkles",
+    badge: "LESS",
+    description: "Less stylesheet",
+  },
+  html: {
+    kind: "source",
+    icon: "code",
+    badge: "HTML",
+    description: "HTML document",
+  },
+  md: {
+    kind: "doc",
+    icon: "logs",
+    badge: "MD",
+    description: "Markdown document",
+  },
   mdx: { kind: "doc", icon: "logs", badge: "MDX", description: "MDX document" },
-  txt: { kind: "doc", icon: "logs", badge: "TXT", description: "Text document" },
-  yml: { kind: "config", icon: "wrench", badge: "YML", description: "YAML config" },
-  yaml: { kind: "config", icon: "wrench", badge: "YML", description: "YAML config" },
-  toml: { kind: "config", icon: "wrench", badge: "TOML", description: "TOML config" },
-  ini: { kind: "config", icon: "wrench", badge: "INI", description: "INI config" },
-  xml: { kind: "data", icon: "code", badge: "XML", description: "XML document" },
+  txt: {
+    kind: "doc",
+    icon: "logs",
+    badge: "TXT",
+    description: "Text document",
+  },
+  yml: {
+    kind: "config",
+    icon: "wrench",
+    badge: "YML",
+    description: "YAML config",
+  },
+  yaml: {
+    kind: "config",
+    icon: "wrench",
+    badge: "YML",
+    description: "YAML config",
+  },
+  toml: {
+    kind: "config",
+    icon: "wrench",
+    badge: "TOML",
+    description: "TOML config",
+  },
+  ini: {
+    kind: "config",
+    icon: "wrench",
+    badge: "INI",
+    description: "INI config",
+  },
+  xml: {
+    kind: "data",
+    icon: "code",
+    badge: "XML",
+    description: "XML document",
+  },
   py: { kind: "source", icon: "code", badge: "PY", description: "Python" },
   rb: { kind: "source", icon: "code", badge: "RB", description: "Ruby" },
   rs: { kind: "source", icon: "code", badge: "RS", description: "Rust" },
@@ -2912,46 +3046,144 @@ const EXTENSION_VISUALS: Record<string, ExplorerEntryVisual> = {
   h: { kind: "source", icon: "code", badge: "H", description: "C/C++ header" },
   cpp: { kind: "source", icon: "code", badge: "C++", description: "C++" },
   cc: { kind: "source", icon: "code", badge: "C++", description: "C++" },
-  sh: { kind: "script", icon: "terminal", badge: "SH", description: "Shell script" },
-  zsh: { kind: "script", icon: "terminal", badge: "ZSH", description: "Zsh script" },
-  bash: { kind: "script", icon: "terminal", badge: "BASH", description: "Bash script" },
+  sh: {
+    kind: "script",
+    icon: "terminal",
+    badge: "SH",
+    description: "Shell script",
+  },
+  zsh: {
+    kind: "script",
+    icon: "terminal",
+    badge: "ZSH",
+    description: "Zsh script",
+  },
+  bash: {
+    kind: "script",
+    icon: "terminal",
+    badge: "BASH",
+    description: "Bash script",
+  },
   sql: { kind: "database", icon: "database", badge: "SQL", description: "SQL" },
-  sqlite: { kind: "database", icon: "database", badge: "DB", description: "SQLite database" },
-  db: { kind: "database", icon: "database", badge: "DB", description: "Database" },
+  sqlite: {
+    kind: "database",
+    icon: "database",
+    badge: "DB",
+    description: "SQLite database",
+  },
+  db: {
+    kind: "database",
+    icon: "database",
+    badge: "DB",
+    description: "Database",
+  },
   png: { kind: "image", icon: "eye", badge: "PNG", description: "PNG image" },
   jpg: { kind: "image", icon: "eye", badge: "JPG", description: "JPEG image" },
   jpeg: { kind: "image", icon: "eye", badge: "JPG", description: "JPEG image" },
   gif: { kind: "image", icon: "eye", badge: "GIF", description: "GIF image" },
-  webp: { kind: "image", icon: "eye", badge: "WEBP", description: "WebP image" },
+  webp: {
+    kind: "image",
+    icon: "eye",
+    badge: "WEBP",
+    description: "WebP image",
+  },
   svg: { kind: "image", icon: "eye", badge: "SVG", description: "SVG image" },
   pdf: { kind: "doc", icon: "logs", badge: "PDF", description: "PDF document" },
-  zip: { kind: "archive", icon: "package", badge: "ZIP", description: "Zip archive" },
-  gz: { kind: "archive", icon: "package", badge: "GZ", description: "Gzip archive" },
-  tgz: { kind: "archive", icon: "package", badge: "TGZ", description: "Tar archive" },
-  rar: { kind: "archive", icon: "package", badge: "RAR", description: "RAR archive" },
-  wasm: { kind: "binary", icon: "cpu", badge: "WASM", description: "WebAssembly binary" },
-  map: { kind: "data", icon: "database", badge: "MAP", description: "Source map" },
+  zip: {
+    kind: "archive",
+    icon: "package",
+    badge: "ZIP",
+    description: "Zip archive",
+  },
+  gz: {
+    kind: "archive",
+    icon: "package",
+    badge: "GZ",
+    description: "Gzip archive",
+  },
+  tgz: {
+    kind: "archive",
+    icon: "package",
+    badge: "TGZ",
+    description: "Tar archive",
+  },
+  rar: {
+    kind: "archive",
+    icon: "package",
+    badge: "RAR",
+    description: "RAR archive",
+  },
+  wasm: {
+    kind: "binary",
+    icon: "cpu",
+    badge: "WASM",
+    description: "WebAssembly binary",
+  },
+  map: {
+    kind: "data",
+    icon: "database",
+    badge: "MAP",
+    description: "Source map",
+  },
 };
 
-function describeExplorerEntry(entry: SidebarFileExplorerEntry): ExplorerEntryVisual {
+function describeExplorerEntry(
+  entry: SidebarFileExplorerEntry,
+): ExplorerEntryVisual {
   if (entry.kind === "directory") {
     return { kind: "folder", icon: "folder", description: "Directory" };
   }
   if (entry.kind === "symlink") {
-    return { kind: "symlink", icon: "gitBranch", badge: "↪", description: "Symbolic link" };
+    return {
+      kind: "symlink",
+      icon: "gitBranch",
+      badge: "↪",
+      description: "Symbolic link",
+    };
   }
   const lower = entry.name.toLowerCase();
   if (lower.startsWith(".env")) {
-    return { kind: "env", icon: "key", badge: "ENV", hint: "secret", description: "Environment file" };
+    return {
+      kind: "env",
+      icon: "key",
+      badge: "ENV",
+      hint: "secret",
+      description: "Environment file",
+    };
   }
   if (lower.startsWith("readme")) {
-    return { kind: "doc", icon: "logs", badge: "README", hint: "docs", description: "Readme document" };
+    return {
+      kind: "doc",
+      icon: "logs",
+      badge: "README",
+      hint: "docs",
+      description: "Readme document",
+    };
   }
-  if (lower.endsWith(".test.ts") || lower.endsWith(".test.tsx") || lower.endsWith(".spec.ts") || lower.endsWith(".spec.tsx")) {
-    return { kind: "test", icon: "check", badge: "TEST", description: "Test file" };
+  if (
+    lower.endsWith(".test.ts") ||
+    lower.endsWith(".test.tsx") ||
+    lower.endsWith(".spec.ts") ||
+    lower.endsWith(".spec.tsx")
+  ) {
+    return {
+      kind: "test",
+      icon: "check",
+      badge: "TEST",
+      description: "Test file",
+    };
   }
-  if (lower.endsWith(".stories.ts") || lower.endsWith(".stories.tsx") || lower.endsWith(".story.tsx")) {
-    return { kind: "test", icon: "sparkles", badge: "STORY", description: "Storybook story" };
+  if (
+    lower.endsWith(".stories.ts") ||
+    lower.endsWith(".stories.tsx") ||
+    lower.endsWith(".story.tsx")
+  ) {
+    return {
+      kind: "test",
+      icon: "sparkles",
+      badge: "STORY",
+      description: "Storybook story",
+    };
   }
   const exact = EXACT_FILE_VISUALS[lower];
   if (exact) return exact;
@@ -2959,9 +3191,18 @@ function describeExplorerEntry(entry: SidebarFileExplorerEntry): ExplorerEntryVi
   const byExt = EXTENSION_VISUALS[ext];
   if (byExt) return byExt;
   if (entry.kind === "other") {
-    return { kind: "binary", icon: "cpu", badge: "BIN", description: "Special file" };
+    return {
+      kind: "binary",
+      icon: "cpu",
+      badge: "BIN",
+      description: "Special file",
+    };
   }
-  return { kind: "file", icon: "code", badge: ext ? ext.slice(0, 4).toUpperCase() : "FILE" };
+  return {
+    kind: "file",
+    icon: "code",
+    badge: ext ? ext.slice(0, 4).toUpperCase() : "FILE",
+  };
 }
 
 function actionState(
