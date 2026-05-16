@@ -9,6 +9,7 @@
 // click outside the panel.
 
 import { escapeHtml } from "../../shared/escape-html";
+import { ModalHost } from "./a11y/modal-host";
 
 // The cheat-sheet only reads metadata fields — id, description,
 // category, and the matcher's `display` property. The runtime ctx
@@ -25,26 +26,56 @@ type BindingInfo = {
 
 export class KeyboardCheatsheet {
   private overlay: HTMLDivElement;
+  /** Stable inner panel — body contents replaced on each render(),
+   *  but the panel element itself is reused so ModalHost keeps a
+   *  consistent reference for focus-trap descendant lookup. */
+  private panel: HTMLDivElement;
+  private bodyEl: HTMLDivElement;
+  private host: ModalHost;
   private visible = false;
   private bindings: ReadonlyArray<BindingInfo> = [];
 
   constructor() {
     this.overlay = document.createElement("div");
     this.overlay.className = "kbd-cheatsheet hidden";
-    this.overlay.setAttribute("role", "dialog");
-    this.overlay.setAttribute("aria-modal", "true");
-    this.overlay.setAttribute("aria-labelledby", "kbd-cheatsheet-title");
     document.body.appendChild(this.overlay);
 
-    this.overlay.addEventListener("mousedown", (e) => {
-      // Click on the dim background closes; click on the panel doesn't.
-      if (e.target === this.overlay) this.hide();
-    });
-    document.addEventListener("keydown", (e) => {
-      if (this.visible && e.key === "Escape") {
-        e.preventDefault();
-        this.hide();
-      }
+    // Build the panel shell once. render() will replace bodyEl's
+    // contents on each invocation.
+    this.panel = document.createElement("div");
+    this.panel.className = "kbd-panel";
+    this.panel.setAttribute("role", "document");
+    this.overlay.appendChild(this.panel);
+
+    const header = document.createElement("header");
+    header.className = "kbd-header";
+    const title = document.createElement("h2");
+    title.id = "kbd-cheatsheet-title";
+    title.textContent = "Keyboard shortcuts";
+    header.appendChild(title);
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "kbd-close";
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.type = "button";
+    closeBtn.textContent = "×";
+    closeBtn.addEventListener("click", () => this.hide());
+    header.appendChild(closeBtn);
+    this.panel.appendChild(header);
+
+    this.bodyEl = document.createElement("div");
+    this.bodyEl.className = "kbd-body";
+    this.panel.appendChild(this.bodyEl);
+
+    const footer = document.createElement("footer");
+    footer.className = "kbd-footer";
+    footer.innerHTML = "<kbd>Esc</kbd> to close";
+    this.panel.appendChild(footer);
+
+    this.host = new ModalHost({
+      overlay: this.overlay,
+      panel: this.panel,
+      labelledBy: "kbd-cheatsheet-title",
+      onClose: () => this.hide(),
     });
   }
 
@@ -59,14 +90,19 @@ export class KeyboardCheatsheet {
   }
 
   show(): void {
+    if (this.visible) return;
     this.visible = true;
     this.overlay.classList.remove("hidden");
     this.render();
+    this.host.open();
+    this.host.focusFirst();
   }
 
   hide(): void {
+    if (!this.visible) return;
     this.visible = false;
     this.overlay.classList.add("hidden");
+    this.host.close();
   }
 
   isVisible(): boolean {
@@ -119,22 +155,12 @@ export class KeyboardCheatsheet {
       })
       .join("");
 
-    this.overlay.innerHTML = `
-      <div class="kbd-panel" role="document">
-        <header class="kbd-header">
-          <h2 id="kbd-cheatsheet-title">Keyboard shortcuts</h2>
-          <button class="kbd-close" aria-label="Close" type="button">×</button>
-        </header>
-        <div class="kbd-body">${sections || '<p class="kbd-empty">No shortcuts registered.</p>'}</div>
-        <footer class="kbd-footer"><kbd>Esc</kbd> to close</footer>
-      </div>
-    `;
-
-    const closeBtn = this.overlay.querySelector(".kbd-close");
-    closeBtn?.addEventListener("click", () => this.hide());
+    this.bodyEl.innerHTML =
+      sections || '<p class="kbd-empty">No shortcuts registered.</p>';
   }
 
   destroy(): void {
+    this.host.destroy();
     if (this.overlay.parentElement) {
       this.overlay.parentElement.removeChild(this.overlay);
     }

@@ -126,3 +126,58 @@ describe("[U11] KeyboardCheatsheet — render", () => {
     expect(cs.isVisible()).toBe(false);
   });
 });
+
+describe("[U1] KeyboardCheatsheet — ModalHost integration (focus + Escape)", () => {
+  test("show() restores focus to the previously-focused element on hide()", async () => {
+    const { KeyboardCheatsheet } = await loadCheatsheet();
+    const trigger = document.createElement("button");
+    trigger.id = "trigger";
+    document.body.appendChild(trigger);
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+
+    const cs = new KeyboardCheatsheet();
+    cs.setBindings(sampleBindings);
+    cs.show();
+    // Focus has landed inside the panel via focusFirst().
+    expect(document.activeElement).not.toBe(trigger);
+
+    cs.hide();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test("Escape on the overlay closes the cheatsheet", async () => {
+    const { KeyboardCheatsheet } = await loadCheatsheet();
+    const cs = new KeyboardCheatsheet();
+    cs.setBindings(sampleBindings);
+    cs.show();
+    expect(cs.isVisible()).toBe(true);
+
+    const overlay = document.body.querySelector(".kbd-cheatsheet")!;
+    overlay.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    expect(cs.isVisible()).toBe(false);
+  });
+
+  test("scrim click closes; click on the panel does not", async () => {
+    const { KeyboardCheatsheet } = await loadCheatsheet();
+    const cs = new KeyboardCheatsheet();
+    cs.setBindings(sampleBindings);
+    cs.show();
+    const overlay = document.body.querySelector(".kbd-cheatsheet")!;
+    const panel = overlay.querySelector(".kbd-panel")!;
+
+    // Click inside the panel — should NOT close.
+    const innerEv = new MouseEvent("mousedown", { bubbles: true });
+    Object.defineProperty(innerEv, "target", { value: panel });
+    overlay.dispatchEvent(innerEv);
+    expect(cs.isVisible()).toBe(true);
+
+    // Click on the scrim (overlay itself) — should close.
+    const scrimEv = new MouseEvent("mousedown", { bubbles: true });
+    Object.defineProperty(scrimEv, "target", { value: overlay });
+    overlay.dispatchEvent(scrimEv);
+    expect(cs.isVisible()).toBe(false);
+  });
+});
