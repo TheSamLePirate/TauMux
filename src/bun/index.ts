@@ -33,6 +33,7 @@ import type {
   TelegramWireMessage,
   AutoContinueAuditEntry,
 } from "../shared/types";
+import type { ActionPayloadByAction } from "../shared/webview-actions";
 import { SessionManager } from "./session-manager";
 import { BrowserSurfaceManager } from "./browser-surface-manager";
 import { BrowserHistoryStore } from "./browser-history";
@@ -92,7 +93,11 @@ import {
 } from "./ask-user-telegram";
 import { parseAllowedTelegramIds, pickWebSettings } from "../shared/settings";
 import { listSidebarFileExplorerDirectory } from "./sidebar-file-explorer";
-import { readEditorFile, resolveEditorPath, saveEditorFile } from "./editor-files";
+import {
+  readEditorFile,
+  resolveEditorPath,
+  saveEditorFile,
+} from "./editor-files";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -606,7 +611,10 @@ const bunMessageHandlers = {
       });
     } else if (browserSurfaces.isBrowserSurface(payload.surfaceId)) {
       browserSurfaces.closeSurface(payload.surfaceId);
-    } else if (payload.surfaceId.startsWith("tg:") || payload.surfaceId.startsWith("editor:")) {
+    } else if (
+      payload.surfaceId.startsWith("tg:") ||
+      payload.surfaceId.startsWith("editor:")
+    ) {
       // Non-PTY panes have no bun-side resource; echo the close back so
       // the webview layout removes the pane.
       rpc.send("surfaceClosed", { surfaceId: payload.surfaceId });
@@ -940,7 +948,12 @@ const bunMessageHandlers = {
     createEditorWorkspaceSurface(payload.path, payload.cwd, payload.create);
   },
   splitEditorSurface: (payload) => {
-    splitEditorSurface(payload.direction, payload.path, payload.cwd, payload.create);
+    splitEditorSurface(
+      payload.direction,
+      payload.path,
+      payload.cwd,
+      payload.create,
+    );
   },
   editorReadFile: (payload) => {
     rpc.send("editorFileSnapshot", readEditorFile(payload));
@@ -1479,13 +1492,20 @@ function nextEditorSurfaceId(): string {
   return `editor:${++editorSurfaceCounter}:${Date.now().toString(36)}`;
 }
 
-function createEditorWorkspaceSurface(path?: string, cwd?: string, create?: boolean): void {
+function createEditorWorkspaceSurface(
+  path?: string,
+  cwd?: string,
+  create?: boolean,
+): void {
   const surfaceId = nextEditorSurfaceId();
   const resolvedPath = path ? resolveEditorPath(path, cwd) : undefined;
   app.focusedSurfaceId = surfaceId;
   rpc.send("editorSurfaceCreated", { surfaceId, path: resolvedPath });
   if (resolvedPath) {
-    rpc.send("editorFileSnapshot", readEditorFile({ surfaceId, path: resolvedPath, create }));
+    rpc.send(
+      "editorFileSnapshot",
+      readEditorFile({ surfaceId, path: resolvedPath, create }),
+    );
   }
 }
 
@@ -1506,7 +1526,10 @@ function splitEditorSurface(
     direction,
   });
   if (resolvedPath) {
-    rpc.send("editorFileSnapshot", readEditorFile({ surfaceId, path: resolvedPath, create }));
+    rpc.send(
+      "editorFileSnapshot",
+      readEditorFile({ surfaceId, path: resolvedPath, create }),
+    );
   }
 }
 
@@ -2478,23 +2501,29 @@ function toggleWebServer(): void {
 
 // ── Socket API ──
 
+/** Triple-A A1 — the dispatch function used to type its payload as
+ *  `Record<string, unknown>` and cast every field at the use site
+ *  (`payload["surfaceId"] as string | undefined`). The typed
+ *  `ActionPayloadByAction` lookup in `src/shared/webview-actions.ts`
+ *  gives each `case` body a per-action payload shape; adding a new
+ *  action without declaring its payload there is now a TS error. The
+ *  cast inside each branch is contractually safe because the
+ *  `switch (action)` is the discriminator — same pattern as
+ *  `protocol-dispatcher.ts`. */
 function dispatch(action: string, payload: Record<string, unknown>) {
   // Route socket-initiated actions to webview
   rpc.send("socketAction", { action, payload });
 
   // Some actions also need bun-side handling
   if (action === "createSurface") {
-    createWorkspaceSurface(80, 24, payload["cwd"] as string | undefined);
+    const p = payload as ActionPayloadByAction["createSurface"];
+    createWorkspaceSurface(80, 24, p.cwd);
   } else if (action === "splitSurface") {
-    splitSurface(
-      payload["direction"] as "horizontal" | "vertical",
-      ((payload["surfaceId"] as string | undefined) ??
-        (payload["surface_id"] as string | undefined) ??
-        null),
-      payload["cwd"] as string | undefined,
-    );
+    const p = payload as ActionPayloadByAction["splitSurface"];
+    splitSurface(p.direction, p.surfaceId ?? p.surface_id ?? null, p.cwd);
   } else if (action === "closeSurface") {
-    const surfaceId = payload["surfaceId"] as string | undefined;
+    const p = payload as ActionPayloadByAction["closeSurface"];
+    const surfaceId = p.surfaceId;
     if (surfaceId?.startsWith("editor:") || surfaceId?.startsWith("tg:")) {
       rpc.send("surfaceClosed", { surfaceId });
     } else if (surfaceId) {
@@ -2505,26 +2534,24 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     // in cwd, tag it with launchFor so the sidebar tracks the script as
     // "running", then feed the command into stdin after the login shell
     // finishes async init (zsh ~150ms; 600ms is a safe upper bound).
-    const workspaceId = payload["workspaceId"] as string | undefined;
-    const cwd = payload["cwd"] as string | undefined;
-    const command = payload["command"] as string | undefined;
-    const scriptKey = payload["scriptKey"] as string | undefined;
-    if (workspaceId && cwd && command && scriptKey) {
-      const surfaceId = sessions.createSurface(80, 24, cwd);
+    const p = payload as ActionPayloadByAction["runScript"];
+    if (p.workspaceId && p.cwd && p.command && p.scriptKey) {
+      const surfaceId = sessions.createSurface(80, 24, p.cwd);
       const title = sessions.getSurface(surfaceId)?.title ?? "shell";
       rpc.send("surfaceCreated", {
         surfaceId,
         title,
-        launchFor: { workspaceId, scriptKey },
+        launchFor: { workspaceId: p.workspaceId, scriptKey: p.scriptKey },
       });
       broadcastSurfaceCreated(surfaceId, title);
       setTimeout(() => {
-        sessions.writeStdin(surfaceId, command + "\n");
+        sessions.writeStdin(surfaceId, p.command + "\n");
       }, 600);
     }
   } else if (action === "renameSurface") {
-    const surfaceId = payload["surfaceId"];
-    const title = payload["title"];
+    const p = payload as ActionPayloadByAction["renameSurface"];
+    const surfaceId = p.surfaceId;
+    const title = p.title;
     if (typeof surfaceId === "string" && typeof title === "string" && title) {
       sessions.renameSurface(surfaceId, title);
       const workspace = app.workspaceState.find((ws) =>
@@ -2545,9 +2572,8 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     //   - `latest`: a new notification was created
     //   - `dismissed`: a single notification was removed by id
     //   - `notifications: []`: the whole list was cleared
-    const notifications = payload["notifications"] as unknown[] | undefined;
-    const latest = payload["latest"] as Record<string, unknown> | undefined;
-    const dismissed = payload["dismissed"] as string | undefined;
+    const p = payload as ActionPayloadByAction["notification"];
+    const { notifications, latest, dismissed } = p;
     if (latest) {
       app.webServer?.broadcast({
         type: "notification",
@@ -2614,73 +2640,53 @@ function dispatch(action: string, payload: Record<string, unknown>) {
   ) {
     app.webServer?.broadcast({ type: "sidebarAction", action, payload });
     if (action === "setStatus") {
-      const key = payload["key"];
+      const p = payload as ActionPayloadByAction["setStatus"];
       if (
-        typeof key === "string" &&
-        key.length > 0 &&
-        !app.htKeysSeen.has(key)
+        typeof p.key === "string" &&
+        p.key.length > 0 &&
+        !app.htKeysSeen.has(p.key)
       ) {
-        app.htKeysSeen.add(key);
+        app.htKeysSeen.add(p.key);
         scheduleHtKeysSeenBroadcast();
       }
       // Plan #09 commit C — bridge plan-shaped status keys into the
       // typed PlanStore so agents emitting checklists via `ht set-
       // status` light up the same panel as `ht plan set` does.
       planStatusBridge.handle({
-        workspaceId:
-          (payload["workspaceId"] as string | undefined) ??
-          (payload["workspace_id"] as string | undefined),
-        surfaceId:
-          (payload["surfaceId"] as string | undefined) ??
-          (payload["surface_id"] as string | undefined),
-        key: payload["key"],
-        value: payload["value"],
+        workspaceId: p.workspaceId ?? p.workspace_id,
+        surfaceId: p.surfaceId ?? p.surface_id,
+        key: p.key,
+        value: p.value,
       });
     }
   } else if (action === "createBrowserSurface") {
-    createBrowserWorkspaceSurface(payload["url"] as string | undefined);
+    const p = payload as ActionPayloadByAction["createBrowserSurface"];
+    createBrowserWorkspaceSurface(p.url);
   } else if (action === "createAgentSurface") {
-    createAgentWorkspaceSurface(
-      payload as {
-        provider?: string;
-        model?: string;
-        thinkingLevel?: string;
-        cwd?: string;
-      },
-    );
+    const p = payload as ActionPayloadByAction["createAgentSurface"];
+    createAgentWorkspaceSurface(p);
   } else if (action === "splitAgentSurface") {
-    splitAgentSurface(
-      (payload["direction"] as "horizontal" | "vertical") || "horizontal",
-      payload as {
-        provider?: string;
-        model?: string;
-        thinkingLevel?: string;
-        cwd?: string;
-      },
-    );
+    const p = payload as ActionPayloadByAction["splitAgentSurface"];
+    splitAgentSurface(p.direction || "horizontal", p);
   } else if (action === "splitBrowserSurface") {
-    splitBrowserSurface(
-      (payload["direction"] as "horizontal" | "vertical") || "horizontal",
-      payload["url"] as string | undefined,
-    );
+    const p = payload as ActionPayloadByAction["splitBrowserSurface"];
+    splitBrowserSurface(p.direction || "horizontal", p.url);
   } else if (action === "createEditorSurface") {
-    createEditorWorkspaceSurface(
-      payload["path"] as string | undefined,
-      payload["cwd"] as string | undefined,
-      payload["create"] === true,
-    );
+    const p = payload as ActionPayloadByAction["createEditorSurface"];
+    createEditorWorkspaceSurface(p.path, p.cwd, p.create === true);
   } else if (action === "splitEditorSurface") {
+    const p = payload as ActionPayloadByAction["splitEditorSurface"];
     splitEditorSurface(
-      (payload["direction"] as "horizontal" | "vertical") || "horizontal",
-      payload["path"] as string | undefined,
-      payload["cwd"] as string | undefined,
-      payload["create"] === true,
+      p.direction || "horizontal",
+      p.path,
+      p.cwd,
+      p.create === true,
     );
   } else if (action === "openExternal") {
-    const url = payload["url"];
-    if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+    const p = payload as ActionPayloadByAction["openExternal"];
+    if (typeof p.url === "string" && /^https?:\/\//i.test(p.url)) {
       try {
-        Utils.openExternal(url);
+        Utils.openExternal(p.url);
       } catch (err) {
         console.error("[openExternal] failed:", err);
       }
@@ -3120,7 +3126,11 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
         const newId = nextEditorSurfaceId();
         surfaceMapping[oldId] = newId;
         rpc.send("editorSurfaceCreated", { surfaceId: newId, path });
-        if (path) rpc.send("editorFileSnapshot", readEditorFile({ surfaceId: newId, path }));
+        if (path)
+          rpc.send(
+            "editorFileSnapshot",
+            readEditorFile({ surfaceId: newId, path }),
+          );
       } else {
         // Re-spawn in the surface's last known cwd so shells resume where they
         // left off (the metadata poller picks this up within a tick; without
@@ -3177,7 +3187,9 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
         surfaceCwds:
           Object.keys(remappedCwds).length > 0 ? remappedCwds : undefined,
         surfaceEditorFiles:
-          Object.keys(remappedEditorFiles).length > 0 ? remappedEditorFiles : undefined,
+          Object.keys(remappedEditorFiles).length > 0
+            ? remappedEditorFiles
+            : undefined,
       };
     }),
   };
