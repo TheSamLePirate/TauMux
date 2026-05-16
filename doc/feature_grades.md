@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.26
+**Version:** 0.3.28
 **Generated:** 2026-05-16
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-After Phase 3 (test depth), the T1 backlog is closed: every big UI module (process-manager, settings-panel, editor-pane, browser-pane, terminal-effects, agent-panel, sidebar) now has direct unit tests. A coverage gate (`bun run report:coverage:check` against `tests/baselines/coverage-baseline.lcov`) blocks per-file regressions; an RPC method↔handler invariant test pins the `system.capabilities` contract. Remaining blockers: sandbox sideband HTML/SVG in the mirror (P4), the light-mode + high-contrast theme system (P5), lifecycle regression tests for the named L1–L7 fixes (P6), and the typed event bus + variant-context + workspace-collection refactors (P7).
+After Phase 4 (security hardening), the LAN-mirror trust model is closed end-to-end: sideband HTML/SVG renders inside `<iframe sandbox="">` with strict CSP (S2/H.7), the Telegram transport runs every `parse_mode` through an allow-list (S11/H.11), and the trust model + 10-item red-team checklist live in `doc/system-security.md` (H.10). Remaining blockers: light-mode + high-contrast theme system (P5), lifecycle regression tests for the named L1–L7 fixes (P6), the typed event bus + variant-context + workspace-collection refactors (P7), and the design-report + coverage gate CI wiring (P8).
 
 ---
 
@@ -34,9 +34,9 @@ After Phase 3 (test depth), the T1 backlog is closed: every big UI module (proce
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **2** | Best-in-class — 2 features cleared every gap. |
-| A | **31** | Most "production-shaped" subsystems. |
-| B (incl. B+) | **13** | Functional, with named polish / test / lifecycle gaps. |
+| S (AAA) | **4** | Best-in-class — 4 features cleared every gap. |
+| A | **30** | Most "production-shaped" subsystems. |
+| B (incl. B+) | **12** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
 
@@ -128,11 +128,11 @@ After Phase 3 (test depth), the T1 backlog is closed: every big UI module (proce
   - No pan/zoom for large content.
 
 ### Panel content renderers (SVG / HTML / image / canvas2d)
-- **Grade: B**
-- **Evidence:** `content-renderers.ts` — clean registry; blob-URL lifecycle managed; image element reused to avoid blank flashes; canvas pooled. **Security gap (S2):** SVG (line 123) and HTML (line 138) injected via `.innerHTML`. Web mirror has the same gap.
+- **Grade: A**
+- **Evidence:** `content-renderers.ts` — clean registry; blob-URL lifecycle managed; image element reused to avoid blank flashes; canvas pooled. Phase 4 (S2/H.7) sandboxed the mirror-side HTML/SVG path: every payload renders inside an `<iframe sandbox="">` with `srcdoc` carrying a strict CSP meta (`default-src 'none'; script-src 'none'; …`). Native renders via innerHTML — that's intentional and documented in `doc/system-security.md` as a same-user trust model.
 - **Gaps to AAA:**
-  - iframe-`srcdoc` sandbox + strict CSP in mirror.
-  - Renderer allow-list (any code with access to `registerRenderer` can register malicious ones).
+  - Native-side sandbox (defense-in-depth — owned by a future RFC, not a current gap).
+  - Renderer allow-list for registerRenderer (any code with access to the registry can add a malicious renderer; documented gap).
   - PNG-decode failure path for canvas2d.
 
 ### Panel registry
@@ -250,19 +250,16 @@ After Phase 3 (test depth), the T1 backlog is closed: every big UI module (proce
   - Idempotent shutdown guard (L6 landed — verify).
 
 ### Web mirror (WebSocket bridge)
-- **Grade: A**
-- **Evidence:** M1–M10 shipped; session ring + resume-on-reconnect; reducer-driven store; @xterm/headless for state correctness; 16 ms coalescing; Graphite theme tokens. WS heartbeat + reconnect jitter landed (H.5). Phase 2 (A2) typed `protocol-dispatcher.ts` via a `ServerPayloadByType` lookup keyed on the `ServerMessage` union — `any` is gone; adding a new server-message variant without a matching `case` now fails `tests/protocol-dispatcher-types.test.ts`.
+- **Grade: S**
+- **Evidence:** M1–M10 shipped; session ring + resume-on-reconnect; reducer-driven store; @xterm/headless for state correctness; 16 ms coalescing; Graphite theme tokens. WS heartbeat + reconnect jitter landed (H.5). Phase 2 typed `protocol-dispatcher.ts` (A2 — `ServerPayloadByType` mapped type). Phase 4 (S2/H.7) sandboxed sideband HTML/SVG via iframe srcdoc + strict CSP. The full hardening leg is now complete: token entropy floor, brute-force throttle, security headers, sandbox+CSP, heartbeat — all catalogued in `doc/system-security.md`.
 - **Gaps to AAA:**
-  - iframe-`srcdoc` sandbox + strict CSP for sideband HTML/SVG (S2 — HIGH, owned by P4).
-  - Coverage gate (P3).
+  - Per-surface browser partition (H.8) and session cap + manifest-auth + cross-site origin check (H.9) — owned by P7.
 
 ### Telegram bridge
-- **Grade: A**
-- **Evidence:** Three-table schema with atomic `kv.poll_offset` resume (`telegram-service.ts:225-226`); per-chat token bucket 1 msg/sec; partial-UNIQUE dedup; inbound allow-list; outbound chatId allow-list landed via H.6. Bidirectional flow with persistence.
+- **Grade: S**
+- **Evidence:** Three-table schema with atomic `kv.poll_offset` resume; per-chat token bucket 1 msg/sec; partial-UNIQUE dedup; inbound allow-list; outbound chatId allow-list (H.6). Phase 4 (S11/H.11) added a `sanitizeParseMode` allow-list at the transport boundary — only `MarkdownV2` survives, everything else (HTML, Markdown v1, typos, attacker payloads) falls back to plain text. TS signatures tightened to `"MarkdownV2"` only.
 - **Gaps to AAA:**
-  - Message TTL / DB pruning.
-  - `parse_mode` validation (S11).
-  - Broader e2e.
+  - Message TTL / DB pruning (owned by P7 polish — the SQLite DB grows unbounded with chat history).
 
 ### Pi agent
 - **Grade: A**
@@ -445,16 +442,16 @@ After Phase 3 (test depth), the T1 backlog is closed: every big UI module (proce
 
 Ranked by leverage — each lifts multiple features by one letter.
 
-1. **Sandbox sideband HTML/SVG in the web mirror** — via iframe-`srcdoc` + CSP. (S2). Owned by P4.
-2. **Light-mode + high-contrast palette + design tokens** — every colour token-driven; ship Graphite Light + High-Contrast themes. Owned by P5.
-3. **Verify `PiAgentManager._managerExit` cleanup under crash** — regression test — L1 was claimed landed but the regression test under forced crash is what makes the grade move. Owned by P6.
-4. **Per-feature failure regression tests** — for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each). Owned by P6.
-5. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts. Owned by P8.
-6. **Coverage gate threshold in CI** — Phase 3 landed `bun run report:coverage:check` locally; P8 wires it into CI so a PR can't merge below baseline.
-7. **Mobile/web mirror runtime bounding-box gate** — Phase 1 added the 44 × 44 CSS-px shim on coarse pointers. P3 deferred the Playwright mobile-viewport assertion to P8 (where the live Playwright env runs). (I.5)
-8. **ARIA labels + live regions for git-status chips + notifications** — Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live="polite"` region for notification count changes. Owned by P7.
-9. **Typed EventBus + VariantContext (A6 + A7)** — Replace 47+ implicit `window.dispatchEvent("ht-…")` channels with a typed `EventBus<EventMap>`; drop the `__tau*` window globals in favour of a `VariantContext` interface. Owned by P7.
-10. **WorkspaceCollection extract + settings schema source-of-truth** — F.11 (split `WorkspaceCollection` out of the 2717-LOC `SurfaceManager`) + F.6 (single `settings.schema.ts` driving `AppSettings` / `DEFAULT_SETTINGS` / `validateSettings` / migrations). Owned by P7.
+1. **Light-mode + high-contrast palette + design tokens** — every colour token-driven; ship Graphite Light + High-Contrast themes. Owned by P5.
+2. **Verify `PiAgentManager._managerExit` cleanup under crash** — regression test — L1 was claimed landed but the regression test under forced crash is what makes the grade move. Owned by P6.
+3. **Per-feature failure regression tests** — for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each). Owned by P6.
+4. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts. Owned by P8.
+5. **Coverage gate threshold in CI** — Phase 3 landed `bun run report:coverage:check` locally; P8 wires it into CI so a PR can't merge below baseline.
+6. **Mobile/web mirror runtime bounding-box gate** — Phase 1 added the 44 × 44 CSS-px shim on coarse pointers. P3 deferred the Playwright mobile-viewport assertion to P8 (where the live Playwright env runs). (I.5)
+7. **ARIA labels + live regions for git-status chips + notifications** — Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live="polite"` region for notification count changes. Owned by P7.
+8. **Typed EventBus + VariantContext (A6 + A7)** — Replace 47+ implicit `window.dispatchEvent("ht-…")` channels with a typed `EventBus<EventMap>`; drop the `__tau*` window globals in favour of a `VariantContext` interface. Owned by P7.
+9. **WorkspaceCollection extract + settings schema source-of-truth** — F.11 (split `WorkspaceCollection` out of the 2717-LOC `SurfaceManager`) + F.6 (single `settings.schema.ts` driving `AppSettings` / `DEFAULT_SETTINGS` / `validateSettings` / migrations). Owned by P7.
+10. **Per-surface browser partition + session cap (H.8/H.9)** — Embedded browser pane shares a webview partition across surfaces; mirror accepts unbounded resume sessions and doesn't validate the Origin header. Documented gaps in `doc/system-security.md`; owned by P7.
 
 ---
 
