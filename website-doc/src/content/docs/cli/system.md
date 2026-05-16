@@ -20,7 +20,7 @@ Verifies the socket is reachable. Exit 0 on success; non-zero if the socket isn'
 
 ```bash
 ht version
-# tau-mux 0.3.11 (build: …)
+# tau-mux 0.3.12 (build: …)
 ```
 
 ## identify

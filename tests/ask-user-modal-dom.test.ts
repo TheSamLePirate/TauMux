@@ -301,4 +301,53 @@ describe("AskUserModal — DOM behaviour", () => {
     expect(readActiveAskUserModal()?.request_id).toBe("seeded");
     h.destroy();
   });
+
+  test("[U1] overlay carries role=dialog + aria-modal + aria-labelledby", async () => {
+    const h = await mkHarness();
+    const req = mkReq({
+      kind: "yesno",
+      request_id: "u1-aria",
+      title: "Aria check",
+    });
+    h.state.pushShown(req);
+    const overlay = document.querySelector(".ask-user-overlay") as HTMLElement;
+    expect(overlay.getAttribute("role")).toBe("dialog");
+    expect(overlay.getAttribute("aria-modal")).toBe("true");
+    // Labelled by the title id which encodes the request id.
+    expect(overlay.getAttribute("aria-labelledby")).toBe(
+      "ask-user-title-u1-aria",
+    );
+    const titleEl = document.getElementById("ask-user-title-u1-aria");
+    expect(titleEl?.textContent).toBe("Aria check");
+    h.destroy();
+  });
+
+  test("[U1] focus restores to the pre-mount activeElement on unmount", async () => {
+    const h = await mkHarness();
+    const trigger = document.createElement("button");
+    trigger.id = "trigger";
+    document.body.appendChild(trigger);
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+
+    const req = mkReq({ kind: "yesno", request_id: "u1-focus" });
+    h.state.pushShown(req);
+    // The host records `previouslyFocused = trigger` at open().
+    // focusInitial() runs in a rAF — happy-dom may or may not flush
+    // it inside this synchronous block, so we don't assert mid-life
+    // that focus moved. The invariant we care about is that on
+    // unmount, the host restores focus to `previouslyFocused`.
+    // Simulate the user moving focus into the modal so the restore
+    // is observable.
+    const yesBtn = document.querySelector(
+      '[data-ask-user-button="yes"]',
+    ) as HTMLElement;
+    yesBtn.focus();
+    expect(document.activeElement).toBe(yesBtn);
+
+    // Resolve the request — unmounts the modal.
+    h.state.pushResolved("u1-focus");
+    expect(document.activeElement).toBe(trigger);
+    h.destroy();
+  });
 });

@@ -20,6 +20,7 @@
  */
 
 import type { AskUserRequest } from "../../shared/types";
+import { ModalHost } from "./a11y/modal-host";
 import type { AskUserState, AskUserStateChange } from "./ask-user-state";
 
 export interface AskUserAttribution {
@@ -44,10 +45,14 @@ export interface AskUserModalOptions {
 
 interface MountedModal {
   overlay: HTMLDivElement;
+  sheet: HTMLDivElement;
   request: AskUserRequest;
   /** confirm-command two-step state: false until the user clicks
    *  "I understand"; revealed shows the [Run] button. */
   confirmRevealed: boolean;
+  /** U1 — ModalHost wraps the overlay with role=dialog + aria-modal
+   *  + focus trap + focus restore + scrim/Escape close. */
+  host: ModalHost;
 }
 
 let active: MountedModal | null = null;
@@ -110,12 +115,6 @@ function mount(request: AskUserRequest): void {
   overlay.setAttribute("data-ask-user-overlay", "1");
   overlay.setAttribute("data-request-id", request.request_id);
   overlay.setAttribute("data-kind", request.kind);
-  overlay.addEventListener("mousedown", (event) => {
-    if (event.target === overlay) {
-      // Clicking the dim backdrop cancels — same UX as prompt-dialog.
-      cancelActive("backdrop click");
-    }
-  });
 
   const sheet = document.createElement("div");
   sheet.className = "ask-user-sheet";
@@ -126,7 +125,10 @@ function mount(request: AskUserRequest): void {
   attEl.textContent = formatAttribution(attribution, request);
   sheet.appendChild(attEl);
 
+  // Give the title a stable id so the host can label the dialog.
+  const titleId = `ask-user-title-${request.request_id}`;
   const titleEl = document.createElement("h2");
+  titleEl.id = titleId;
   titleEl.className = "prompt-title ask-user-title";
   titleEl.textContent = request.title;
   sheet.appendChild(titleEl);
@@ -145,8 +147,17 @@ function mount(request: AskUserRequest): void {
     sheet.appendChild(bodyEl);
   }
 
+  // Build the host before kind-specific rendering so cancelActive
+  // (from scrim / Escape) has the active.host reference available.
+  const host = new ModalHost({
+    overlay,
+    panel: sheet,
+    labelledBy: titleId,
+    onClose: () => cancelActive("dismissed"),
+  });
+
   // Kind-specific body + actions are appended onto the sheet.
-  active = { overlay, request, confirmRevealed: false };
+  active = { overlay, sheet, request, confirmRevealed: false, host };
   switch (request.kind) {
     case "yesno":
       renderYesno(sheet, request);
@@ -164,6 +175,11 @@ function mount(request: AskUserRequest): void {
 
   overlay.appendChild(sheet);
   document.body.appendChild(overlay);
+  // Open the host synchronously so a same-tick Escape / backdrop click
+  // is caught even before the rAF visibility animation runs (tests
+  // dispatch events immediately after pushShown and need the listeners
+  // attached). The rAF only stages the .visible class for the fade-in.
+  host.open();
   requestAnimationFrame(() => {
     overlay.classList.add("visible");
     focusInitial();
@@ -172,6 +188,7 @@ function mount(request: AskUserRequest): void {
 
 function unmount(): void {
   if (!active) return;
+  active.host.close();
   active.overlay.remove();
   active = null;
 }
@@ -215,10 +232,8 @@ function renderYesno(sheet: HTMLDivElement, _req: AskUserRequest): void {
     if (event.key === "Enter") {
       event.preventDefault();
       answerActive("yes");
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      cancelActive("escape");
     }
+    // Escape is handled by ModalHost via overlay-level keydown.
   });
 }
 
@@ -245,10 +260,8 @@ function renderChoice(sheet: HTMLDivElement, req: AskUserRequest): void {
     if (event.key === "Enter" && choices.length > 0) {
       event.preventDefault();
       answerActive(choices[0].id);
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      cancelActive("escape");
     }
+    // Escape is handled by ModalHost via overlay-level keydown.
   });
 }
 
@@ -286,11 +299,31 @@ function renderText(sheet: HTMLDivElement, req: AskUserRequest): void {
     if (event.key === "Enter") {
       event.preventDefault();
       submit_();
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      cancelActive("escape");
     }
+    // Escape is handled by ModalHost via overlay-level keydown.
   });
+
+  // U15 — guard Enter against IME composition commits. Without the
+  // guard, a Japanese / Chinese user composing kanji sees their
+  // half-formed sequence submitted on the Enter that finalises the
+  // composition.
+  let composing = false;
+  input.addEventListener("compositionstart", () => {
+    composing = true;
+  });
+  input.addEventListener("compositionend", () => {
+    composing = false;
+  });
+  input.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key !== "Enter") return;
+      if (composing || (event as { isComposing?: boolean }).isComposing) {
+        event.stopImmediatePropagation();
+      }
+    },
+    { capture: true },
+  );
 }
 
 function renderConfirmCommand(
@@ -315,14 +348,9 @@ function renderConfirmCommand(
   sheet.appendChild(actions);
   renderConfirmActions(actions, req);
 
-  sheet.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      cancelActive("escape");
-    }
-    // Enter intentionally does NOT submit — confirm-command requires
-    // two deliberate clicks.
-  });
+  // Escape is handled by ModalHost via overlay-level keydown.
+  // Enter intentionally does NOT submit — confirm-command requires
+  // two deliberate clicks.
 }
 
 function renderConfirmActions(
