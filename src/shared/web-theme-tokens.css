@@ -82,3 +82,165 @@
     Menlo,
     monospace;
 }
+
+/*
+ * Graphite Light — alternate token block (Phase 5 / U2).
+ *
+ * Applied when documentElement carries `data-theme="graphite-light"`,
+ * or automatically via the `@media (prefers-color-scheme: light)` rule
+ * below when `data-theme="system"` is set.
+ *
+ * Every token from the default :root block is overridden. The accent
+ * (yellow) goes slightly darker so it reads against light surfaces;
+ * semantic colours pick darker fills for contrast against the now-
+ * light background.
+ */
+:root[data-theme="graphite-light"] {
+  --ht-bg-window: #fafafa;
+  --ht-bg-shell: #f4f4f5;
+  --ht-bg-titlebar: rgba(244, 244, 245, 0.94);
+  --ht-bg-sidebar: rgba(248, 248, 249, 0.96);
+  --ht-bg-pane: #ffffff;
+  --ht-bg-card: rgba(0, 0, 0, 0.03);
+  --ht-bg-card-raised: rgba(0, 0, 0, 0.05);
+  --ht-bg-chip: rgba(228, 228, 231, 0.86);
+
+  --ht-text-strong: #18181b;
+  --ht-text-main: #27272a;
+  --ht-text-muted: #52525b;
+  --ht-text-dim: #a1a1aa;
+
+  --ht-border-soft: rgba(0, 0, 0, 0.08);
+  --ht-border-bright: rgba(0, 0, 0, 0.14);
+  --ht-border-focus: rgba(202, 138, 4, 0.6);
+
+  --ht-accent: #ca8a04;
+  --ht-accent-soft: rgba(202, 138, 4, 0.14);
+  --ht-accent-strong: rgba(202, 138, 4, 0.5);
+  --ht-secondary: #52525b;
+  --ht-secondary-soft: rgba(82, 82, 91, 0.18);
+
+  --ht-sem-success: #16a34a;
+  --ht-sem-warning: #d97706;
+  --ht-sem-error: #dc2626;
+  --ht-sem-info: #7c3aed;
+
+  --ht-shadow-sheet: 0 18px 42px rgba(0, 0, 0, 0.12);
+  --ht-shadow-card: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+/*
+ * `data-theme="system"` opt-in for the OS-level preference. The user
+ * picks "system" in Settings; we honour the OS toggle from there.
+ * `prefers-color-scheme: light` selects the light overrides;
+ * the default :root block remains the dark fallback.
+ */
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --ht-bg-window: #fafafa;
+    --ht-bg-shell: #f4f4f5;
+    --ht-bg-titlebar: rgba(244, 244, 245, 0.94);
+    --ht-bg-sidebar: rgba(248, 248, 249, 0.96);
+    --ht-bg-pane: #ffffff;
+    --ht-bg-card: rgba(0, 0, 0, 0.03);
+    --ht-bg-card-raised: rgba(0, 0, 0, 0.05);
+    --ht-bg-chip: rgba(228, 228, 231, 0.86);
+
+    --ht-text-strong: #18181b;
+    --ht-text-main: #27272a;
+    --ht-text-muted: #52525b;
+    --ht-text-dim: #a1a1aa;
+
+    --ht-border-soft: rgba(0, 0, 0, 0.08);
+    --ht-border-bright: rgba(0, 0, 0, 0.14);
+    --ht-border-focus: rgba(202, 138, 4, 0.6);
+
+    --ht-accent: #ca8a04;
+    --ht-accent-soft: rgba(202, 138, 4, 0.14);
+    --ht-accent-strong: rgba(202, 138, 4, 0.5);
+    --ht-secondary: #52525b;
+    --ht-secondary-soft: rgba(82, 82, 91, 0.18);
+
+    --ht-sem-success: #16a34a;
+    --ht-sem-warning: #d97706;
+    --ht-sem-error: #dc2626;
+    --ht-sem-info: #7c3aed;
+
+    --ht-shadow-sheet: 0 18px 42px rgba(0, 0, 0, 0.12);
+    --ht-shadow-card: 0 8px 20px rgba(0, 0, 0, 0.08);
+  }
+}
+
+/*
+ * High Contrast — explicit theme + `forced-colors: active` mapping.
+ *
+ * Applied when documentElement carries `data-theme="high-contrast"`
+ * (manual user choice) and also under the OS-level
+ * `forced-colors: active` media query (Windows High Contrast, some
+ * a11y modes on macOS / Linux).
+ *
+ * Targets WCAG AAA — every text/background pair should clear 7:1.
+ * Borders and focus rings switch to pure white / yellow on pure
+ * black so the outline is visible regardless of OS contrast
+ * remapping.
+ */
+:root[data-theme="high-contrast"] {
+  --ht-bg-window: #000000;
+  --ht-bg-shell: #000000;
+  --ht-bg-titlebar: #000000;
+  --ht-bg-sidebar: #000000;
+  --ht-bg-pane: #000000;
+  --ht-bg-card: rgba(255, 255, 255, 0.06);
+  --ht-bg-card-raised: rgba(255, 255, 255, 0.1);
+  --ht-bg-chip: rgba(255, 255, 255, 0.12);
+
+  --ht-text-strong: #ffffff;
+  --ht-text-main: #ffffff;
+  --ht-text-muted: #d4d4d8;
+  --ht-text-dim: #a1a1aa;
+
+  --ht-border-soft: #ffffff;
+  --ht-border-bright: #ffffff;
+  --ht-border-focus: #ffff00;
+
+  --ht-accent: #ffff00;
+  --ht-accent-soft: rgba(255, 255, 0, 0.18);
+  --ht-accent-strong: rgba(255, 255, 0, 0.7);
+  --ht-secondary: #ffffff;
+  --ht-secondary-soft: rgba(255, 255, 255, 0.18);
+
+  --ht-sem-success: #00ff00;
+  --ht-sem-warning: #ffff00;
+  --ht-sem-error: #ff5555;
+  --ht-sem-info: #00ffff;
+
+  --ht-shadow-sheet: 0 0 0 2px #ffffff;
+  --ht-shadow-card: 0 0 0 1px #ffffff;
+}
+
+/*
+ * Windows High-Contrast (forced-colors: active) — defer to the OS
+ * forced palette via CSS Color Module Level 4 keywords. Applied on
+ * top of every other theme so the user's OS choice always wins.
+ */
+@media (forced-colors: active) {
+  :root,
+  :root[data-theme="system"],
+  :root[data-theme="graphite-dark"],
+  :root[data-theme="graphite-light"] {
+    --ht-bg-window: Canvas;
+    --ht-bg-shell: Canvas;
+    --ht-bg-titlebar: Canvas;
+    --ht-bg-sidebar: Canvas;
+    --ht-bg-pane: Canvas;
+    --ht-text-strong: CanvasText;
+    --ht-text-main: CanvasText;
+    --ht-text-muted: GrayText;
+    --ht-text-dim: GrayText;
+    --ht-border-soft: CanvasText;
+    --ht-border-bright: CanvasText;
+    --ht-border-focus: Highlight;
+    --ht-accent: LinkText;
+    --ht-secondary: GrayText;
+  }
+}
