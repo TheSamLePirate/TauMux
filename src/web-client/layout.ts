@@ -13,6 +13,8 @@
 
 import type { AppState } from "./store";
 import { fitTerminal } from "../shared/xterm-fit";
+import { computeRects as sharedComputeRects } from "../shared/pane-layout-math";
+import type { PaneNode } from "../shared/types";
 
 export interface Rect {
   x: number;
@@ -29,70 +31,42 @@ export interface LayoutNode {
   children?: LayoutNode[];
 }
 
-/** Pure: walk a pane tree, return rect-per-surfaceId. */
+/** Mirror-side wrapper around the shared computeRects. The mirror
+ *  state shape carries optional fields (surfaceId, direction, ratio,
+ *  children) because the wire envelope can be incomplete during
+ *  reconnect resume; we coerce-with-defaults to the strict shared
+ *  PaneNode shape and skip nodes that don't have a usable identity.
+ *  The wrapper also flips Map → Record because the mirror callers
+ *  index by id rather than iterate.
+ *
+ *  Triple-A F.2 / A5: native + mirror now share `src/shared/pane-layout-math.ts`.
+ */
 export function computeRects(
   node: LayoutNode | null | undefined,
   bounds: Rect,
   gap: number,
 ): Record<string, Rect> {
-  const result: Record<string, Rect> = {};
-  walk(node, bounds, gap, result);
-  return result;
+  if (!node) return {};
+  const strict = toPaneNode(node);
+  if (!strict) return {};
+  const map = sharedComputeRects(strict, bounds, gap);
+  const out: Record<string, Rect> = {};
+  for (const [id, rect] of map) out[id] = rect;
+  return out;
 }
 
-function walk(
-  node: LayoutNode | null | undefined,
-  bounds: Rect,
-  gap: number,
-  out: Record<string, Rect>,
-): void {
-  if (!node) return;
+function toPaneNode(node: LayoutNode): PaneNode | null {
   if (node.type === "leaf") {
-    if (node.surfaceId) out[node.surfaceId] = bounds;
-    return;
+    if (!node.surfaceId) return null;
+    return { type: "leaf", surfaceId: node.surfaceId };
   }
-  const half = gap / 2;
+  const direction = node.direction ?? "horizontal";
   const ratio = node.ratio ?? 0.5;
   const children = node.children ?? [];
-  if (node.direction === "horizontal") {
-    const sx = bounds.x + bounds.w * ratio;
-    walk(
-      children[0],
-      { x: bounds.x, y: bounds.y, w: sx - bounds.x - half, h: bounds.h },
-      gap,
-      out,
-    );
-    walk(
-      children[1],
-      {
-        x: sx + half,
-        y: bounds.y,
-        w: bounds.x + bounds.w - sx - half,
-        h: bounds.h,
-      },
-      gap,
-      out,
-    );
-  } else {
-    const sy = bounds.y + bounds.h * ratio;
-    walk(
-      children[0],
-      { x: bounds.x, y: bounds.y, w: bounds.w, h: sy - bounds.y - half },
-      gap,
-      out,
-    );
-    walk(
-      children[1],
-      {
-        x: bounds.x,
-        y: sy + half,
-        w: bounds.w,
-        h: bounds.y + bounds.h - sy - half,
-      },
-      gap,
-      out,
-    );
-  }
+  const left = children[0] ? toPaneNode(children[0]) : null;
+  const right = children[1] ? toPaneNode(children[1]) : null;
+  if (!left || !right) return left ?? right;
+  return { type: "split", direction, ratio, children: [left, right] };
 }
 
 export interface TermRef {

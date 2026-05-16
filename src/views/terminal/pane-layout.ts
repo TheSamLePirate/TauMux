@@ -4,6 +4,7 @@ export type {
   PaneNode,
   PaneRect,
 } from "../../shared/types";
+import { computeRects as sharedComputeRects } from "../../shared/pane-layout-math";
 import type {
   PaneNode,
   PaneLeaf,
@@ -99,9 +100,7 @@ export class PaneLayout {
 
   /** Compute pixel rects for all leaves given a bounding rect. */
   computeRects(bounds: PaneRect): Map<string, PaneRect> {
-    const result = new Map<string, PaneRect>();
-    this.computeNode(this.root, bounds, result);
-    return result;
+    return sharedComputeRects(this.root, bounds, paneGap);
   }
 
   /** Get all surface IDs in tree order (left-to-right, top-to-bottom). */
@@ -305,56 +304,6 @@ export class PaneLayout {
     }
 
     return [{ ...node, children: [left, right] }, true];
-  }
-
-  private computeNode(
-    node: PaneNode,
-    bounds: PaneRect,
-    result: Map<string, PaneRect>,
-  ): void {
-    if (node.type === "leaf") {
-      result.set(node.surfaceId, bounds);
-      return;
-    }
-
-    const { direction, ratio, children } = node;
-    const half = paneGap / 2;
-
-    if (direction === "horizontal") {
-      const splitX = bounds.x + bounds.w * ratio;
-      this.computeNode(
-        children[0],
-        { x: bounds.x, y: bounds.y, w: splitX - bounds.x - half, h: bounds.h },
-        result,
-      );
-      this.computeNode(
-        children[1],
-        {
-          x: splitX + half,
-          y: bounds.y,
-          w: bounds.x + bounds.w - splitX - half,
-          h: bounds.h,
-        },
-        result,
-      );
-    } else {
-      const splitY = bounds.y + bounds.h * ratio;
-      this.computeNode(
-        children[0],
-        { x: bounds.x, y: bounds.y, w: bounds.w, h: splitY - bounds.y - half },
-        result,
-      );
-      this.computeNode(
-        children[1],
-        {
-          x: bounds.x,
-          y: splitY + half,
-          w: bounds.w,
-          h: bounds.y + bounds.h - splitY - half,
-        },
-        result,
-      );
-    }
   }
 
   private collectIds(node: PaneNode, ids: string[]): void {
