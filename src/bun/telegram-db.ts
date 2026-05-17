@@ -545,6 +545,18 @@ export class TelegramDatabase {
     return Number(stmt.run(cutoffMs).changes);
   }
 
+  /** P7 S6 — age-based prune for the main `messages` table. The per-
+   *  chat cap (MAX_MESSAGES_PER_CHAT) handles fast-talker chats, but
+   *  on a long-lived install with many quiet chats the rows just
+   *  accumulate forever — a year of "ack" notifications in 20 chats
+   *  is hundreds of MB of SQLite. This prune drops rows older than
+   *  `cutoffMs` regardless of chat, and runs `VACUUM` only when the
+   *  caller asks (it's slow). Returns the number of rows removed. */
+  pruneOldMessages(cutoffMs: number): number {
+    const stmt = this.db.prepare(`DELETE FROM messages WHERE ts < ?`);
+    return Number(stmt.run(cutoffMs).changes);
+  }
+
   /** Drop every link row for a request id — both ask_user_links
    *  and text_reply_links. Used right after a request resolves so
    *  a stale tap on an old (now-edited) message can't accidentally

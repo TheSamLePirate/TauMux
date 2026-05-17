@@ -289,6 +289,18 @@ try {
       `[telegram] pruned ${askDropped} ask-user + ${replyDropped} text-reply link(s)`,
     );
   }
+  // P7 S6 — age-based prune for the main messages table. The default
+  // retention is 90 d (a quarter of conversation history is plenty
+  // for human recall + the per-chat cap continues to bound fast
+  // talkers). Runs once at boot; the next launch trims again.
+  const messageRetentionMs = 90 * 24 * 60 * 60 * 1000;
+  const messageCutoff = Date.now() - messageRetentionMs;
+  const messagesDropped = telegramDb.pruneOldMessages(messageCutoff);
+  if (messagesDropped > 0) {
+    console.log(
+      `[telegram] pruned ${messagesDropped} message(s) older than 90 days`,
+    );
+  }
 } catch (err) {
   console.warn("[telegram] link table prune failed:", err);
 }

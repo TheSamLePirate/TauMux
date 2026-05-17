@@ -165,4 +165,61 @@ describe("TelegramDatabase", () => {
     db.setKv("poll_offset", "456");
     expect(db.getKv("poll_offset")).toBe("456");
   });
+
+  // ──────────────────────────────────────────────────────────────────
+  // P7 S6 — age-based prune for the main messages table
+  // ──────────────────────────────────────────────────────────────────
+
+  test("pruneOldMessages drops rows with ts < cutoff and leaves newer rows intact", () => {
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    db.insertMessage({
+      chatId: "c1",
+      direction: "in",
+      text: "ancient",
+      ts: now - 120 * day,
+    });
+    db.insertMessage({
+      chatId: "c1",
+      direction: "in",
+      text: "recent",
+      ts: now - 10 * day,
+    });
+    db.insertMessage({
+      chatId: "c2",
+      direction: "out",
+      text: "also ancient",
+      ts: now - 200 * day,
+    });
+    const cutoff = now - 90 * day;
+    const dropped = db.pruneOldMessages(cutoff);
+    expect(dropped).toBe(2);
+    expect(db.countMessages("c1")).toBe(1);
+    expect(db.countMessages("c2")).toBe(0);
+    expect(db.getHistory("c1", 10).map((m) => m.text)).toEqual(["recent"]);
+  });
+
+  test("pruneOldMessages on an empty cutoff is a no-op", () => {
+    db.insertMessage({
+      chatId: "c1",
+      direction: "in",
+      text: "fresh",
+      ts: Date.now(),
+    });
+    expect(db.pruneOldMessages(0)).toBe(0);
+    expect(db.countMessages("c1")).toBe(1);
+  });
+
+  test("pruneOldMessages reports zero when nothing matches the cutoff", () => {
+    const now = Date.now();
+    db.insertMessage({
+      chatId: "c1",
+      direction: "in",
+      text: "kept",
+      ts: now,
+    });
+    // Cutoff is in the past — every row is newer, none get pruned.
+    expect(db.pruneOldMessages(now - 1000)).toBe(0);
+    expect(db.countMessages("c1")).toBe(1);
+  });
 });
