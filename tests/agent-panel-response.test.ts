@@ -87,6 +87,7 @@ function makeView(agentId = "agent-1"): AgentPaneView {
     slashFilter: "",
     slashSelectedIndex: 0,
     activeDialog: null,
+    composing: false,
   };
 
   const view: AgentPaneView = {

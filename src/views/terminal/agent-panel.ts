@@ -188,6 +188,14 @@ export interface AgentPanelState {
   slashSelectedIndex: number;
   /** Extension UI dialog state */
   activeDialog: ExtensionDialog | null;
+  /** P7 S27 / B.U15 — IME composition guard. True between
+   *  `compositionstart` and `compositionend` on the input textarea.
+   *  Suppresses the slash-menu opener + Enter/Tab key handling
+   *  while a Japanese / Chinese / Korean composition is in progress
+   *  (e.g. selecting kanji from a kana picker) so a transient `/`
+   *  in the romaji buffer doesn't open the slash menu and Enter to
+   *  commit doesn't send the half-composed message. */
+  composing: boolean;
 }
 
 interface AgentPanelElements {
@@ -480,8 +488,21 @@ export function createAgentPaneView(
   inputEl.className = "agent-input";
   inputEl.placeholder = "Message pi agent\u2026  (/ for commands)";
   inputEl.rows = 1;
+  // P7 S27 / B.U15 — IME composition guards. While the user is
+  // mid-composition (Japanese / Chinese / Korean), browsers fire
+  // `input` events for the in-progress romaji buffer; without these
+  // guards a transient `/` in that buffer would open the slash menu
+  // and a synthetic Enter to commit would send the half-composed
+  // message. Same pattern as the command palette + ask-user modal.
+  inputEl.addEventListener("compositionstart", () => {
+    view._state.composing = true;
+  });
+  inputEl.addEventListener("compositionend", () => {
+    view._state.composing = false;
+  });
   inputEl.addEventListener("input", () => {
     autoResize(inputEl);
+    if (view._state.composing) return;
     handleSlashInput(view);
   });
   inputEl.addEventListener("keydown", (e) =>
@@ -596,6 +617,7 @@ export function createAgentPaneView(
     slashFilter: "",
     slashSelectedIndex: 0,
     activeDialog: null,
+    composing: false,
   };
 
   const elements: AgentPanelElements = {
@@ -884,6 +906,21 @@ function handleInputKeydown(
   cb: AgentPanelCallbacks,
 ): void {
   const s = view._state;
+
+  // P7 S27 / B.U15 — IME composition guard. Swallow Enter / Tab
+  // while the user is mid-composition. Some IMEs use a synthetic
+  // Enter to commit the composed text; firing the send/slash
+  // pathway on that Enter would discard the composition and emit
+  // a half-typed message. Check both the state flag (covers
+  // browsers that don't set `isComposing` on the keydown that
+  // commits) AND the event flag (covers cases where compositionend
+  // hasn't fired yet).
+  if (
+    (e.key === "Enter" || e.key === "Tab") &&
+    (s.composing || (e as { isComposing?: boolean }).isComposing)
+  ) {
+    return;
+  }
 
   // Slash menu navigation
   if (s.showSlashMenu) {
