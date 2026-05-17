@@ -1073,7 +1073,7 @@ body.sidebar-resizing {
 .surface-details-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(5, 5, 8, 0.72);
+  background: var(--ht-pm-scrim-bg);
   display: none;
   align-items: flex-start;
   justify-content: center;
@@ -2010,7 +2010,7 @@ body.sidebar-resizing {
   width: 100%;
   height: 3px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ht-agent-row-bg-hover-card);
   overflow: visible;
   margin-top: 2px;
 }
@@ -2050,7 +2050,7 @@ body.sidebar-resizing {
   align-items: center;
   gap: 5px;
   padding: 4px 7px;
-  border: 0.5px solid rgba(39, 39, 42, 0.92);
+  border: 0.5px solid var(--ht-surface-bar-border);
   background: var(--bg-chip);
 }
 
@@ -2653,10 +2653,10 @@ body.sidebar-resizing {
   contain: layout paint style;
   will-change: transform, opacity;
   border-radius: 12px;
-  border-top: 0.5px solid rgba(255, 255, 255, 0.12);
-  border-left: 0.5px solid rgba(255, 255, 255, 0.08);
-  border-right: 0.5px solid rgba(39, 39, 42, 0.96);
-  border-bottom: 0.5px solid rgba(39, 39, 42, 0.96);
+  border-top: 0.5px solid var(--ht-panel-border-light);
+  border-left: 0.5px solid var(--ht-panel-border-soft);
+  border-right: 0.5px solid var(--ht-panel-border-dark);
+  border-bottom: 0.5px solid var(--ht-panel-border-dark);
   background: var(--bg-glass);
   box-shadow: var(--shadow-strong);
   isolation: isolate;
@@ -2695,9 +2695,9 @@ body.sidebar-resizing {
 }
 
 .panel-position-inline {
-  background: rgba(12, 12, 16, 0.88);
+  background: var(--ht-panel-inline-bg);
   box-shadow:
-    0 16px 32px rgba(0, 0, 0, 0.34);
+    0 16px 32px var(--ht-panel-inline-shadow);
 }
 
 .panel-position-inline .panel-drag-handle {

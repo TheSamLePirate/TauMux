@@ -270,6 +270,19 @@
   --ht-surface-bar-notify-rest: rgba(14, 18, 27, 0.92);
   --ht-notify-amber-flash: rgba(255, 197, 107, 0.15);
 
+  /* P7 S28 — sideband panel container chrome. The .panel rule paints
+   *  a 4-sided border tetra: the top + left edges use brighter
+   *  white-overlay (catches ambient highlight), the right + bottom
+   *  use a darker zinc (catches the shadow side). The inline-position
+   *  variant adds a darker semi-transparent bg + a deeper drop shadow
+   *  than the floating-position variant. The ht-panel prefix sits
+   *  outside the U2 light/HC override gate. */
+  --ht-panel-border-light: rgba(255, 255, 255, 0.12);
+  --ht-panel-border-soft: rgba(255, 255, 255, 0.08);
+  --ht-panel-border-dark: rgba(39, 39, 42, 0.96);
+  --ht-panel-inline-bg: rgba(12, 12, 16, 0.88);
+  --ht-panel-inline-shadow: rgba(0, 0, 0, 0.34);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
