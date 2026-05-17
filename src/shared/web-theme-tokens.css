@@ -253,6 +253,23 @@
   --ht-surface-bar-focused-glow: rgba(111, 233, 255, 0.08);
   --ht-surface-bar-btn-fg: rgba(244, 244, 245, 0.44);
 
+  /* P7 S27 — workspace card item + notify-bar-flash keyframe.
+   *  The workspace card name uses a zinc text-soft alpha (0.78) that
+   *  sits between the existing --ht-sidebar-text-soft (0.68) and
+   *  --ht-button-fg-hover (0.98); the dot's drop-shadow uses a 0.2
+   *  black to separate the coloured dot from the dark card surface.
+   *  The notify-bar-flash keyframe is a 2-stop pulse that briefly
+   *  tints the surface bar amber then cyan when a notification lands
+   *  on a focused pane; the "rest" colour is darker than --ht-surface
+   *  -bar-bg by design (it pulls the bar's contrast down before the
+   *  flash hits). The amber-flash alpha (0.15) is between the
+   *  existing --ht-notify-amber-soft (0.1) and --ht-notify-amber
+   *  (0.35); kept distinct so the keyframe authoring stays explicit. */
+  --ht-workspace-name-fg: rgba(229, 231, 237, 0.78);
+  --ht-workspace-dot-shadow: rgba(0, 0, 0, 0.2);
+  --ht-surface-bar-notify-rest: rgba(14, 18, 27, 0.92);
+  --ht-notify-amber-flash: rgba(255, 197, 107, 0.15);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
