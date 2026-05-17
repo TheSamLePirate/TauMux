@@ -134,6 +134,19 @@
   --ht-telegram-accent-to: #4f46e5;
   --ht-telegram-send-glow: rgba(99, 102, 241, 0.35);
 
+  /* P7 S15 — titlebar toolbar icon button tints. The #titlebar .toolbar
+   *  -icon-btn rule carries its own resting tone and a cyan + white
+   *  double drop-shadow on :hover for the icon glow. Same intent
+   *  family as ht-button-* / ht-sidebar-* — visually subtle on dark.
+   *  Plus a single sidebar inset-highlight token used by #sidebar's
+   *  inset box-shadow, and the reduced-transparency fallback bg. The
+   *  ht-titlebar prefix sits outside the U2 light/HC override gate. */
+  --ht-titlebar-toolbar-fg: rgba(244, 244, 245, 0.58);
+  --ht-titlebar-toolbar-hover-glow-cyan: rgba(111, 233, 255, 0.34);
+  --ht-titlebar-toolbar-hover-glow-white: rgba(255, 255, 255, 0.16);
+  --ht-sidebar-inset-shadow: rgba(255, 255, 255, 0.02);
+  --ht-sidebar-reduced-transparency-bg: #151720;
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;

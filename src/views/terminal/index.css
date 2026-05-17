@@ -470,7 +470,7 @@ textarea {
   place-items: center;
   padding: 0;
   border-radius: 0;
-  color: rgba(244, 244, 245, 0.58);
+  color: var(--ht-titlebar-toolbar-fg);
   opacity: 0.9;
 }
 
@@ -484,8 +484,8 @@ textarea {
 #titlebar .toolbar-icon-btn.active .ht-icon {
   transform: scale(1.08);
   filter:
-    drop-shadow(0 0 12px rgba(111, 233, 255, 0.34))
-    drop-shadow(0 0 3px rgba(255, 255, 255, 0.16));
+    drop-shadow(0 0 12px var(--ht-titlebar-toolbar-hover-glow-cyan))
+    drop-shadow(0 0 3px var(--ht-titlebar-toolbar-hover-glow-white));
 }
 
 #titlebar .toolbar-icon-btn:active .ht-icon {
@@ -527,13 +527,13 @@ textarea {
     padding var(--transition-medium),
     background var(--transition-medium),
     border-color var(--transition-medium);
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.02);
+  box-shadow: inset -1px 0 0 var(--ht-sidebar-inset-shadow);
   scrollbar-width: none;
 }
 
 @media (prefers-reduced-transparency: reduce) {
   #sidebar {
-    background: #151720;
+    background: var(--ht-sidebar-reduced-transparency-bg);
   }
 }
 
