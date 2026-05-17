@@ -1416,3 +1416,46 @@ Grade distribution after S28: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers; move webview dispatch into `src/bun/rpc-handlers/`. (Deferred again — large refactor; consider a focused first-extraction.)
 - Cluster H literal migration — next chunk: surface-drag-ghost + surface-drop-overlay (color-mix heavy; needs careful tokens), workspace status entries / progress / pane chips, plan-panel sidebar widget remaining literals, telegram bridge sub-states.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 29 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — surface drag-ghost + drop-overlay + drop-target, then panel-close + panel-content drop-shadows + pane-divider + surface-context-menu.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H drag-ghost + drop overlay | `9b5dcc2e` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-drag-ghost.test.ts` (new) | +13 (7 new --ht-drag-ghost-* / --ht-drop-* tokens + 8 cross-component reuses across surface-drag-ghost(-header)(-badge) + surface-drop-overlay + surface-drop-label + surface-container.drop-target) |
+| Cluster H context menu + panel close | `0587cb93` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-context-menu.test.ts` (new) | +6 (1 new --ht-context-menu-shadow + 8 cross-component reuses across .panel-close-btn, .panel-content img/canvas drop-shadows, .pane-divider, .surface-context-menu chrome + item hover + danger hover + divider) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.106 → 0.3.107 (drag-ghost) → 0.3.108 (context menu).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — double chunk this session. (1) Surface drag-ghost + drop-overlay + .surface-container.drop-target migrated with color-mix() preservation: 7 new --ht-drag-ghost-* / --ht-drop-* tokens for the bluer-cast ghost gradient + dashed drop overlay + drop label chrome, plus 8 cross-component REUSES across the existing --ht-pm-* / --ht-panel-* / --ht-package-* / --ht-agent-* / --ht-sidebar-* / --ht-button-* families. (2) Panel close button + panel content drop shadows + pane divider + surface context menu migrated with 1 new --ht-context-menu-shadow + 8 cross-component reuses including ≤2% perceptual harmonisations onto --ht-notify-amber-soft + --ht-surface-bar-border. ~27 literals migrated across two commits. audit:theming: 747 → 720 (−27). |
+
+Grade distribution after S29: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **color-mix() second-arg literals**: the workspace-accent-driven elements use `color-mix(in srgb, var(--workspace-accent) NN%, <fallback>)` where the fallback was a hard-coded rgba. Migrating those means the token has to BE the fallback's value (the color-mix expression doesn't expand var() inside it differently — CSS just substitutes the var token's value). All 6 new --ht-drag-ghost-* tokens follow this pattern.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 29)
+
+| Criterion | Status |
+|---|---|
+| Cluster H drag-ghost + drop overlay region migrated | ✅ 747 → 730 (−17) |
+| Cluster H context menu + panel close region migrated | ✅ 730 → 720 (−10) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2470 / 0–2 known flakes; +19 new tests |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 29)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: workspace meta-row / surfaces / surfaces-more, status entries, sidebar plan panel literals, telegram bridge sub-states.
+- Phases 8 (release engineering) + 9 (docs / observability).

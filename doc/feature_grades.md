@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.106
+**Version:** 0.3.108
 **Generated:** 2026-05-18
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 28 landed: Cluster H **double-chunk** — sideband panel container chrome migrated to a new `--ht-panel-*` group (5 tokens for the 4-sided border tetra + inline-position bg/shadow), plus three small cross-component REUSES (.workspace-progress bg → --ht-agent-row-bg-hover-card; .palette-item-category border → --ht-surface-bar-border; .surface-details-overlay scrim → --ht-pm-scrim-bg); then a second chunk on the panel-interactive amber hover + drag handle + dragging shadow + title text-shadow (4 new tokens including --ht-notify-amber-wash, harmonising amber alphas onto the existing notify family with ≤1% delta). audit:theming 767 → 747 (-20 this session). Cumulative P7: 70 lifts across 28 sessions. Remaining P7 long tail: Cluster H literal migration (~747 left, multi-session) + Cluster F.10. Owned across future sessions of P7.
+Phase 7 polish — session 29 landed: Cluster H **double-chunk** — surface drag-ghost + drop-overlay + drop-target region migrated to 7 new --ht-drag-ghost-* / --ht-drop-* tokens + 8 cross-component reuses; then panel-close-btn + panel-content drop-shadows + pane-divider + surface-context-menu chrome migrated with 1 new --ht-context-menu-shadow token + 8 cross-component reuses (including ≤2% perceptual harmonisations onto --ht-notify-amber-soft and --ht-surface-bar-border). audit:theming 747 → 720 (-27 this session). Cumulative P7: 72 lifts across 29 sessions. Remaining P7 long tail: Cluster H literal migration (~720 left, multi-session) + Cluster F.10. Owned across future sessions of P7.
 
 ---
 
@@ -223,7 +223,7 @@ Phase 7 polish — session 28 landed: Cluster H **double-chunk** — sideband pa
 - **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference. Phase 7 (S3) closed the loop with a four-way segmented selector at the top of Settings → Theme that flows through the existing `updateSettings` pipeline.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
-  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S28 walked the long tail by region (most recent stops): surface-details overlay (S24, biggest cross-component reuse), surface bar chrome (S25, `--ht-surface-bar-*`), workspace port chip + script-run states (S26, pure cross-component reuse), workspace card item + notify-bar-flash keyframe (S27, 4 new tokens + 3 reuses), sideband panel container chrome + panel-interactive + drag handle (S28, double chunk: `--ht-panel-*` border tetra family + amber-wash for the drag handle + drag-shadow-strong for the dragging state; harmonises amber alphas onto the existing --ht-notify-amber-* family with ≤1% delta). audit:theming count: 1013 → 747 (−266 across S9–S28). Multi-session for the rest.
+  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S29 walked the long tail by region (most recent stops): workspace card item + notify-bar-flash keyframe (S27), sideband panel chrome + panel-interactive + drag handle (S28, --ht-panel-* + amber-wash), surface drag-ghost + drop-overlay + drop-target + panel-close + panel-content drop-shadow + pane-divider + surface-context-menu (S29, 8 new --ht-drag-ghost-* / --ht-drop-* / --ht-context-menu-shadow + heavy cross-component reuse including ≤2% perceptual harmonisations). audit:theming count: 1013 → 720 (−293 across S9–S29). Multi-session for the rest.
 
 ---
 
