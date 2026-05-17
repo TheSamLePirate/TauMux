@@ -292,7 +292,7 @@ textarea {
   gap: 18px;
   padding-left: 84px;
   padding-right: 18px;
-  background: linear-gradient(180deg, #0d1317, #0a0e11);
+  background: linear-gradient(180deg, var(--ht-titlebar-gradient-top), var(--ht-titlebar-gradient-bottom));
   box-shadow: inset 0 -0.5px 0 var(--tau-edge);
 }
 
@@ -666,7 +666,7 @@ body.sidebar-resizing {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: rgba(243, 246, 253, 0.98);
+  color: var(--ht-sidebar-text-strong);
   font-size: 13px;
   font-weight: 620;
   letter-spacing: -0.01em;
@@ -682,16 +682,16 @@ body.sidebar-resizing {
   margin-left: 4px;
   padding: 1px 6px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.055);
+  background: var(--ht-button-bg);
   font-size: 10.5px;
   font-weight: 580;
   letter-spacing: 0;
-  color: rgba(229, 231, 237, 0.68);
+  color: var(--ht-sidebar-text-soft);
   font-variant-numeric: tabular-nums;
 }
 
 .sidebar-subtitle {
-  color: rgba(229, 231, 237, 0.48);
+  color: var(--ht-sidebar-text-mute);
   font-size: 10.5px;
   line-height: 1.45;
   letter-spacing: 0.01em;
@@ -729,7 +729,7 @@ body.sidebar-resizing {
 .sidebar-footer {
   margin-top: auto;
   padding-top: 8px;
-  border-top: 0.5px solid rgba(255, 255, 255, 0.07);
+  border-top: 0.5px solid var(--ht-sidebar-footer-divider);
 }
 
 .sidebar-server-row {
@@ -791,7 +791,7 @@ body.sidebar-resizing {
 }
 
 .sidebar-server-pill:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ht-sidebar-pill-bg-hover);
 }
 
 .sidebar-server-label {
@@ -799,19 +799,19 @@ body.sidebar-resizing {
   font-weight: 560;
   letter-spacing: 0.02em;
   text-transform: none;
-  color: rgba(229, 231, 237, 0.66);
+  color: var(--ht-sidebar-text-soft-2);
 }
 
 .sidebar-server-url {
   margin-left: auto;
   font-size: 10px;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  color: rgba(229, 231, 237, 0.48);
+  color: var(--ht-sidebar-text-mute);
   font-variant-numeric: tabular-nums;
 }
 
 .sidebar-server-dot.online ~ .sidebar-server-url {
-  color: #a6e3a1;
+  color: var(--ht-sidebar-server-online-fg);
 }
 
 .sidebar-workspaces,
@@ -823,7 +823,7 @@ body.sidebar-resizing {
 
 .sidebar-empty {
   padding: 16px 12px;
-  color: rgba(229, 231, 237, 0.42);
+  color: var(--ht-sidebar-text-dim);
   font-size: 11px;
   letter-spacing: 0.01em;
   text-align: center;

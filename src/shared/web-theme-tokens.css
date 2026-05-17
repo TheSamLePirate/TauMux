@@ -304,6 +304,29 @@
   --ht-script-error-border: rgba(248, 113, 113, 0.2);
   --ht-script-dot-bg: rgba(255, 255, 255, 0.18);
 
+  /* P7 S23 — titlebar gradient endpoints + sidebar header text ladder.
+   *  The titlebar background is a 2-stop vertical gradient; both
+   *  stops sit outside the token block today. The sidebar header /
+   *  subtitle / server pills use a small ladder of zinc-tinted text
+   *  alphas (0.42 / 0.48 / 0.66 / 0.68 / 0.98) that read as a
+   *  brightness ramp on the dark surface. Consolidating them lets a
+   *  future palette swap recoat the sidebar with one change. The
+   *  online-server URL uses Catppuccin's signature green (`#a6e3a1`)
+   *  rather than `--ht-sem-success` (`#4ade80`) — keeping the
+   *  brand-specific cue distinct from the generic semantic colour.
+   *  The ht-titlebar / ht-sidebar prefixes sit outside the U2
+   *  light/HC override gate. */
+  --ht-titlebar-gradient-top: #0d1317;
+  --ht-titlebar-gradient-bottom: #0a0e11;
+  --ht-sidebar-text-strong: rgba(243, 246, 253, 0.98);
+  --ht-sidebar-text-soft: rgba(229, 231, 237, 0.68);
+  --ht-sidebar-text-soft-2: rgba(229, 231, 237, 0.66);
+  --ht-sidebar-text-mute: rgba(229, 231, 237, 0.48);
+  --ht-sidebar-text-dim: rgba(229, 231, 237, 0.42);
+  --ht-sidebar-footer-divider: rgba(255, 255, 255, 0.07);
+  --ht-sidebar-pill-bg-hover: rgba(255, 255, 255, 0.03);
+  --ht-sidebar-server-online-fg: #a6e3a1;
+
   /* P7 S19 — notification overlay + sidebar notification item.
    *  The .tau-notif-overlay-* stack (top-right toasts) uses a slightly
    *  bluer dark surface than the rest of the chrome, with a noticeable
