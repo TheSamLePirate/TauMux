@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — first slice landed: cookie-store gains URL-host normalize + per-domain cap (B→A); browser-history extends normalize to case/fragment/port (B→A); manifest-scanner gets a realpath-aware $HOME boundary (A→S); plan-panel rejects typos in step.state instead of silently coercing (A→S). Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6) + theme switcher UI + ARIA chip labels + literal-to-token migration + browser partition (H.8/H.9) + telegram DB TTL + auto-continue persistence + notifications copy/expand/history + terminal-search regex + editor save-race UX + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.
+Phase 7 polish — session 2 landed: chromeTheme settings field + boot-time `data-theme` apply on both native and web mirror (tau-primitives stays at S, with explicit override on top of OS preference); terminal-search gets persisted case + regex toggles via `ISearchOptions` (A→S); SurfaceMetadataPoller gets a 30 s stale-git skip-tick cooldown so parallel NFS hangs can't stack (A→S); HealthRegistry gets a wire-safe `fix()` + `runFix(id)` remediation channel (A→S). Cumulative P7: 4 lifts in S1 (cookie-store, browser-history, manifest-scanner, plan-panel) + 4 lifts in S2 (terminal-search, surface-metadata, health-checks, tau-primitives infra). Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6) + theme-selector Settings UI + ARIA chip labels + literal-to-token migration + browser partition (H.8/H.9) + telegram DB TTL + auto-continue persistence + notifications copy/expand/history + editor save-race UX + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.
 
 ---
 
@@ -34,8 +34,8 @@ Phase 7 polish — first slice landed: cookie-store gains URL-host normalize + p
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **9** | Best-in-class — 9 features cleared every gap. |
-| A | **28** | Most "production-shaped" subsystems. |
+| S (AAA) | **12** | Best-in-class — 12 features cleared every gap. |
+| A | **25** | Most "production-shaped" subsystems. |
 | B (incl. B+) | **9** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
@@ -76,11 +76,10 @@ Phase 7 polish — first slice landed: cookie-store gains URL-host normalize + p
   - Ordering guarantees vs concurrent layout pass.
 
 ### Terminal search
-- **Grade: A**
-- **Evidence:** `terminal-search.ts` — lean controller; `getActiveSearchAddon()` resolves per-focused-terminal; tests cover show/hide/next/prev/clear.
+- **Grade: S**
+- **Evidence:** `terminal-search.ts` — lean controller; `getActiveSearchAddon()` resolves per-focused-terminal; tests cover show/hide/next/prev/clear. Phase 7 (S1) added two-state toggle buttons (Aa / `.*`) bound with `aria-pressed`; `findNext` / `findPrevious` pass `ISearchOptions { caseSensitive, regex }` so xterm's SearchAddon honours the modifiers. Toggles persist via `localStorage` under `hyperterm-canvas.search.toggles` and re-hydrate on next open. Tests in `tests/terminal-search.test.ts` (15 total).
 - **Gaps to AAA:**
-  - Regex + case-sensitivity toggle in UI.
-  - Persisted history.
+  - Persisted query history across sessions (toggles persisted, query text not).
   - Perf on 100k+ scrollback.
 
 ### Terminal effects (WebGL bloom)
@@ -230,9 +229,10 @@ Phase 7 polish — first slice landed: cookie-store gains URL-host normalize + p
 
 ### Tau primitives / icons / tokens
 - **Grade: S**
-- **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block.
+- **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
+  - Settings-panel selector UI for `chromeTheme` (infra wired; UI follow-up in cluster H).
   - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens (audit:theming reports them; owned by P7 polish).
 
 ---
@@ -313,10 +313,9 @@ Phase 7 polish — first slice landed: cookie-store gains URL-host normalize + p
 ## 5. Process metadata / infra / dev/test tooling
 
 ### SurfaceMetadataPoller
-- **Grade: A**
-- **Evidence:** `surface-metadata.ts:114-117` — `parsePs` / `parseListeningPorts` / `parseCwds` / `parseGitStatusV2` with 5 s subprocess timeouts; TTL caching (3 s git/`package.json`, stale-entry pruning at 12 s+ idle); focus-aware cadence (1 Hz visible, 3.3 Hz hidden). 126 tests; doc `system-process-metadata.md` exhaustive.
+- **Grade: S**
+- **Evidence:** `surface-metadata.ts:114-117` — `parsePs` / `parseListeningPorts` / `parseCwds` / `parseGitStatusV2` with 5 s subprocess timeouts; TTL caching (3 s git/`package.json`, stale-entry pruning at 12 s+ idle); focus-aware cadence (1 Hz visible, 3.3 Hz hidden). 126 tests; doc `system-process-metadata.md` exhaustive. Phase 7 (S1) added a `gitStaleCooldownMs = 30 s` skip-tick guard: when a `git status` subprocess hangs past 0.8 × the 5 s timeout, the cwd is parked in a stale-set for the cooldown so subsequent ticks short-circuit instead of stacking parallel hangs (relevant on NFS / sshfs mounts). Tests in `tests/surface-metadata-git-stale.test.ts`.
 - **Gaps to AAA:**
-  - Shared "stale-git skip-tick" guard so two parallel NFS hangs don't wedge a tick.
   - Metadata rot detection when WS is mute >10 s.
   - Deeper tree-diff than `tree.length` (descendant swap goes undetected).
 
@@ -359,11 +358,10 @@ Phase 7 polish — first slice landed: cookie-store gains URL-host normalize + p
   - Remediation UX hookup.
 
 ### Health checks
-- **Grade: A**
-- **Evidence:** `health.ts` — pure state machine; severity model (ok / degraded / error / disabled); idempotent set; subscriber notifications with error isolation; snapshot includes `updatedAt` for staleness.
+- **Grade: S**
+- **Evidence:** `health.ts` — pure state machine; severity model (ok / degraded / error / disabled); idempotent set; subscriber notifications with error isolation; snapshot includes `updatedAt` for staleness. Phase 7 (S1) added a remediation `fix()` channel mirroring the `audits.ts` pattern: `set(id, severity, message, fix?)` accepts an optional `{ label, action }`; `HealthEntrySnapshot` projects a wire-safe `fixLabel` (no callback over the wire); `runFix(id)` invokes the action and returns the post-fix snapshot. Idempotency includes the fix label so swapping `Restart` → `Re-auth` re-notifies. Tests in `tests/health.test.ts` (+8).
 - **Gaps to AAA:**
-  - Remediation `fix()` equivalent (audits has it; health doesn't).
-  - UI pill / badge wiring.
+  - UI pill / badge wiring (sidebar consumer follows in cluster H).
   - Staleness auto-demotion if entry goes silent N seconds.
 
 ### Manifest scanner

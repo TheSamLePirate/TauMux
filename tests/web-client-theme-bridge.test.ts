@@ -20,23 +20,47 @@ function settingsForPreset(presetId: string) {
 
 /** Stand-in for `document.documentElement` in the bun:test runtime —
  *  records every CSS custom property write so assertions can read
- *  back the values the bridge wrote. */
-function makeRoot(): { el: HTMLElement; written: Map<string, string> } {
+ *  back the values the bridge wrote. The `dataset` shim mirrors the
+ *  DOMStringMap surface the bridge uses to apply `data-theme`. */
+function makeRoot(): {
+  el: HTMLElement;
+  written: Map<string, string>;
+  dataset: Record<string, string>;
+} {
   const written = new Map<string, string>();
+  const dataset: Record<string, string> = {};
   const style = {
     setProperty(name: string, value: string) {
       written.set(name, value);
     },
   };
-  const el = { style } as unknown as HTMLElement;
-  return { el, written };
+  const el = { style, dataset } as unknown as HTMLElement;
+  return { el, written, dataset };
 }
 
 describe("web-client theme bridge", () => {
   test("null settings is a no-op (preserves built-in Graphite tokens)", () => {
-    const { el, written } = makeRoot();
+    const { el, written, dataset } = makeRoot();
     applyThemeFromSettings(null, el);
     expect(written.size).toBe(0);
+    expect(dataset["theme"]).toBeUndefined();
+  });
+
+  test("chromeTheme is mirrored onto data-theme so [data-theme] token blocks activate", () => {
+    const { el, dataset } = makeRoot();
+    const settings = settingsForPreset("graphite");
+    settings.chromeTheme = "high-contrast";
+    applyThemeFromSettings(settings, el);
+    expect(dataset["theme"]).toBe("high-contrast");
+  });
+
+  test("missing chromeTheme falls back to 'system' so legacy payloads still wire the OS preference", () => {
+    const { el, dataset } = makeRoot();
+    const settings = settingsForPreset("graphite");
+    // Simulate an older host that doesn't carry the field yet.
+    delete (settings as Partial<typeof settings>).chromeTheme;
+    applyThemeFromSettings(settings, el);
+    expect(dataset["theme"]).toBe("system");
   });
 
   test("Graphite preset writes a yellow accent and the matching focus ring", () => {

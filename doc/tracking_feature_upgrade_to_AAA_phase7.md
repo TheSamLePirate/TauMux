@@ -96,9 +96,61 @@ Per the sub-plan (`08_phase7_polish.md`), the long tail still parked:
 | `bun run report:feature-grades:check` green | ✅ |
 | Phase 7 long tail | ⚠ explicit handoff per the sub-plan |
 
-## Next slice
+## Next slice (after session 1)
 
 Pick another cluster — recommended order:
 - Cluster F refactors (A6 EventBus, A7 VariantContext, F.11) carry the most leverage but are highest risk.
 - Cluster H theme switcher UI is small and visible.
 - Cluster E observability is mostly mechanical small wins.
+
+---
+
+## Session 2 (2026-05-17)
+
+Slice picked: **U2 chromeTheme infra** + **terminal-search toggles** + **surface-metadata stale-git** + **health.runFix**. Four lifts across three clusters (D + E + H-infra).
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| chromeTheme settings + data-theme boot apply | `d5cfa8e` | `src/shared/settings.ts`, `src/shared/web-protocol.ts`, `src/views/terminal/index.ts`, `src/web-client/theme-bridge.ts`, `tests/chrome-theme.test.ts`, `tests/web-client-theme-bridge.test.ts` | +6 + 3 (data-theme dispatch + bridge stub extension) |
+| terminal-search case + regex toggles | `56269da` | `src/views/terminal/terminal-search.ts`, `tests/terminal-search.test.ts` | +3 |
+| surface-metadata stale-git skip-tick | `b112dbe` | `src/bun/surface-metadata.ts`, `tests/surface-metadata-git-stale.test.ts` | +5 (source-grep) |
+| health.runFix remediation channel | `9eb30a0` | `src/bun/health.ts`, `tests/health.test.ts` | +8 |
+
+Bumps: `bun run bump:patch` ran before each functional commit per CLAUDE.md.
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `terminal-search` | A | **S** | Case + regex toggles with `aria-pressed` and `localStorage` persistence — first user-visible search modifier on top of xterm's SearchAddon. |
+| `surface-metadata` | A | **S** | 30 s stale-git cooldown means a hung `git status` on one cwd no longer wedges subsequent ticks across the polling fleet. |
+| `health-checks` | A | **S** | Mirrors the audits `fix()` pattern: wire-safe `fixLabel` projection + `runFix(id)` + idempotency under same label. The sidebar pill can now render a one-click recovery button. |
+| `tau-primitives` | S | S | Already S in Phase 5. P7 S2 added the explicit override on top of OS-preference auto-wire — `chromeTheme` settings field + boot-time `data-theme` apply on both native and web mirror. Settings-panel UI still pending in cluster H. |
+
+Grade distribution after S2: **12 S / 25 A / 9 B**.
+
+### Issues encountered
+
+- **theme-bridge tests regressed on first run**: my new `root.dataset["theme"] = …` line crashed the `null settings is a no-op` + 2 other tests because the stub `makeRoot()` returned an HTMLElement with `style` only. Fix: extended the stub with `dataset` and added two new tests (`chromeTheme mirrors onto data-theme`, `missing chromeTheme falls back to system`). All 8 theme-bridge tests green.
+- **Pre-existing typecheck noise**: `src/bun/index.ts:2522` `splitSurface` payload cast + electrobun internal import path. Both exist on the session-1 baseline (`53fa66b`); not regressions.
+- **`session-history.test.ts` byte-buffer fallback**: flaked once during the 2-fail check, passed on the subsequent full run. Already catalogued.
+
+### Exit criteria (session 2)
+
+| Criterion | Status |
+|---|---|
+| chromeTheme settings + boot-time apply | ✅ |
+| Terminal-search toggles persist | ✅ |
+| Surface-metadata stale-git skip-tick | ✅ |
+| Health remediation `fix()` + `runFix()` | ✅ |
+| `bun test` green | ✅ 2016 / 0 |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ explicit handoff continues — clusters B / C / F / H tasks remain |
+
+### Next slice (after session 2)
+
+- Cluster H theme-selector UI in the Settings panel (now infra is wired — small, visible).
+- Cluster F refactors (A6 EventBus, A7 VariantContext, F.11) when ready for higher-risk work.
+- Cluster E remainder: surface-metadata rot detection, event-writer backpressure, audit auto-rerun.
