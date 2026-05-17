@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>τ-mux AAA Feature Upgrade — Master Plan Changelog</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --bg-card: #14151a;
+    --bg-card-2: #181a21;
+    --fg: #f5f7fb;
+    --fg-dim: #a1a1aa;
+    --fg-faint: #71717a;
+    --accent: #eab308;
+    --accent-soft: rgba(234, 179, 8, 0.14);
+    --secondary: #71717a;
+    --border: #2a2c33;
+    --border-strong: #3a3d46;
+    --code-bg: #0d0e12;
+    --grade-s: #4ade80;
+    --grade-a: #a1a1aa;
+    --grade-b: #f59e0b;
+    --grade-c: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "DM Sans",
+      system-ui, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    line-height: 1.55;
+    font-size: 15px;
+  }
+  .container { max-width: 1080px; margin: 0 auto; padding: 48px 32px 96px; }
+  header { margin-bottom: 48px; }
+  .eyebrow {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  h1 {
+    font-size: 36px;
+    line-height: 1.15;
+    margin: 0 0 12px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .subtitle { color: var(--fg-dim); font-size: 17px; max-width: 780px; }
+  .meta {
+    margin-top: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--fg-dim);
+  }
+  .chip strong { color: var(--fg); font-weight: 600; }
+  h2 {
+    font-size: 22px;
+    margin: 48px 0 8px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    border-top: 1px solid var(--border);
+    padding-top: 32px;
+  }
+  h2:first-of-type { border-top: none; padding-top: 0; }
+  h2 .phase-tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-right: 12px;
+    vertical-align: 3px;
+    letter-spacing: 0.05em;
+  }
+  .phase-blurb { color: var(--fg-dim); margin: 0 0 20px; max-width: 880px; }
+  h3 {
+    font-size: 16px;
+    margin: 24px 0 8px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  h4 {
+    font-size: 14px;
+    margin: 16px 0 6px;
+    font-weight: 600;
+    color: var(--fg-dim);
+  }
+  p { margin: 0 0 12px; }
+  ul { margin: 0 0 12px; padding-left: 22px; }
+  li { margin-bottom: 4px; color: var(--fg); }
+  code, .sha {
+    font-family: "JetBrains Mono", "SF Mono", Menlo, ui-monospace, monospace;
+    font-size: 12.5px;
+    background: var(--code-bg);
+    color: var(--accent);
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+  .sha { color: var(--fg); }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  .lifts {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .lift {
+    background: var(--bg-card-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 12px 14px;
+  }
+  .lift-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .lift-name { font-weight: 600; }
+  .lift-arrow { color: var(--fg-faint); font-size: 13px; }
+  .lift-grade {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .lift-body { color: var(--fg-dim); font-size: 14px; margin: 4px 0 0; }
+  .lift .sha {
+    font-size: 11px;
+    padding: 1px 5px;
+    color: var(--fg-dim);
+    margin-left: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    color: var(--fg-dim);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+  .tally {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin: 16px 0 24px;
+  }
+  .tally .cell {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    text-align: center;
+  }
+  .tally .num {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .tally .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--fg-faint);
+    margin-top: 4px;
+  }
+  .tally .delta {
+    font-size: 11px;
+    color: var(--fg-dim);
+    margin-top: 6px;
+  }
+  .num-s, .grade-s { color: var(--grade-s); }
+  .num-a, .grade-a { color: var(--grade-a); }
+  .num-b, .grade-b { color: var(--grade-b); }
+  .num-c, .grade-c { color: var(--grade-c); }
+  .toc {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 0 0 32px;
+    columns: 2;
+    column-gap: 24px;
+  }
+  .toc a {
+    color: var(--fg);
+    text-decoration: none;
+    display: block;
+    padding: 3px 0;
+    font-size: 14px;
+  }
+  .toc a:hover { color: var(--accent); }
+  @media (max-width: 720px) { .toc { columns: 1; } }
+  footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--fg-faint);
+    font-size: 13px;
+  }
+  .key-result {
+    background: linear-gradient(
+      135deg,
+      rgba(234, 179, 8, 0.06),
+      rgba(234, 179, 8, 0.02)
+    );
+    border: 1px solid rgba(234, 179, 8, 0.3);
+    border-left: 3px solid var(--accent);
+    padding: 14px 18px;
+    border-radius: 6px;
+    margin: 12px 0 20px;
+  }
+  .key-result strong { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <div class="eyebrow">τ-mux · AAA Feature Upgrade Programme</div>
+  <h1>From baseline to AAA — every change, by phase</h1>
+  <p class="subtitle">
+    A 10-phase plan-of-plans that lifted τ-mux from a mostly-A codebase
+    with named gaps into a release-shape product. Six sessions of Phase 7
+    polish carried the final 20 lifts on top of seven earlier landed
+    phases. This document catalogues every functional change.
+  </p>
+  <div class="meta">
+    <span class="chip">Phases landed: <strong>0 → 7</strong> (Phase 7 multi-session)</span>
+    <span class="chip">Generated: <strong>2026-05-17</strong></span>
+    <span class="chip">Source: <strong>doc/feature_upgrade_to_AAA/</strong></span>
+  </div>
+</header>
+
+<div class="key-result">
+  <strong>Headline result.</strong> Grade distribution went from
+  ≈ 2 S / 27 A / 17 B / 3 C at the start of Phase 0 to
+  <span class="grade-s">18 S</span> / <span class="grade-a">21 A</span> /
+  <span class="grade-b">7 B</span> / <span class="grade-c">3 C</span>
+  across 49 features after Phase 7 session 6. Tests grew from ~1500
+  to <strong>2086 passing</strong>; the typecheck baseline holds at
+  the same 2 pre-existing errors that predate the programme.
+</div>
+
+<div class="tally">
+  <div class="cell"><div class="num num-s">18</div><div class="label">S (AAA)</div><div class="delta">+16 from baseline</div></div>
+  <div class="cell"><div class="num num-a">21</div><div class="label">A</div><div class="delta">−6 (promoted to S)</div></div>
+  <div class="cell"><div class="num num-b">7</div><div class="label">B</div><div class="delta">−10 (promoted to A/S)</div></div>
+  <div class="cell"><div class="num num-c">3</div><div class="label">C</div><div class="delta">audits + release plumbing</div></div>
+</div>
+
+<div class="toc">
+  <a href="#phase-0">Phase 0 — Foundation &amp; verification</a>
+  <a href="#phase-1">Phase 1 — A11y kit</a>
+  <a href="#phase-2">Phase 2 — Architecture detox</a>
+  <a href="#phase-3">Phase 3 — Test depth</a>
+  <a href="#phase-4">Phase 4 — Security hardening</a>
+  <a href="#phase-5">Phase 5 — Theme system</a>
+  <a href="#phase-6">Phase 6 — Lifecycle regressions</a>
+  <a href="#phase-7">Phase 7 — Per-feature polish sweep</a>
+  <a href="#remaining">Remaining long tail</a>
+  <a href="#provenance">Commit provenance</a>
+</div>
+
+<h2 id="phase-0"><span class="phase-tag">PHASE 0</span>Foundation &amp; verification</h2>
+<p class="phase-blurb">
+  Set up the measurement and gating infrastructure every later phase
+  would lean on. No feature changes — pure verification + tooling.
+</p>
+<h3>Landed</h3>
+<ul>
+  <li><strong>Per-feature grades pipeline</strong> — <code>doc/feature_grades.json</code> + <code>scripts/build-feature-grades.ts</code> render the canonical scorecard via <code>bun run report:feature-grades</code>.</li>
+  <li><strong>Coverage baseline</strong> — <code>scripts/check-coverage.ts</code> snapshots coverage and the gate fails any later phase that regresses it.</li>
+  <li><strong>Phase 0 audit matrix</strong> (<code>phase0_audit_matrix.md</code>) — categorical pass/fail across every feature.</li>
+  <li><strong>S1 invariants pinned</strong> — atomic-write + logger + telegram-db file mode 0o600 tests.</li>
+  <li><strong>S3/S7 telegram</strong> outbound regression tests — chatId allow-list + outbound cap invariants.</li>
+  <li><strong>S4 token entropy floor</strong> warn-on-0.0.0.0 regression test.</li>
+</ul>
+<h3>Why it mattered</h3>
+<p>
+  Without P0 the rest of the programme is unaccountable: features could
+  silently regress under each phase's commits. Coverage and grade
+  reports become the canonical artefacts every later session updates.
+</p>
+
+<h2 id="phase-1"><span class="phase-tag">PHASE 1</span>A11y kit — highest leverage step</h2>
+<p class="phase-blurb">
+  Built and applied a shared <code>ModalHost</code> a11y helper so every
+  modal-style overlay got <code>role="dialog"</code>, <code>aria-modal</code>,
+  focus trap, focus restore, Escape close, and scrim.
+</p>
+<h3>Landed</h3>
+<ul>
+  <li><span class="sha">8f1244d</span> <strong>ModalHost shared helper</strong> — <code>src/views/terminal/a11y/modal-host.ts</code>.</li>
+  <li><span class="sha">5191335</span> Applied to <strong>KeyboardCheatsheet</strong>.</li>
+  <li><span class="sha">364cffc</span> Applied to <strong>CommandPalette</strong> + U15 IME composition guard on Enter.</li>
+  <li><span class="sha">4f3546c</span> Applied to <strong>ask-user modal</strong> — closes U1 HIGH for agent prompts.</li>
+  <li><span class="sha">627a201</span> Applied to <strong>Process Manager</strong> + first ModalHost unit tests.</li>
+  <li><span class="sha">3022634</span> Applied to <strong>SettingsPanel</strong>.</li>
+  <li><span class="sha">2bf128b</span> <strong>U12 sidebar roving-tabindex</strong> on the workspace list.</li>
+  <li><span class="sha">9883d11</span> <strong>I.5/U5 touch-target minimums</strong> on coarse pointers (mirror).</li>
+</ul>
+
+<h2 id="phase-2"><span class="phase-tag">PHASE 2</span>Architecture detoxification</h2>
+<p class="phase-blurb">
+  Killed implicit / <code>any</code>-typed boundary contracts and
+  dual-implementation drift between native and web mirror.
+</p>
+<h3>Landed</h3>
+<ul>
+  <li><span class="sha">6281e88</span> <strong>F.2/A5 shared pane-layout math</strong> — extracted <code>computeRects</code> into <code>src/shared/pane-layout-math.ts</code>; both native and mirror wrap the same pure function. Parity tests in <code>tests/pane-layout-math-parity.test.ts</code>.</li>
+  <li><span class="sha">077780a</span> <strong>A2 protocol-dispatcher typing</strong> — mirror's <code>protocol-dispatcher.ts</code> got <code>ServerPayloadByType</code> + per-arm payload casts.</li>
+  <li><span class="sha">1acb511</span> <strong>A1 typed WebviewActionEnvelope</strong> for bun-side <code>dispatch(action, payload)</code>. Every branch now has a typed payload shape.</li>
+</ul>
+
+<h2 id="phase-3"><span class="phase-tag">PHASE 3</span>Test depth for the five biggest UI modules</h2>
+<p class="phase-blurb">
+  Added behavioural + invariant tests for modules that had been
+  effectively untestable under happy-dom (OOPIF, WebGL, real CodeMirror,
+  Electrobun internals).
+</p>
+<h3>Landed</h3>
+<ul>
+  <li><span class="sha">b27b55d</span> <strong>Coverage gate</strong> via <code>scripts/check-coverage.ts</code>.</li>
+  <li><span class="sha">3a695ff</span> <strong>RPC method ↔ handler invariant</strong> — every method declared in <code>TauMuxRPC</code> must have a wired handler.</li>
+  <li><span class="sha">de308ce</span> <strong>T1 editor-pane DOM tests</strong> — 14 cases.</li>
+  <li><span class="sha">2a78dc4</span> <strong>Browser pane</strong> — runtime tests for pure helpers + source-grep invariants on the OOPIF construction path.</li>
+  <li><span class="sha">2caab60</span> <strong>Terminal effects</strong> — fallback + lifecycle + invariants under happy-dom.</li>
+  <li><span class="sha">2f8bda4</span> <strong>Agent panel</strong> main-module DOM tests covering text_delta dispatch.</li>
+</ul>
+
+<h2 id="phase-4"><span class="phase-tag">PHASE 4</span>Security hardening (LAN-visible mirror)</h2>
+<p class="phase-blurb">
+  The web mirror serves arbitrary fd 3/4/5 sideband content to
+  LAN-visible clients. Two structural fixes plus a Telegram payload
+  surface tightening.
+</p>
+<h3>Landed</h3>
+<ul>
+  <li><span class="sha">bf20f57</span> <strong>S2 / H.7 iframe sandbox</strong> — sideband HTML/SVG in the web mirror now renders inside an <code>iframe sandbox=""</code> with a strict CSP. Documented in <code>doc/system-security.md</code>.</li>
+  <li><span class="sha">c3ab2ff</span> <strong>S11 / H.11 Telegram <code>parse_mode</code> allow-list</strong> — <code>sanitizeParseMode</code> at the transport boundary; only <code>MarkdownV2</code> survives. HTML, Markdown v1, typos, attacker payloads all fall back to plain text.</li>
+</ul>
+
+<h2 id="phase-5"><span class="phase-tag">PHASE 5</span>Theme system</h2>
+<p class="phase-blurb">
+  Layered Graphite Light + High Contrast tokens onto the existing
+  Graphite Dark block, wired the OS preferences automatically, and
+  added the audit script to keep new code from regressing.
+</p>
+<h3>Landed</h3>
+<ul>
+  <li><span class="sha">d660ec7</span> <strong>U2 Graphite Light + High Contrast tokens</strong> — <code>:root[data-theme="graphite-light"]</code>, <code>:root[data-theme="high-contrast"]</code> blocks plus <code>@media (prefers-color-scheme: light)</code> and <code>@media (forced-colors: active)</code>.</li>
+  <li><span class="sha">a9d4a0e</span> <strong>terminal-effects honours <code>prefers-reduced-motion</code></strong>: canvas hides, pulses + lights drop, GPU framebuffer clears.</li>
+  <li><span class="sha">53f8c90</span> <strong><code>audit:theming</code> script</strong> — scans for hard-coded colour literals outside the token block.</li>
+</ul>
+
+<h2 id="phase-6"><span class="phase-tag">PHASE 6</span>Lifecycle regression tests</h2>
+<p class="phase-blurb">
+  Catalogued every landed L*/G*/S* fix from earlier phases into
+  <code>tests/regressions/</code> with a two-way coupling gate so the
+  README index cannot drift from the live test suite.
+</p>
+<h3>Landed</h3>
+<ul>
+  <li><span class="sha">b104a47</span> <strong>L1 PiAgentManager forced-crash</strong> regression — fake-pi shell script + <code>SHELL=/bin/echo</code> test-env hack so the test runs fast without a TTY.</li>
+  <li><span class="sha">4477a44</span> <strong>L5 reconnect jitter</strong> — extracted <code>applyReconnectJitter(baseDelay, rand)</code>, behavioural spread test.</li>
+  <li><span class="sha">f971b63</span> <strong>tests/regressions/ catalogue</strong> + <code>catalogue.test.ts</code> gate.</li>
+</ul>
+
+<h2 id="phase-7"><span class="phase-tag">PHASE 7</span>Per-feature polish sweep — 6 sessions, 20 lifts</h2>
+<p class="phase-blurb">
+  The biggest single phase: a polish sweep walking the per-feature
+  grades and closing the named gaps in each. Split across six
+  sessions because the long tail spans clusters B / C / D / E / F / G / H.
+</p>
+
+<h3 id="p7s1">Session 1 — Cluster A foundation</h3>
+<div class="card">
+  <div class="lifts">
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">cookie-store</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-b">B</span> → <span class="grade-a">A</span></span><span class="sha">5f0c2f2</span></div>
+      <p class="lift-body">URL-host normalize on insert (<code>Example.com</code>, <code>.example.com</code>, <code>EXAMPLE.COM</code> collide as the browser does) + <code>MAX_PER_DOMAIN = 500</code> evicts oldest entries inside one bucket so a hostile site can't dominate the global cap.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">browser-history</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-b">B</span> → <span class="grade-a">A</span></span><span class="sha">b5a3b70</span></div>
+      <p class="lift-body">Extended <code>normalizeUrl</code> — lowercase host, strip fragment, strip default port — so visits to <code>http://Example.com:80/?#x</code> and <code>http://example.com/</code> collapse into one history row.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">manifest-scanner</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">21530db</span></div>
+      <p class="lift-body">Realpath-aware <code>$HOME</code> boundary check — when the env value differs from its realpath (macOS firmlinks, Linux build-mount realpaths), the walk resolves the current dir and compares against the realpath'd <code>$HOME</code> so symlinked homes don't escape.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">plan-panel</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">a67a0c5</span></div>
+      <p class="lift-body"><code>PLAN_STATE_VALUES</code> allow-list shared between <code>plan.set</code> and <code>plan.update</code>: a typo like <code>state: "complete"</code> now throws with a clear error (was silently coerced to <code>waiting</code>).</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="p7s2">Session 2 — Search, metadata, health, theme infra</h3>
+<div class="card">
+  <div class="lifts">
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">terminal-search</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">56269da</span></div>
+      <p class="lift-body">Case + regex toggles (Aa / .*) with <code>aria-pressed</code> + <code>localStorage</code> persistence under <code>hyperterm-canvas.search.toggles</code>. <code>findNext</code> / <code>findPrevious</code> pass <code>ISearchOptions { caseSensitive, regex }</code> so xterm's SearchAddon honours the modifiers.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">surface-metadata</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">b112dbe</span></div>
+      <p class="lift-body">30 s <code>gitStaleCooldownMs</code> guard — when a <code>git status</code> subprocess hangs past 0.8 × the 5 s timeout, the cwd is parked in a stale-set for the cooldown so subsequent ticks short-circuit instead of stacking parallel hangs (relevant on NFS / sshfs mounts).</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">health-checks</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">9eb30a0</span></div>
+      <p class="lift-body">Remediation <code>fix()</code> channel mirroring the audits pattern: wire-safe <code>fixLabel</code> projection + <code>runFix(id)</code> + idempotency under same label. Sidebar pill can now render a one-click recovery button.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">tau-primitives (chromeTheme infra)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">d5cfa8e</span></div>
+      <p class="lift-body">Wired <code>chromeTheme: system | graphite-dark | graphite-light | high-contrast</code> end-to-end — bun-side <code>pickWebSettings</code> projects it on the wire; native + mirror both write <code>data-theme=…</code> so the token blocks activate regardless of OS preference.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="p7s3">Session 3 — User-visible UI</h3>
+<div class="card">
+  <div class="lifts">
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">theme selector UI</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">741560c</span></div>
+      <p class="lift-body">Four-way segmented selector at the top of Settings → Theme that emits <code>chromeTheme</code> through the existing <code>updateSettings</code> pipeline (closes the chromeTheme infra from S2).</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">pane-chip-rendering (ARIA)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">ac985b2</span></div>
+      <p class="lift-body">Chip host gets <code>role="status"</code> + <code>aria-live="polite"</code>; every chip carries an <code>aria-label</code> with the full value — cwd (full path), command (full command, no truncation), port (&ldquo;Open port N (proto address, pid X)&rdquo;), git (&ldquo;branch X, N ahead, N behind, +X lines, −Y lines&rdquo;).</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">notifications</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-b">B</span> → <span class="grade-a">A</span></span><span class="sha">d5b4829</span></div>
+      <p class="lift-body">Copy button on sidebar notification items (<code>navigator.clipboard.writeText</code> + <code>.copied</code> pulse, silent fallback). Disk persistence in <code>$HT_CONFIG_DIR/notifications.json</code> via new <code>notification-persistence.ts</code> with 300 ms-debounced atomic writes.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="p7s4">Session 4 — Cluster D + E</h3>
+<div class="card">
+  <div class="lifts">
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">browser-pane (nav validation)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">c17de81</span></div>
+      <p class="lift-body"><code>isSplitDirection</code> / <code>isNavigableUrl</code> / <code>requireSurfaceId</code> validators: <code>browser.navigate</code> rejects a missing url or typoed scheme; <code>browser.open_split</code> rejects unknown directions (no silent default); <code>back/forward/reload</code> require a non-empty <code>surface_id</code>.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">audits (auto-rerun)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">237c10f</span></div>
+      <p class="lift-body">New <code>runAndPublishAudits()</code> helper called both at boot and after <code>rebuildAudits()</code> lands inside <code>updateSettings</code>. Stale <code>audit:*</code> rows are pruned on each pass; the legacy &ldquo;audits disabled&rdquo; row is cleared when audits repopulate.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">event-writer (metrics)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-b">B</span> → <span class="grade-a">A</span></span><span class="sha">8763a36</span></div>
+      <p class="lift-body"><code>EventWriterMetrics { sent, inFlight, failed, peakInFlight }</code> via <code>getMetrics()</code>; <code>Bun.write</code> Promise decorated with <code>.finally(…)</code> so <code>inFlight</code> tracks true OS completion. A wedged consumer or runaway producer is no longer silent.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="p7s5">Session 5 — Cluster D + S4 follow-up</h3>
+<div class="card">
+  <div class="lifts">
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">event-writer (bounded queue)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">727edf4</span></div>
+      <p class="lift-body"><code>DEFAULT_MAX_IN_FLIGHT = 1024</code> with a <code>dropped</code> counter. When <code>inFlight</code> hits the cap, further <code>send()</code> calls return <code>false</code> + bump <code>dropped</code> instead of stacking pending writes — caps worst-case queued memory to ~1 MB.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">editor-pane (save-race)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">f6e5ae3</span></div>
+      <p class="lift-body">Structured <code>conflictDetail { expectedMtimeMs, actualMtimeMs, actualSize }</code> on <code>EditorSaveResult</code> for actionable UI dialogs; new <code>force: true</code> flag for explicit overwrites; out-of-band-delete detection (file vanished with non-null expectedMtimeMs surfaces a conflict instead of silently re-creating).</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">pane-chip-rendering (OSC 9;4 chip)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">7c5ea3b</span></div>
+      <p class="lift-body">Per-pane OSC 9;4 progress chip — <code>▰▰▱▱▱ 40%</code> for normal, <code>⏸ ▰▰▰▱▱ 60%</code> for paused, <code>× error</code>, <code>…</code> for indeterminate — wired through <code>SurfaceMetadata.progress</code> so the chip survives 1 Hz poller refreshes.</p>
+    </div>
+  </div>
+</div>
+
+<h3 id="p7s6">Session 6 — Cluster C + G</h3>
+<div class="card">
+  <div class="lifts">
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">telegram-bridge (TTL prune)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">082f189</span></div>
+      <p class="lift-body">Age-based <code>pruneOldMessages(cutoffMs)</code> on the main messages table runs at boot with a 90-day cutoff alongside the existing link prunes. Closes the last named gap — a year of low-volume notifications across many chats no longer accumulates hundreds of MB of SQLite.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">auto-continue (persistence)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">1f34791</span></div>
+      <p class="lift-body">Paused-surfaces set persists across restarts via <code>$HT_CONFIG_DIR/auto-continue-paused.json</code> (versioned v1, debounced atomic writes). Engine adds <code>onPausedChange</code> dep + <code>hydratePaused</code> boot hook. Closes the &ldquo;user pauses agent → restart silently re-enables it&rdquo; footgun.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">browser-pane (H.8 partition)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">2106f6d</span></div>
+      <p class="lift-body">Per-surface partition isolation by default — <code>AppSettings.browserPartitionMode = "per-surface"</code> derives <code>persist:browser-&lt;id&gt;</code> per pane so cookies / localStorage / IndexedDB don't cross-contaminate. Two gmail-account panes can now coexist.</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="remaining">Remaining long tail (deferred from P7)</h2>
+<p class="phase-blurb">
+  These items were explicitly captured for future P7 sessions. None are
+  blocking the AAA distribution we landed; they push specific A-grade
+  features to S or shrink the B/C cluster.
+</p>
+<div class="grid-2">
+  <div class="card">
+    <h3>Cluster F — high-risk refactors</h3>
+    <ul>
+      <li><strong>F.6 settings.schema.ts</strong> single source of truth. <code>settings.ts</code> is 1166 LOC / ~396 fields — needs a dedicated session.</li>
+      <li><strong>A6 typed EventBus</strong> — 47+ ad-hoc <code>window.dispatchEvent</code> channels.</li>
+      <li><strong>A7 VariantContext</strong> — drop the <code>__tau*</code> window globals.</li>
+      <li><strong>F.11 WorkspaceCollection</strong> — extract from <code>SurfaceManager</code>.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Clusters G + H + C</h3>
+    <ul>
+      <li><strong>H.9 session cap</strong> + manifest-auth + cross-site origin check.</li>
+      <li><strong>Theme literal-to-token migration</strong> (~1013 hard-coded colour literals; <code>audit:theming</code> reports them).</li>
+      <li><strong>Sidebar drag-reorder polish.</strong></li>
+      <li><strong>Notifications detail-expansion modal</strong> for long bodies (U8).</li>
+    </ul>
+  </div>
+</div>
+<p style="margin-top:16px;">
+  Plus the small <strong>S6 cleanup punt</strong>: plumb
+  <code>browserSearchEngine</code> through <code>SurfaceManager</code>
+  properly (currently passes the literal <code>"google"</code> default since
+  the manager doesn't retain <code>AppSettings</code>).
+</p>
+
+<h2 id="provenance">Commit provenance — every feature change</h2>
+<p class="phase-blurb">
+  The complete chronological list of functional commits across phases.
+  Docs-only close-out commits (<code>docs(phaseN): tracking + feature_grades</code>)
+  are omitted; their content is reflected in the tracking docs and the
+  scorecard regeneration.
+</p>
+<table>
+  <thead>
+    <tr><th>Phase</th><th>Commit</th><th>Subject</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>P0</td><td><span class="sha">f445f20</span></td><td>per-feature grading + AAA master plan</td></tr>
+    <tr><td>P0</td><td><span class="sha">703b671</span></td><td>bun run report:feature-grades pipeline</td></tr>
+    <tr><td>P0</td><td><span class="sha">c5f22de</span></td><td>capture coverage baseline for P3 gate</td></tr>
+    <tr><td>P0</td><td><span class="sha">6c1326e</span></td><td>S1 atomic-write mode 0o600 assertions</td></tr>
+    <tr><td>P0</td><td><span class="sha">129dba6</span></td><td>S1 logger + telegram-db file mode 0o600</td></tr>
+    <tr><td>P0</td><td><span class="sha">b6dee04</span></td><td>S4 token entropy floor warn on 0.0.0.0</td></tr>
+    <tr><td>P0</td><td><span class="sha">afafd0d</span></td><td>S3+S7 telegram outbound cap + chatId allow-list</td></tr>
+    <tr><td>P1</td><td><span class="sha">8f1244d</span></td><td>U1 ModalHost shared a11y helper</td></tr>
+    <tr><td>P1</td><td><span class="sha">5191335</span></td><td>U1 ModalHost on KeyboardCheatsheet</td></tr>
+    <tr><td>P1</td><td><span class="sha">364cffc</span></td><td>U1+U15 ModalHost on CommandPalette + IME guard</td></tr>
+    <tr><td>P1</td><td><span class="sha">4f3546c</span></td><td>U1+U15 ModalHost on ask-user — U1 HIGH closed</td></tr>
+    <tr><td>P1</td><td><span class="sha">627a201</span></td><td>U1 ModalHost on Process Manager</td></tr>
+    <tr><td>P1</td><td><span class="sha">3022634</span></td><td>U1 ModalHost on SettingsPanel</td></tr>
+    <tr><td>P1</td><td><span class="sha">2bf128b</span></td><td>U12 sidebar roving-tabindex</td></tr>
+    <tr><td>P1</td><td><span class="sha">9883d11</span></td><td>I.5/U5 mirror touch-target minimums</td></tr>
+    <tr><td>P2</td><td><span class="sha">6281e88</span></td><td>F.2/A5 extract pane-layout math into shared</td></tr>
+    <tr><td>P2</td><td><span class="sha">077780a</span></td><td>A2 protocol-dispatcher payload typing</td></tr>
+    <tr><td>P2</td><td><span class="sha">1acb511</span></td><td>A1 typed WebviewActionEnvelope</td></tr>
+    <tr><td>P3</td><td><span class="sha">b27b55d</span></td><td>P3 coverage gate</td></tr>
+    <tr><td>P3</td><td><span class="sha">3a695ff</span></td><td>RPC method ↔ handler invariant</td></tr>
+    <tr><td>P3</td><td><span class="sha">de308ce</span></td><td>T1 editor-pane DOM tests</td></tr>
+    <tr><td>P3</td><td><span class="sha">2a78dc4</span></td><td>browser pane tests — helpers + invariants</td></tr>
+    <tr><td>P3</td><td><span class="sha">2caab60</span></td><td>terminal effects fallback + lifecycle</td></tr>
+    <tr><td>P3</td><td><span class="sha">2f8bda4</span></td><td>agent panel main module DOM tests</td></tr>
+    <tr><td>P4</td><td><span class="sha">bf20f57</span></td><td>S2/H.7 iframe-sandbox sideband HTML/SVG</td></tr>
+    <tr><td>P4</td><td><span class="sha">c3ab2ff</span></td><td>S11/H.11 Telegram parse_mode allow-list</td></tr>
+    <tr><td>P5</td><td><span class="sha">a9d4a0e</span></td><td>U2 terminal-effects prefers-reduced-motion</td></tr>
+    <tr><td>P5</td><td><span class="sha">53f8c90</span></td><td>audit:theming script</td></tr>
+    <tr><td>P5</td><td><span class="sha">d660ec7</span></td><td>U2 Graphite Light + High Contrast tokens</td></tr>
+    <tr><td>P6</td><td><span class="sha">b104a47</span></td><td>L1 forced-crash regression for PiAgentManager</td></tr>
+    <tr><td>P6</td><td><span class="sha">4477a44</span></td><td>L5 behavioural reconnect-jitter spread</td></tr>
+    <tr><td>P6</td><td><span class="sha">f971b63</span></td><td>tests/regressions/ catalogue + gate</td></tr>
+    <tr><td>P7 S1</td><td><span class="sha">5f0c2f2</span></td><td>cookie-store URL-host normalize + per-domain cap</td></tr>
+    <tr><td>P7 S1</td><td><span class="sha">b5a3b70</span></td><td>browser-history extend URL normalize</td></tr>
+    <tr><td>P7 S1</td><td><span class="sha">21530db</span></td><td>manifest-scanner symlinked-$HOME guard</td></tr>
+    <tr><td>P7 S1</td><td><span class="sha">a67a0c5</span></td><td>plan RPC state validation</td></tr>
+    <tr><td>P7 S2</td><td><span class="sha">d5cfa8e</span></td><td>U2 chromeTheme settings field + data-theme apply</td></tr>
+    <tr><td>P7 S2</td><td><span class="sha">56269da</span></td><td>terminal-search case + regex toggles</td></tr>
+    <tr><td>P7 S2</td><td><span class="sha">b112dbe</span></td><td>surface-metadata stale-git skip-tick</td></tr>
+    <tr><td>P7 S2</td><td><span class="sha">9eb30a0</span></td><td>health remediation fix()</td></tr>
+    <tr><td>P7 S3</td><td><span class="sha">741560c</span></td><td>theme-selector UI in Settings → Theme</td></tr>
+    <tr><td>P7 S3</td><td><span class="sha">ac985b2</span></td><td>pane-chips ARIA + live-region</td></tr>
+    <tr><td>P7 S3</td><td><span class="sha">d5b4829</span></td><td>notifications copy + persistent history</td></tr>
+    <tr><td>P7 S4</td><td><span class="sha">c17de81</span></td><td>browser RPC navigation-rule validation</td></tr>
+    <tr><td>P7 S4</td><td><span class="sha">237c10f</span></td><td>audits auto-rerun on settings change</td></tr>
+    <tr><td>P7 S4</td><td><span class="sha">8763a36</span></td><td>event-writer backpressure metrics</td></tr>
+    <tr><td>P7 S5</td><td><span class="sha">727edf4</span></td><td>event-writer bounded queue + drop policy</td></tr>
+    <tr><td>P7 S5</td><td><span class="sha">f6e5ae3</span></td><td>editor save-race UX</td></tr>
+    <tr><td>P7 S5</td><td><span class="sha">7c5ea3b</span></td><td>pane-chips per-pane OSC 9;4 chip</td></tr>
+    <tr><td>P7 S6</td><td><span class="sha">082f189</span></td><td>telegram message TTL prune</td></tr>
+    <tr><td>P7 S6</td><td><span class="sha">1f34791</span></td><td>auto-continue paused-surfaces persistence</td></tr>
+    <tr><td>P7 S6</td><td><span class="sha">2106f6d</span></td><td>browser per-surface partition (H.8)</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  <p>
+    Generated from <code>doc/feature_upgrade_to_AAA/</code> sub-plans
+    and <code>doc/tracking_feature_upgrade_to_AAA_phase{0..7}.md</code>.
+    Live scorecard: <code>doc/feature_grades.json</code> →
+    <code>bun run report:feature-grades</code>.
+  </p>
+  <p>
+    All commits listed merged to <code>main</code> with the per-feature
+    <code>bun run bump:patch</code> protocol per <code>CLAUDE.md</code>.
+  </p>
+</footer>
+
+</div>
+</body>
+</html>
