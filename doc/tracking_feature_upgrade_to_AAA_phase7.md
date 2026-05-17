@@ -952,3 +952,48 @@ Grade distribution after S18: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - F.6 — theme-preset interlock factory (final F.6 holdout).
 - Cluster H literal migration — next chunk: notification overlay (`.notification-*` rules), workspace cwd selector, surface chips region.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 19 (2026-05-17)
+
+Slice picked: **Cluster H double-chunk** — notification overlay + sidebar notification item, surface chips.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H notification overlay | `7471fe0` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-notif.test.ts` (new) | +11 (8 `--ht-notif-*` tokens defined; .tau-notif-overlay-* + .notification-item rules use them) |
+| Cluster H surface chips | `f461f69` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-chip.test.ts` (new) | +10 (6 new tokens; .surface-chip + .chip-* rules use S18 --ht-badge-* + existing --ht-sem-* tokens) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.86 → 0.3.87 (notif) → 0.3.88 (chip).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H **double-chunk** this session — notification overlay + sidebar item migrated to `--ht-notif-*` (8 tokens, including two `-bg-mix` tokens that live inside CSS color-mix()), and the surface chip family migrated with **first cross-component reuse**: surface chips re-use the S18 `--ht-badge-success/warn/info-*` tokens directly, plus 6 new tokens for chip-specific neutral tints + a success-hover ramp. PM badges + surface chips now share the same badge palette — a single swap repaints both. audit:theming: 875 → 849 (−26 across two commits). |
+
+Grade distribution after S19: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **No regressions introduced this session.**
+- **Design refinement**: surface chips and PM badges share semantic identity (success / warn / info badge family) — proving the S18 `--ht-badge-*` cross-component namespace investment. This session's chip migration extends the family with 4 specific tokens (info-border-soft for the less-assertive chip-command, success hover ramp for the interactive chip-port) rather than copying the values to a new namespace.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+- **1 pre-existing flake**: `byte-buffer fallback`. Same as previous sessions.
+
+### Exit criteria (session 19)
+
+| Criterion | Status |
+|---|---|
+| Cluster H notification overlay region migrated | ✅ 875 → 866 (−9) |
+| Cluster H surface chip region migrated with cross-component reuse | ✅ 866 → 849 (−17) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2330 / 1 known flake; +21 new tests (11 notif + 10 chip) |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 19)
+
+- F.6 — theme-preset interlock factory (final F.6 holdout — design a `derived(fn)` factory shape that takes the partial settings record).
+- Cluster H literal migration — next chunk: workspace cwd selector + sidebar status grid + agent accent cyan/amber + tau-status bar deeper migration.
+- Phases 8 (release engineering) + 9 (docs / observability).
