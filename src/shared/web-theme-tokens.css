@@ -40,6 +40,27 @@
   --ht-sem-warning: #f59e0b;
   --ht-sem-error: #f87171;
   --ht-sem-info: #c4b5fd;
+  /* P7 S9 — semantic surface tints + per-channel notify cue tokens.
+   *  The notify-glow keyframes used hard-coded amber + cyan rgba at
+   *  four alpha levels each; centralising lets a future palette swap
+   *  (high-contrast, light) repaint the cue without touching the
+   *  keyframe authoring. */
+  --ht-sem-error-tint: rgba(248, 113, 113, 0.08);
+  /* Amber notify cue (agent panes). */
+  --ht-notify-amber: rgba(255, 197, 107, 0.35);
+  --ht-notify-amber-soft: rgba(255, 197, 107, 0.1);
+  --ht-notify-amber-strong: rgba(255, 197, 107, 0.85);
+  --ht-notify-amber-solid: rgba(255, 197, 107, 1);
+  --ht-notify-amber-tint: rgba(255, 197, 107, 0.45);
+  --ht-notify-amber-transparent: rgba(255, 197, 107, 0);
+  /* Cyan notify cue (human panes). */
+  --ht-notify-cyan: rgba(111, 233, 255, 0.35);
+  --ht-notify-cyan-soft: rgba(111, 233, 255, 0.1);
+  --ht-notify-cyan-solid: rgba(111, 233, 255, 1);
+  --ht-notify-cyan-tint: rgba(111, 233, 255, 0.45);
+  /* Inset cyan halo on the notification panel (different hue —
+   *  not part of the cyan-pane cue). */
+  --ht-notify-cyan-glow: rgba(103, 232, 249, 0.08);
 
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
