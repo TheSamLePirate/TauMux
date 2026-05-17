@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.31
+**Version:** 0.3.35
 **Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-After Phase 5 (theme system), the foundation for Graphite Light + High Contrast lands: `:root[data-theme="graphite-light"]` and `:root[data-theme="high-contrast"]` blocks layer onto the existing dark tokens, `prefers-color-scheme: light` + `forced-colors: active` wire OS preferences automatically, terminal-effects honours `prefers-reduced-motion: reduce` via a matchMedia listener, and `bun run audit:theming` reports hard-coded colour literals outside the token block. Remaining blockers: lifecycle regression tests for the named L1–L7 fixes (P6), the typed event bus + variant-context + workspace-collection refactors (P7), and the design-report + coverage gate CI wiring (P8).
+After Phase 6 (lifecycle regression tests), every named L# fix has a behavioural test that breaks when reverted: L1 forced-crash for `PiAgentManager._managerExit` (real subprocess exits non-zero, manager evicts), L5 reconnect-jitter spread (deterministic + real-Math.random distribution invariants), L2/L3/L4/L6/L7/L13/L14 covered by Phase 0's tests linked from the new `tests/regressions/README.md` catalogue. The catalogue is gated by `tests/regressions/catalogue.test.ts` — every quoted test name must resolve to a real test in the suite. Remaining blockers: typed event bus + variant-context + workspace-collection refactors (P7), and the design-report + coverage gate CI wiring (P8).
 
 ---
 
@@ -34,9 +34,9 @@ After Phase 5 (theme system), the foundation for Graphite Light + High Contrast 
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **6** | Best-in-class — 6 features cleared every gap. |
+| S (AAA) | **7** | Best-in-class — 7 features cleared every gap. |
 | A | **28** | Most "production-shaped" subsystems. |
-| B (incl. B+) | **12** | Functional, with named polish / test / lifecycle gaps. |
+| B (incl. B+) | **11** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
 
@@ -240,12 +240,9 @@ After Phase 5 (theme system), the foundation for Graphite Light + High Contrast 
 ## 4. Integrations / external bridges
 
 ### ht CLI (socket RPC)
-- **Grade: A**
-- **Evidence:** `socket-server.ts` — 1 MiB buffer cap (L4 fix), live-peer probe before unlink, typed dispatch via `satisfies BunMessageHandlers`. ~40+ methods. Docs accurate.
+- **Grade: S**
+- **Evidence:** `socket-server.ts` — 1 MiB buffer cap (L4), live-peer probe before unlink, typed dispatch via `satisfies BunMessageHandlers`. ~40+ methods. Phase 6 added the behavioural regression suite: L1 forced-crash (`tests/pi-agent-manager-crash.test.ts`), L5 spread invariant (`tests/web-reconnect-jitter.test.ts`), L6/L12 shutdown invariants (`tests/index-shutdown.test.ts`), plus the catalogue at `tests/regressions/README.md` that ties every L#/S# fix to its regression test.
 - **Gaps to AAA:**
-  - Brute-force throttle on token check (S5 landed — verify).
-  - Reconnect jitter (L5 landed — verify).
-  - Idempotent shutdown guard (L6 landed — verify).
 
 ### Web mirror (WebSocket bridge)
 - **Grade: S**
@@ -333,12 +330,11 @@ After Phase 5 (theme system), the foundation for Graphite Light + High Contrast 
   - Tooltip overflow tests.
 
 ### Settings persistence & migration
-- **Grade: B+**
-- **Evidence:** `settings-manager.ts:53` — 500 ms debounced save; `atomic-write.ts:24-48` atomic writes (mode 0o600 since H.1); corrupt-file `.bak` recovery; partial-schema merge via `mergeSettings`. Bloom migration via `applyBloomMigration`.
+- **Grade: A**
+- **Evidence:** `settings-manager.ts` — 500 ms debounced save; atomic writes (mode 0o600 since H.1); corrupt-file `.bak` recovery; partial-schema merge. Phase 6 catalogue ties the L7 atomic-write behaviour to `tests/atomic-write.test.ts` + the S1 mode invariant to `tests/file-modes.test.ts`. Bloom migration via `applyBloomMigration`.
 - **Gaps to AAA:**
-  - Schema-version field + ordered migrations (currently a single `applyBloomMigration` with no version metadata).
+  - Schema-version field + ordered migrations (currently a single `applyBloomMigration` with no version metadata — owned by P7 polish via `settings.schema.ts`).
   - Sync-on-quit for security-critical fields (telegram token, mirror auth).
-  - Defensive boolean coercion in validator, not just in tests.
 
 ### Logging
 - **Grade: A**
@@ -440,16 +436,16 @@ After Phase 5 (theme system), the foundation for Graphite Light + High Contrast 
 
 Ranked by leverage — each lifts multiple features by one letter.
 
-1. **Verify `PiAgentManager._managerExit` cleanup under crash** — regression test — L1 was claimed landed but the regression test under forced crash is what makes the grade move. Owned by P6.
-2. **Theme switcher UI + boot-time data-theme application** — Phase 5 landed the token blocks + matchMedia wiring; the Settings panel field that lets users pick a theme is a small follow-up (P5 or P7 polish).
-3. **Per-feature failure regression tests** — for the seven named lifecycle items (heartbeat, atomic writes, SIGHUP grace, idempotent shutdown — most landed; need regression tests for each). Owned by P6.
-4. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts. Owned by P8.
-5. **Coverage gate threshold in CI** — Phase 3 landed `bun run report:coverage:check` locally; P8 wires it into CI so a PR can't merge below baseline.
-6. **Mobile/web mirror runtime bounding-box gate** — Phase 1 added the 44 × 44 CSS-px shim on coarse pointers. P3 deferred the Playwright mobile-viewport assertion to P8 (where the live Playwright env runs). (I.5)
-7. **ARIA labels + live regions for git-status chips + notifications** — Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live="polite"` region for notification count changes. Owned by P7.
-8. **Typed EventBus + VariantContext (A6 + A7)** — Replace 47+ implicit `window.dispatchEvent("ht-…")` channels with a typed `EventBus<EventMap>`; drop the `__tau*` window globals in favour of a `VariantContext` interface. Owned by P7.
-9. **WorkspaceCollection extract + settings schema source-of-truth** — F.11 (split `WorkspaceCollection` out of the 2717-LOC `SurfaceManager`) + F.6 (single `settings.schema.ts` driving `AppSettings` / `DEFAULT_SETTINGS` / `validateSettings` / migrations). Owned by P7.
-10. **Per-surface browser partition + session cap (H.8/H.9)** — Embedded browser pane shares a webview partition across surfaces; mirror accepts unbounded resume sessions and doesn't validate the Origin header. Documented gaps in `doc/system-security.md`; owned by P7.
+1. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts. Owned by P8.
+2. **Coverage gate threshold in CI** — Phase 3 landed `bun run report:coverage:check` locally; P8 wires it into CI so a PR can't merge below baseline.
+3. **Mobile/web mirror runtime bounding-box gate** — Phase 1 added the 44 × 44 CSS-px shim on coarse pointers. P3 deferred the Playwright mobile-viewport assertion to P8 (where the live Playwright env runs). (I.5)
+4. **Theme switcher UI + boot-time data-theme application** — Phase 5 landed the token blocks + matchMedia wiring; the Settings panel field that lets users pick a theme is a small follow-up (P7 polish).
+5. **ARIA labels + live regions for git-status chips + notifications** — Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live="polite"` region for notification count changes. Owned by P7.
+6. **Typed EventBus + VariantContext (A6 + A7)** — Replace 47+ implicit `window.dispatchEvent("ht-…")` channels with a typed `EventBus<EventMap>`; drop the `__tau*` window globals in favour of a `VariantContext` interface. Owned by P7.
+7. **WorkspaceCollection extract + settings schema source-of-truth** — F.11 (split `WorkspaceCollection` out of the 2717-LOC `SurfaceManager`) + F.6 (single `settings.schema.ts` driving `AppSettings` / `DEFAULT_SETTINGS` / `validateSettings` / migrations). Owned by P7.
+8. **Per-surface browser partition + session cap (H.8/H.9)** — Embedded browser pane shares a webview partition across surfaces; mirror accepts unbounded resume sessions and doesn't validate the Origin header. Documented gaps in `doc/system-security.md`; owned by P7.
+9. **Long-tail literal-to-token migration** — `bun run audit:theming` reports ~1013 hard-coded colour literals in component CSS. Migrating them to `var(--ht-…)` references is one-PR-per-cluster work owned by P7 polish.
+10. **Release engineering — changelog generator + cross-platform packaging** — `scripts/bump-version.ts` doesn't commit/tag/changelog; `scripts/post-package.ts` is macOS-only. Owned by P8.
 
 ---
 
