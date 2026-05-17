@@ -997,3 +997,49 @@ Grade distribution after S19: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - F.6 — theme-preset interlock factory (final F.6 holdout — design a `derived(fn)` factory shape that takes the partial settings record).
 - Cluster H literal migration — next chunk: workspace cwd selector + sidebar status grid + agent accent cyan/amber + tau-status bar deeper migration.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 20 (2026-05-17)
+
+Slice picked: **F.6 batch 6 (theme-preset interlock — FINAL F.6)** + **Cluster H workspace cwd chip**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| F.6 batch 6 — theme interlock | `2fc2368` | `src/shared/settings.ts`, `tests/settings-schema.test.ts` | +6 (THEME_PRESET_SCHEMA / colour string() schemas / ANSI_COLORS_SCHEMA via existing wrapped() factory; validateSettings now sanitises 6 previously-unguarded theme fields) |
+| Cluster H workspace cwd chip | `caa011b` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-cwd-chip.test.ts` (new) | +9 (6 `--ht-cwd-chip-*` tokens; .workspace-cwd-chip rules use them; .active state REUSES --ht-badge-info-bg) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.88 → 0.3.89 (F.6) → 0.3.90 (cwd chip).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `settings-persistence` | A | A | **F.6 seam closed at 100% (56 / 56 fields).** The final theme-preset interlock — themePreset + accentColor + secondaryColor + foregroundColor + bgBase + ansiColors — now flows through the schema. THEME_PRESET_SCHEMA uses `wrapped()` with a known-id lookup; the four colour fields use `string()` with `THEME_PRESETS[0]` defaults; ANSI_COLORS_SCHEMA uses `wrapped()` with a per-key validator that drops extraneous keys. The "interlock" itself (keeping colour fields consistent with the selected preset) happens at the settings-panel UI layer — validateSettings only sanitises shape. Closes the silent-gap class: non-string accentColor or junk themePreset previously slipped through unchanged. |
+| `tau-primitives` | S | S | Cluster H continues — workspace cwd chip migrated to `--ht-cwd-chip-*` (6 tokens). Active state REUSES `--ht-badge-info-bg` from S18 — third component (PM badges S18, surface chips S19, cwd chip S20) sharing the same cyan info tint. audit:theming: 849 → 842 (−7). |
+
+Grade distribution after S20: **20 S / 20 A / 6 B / 3 C** (unchanged — F.6 closure was a coverage milestone, not a grade boundary). The F.6 / Cluster F group is now fully closed.
+
+### Issues encountered
+
+- **No regressions introduced this session.**
+- **Design realisation**: the original "theme-preset interlock" framing implied a derived-from-other-fields factory shape. On closer inspection, the actual interlock behaviour (preset → colour fields) happens in the settings-panel UI when a preset is picked, NOT in validateSettings. The validator only needs to sanitise shape per field — the schema's existing `wrapped()` + `string()` factories cover the case cleanly without needing a new `derived()` factory shape. F.6 closed with the existing factory toolkit.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+- **1 pre-existing flake**: `byte-buffer fallback`. Same as previous sessions.
+
+### Exit criteria (session 20)
+
+| Criterion | Status |
+|---|---|
+| F.6 batch 6 — theme-preset interlock fields migrated (100% coverage) | ✅ landed |
+| Cluster H cwd chip region migrated | ✅ 849 → 842 (−7) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2350 / 1 known flake; +15 new tests (6 schema batch 6 + 9 cwd chip) |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 20)
+
+- F.6 is fully closed — no more settings-schema work needed.
+- Cluster H literal migration — next chunk: workspace-package card + workspace-manifest-cargo icon, sidebar status grid, tau-status bar deeper migration.
+- Phases 8 (release engineering) + 9 (docs / observability).
