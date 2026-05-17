@@ -1,3 +1,5 @@
+import { SETTINGS_FIELD_SCHEMAS } from "./settings.schema";
+
 export interface AnsiColors {
   black: string;
   red: string;
@@ -825,20 +827,38 @@ export function parseAllowedTelegramIds(value: string): Set<string> {
 }
 
 export function validateSettings(s: AppSettings): AppSettings {
+  // P7 S13 / F.6 — simple primitive fields delegate to the typed
+  // FieldSchema seam in settings.schema.ts so default + range live in
+  // one place. The remaining string/enum/array clauses below still
+  // follow the per-field pattern and will fold in incrementally.
   return {
     ...s,
-    scrollbackLines: clamp(Math.round(s.scrollbackLines), 100, 100000),
-    fontSize: clamp(Math.round(s.fontSize), 8, 32),
-    lineHeight: clamp(s.lineHeight, 0.8, 2.0),
-    terminalBgOpacity: clamp(s.terminalBgOpacity, 0, 1),
-    bloomIntensity: clamp(s.bloomIntensity, 0, 2),
-    webMirrorPort: clamp(Math.round(s.webMirrorPort), 1, 65535),
+    scrollbackLines: SETTINGS_FIELD_SCHEMAS.scrollbackLines.validate(
+      s.scrollbackLines,
+    ),
+    fontSize: SETTINGS_FIELD_SCHEMAS.fontSize.validate(s.fontSize),
+    lineHeight: SETTINGS_FIELD_SCHEMAS.lineHeight.validate(s.lineHeight),
+    terminalBgOpacity: SETTINGS_FIELD_SCHEMAS.terminalBgOpacity.validate(
+      s.terminalBgOpacity,
+    ),
+    bloomIntensity: SETTINGS_FIELD_SCHEMAS.bloomIntensity.validate(
+      s.bloomIntensity,
+    ),
+    webMirrorPort: SETTINGS_FIELD_SCHEMAS.webMirrorPort.validate(
+      s.webMirrorPort,
+    ),
     webMirrorBind: s.webMirrorBind === "127.0.0.1" ? "127.0.0.1" : "0.0.0.0",
     webMirrorAuthToken: (s.webMirrorAuthToken ?? "").trim(),
-    paneGap: clamp(Math.round(s.paneGap), 0, 20),
-    sidebarWidth: clamp(Math.round(s.sidebarWidth), 200, 600),
-    notificationSoundEnabled: !!s.notificationSoundEnabled,
-    notificationSoundVolume: clamp(s.notificationSoundVolume, 0, 1),
+    paneGap: SETTINGS_FIELD_SCHEMAS.paneGap.validate(s.paneGap),
+    sidebarWidth: SETTINGS_FIELD_SCHEMAS.sidebarWidth.validate(s.sidebarWidth),
+    notificationSoundEnabled:
+      SETTINGS_FIELD_SCHEMAS.notificationSoundEnabled.validate(
+        s.notificationSoundEnabled,
+      ),
+    notificationSoundVolume:
+      SETTINGS_FIELD_SCHEMAS.notificationSoundVolume.validate(
+        s.notificationSoundVolume,
+      ),
     browserSearchEngine:
       s.browserSearchEngine === "duckduckgo" ||
       s.browserSearchEngine === "bing" ||
