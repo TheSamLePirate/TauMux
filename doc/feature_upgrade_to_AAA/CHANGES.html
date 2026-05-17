@@ -265,8 +265,8 @@
   <h1>From baseline to AAA — every change, by phase</h1>
   <p class="subtitle">
     A 10-phase plan-of-plans that lifted τ-mux from a mostly-A codebase
-    with named gaps into a release-shape product. Ten sessions of
-    Phase 7 polish carried the final 32 lifts on top of seven earlier
+    with named gaps into a release-shape product. Eleven sessions of
+    Phase 7 polish carried the final 35 lifts on top of seven earlier
     landed phases. This document catalogues every functional change.
   </p>
   <div class="meta">
@@ -411,10 +411,10 @@
   <li><span class="sha">f971b63</span> <strong>tests/regressions/ catalogue</strong> + <code>catalogue.test.ts</code> gate.</li>
 </ul>
 
-<h2 id="phase-7"><span class="phase-tag">PHASE 7</span>Per-feature polish sweep — 10 sessions, 32 lifts</h2>
+<h2 id="phase-7"><span class="phase-tag">PHASE 7</span>Per-feature polish sweep — 11 sessions, 35 lifts</h2>
 <p class="phase-blurb">
   The biggest single phase: a polish sweep walking the per-feature
-  grades and closing the named gaps in each. Split across ten
+  grades and closing the named gaps in each. Split across eleven
   sessions because the long tail spans clusters B / C / D / E / F / G / H.
 </p>
 
@@ -598,6 +598,24 @@
   </div>
 </div>
 
+<h3 id="p7s11">Session 11 — A6 batch 4 + F.11 seam + Cluster H surface</h3>
+<div class="card">
+  <div class="lifts">
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">app-variants (A6 batch 4)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">ca11020</span></div>
+      <p class="lift-body">A6 batch 4 migrates <strong>16 more channels</strong> onto <code>htEvents</code> — every notification / cookie / editor IO / context-menu / process-manager / run-script channel + workspace lifecycle entries. Native producer count: 29 → 13 (75% of the original 51 migrated). Two payload shapes (<code>NativeContextMenuRequest</code> / <code>SurfaceContextMenuRequest</code>) reuse the existing types from <code>src/shared/types.ts</code> via inline imports.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">F.11 WorkspaceCollection seam</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">(after ca11020)</span></div>
+      <p class="lift-body">Starts the SurfaceManager extraction. New <code>src/views/terminal/workspace-collection.ts</code> wraps the workspace array with read helpers (<code>findById</code>, <code>findIndexById</code>, <code>findByName</code>, <code>findContainingSurface</code>, <code>hasSurface</code>, <code>map</code>). 4 SurfaceManager call sites migrated as proof; the array still lives on SurfaceManager until the mutation API follows. +9 collection tests.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">tau-primitives (surface tokens)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">b032c62</span></div>
+      <p class="lift-body">Cluster H continues. Surface (pane) chrome migrated to a new <code>--ht-surface-*</code> token group: <code>border</code>, <code>inset-highlight</code>, <code>shadow</code>. High-impact migration — every pane container reads through these three tokens now. <code>audit:theming</code>: <strong>981 → 978</strong>.</p>
+    </div>
+  </div>
+</div>
+
 <h2 id="remaining">Remaining long tail (deferred from P7)</h2>
 <p class="phase-blurb">
   These items were explicitly captured for future P7 sessions. None are
@@ -707,6 +725,9 @@
     <tr><td>P7 S10</td><td><span class="sha">99a81d7</span></td><td>EventBus A6 batch 3 — 9 channels / 11 sites migrated</td></tr>
     <tr><td>P7 S10</td><td><span class="sha">bb8577d</span></td><td>variant mount/unmount lifecycle tests (closes app-variants → S)</td></tr>
     <tr><td>P7 S10</td><td><span class="sha">5a97c45</span></td><td>theme-token cluster H sidebar workspace-card (audit 993→981)</td></tr>
+    <tr><td>P7 S11</td><td><span class="sha">ca11020</span></td><td>EventBus A6 batch 4 — 16 channels / 16 sites migrated</td></tr>
+    <tr><td>P7 S11</td><td><span class="sha">fe49afd</span></td><td>WorkspaceCollection seam (F.11 — typed reads over Workspace[])</td></tr>
+    <tr><td>P7 S11</td><td><span class="sha">b032c62</span></td><td>theme-token cluster H surface pane chrome (audit 981→978)</td></tr>
   </tbody>
 </table>
 

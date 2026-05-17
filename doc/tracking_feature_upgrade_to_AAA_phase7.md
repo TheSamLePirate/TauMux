@@ -577,3 +577,55 @@ Grade distribution after S10: **20 S / 20 A / 6 B / 3 C** (was 19 / 21 / 6 / 3 a
 - F.11 `WorkspaceCollection` extraction from `SurfaceManager`.
 - Cluster H literal migration — next chunk (pane bar, surface chrome, agent panel).
 - Phases 8 (release engineering) + 9 (docs / observability) when P7 long tail is exhausted.
+
+---
+
+## Session 11 (2026-05-17)
+
+Slice picked: **A6 batch 4** (16 more channels) + **F.11 WorkspaceCollection seam** + **Cluster H surface pane chrome**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| A6 batch 4 — 16 channel migrations | `ca11020` | `src/shared/event-bus.ts`, `src/views/terminal/{settings-panel,surface-manager,sidebar,index}.ts` | existing EventBus + sidebar + settings-panel suites stay green |
+| F.11 WorkspaceCollection seam | (after `ca11020`) | `src/views/terminal/workspace-collection.ts` (new), surface-manager.ts (4 lookup sites), `tests/workspace-collection.test.ts` (new) | +9 (list/count/findById/findIndexById/findByName/findContainingSurface/hasSurface/map/live-mutation reads) |
+| Cluster H surface pane chrome | `b032c62` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-surface.test.ts` (new) | +6 (each token defined, .surface-container uses them, raw rgba shapes rejected) |
+
+Bumps: `bun run bump:patch` ran before each functional commit.
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `app-variants` | S | S | Already S after S10. P7 S11 adds **A6 batch 4** evidence: 16 channels migrated (`ht-dismiss-notification`, `ht-clear-notifications`, `ht-clear-logs`, `ht-cookie-{import,export,clear}`, `ht-editor-{read,save,reload}-file`, `ht-new-workspace`, `ht-focus-surface`, `ht-notify-state-changed`, `ht-open-context-menu`, `ht-open-surface-context-menu`, `ht-open-process-manager`, `ht-run-script`). Native producers: 29 → 13. Plus the **F.11 WorkspaceCollection seam** lands as the start of the SurfaceManager extraction. |
+| `tau-primitives` | S | S | Cluster H continues — surface (pane) chrome migrated to a new `--ht-surface-*` token group (border, inset-highlight, shadow). audit:theming: 981 → 978. |
+
+Grade distribution after S11: **20 S / 20 A / 6 B / 3 C** (unchanged from S10; lifts add evidence under already-S features and lay foundations that aren't promotional on their own).
+
+### Issues encountered
+
+- **Cookie-import payload shape mismatch**: my initial typed payload had `{ text }` but the actual producer ships `{ data, format }`. Fixed by updating the EventMap to match the producer — typing real channels works better when you read the producer first.
+- **Context-menu payload reuses shared types**: `ht-open-context-menu` carries `NativeContextMenuRequest` and `ht-open-surface-context-menu` carries `SurfaceContextMenuRequest` from `src/shared/types.ts`. EventMap imports them via inline `import("./types").Foo` so the bus stays decoupled from the wider types module.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+- **2 pre-existing flakes**: `byte-buffer fallback` + `PtyManager kill`. Same as previous sessions.
+
+### Exit criteria (session 11)
+
+| Criterion | Status |
+|---|---|
+| A6 batch 4 migrates ≥ 10 channels | ✅ 16 channels / 16 sites |
+| F.11 WorkspaceCollection seam landed | ✅ class + read API + 4 SurfaceManager call sites |
+| Cluster H surface region migrated | ✅ 981 → 978 (−3, high-impact) |
+| `bun test` green (modulo pre-existing flakes) | ✅ 2170 / 2 known flakes |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 11)
+
+- F.6 `settings.schema.ts` source-of-truth — still pending as a dedicated session.
+- A6 batch 5 — migrate the remaining 13 channels (mostly browser-pane internals).
+- F.11 mutation API extraction (push / splice / switchTo onto the collection).
+- Cluster H literal migration — next chunk (agent panel, telegram pane, status bar).
+- Phases 8 (release engineering) + 9 (docs / observability).
