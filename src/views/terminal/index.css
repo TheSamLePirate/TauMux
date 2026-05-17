@@ -2075,10 +2075,11 @@ body.sidebar-resizing {
   border-radius: 0;
   background:
     var(--bg-terminal-muted);
-  border: 1px solid rgba(39, 39, 42, 0.96);
+  /* P7 S11 — token migration. */
+  border: 1px solid var(--ht-surface-border);
   box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.03),
-    0 24px 60px rgba(0, 0, 0, 0.38);
+    inset 1px 1px 0 var(--ht-surface-inset-highlight),
+    var(--ht-surface-shadow);
   isolation: isolate;
   transition:
     transform var(--transition-fast),

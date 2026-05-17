@@ -80,6 +80,14 @@
   --ht-sidebar-inset-strong: rgba(255, 255, 255, 0.06);
   --ht-sidebar-row-shadow: 0 8px 20px rgba(0, 0, 0, 0.26);
 
+  /* P7 S11 — surface (pane) chrome tints. The pane container uses a
+   *  dark border + an inset top-highlight + a deep drop shadow; same
+   *  intent group as the sidebar tokens. The ht-surface prefix sits
+   *  outside the U2 light/HC override gate. */
+  --ht-surface-border: rgba(39, 39, 42, 0.96);
+  --ht-surface-inset-highlight: rgba(255, 255, 255, 0.03);
+  --ht-surface-shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;
