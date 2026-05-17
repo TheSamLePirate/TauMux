@@ -229,6 +229,18 @@
   --ht-pm-kill-bg-hover: rgba(248, 113, 113, 0.22);
   --ht-pm-kill-border-hover: rgba(248, 113, 113, 0.52);
 
+  /* P7 S24 — secondary inline-action button (used by the surface
+   *  details overlay's "Open in xterm" / "Copy" rows). Same family
+   *  intent as the PM kill button but neutral instead of red: a
+   *  fainter resting bg + matching border, brighter on hover. The
+   *  ht-pm prefix is shared with the PM chrome because both
+   *  overlays live in the same denser "system inspector" visual
+   *  family. */
+  --ht-pm-secondary-btn-bg: rgba(255, 255, 255, 0.03);
+  --ht-pm-secondary-btn-border: rgba(255, 255, 255, 0.08);
+  --ht-pm-secondary-btn-bg-hover: rgba(255, 255, 255, 0.06);
+  --ht-pm-secondary-btn-border-hover: rgba(255, 255, 255, 0.16);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
