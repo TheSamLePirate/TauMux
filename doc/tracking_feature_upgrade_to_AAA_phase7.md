@@ -1234,3 +1234,50 @@ Grade distribution after S24: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers; move webview dispatch into `src/bun/rpc-handlers/`.
 - Cluster H literal migration — next chunk: surface bar / pane bar deeper, sidebar workspace card sub-rows, plan-panel sidebar widget remaining literals.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 25 (2026-05-18)
+
+Slice picked: **Cluster B U10** (settings reset-to-default per field) + **Cluster H surface bar chrome**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster B U10 — reset-to-default per field | `e8ba783` | `src/views/terminal/settings-panel.ts`, `src/views/terminal/index.css`, `tests/settings-reset-to-default.test.ts` (new) | +4 (button hidden at default, visible when dirty, click emits default, hides again after value returns to default) |
+| Cluster H — surface bar chrome | `ec289e2` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-surface-bar.test.ts` (new) | +7 (4 new `--ht-surface-bar-*` tokens + 3 cross-component reuses; .surface-bar resting + focused + button + close-hover rules use them) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.98 → 0.3.99 (reset) → 0.3.100 (surface-bar).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `settings-panel` | A | A | **Cluster B U10 closed.** Every settings field that exposes a `key` through `fieldRow()` now gets a quiet "↺" reset-to-default button in the label wrap. Visible only when the live value differs from `DEFAULT_SETTINGS` (JSON-shape compare so array/nested-record fields work). Click → emit(default). Wired through every field helper (text / number / slider / toggle / select / segmented / color / secret). The dirty-check runs at render time so the button hides itself when `updateSettings()` re-renders post-reset. The "Reset-to-default per field" gap on the feature card is now closed. |
+| `tau-primitives` | S | S | Cluster H continues — surface bar (pane header) chrome migrated to 4 new `--ht-surface-bar-*` tokens (bg, border, focused glow, button fg) + 3 cross-component reuses: `--ht-badge-info-border-soft` (focused border), `--ht-agent-row-bg-hover` (focused inset highlight), `--ht-sem-error` (close-hover red). 7 literals migrated. audit:theming: 792 → 785 (−7). |
+
+Grade distribution after S25: **20 S / 20 A / 6 B / 3 C** (unchanged — settings-panel stayed at A; the U10 gap moved to closed without crossing the boundary).
+
+### Issues encountered
+
+- **Test discovery for the right section**: my first test attempted to find "Font Size" via `findRow()`, but the default active section is "general" (loaded from localStorage; defaults to "general"). Font Size lives in the "appearance" section. Switched the tests to use "Scrollback Lines", a general-section field, so the test runs without first navigating sections.
+- **API shape**: SettingsPanel takes `(onChange, options)`, not a host-object — first iteration of the test passed it the wrong shape. Read the class signature to fix.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 25)
+
+| Criterion | Status |
+|---|---|
+| Cluster B U10 — reset-to-default per field | ✅ landed |
+| Cluster H surface bar chrome region migrated | ✅ 792 → 785 (−7) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2430 / 0–1 known flake; +11 new tests |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 25)
+
+- Cluster B residuals: IME composition guards on settings text inputs.
+- Cluster E residuals: health-check `fix()` remediation UX.
+- Cluster F.10: audit remaining ad-hoc handlers.
+- Cluster H literal migration — next chunk: sidebar workspace card sub-rows, plan-panel sidebar widget remaining literals, telegram bridge sub-states.
+- Phases 8 (release engineering) + 9 (docs / observability).
