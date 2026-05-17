@@ -680,3 +680,48 @@ Grade distribution after S12: **20 S / 20 A / 6 B / 3 C** (unchanged from S11 �
 - F.6 `settings.schema.ts` source-of-truth — still pending as a dedicated session.
 - Cluster H literal migration — next chunk (agent panel, telegram pane, status bar).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 13 (2026-05-17)
+
+Slice picked: **F.6 `settings.schema.ts` typed seam** + **Cluster H agent panel region**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| F.6 typed `FieldSchema` seam | `bedda85` | `src/shared/settings.schema.ts` (new), `src/shared/settings.ts`, `tests/settings-schema.test.ts` (new) | +8 (numberRange / bool factories + delegated validateSettings) |
+| Cluster H agent panel tokens | `b69ec70` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-agent.test.ts` (new) | +9 (each `--ht-agent-*` token defined; 8 `.agent-*` rules use them) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.75 → 0.3.76 (F.6) → 0.3.77 (Cluster H agent).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `settings-persistence` | A | A | **F.6 seam landed.** Typed `FieldSchema<T>` in `src/shared/settings.schema.ts` captures default + validator per field; 10 simple primitive fields migrated as proof (fontSize, lineHeight, terminalBgOpacity, bloomIntensity, paneGap, sidebarWidth, webMirrorPort, scrollbackLines, notificationSoundEnabled, notificationSoundVolume) — remaining ~40 fields stay on the per-clause path. Long-standing deferred item closed. |
+| `tau-primitives` | S | S | Cluster H continues — agent panel region migrated to a new `--ht-agent-*` token group (6 tokens). audit:theming: 971 → 963. Accent (cyan / amber) literals in the agent panel stay for a later targeted session. |
+
+Grade distribution after S13: **20 S / 20 A / 6 B / 3 C** (unchanged — both lifts were seam-introduction / migration work that didn't cross a grade boundary).
+
+### Issues encountered
+
+- **No regressions introduced this session.**
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+- **1 pre-existing flake**: `byte-buffer fallback`. Same as previous sessions.
+
+### Exit criteria (session 13)
+
+| Criterion | Status |
+|---|---|
+| F.6 typed `FieldSchema` seam + 10 migrated fields | ✅ landed |
+| Cluster H agent panel region migrated | ✅ 971 → 963 (−8) |
+| `bun test` green (modulo pre-existing flake) | ✅ 2194 / 1 known flake; +17 new tests (8 schema + 9 agent tokens) |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 13)
+
+- Fold the remaining ~40 settings fields onto the new `FieldSchema` seam (incremental — one cluster at a time).
+- Cluster H literal migration — next chunk (telegram pane, status bar, agent accent cyan/amber).
+- Phases 8 (release engineering) + 9 (docs / observability).
