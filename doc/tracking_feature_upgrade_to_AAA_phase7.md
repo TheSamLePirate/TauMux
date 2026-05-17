@@ -471,3 +471,56 @@ Grade distribution after S8: **19 S / 20 A / 7 B / 3 C** (unchanged from S7 — 
 - A7 `VariantContext` — drop the `__tau*` window globals to lift `app-variants` to A/S.
 - F.11 `WorkspaceCollection` extraction.
 - Cluster H: theme-token migration (~1013 colour literals).
+
+---
+
+## Session 9 (2026-05-17)
+
+Slice picked: **A6 EventBus migration batch 2** (8 channels / 11 sites) + **A7 typed VariantContext** (drop __tau* globals) + **theme-token literal migration kick-off** (notify cue block). Three commits across cluster F (A6 + A7) and cluster H.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| A6 batch 2 — 11 channel migrations | `d5ccdb8` | `src/shared/event-bus.ts`, `src/views/terminal/{surface-manager,sidebar,browser-pane,index}.ts` | existing 85 EventBus + sidebar tests stay green |
+| A7 VariantContext seam | (after `d5ccdb8`) | `src/views/terminal/variants/variant-context.ts` (new), atlas.ts (7 sites), cockpit.ts (2 sites), index.ts (2 sites), `tests/variant-context.test.ts` (new) | +6 (sm/focused/notify round-trip + window shim mirror, setter copy semantics, reset clears everything, null clears + shim) |
+| Theme-token notify cue migration | `7f8b111` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-notify.test.ts` (new) | +16 (each new token defined; three keyframes use the token set; raw rgba shapes rejected; dismiss hover uses semantic tokens) |
+| --ht-sem-error-tint fill-in for light/HC | `2d80177` | `src/shared/web-theme-tokens.css` | (fixes the U2 invariant) |
+
+Bumps: `bun run bump:patch` ran before each functional commit.
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `app-variants` | B | **A** | A6 batch 2 lands 8 more channels on `htEvents` (11 producer call sites). A7 typed `VariantContext` collapses 22 implicit `__tau*` window-global references into 7 typed accessor calls — zero raw window casts remain in the variants. Back-compat shim kept for the design-review harness so the migration is gradual. Still B-adjacent for S: A6 has ~40 channels remaining + variants still need mount/unmount lifecycle tests. |
+| `tau-primitives` | S | S | Already S. P7 S9 added the cluster-H migration kick-off: 12 new tokens, 4 CSS regions migrated (3 keyframes + 1 hover state). `audit:theming` count: 1013 → 993. The literal-to-token gap remains as a multi-session task. |
+
+Grade distribution after S9: **19 S / 21 A / 6 B / 3 C** (was 19 / 20 / 7 / 3 at S8 close).
+
+### Issues encountered
+
+- **VariantContext class name clash**: the existing `./variants/types.ts` already exports a `VariantContext` interface (lifecycle context for variant enter/exit). My new class was originally named `VariantContext` too — renamed to `VariantContextStore` and re-exported only the singleton `variantContext`. No external collision.
+- **U2 invariant fail-then-fix**: the `tests/web-theme-tokens.test.ts` invariant flagged `--ht-sem-error-tint` missing from the graphite-light + high-contrast + media-query blocks. Filled in via the `2d80177` fix-up commit; matched red intensities to the respective `--ht-sem-error` value in each theme.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+- **2 pre-existing flakes**: `byte-buffer fallback` + `PtyManager kill`. Same as previous sessions.
+
+### Exit criteria (session 9)
+
+| Criterion | Status |
+|---|---|
+| A6 batch 2 lands ≥ 8 channels | ✅ 8 channels / 11 call sites |
+| A7 VariantContext seam replaces __tau* globals | ✅ 0 raw window casts remain |
+| Theme-token migration kick-off | ✅ 1013 → 993 (−20) |
+| `bun test` green (modulo pre-existing flakes) | ✅ 2134 / 2 known flakes |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 9)
+
+- F.6 `settings.schema.ts` source-of-truth — still pending as a dedicated session.
+- A6 batch 3 — continue migrating the remaining ~40 channels onto `htEvents`.
+- F.11 `WorkspaceCollection` extraction from `SurfaceManager`.
+- Cluster H literal migration — continue chunk-by-chunk (sidebar, panes, surface bar).
+- Variant mount/unmount lifecycle tests (the last gap for `app-variants` → S).

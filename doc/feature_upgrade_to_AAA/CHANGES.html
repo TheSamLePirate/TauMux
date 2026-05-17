@@ -265,8 +265,8 @@
   <h1>From baseline to AAA — every change, by phase</h1>
   <p class="subtitle">
     A 10-phase plan-of-plans that lifted τ-mux from a mostly-A codebase
-    with named gaps into a release-shape product. Eight sessions of
-    Phase 7 polish carried the final 26 lifts on top of seven earlier
+    with named gaps into a release-shape product. Nine sessions of
+    Phase 7 polish carried the final 29 lifts on top of seven earlier
     landed phases. This document catalogues every functional change.
   </p>
   <div class="meta">
@@ -288,8 +288,8 @@
 
 <div class="tally">
   <div class="cell"><div class="num num-s">19</div><div class="label">S (AAA)</div><div class="delta">+17 from baseline</div></div>
-  <div class="cell"><div class="num num-a">20</div><div class="label">A</div><div class="delta">−7 (promoted to S)</div></div>
-  <div class="cell"><div class="num num-b">7</div><div class="label">B</div><div class="delta">−10 (promoted to A/S)</div></div>
+  <div class="cell"><div class="num num-a">21</div><div class="label">A</div><div class="delta">−6 (promoted to S)</div></div>
+  <div class="cell"><div class="num num-b">6</div><div class="label">B</div><div class="delta">−11 (promoted to A/S)</div></div>
   <div class="cell"><div class="num num-c">3</div><div class="label">C</div><div class="delta">audits + release plumbing</div></div>
 </div>
 
@@ -411,10 +411,10 @@
   <li><span class="sha">f971b63</span> <strong>tests/regressions/ catalogue</strong> + <code>catalogue.test.ts</code> gate.</li>
 </ul>
 
-<h2 id="phase-7"><span class="phase-tag">PHASE 7</span>Per-feature polish sweep — 8 sessions, 26 lifts</h2>
+<h2 id="phase-7"><span class="phase-tag">PHASE 7</span>Per-feature polish sweep — 9 sessions, 29 lifts</h2>
 <p class="phase-blurb">
   The biggest single phase: a polish sweep walking the per-feature
-  grades and closing the named gaps in each. Split across eight
+  grades and closing the named gaps in each. Split across nine
   sessions because the long tail spans clusters B / C / D / E / F / G / H.
 </p>
 
@@ -570,6 +570,20 @@
   </div>
 </div>
 
+<h3 id="p7s9">Session 9 — Cluster F continuation + Cluster H kick-off</h3>
+<div class="card">
+  <div class="lifts">
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">app-variants (A6 + A7)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-b">B</span> → <span class="grade-a">A</span></span><span class="sha">d5ccdb8</span></div>
+      <p class="lift-body">A6 batch 2 migrates <strong>8 more channels</strong> onto <code>htEvents</code> (11 producer call sites total): <code>ht-close-surface</code>, <code>ht-split</code>, <code>ht-show-surface-info</code>, <code>ht-open-external</code>, <code>ht-statuses-changed</code>, <code>ht-sidebar-toggle</code>, <code>ht-sidebar-resize-commit</code>, <code>ht-focus-notification-source</code>. Native producers: 51 → 40. A7 typed <strong>VariantContext</strong> (<code>src/views/terminal/variants/variant-context.ts</code>) replaces the three <code>__tau*</code> window globals: 22 implicit references → 7 typed accessor calls; zero raw window casts remain in the variants. Back-compat shim kept for the design-review harness.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">tau-primitives (token kick-off)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">7f8b111</span></div>
+      <p class="lift-body">Cluster H literal migration begins. 12 new tokens (<code>--ht-notify-amber-*</code>, <code>--ht-notify-cyan-*</code>, <code>--ht-sem-error-tint</code>) repaint 4 CSS regions — three notify keyframes plus the <code>.notification-dismiss</code> hover state. <code>audit:theming</code> count: <strong>1013 → 993</strong>. Pattern established for future Cluster H sessions to chunk through the remainder. U2 invariant kept green via the <code>--ht-sem-error-tint</code> light + high-contrast overrides.</p>
+    </div>
+  </div>
+</div>
+
 <h2 id="remaining">Remaining long tail (deferred from P7)</h2>
 <p class="phase-blurb">
   These items were explicitly captured for future P7 sessions. None are
@@ -673,6 +687,9 @@
     <tr><td>P7 S8</td><td><span class="sha">dc59389</span></td><td>sidebar mouse-drag Escape-cancel + indicator hygiene</td></tr>
     <tr><td>P7 S8</td><td><span class="sha">d4a0771</span></td><td>typed EventBus seam + 5 channel migrations (A6)</td></tr>
     <tr><td>P7 S8</td><td><span class="sha">2d67017</span></td><td>web-mirror auth-token ergonomics (H.9 final)</td></tr>
+    <tr><td>P7 S9</td><td><span class="sha">d5ccdb8</span></td><td>EventBus A6 batch 2 — 8 channels / 11 sites migrated</td></tr>
+    <tr><td>P7 S9</td><td><span class="sha">14cd74f</span></td><td>typed VariantContext seam (A7 — drops __tau* globals)</td></tr>
+    <tr><td>P7 S9</td><td><span class="sha">7f8b111</span></td><td>theme-token migration kick-off (notify cue, audit 1013→993)</td></tr>
   </tbody>
 </table>
 
