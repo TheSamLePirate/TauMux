@@ -241,6 +241,18 @@
   --ht-pm-secondary-btn-bg-hover: rgba(255, 255, 255, 0.06);
   --ht-pm-secondary-btn-border-hover: rgba(255, 255, 255, 0.16);
 
+  /* P7 S25 — surface bar (pane header) chrome. The bar carries the
+   *  pane title + status chips + tiny action buttons; visually
+   *  distinct from the title bar (lower in the chrome z-order) with
+   *  a faintly bluer near-black bg and a zinc border. When the pane
+   *  is focused, a thin cyan glow strip lights up under the border.
+   *  The btn-fg is dimmer than --ht-titlebar-toolbar-fg so the bar
+   *  feels secondary chrome, not primary. */
+  --ht-surface-bar-bg: rgba(9, 9, 11, 0.92);
+  --ht-surface-bar-border: rgba(39, 39, 42, 0.92);
+  --ht-surface-bar-focused-glow: rgba(111, 233, 255, 0.08);
+  --ht-surface-bar-btn-fg: rgba(244, 244, 245, 0.44);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg

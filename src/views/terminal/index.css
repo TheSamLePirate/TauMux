@@ -2278,9 +2278,8 @@ body.sidebar-resizing {
   justify-content: space-between;
   gap: 12px;
   padding: 0 10px 0 12px;
-  background:
-    rgba(9, 9, 11, 0.92);
-  border-bottom: 1px solid rgba(39, 39, 42, 0.92);
+  background: var(--ht-surface-bar-bg);
+  border-bottom: 1px solid var(--ht-surface-bar-border);
   font-size: 10px;
   color: var(--text-dim);
   user-select: none;
@@ -2289,10 +2288,10 @@ body.sidebar-resizing {
 }
 
 .surface-container.focused .surface-bar {
-  border-bottom-color: rgba(111, 233, 255, 0.22);
+  border-bottom-color: var(--ht-badge-info-border-soft);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 1px 0 rgba(111, 233, 255, 0.08);
+    inset 0 1px 0 var(--ht-agent-row-bg-hover),
+    0 1px 0 var(--ht-surface-bar-focused-glow);
 }
 
 .surface-bar-title-wrap {
@@ -2432,7 +2431,7 @@ body.sidebar-resizing {
   height: 18px;
   display: grid;
   place-items: center;
-  color: rgba(244, 244, 245, 0.44);
+  color: var(--ht-surface-bar-btn-fg);
 }
 
 .surface-bar-btn:hover {
@@ -2440,7 +2439,7 @@ body.sidebar-resizing {
 }
 
 .surface-bar-close:hover {
-  color: #f87171;
+  color: var(--ht-sem-error);
 }
 
 .surface-terminal {
