@@ -284,4 +284,86 @@ describe("WebServer", () => {
 
     expect(srv.clientCount).toBe(0);
   });
+
+  // ──────────────────────────────────────────────────────────────────
+  // P7 S7 / H.9 — session cap + eviction
+  // ──────────────────────────────────────────────────────────────────
+
+  test("upgrade past the session cap evicts the oldest detached session", async () => {
+    const srv = createServer();
+    // Tight cap so the next connection trips it.
+    srv.maxSessions = 1;
+
+    // First connect → session is created and attached.
+    const ws1 = new WebSocket(`ws://127.0.0.1:${TEST_PORT}`);
+    await new Promise<void>((resolve) => {
+      ws1.onopen = () => resolve();
+    });
+    await Bun.sleep(20);
+    expect(srv.sessionCount).toBe(1);
+
+    // Detach: the session lingers (waiting on TTL) but is now eligible
+    // for eviction. Tighten the TTL so the cleanup timer doesn't beat
+    // our eviction path.
+    srv.sessionTtlMs = 10_000;
+    ws1.close();
+    await Bun.sleep(30);
+    expect(srv.sessionCount).toBe(1); // still resumable
+
+    // Second connect → cap reached, evict the detached, accept the
+    // new client.
+    const ws2 = new WebSocket(`ws://127.0.0.1:${TEST_PORT}`);
+    await new Promise<void>((resolve, reject) => {
+      ws2.onopen = () => resolve();
+      ws2.onerror = () => reject(new Error("ws2 failed to upgrade"));
+      setTimeout(() => reject(new Error("timeout")), 500);
+    });
+    await Bun.sleep(20);
+    expect(srv.sessionCount).toBe(1);
+
+    ws2.close();
+    await Bun.sleep(30);
+  });
+
+  test("evictOldestDetachedSession returns false when every session is attached", async () => {
+    const srv = createServer();
+    const ws = new WebSocket(`ws://127.0.0.1:${TEST_PORT}`);
+    await new Promise<void>((resolve) => {
+      ws.onopen = () => resolve();
+    });
+    await Bun.sleep(20);
+    // Attached → can't evict.
+    expect(srv.evictOldestDetachedSession()).toBe(false);
+    ws.close();
+    await Bun.sleep(30);
+  });
+
+  test("upgrade past the cap with no detached sessions returns 503", async () => {
+    const srv = createServer();
+    srv.maxSessions = 1;
+
+    const ws = new WebSocket(`ws://127.0.0.1:${TEST_PORT}`);
+    await new Promise<void>((resolve) => {
+      ws.onopen = () => resolve();
+    });
+    await Bun.sleep(20);
+    expect(srv.sessionCount).toBe(1);
+
+    // Probe the upgrade endpoint via fetch so we can read the status —
+    // the second WebSocket would just error out without a status code.
+    // We use a raw upgrade request to /ws; the cap path lives there.
+    const resp = await fetch(`http://127.0.0.1:${TEST_PORT}/`, {
+      headers: {
+        upgrade: "websocket",
+        connection: "Upgrade",
+        "sec-websocket-version": "13",
+        "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+      },
+    });
+    expect(resp.status).toBe(503);
+    expect(resp.headers.get("retry-after")).toBe("30");
+
+    ws.close();
+    await Bun.sleep(30);
+  });
 });

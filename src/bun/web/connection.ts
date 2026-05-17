@@ -9,6 +9,21 @@
 export const SESSION_TTL_MS = 60_000;
 export const SESSION_BUFFER_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
+/** P7 S7 / H.9 — Soft cap on simultaneous resumable sessions. Each
+ *  session holds a 2 MB resume ring, so 64 sessions = ~128 MB worst-case
+ *  if every one is freshly disconnected and waiting on SESSION_TTL_MS.
+ *  Real-world peer counts on a developer's LAN sit at ≤ 4; the cap is
+ *  a runaway guard, not a hard limit. When the count exceeds this:
+ *
+ *    1. New WebSocket upgrades are rejected with HTTP 503.
+ *    2. The oldest detached (disconnected) session is evicted right
+ *       away so a legitimate reconnect from a transient drop has room.
+ *
+ *  Tuning: doubling this safely needs ~4 MB of headroom per slot.
+ *  Override-able per-instance via `WebServer.setMaxSessions()` for
+ *  tests that want to exercise the eviction path with a tighter cap. */
+export const MAX_SESSIONS = 64;
+
 /** Stdout coalescing window. Multiple chunks arriving within this
  *  window are concatenated into a single `output` envelope. Small
  *  enough to feel real-time, large enough to absorb shell bursts. */

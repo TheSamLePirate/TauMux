@@ -27,6 +27,7 @@ import {
   decideBackpressure,
   makeServerInstanceId,
   makeSessionId,
+  MAX_SESSIONS,
   OUTPUT_COALESCE_MS,
   OUTPUT_COALESCE_SOFT_CAP,
   SessionBuffer,
@@ -80,6 +81,9 @@ export class WebServer {
   sessionBufferMaxBytes?: number;
   /** Exposed to tests; time after disconnect before a session is dropped. */
   sessionTtlMs = SESSION_TTL_MS;
+  /** P7 S7 / H.9 — soft cap on simultaneous resumable sessions. Tests
+   *  override this for tighter assertions on the eviction path. */
+  maxSessions = MAX_SESSIONS;
 
   onSidebarToggle: ((visible: boolean) => void) | null = null;
   onSelectWorkspace: ((workspaceId: string) => void) | null = null;
@@ -304,6 +308,21 @@ export class WebServer {
             }
             if (!this.originAllowed(url, req))
               return respond("Forbidden: cross-origin", { status: 403 });
+            // P7 S7 / H.9 — soft cap on resumable sessions. Try to
+            // evict an idle / disconnected session before rejecting;
+            // a legitimate transient drop should still find a slot.
+            if (this.sessions.size >= this.maxSessions) {
+              const evicted = this.evictOldestDetachedSession();
+              if (!evicted) {
+                console.warn(
+                  `[web] session cap reached (${this.sessions.size}/${this.maxSessions}); rejecting upgrade from ${ip}`,
+                );
+                return respond("Service Unavailable: session cap reached", {
+                  status: 503,
+                  headers: { "retry-after": "30" },
+                });
+              }
+            }
             const resumeId = url.searchParams.get("resume") || undefined;
             const resumeSeqRaw = url.searchParams.get("seq");
             const resumeSeq =
@@ -559,6 +578,38 @@ export class WebServer {
     const s = new SessionBuffer(makeSessionId(), this.sessionBufferMaxBytes);
     this.sessions.set(s.id, s);
     return s;
+  }
+
+  /** P7 S7 / H.9 — evict the oldest detached (no live ws) session
+   *  when the cap is reached. Returns true when a slot was freed.
+   *  Attached sessions are never evicted from here — a live peer
+   *  has higher priority than a session waiting on SESSION_TTL_MS.
+   *  Exposed via `evictOldestDetachedSession()` so tests can drive
+   *  the eviction path deterministically. */
+  evictOldestDetachedSession(): boolean {
+    let oldestId: string | null = null;
+    let oldestAt = Infinity;
+    for (const [id, s] of this.sessions) {
+      if (s.ws !== null) continue; // attached — leave alone
+      const at = s.detachedAt ?? 0;
+      if (at < oldestAt) {
+        oldestAt = at;
+        oldestId = id;
+      }
+    }
+    if (oldestId === null) return false;
+    const existingTimer = this.ttlTimers.get(oldestId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.ttlTimers.delete(oldestId);
+    }
+    const s = this.sessions.get(oldestId);
+    if (s?.outputFlushTimer) {
+      clearTimeout(s.outputFlushTimer);
+      s.outputFlushTimer = null;
+    }
+    this.sessions.delete(oldestId);
+    return true;
   }
 
   private scheduleSessionCleanup(sessionId: string): void {
