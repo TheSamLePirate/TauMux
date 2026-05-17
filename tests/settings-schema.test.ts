@@ -19,8 +19,16 @@ import {
   wrapped,
 } from "../src/shared/settings.schema";
 import {
+  ACCENT_COLOR_SCHEMA,
+  ANSI_COLORS_SCHEMA,
   AUTO_CONTINUE_SCHEMA,
+  BG_BASE_SCHEMA,
+  DEFAULT_ANSI_COLORS,
   DEFAULT_SETTINGS,
+  FOREGROUND_COLOR_SCHEMA,
+  SECONDARY_COLOR_SCHEMA,
+  THEME_PRESETS,
+  THEME_PRESET_SCHEMA,
   validateSettings,
   type AppSettings,
 } from "../src/shared/settings";
@@ -488,5 +496,81 @@ describe("FieldSchema factory — wrapped (S17)", () => {
     expect(out.autoContinue.dryRun).toBe(false);
     expect(out.autoContinue.cooldownMs).toBe(2000);
     expect(out.autoContinue.maxConsecutive).toBe(5);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// P7 S20 — theme-preset interlock (final F.6 batch)
+// ──────────────────────────────────────────────────────────────────
+
+describe("Theme-preset interlock schemas (S20)", () => {
+  test("THEME_PRESET_SCHEMA accepts any known preset id; rejects unknown", () => {
+    expect(THEME_PRESET_SCHEMA.default).toBe(THEME_PRESETS[0].id);
+    for (const preset of THEME_PRESETS) {
+      expect(THEME_PRESET_SCHEMA.validate(preset.id)).toBe(preset.id);
+    }
+    expect(THEME_PRESET_SCHEMA.validate("nonexistent")).toBe(
+      THEME_PRESETS[0].id,
+    );
+    expect(THEME_PRESET_SCHEMA.validate(42 as unknown)).toBe(
+      THEME_PRESETS[0].id,
+    );
+    expect(THEME_PRESET_SCHEMA.validate(undefined)).toBe(THEME_PRESETS[0].id);
+  });
+
+  test("colour schemas pass string input through verbatim", () => {
+    expect(ACCENT_COLOR_SCHEMA.validate("#ff00ff")).toBe("#ff00ff");
+    expect(SECONDARY_COLOR_SCHEMA.validate("rgb(1,2,3)")).toBe("rgb(1,2,3)");
+    expect(FOREGROUND_COLOR_SCHEMA.validate("white")).toBe("white");
+    expect(BG_BASE_SCHEMA.validate("0,0,0")).toBe("0,0,0");
+  });
+
+  test("colour schemas fall back to default for non-string input", () => {
+    expect(ACCENT_COLOR_SCHEMA.validate(42 as unknown)).toBe(
+      THEME_PRESETS[0].accentColor,
+    );
+    expect(BG_BASE_SCHEMA.validate(null)).toBe(THEME_PRESETS[0].bgBase);
+  });
+
+  test("ANSI_COLORS_SCHEMA returns a fresh default for non-object input", () => {
+    const out = ANSI_COLORS_SCHEMA.validate(null);
+    expect(out).toEqual(DEFAULT_ANSI_COLORS);
+    expect(out).not.toBe(DEFAULT_ANSI_COLORS);
+  });
+
+  test("ANSI_COLORS_SCHEMA passes string entries through + defaults missing ones", () => {
+    const out = ANSI_COLORS_SCHEMA.validate({
+      red: "#ff0000",
+      green: 42, // wrong type → default
+      brightCyan: "#00ffff",
+    });
+    expect(out.red).toBe("#ff0000");
+    expect(out.green).toBe(DEFAULT_ANSI_COLORS.green); // junked
+    expect(out.brightCyan).toBe("#00ffff");
+    // Missing keys → default values for ALL of the canonical 16.
+    expect(out.brightBlack).toBe(DEFAULT_ANSI_COLORS.brightBlack);
+    expect(out.white).toBe(DEFAULT_ANSI_COLORS.white);
+  });
+
+  test("validateSettings sanitises the 6 theme fields end-to-end", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      themePreset: "made-up" as string,
+      accentColor: 0 as unknown as string,
+      secondaryColor: undefined as unknown as string,
+      foregroundColor: "#abc123",
+      bgBase: null as unknown as string,
+      ansiColors: { red: "#ff0000", garbage: 42 } as unknown as never,
+    });
+    expect(out.themePreset).toBe(THEME_PRESETS[0].id);
+    expect(out.accentColor).toBe(THEME_PRESETS[0].accentColor);
+    expect(out.secondaryColor).toBe(THEME_PRESETS[0].secondaryColor);
+    expect(out.foregroundColor).toBe("#abc123"); // string → pass-through
+    expect(out.bgBase).toBe(THEME_PRESETS[0].bgBase);
+    expect(out.ansiColors.red).toBe("#ff0000");
+    // The extraneous `garbage` key is silently dropped.
+    expect((out.ansiColors as Record<string, unknown>)["garbage"]).toBe(
+      undefined,
+    );
   });
 });

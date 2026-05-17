@@ -1,4 +1,4 @@
-import { SETTINGS_FIELD_SCHEMAS, wrapped } from "./settings.schema";
+import { SETTINGS_FIELD_SCHEMAS, string, wrapped } from "./settings.schema";
 
 export interface AnsiColors {
   black: string;
@@ -987,6 +987,18 @@ export function validateSettings(s: AppSettings): AppSettings {
     htStatusKeyHidden: SETTINGS_FIELD_SCHEMAS.htStatusKeyHidden.validate(
       s.htStatusKeyHidden,
     ),
+    // P7 S20 — theme-preset interlock fields. Previously slipped through
+    // validateSettings via the unmodified `...s` spread with no guard.
+    // Validators sanitise shape only (themePreset must be a known id;
+    // colours must be strings; ansiColors must match the AnsiColors
+    // shape); the actual themePreset→colour interlock happens at the
+    // settings-panel UI layer when the user picks a preset.
+    themePreset: THEME_PRESET_SCHEMA.validate(s.themePreset),
+    accentColor: ACCENT_COLOR_SCHEMA.validate(s.accentColor),
+    secondaryColor: SECONDARY_COLOR_SCHEMA.validate(s.secondaryColor),
+    foregroundColor: FOREGROUND_COLOR_SCHEMA.validate(s.foregroundColor),
+    bgBase: BG_BASE_SCHEMA.validate(s.bgBase),
+    ansiColors: ANSI_COLORS_SCHEMA.validate(s.ansiColors),
     autoContinue: AUTO_CONTINUE_SCHEMA.validate(s.autoContinue),
   };
 }
@@ -1047,6 +1059,49 @@ export const AUTO_CONTINUE_SCHEMA = wrapped(
   DEFAULT_SETTINGS.autoContinue,
   (input: unknown): AutoContinueSettings =>
     validateAutoContinue(input as AutoContinueSettings | undefined | null),
+);
+
+// P7 S20 — theme-preset interlock schemas. The 6 theme-related fields
+// (themePreset + accentColor + secondaryColor + foregroundColor +
+// bgBase + ansiColors) previously slipped through validateSettings via
+// the unmodified `...s` spread with NO guard at all. Closes the final
+// silent-gap class and completes F.6 at 56 / 56 settings fields (100%
+// coverage). The "interlock" itself — keeping the colour fields
+// consistent with the selected themePreset — happens at the settings-
+// panel UI layer (picking a preset populates the colour fields).
+// validateSettings only sanitises shape: themePreset must be a known
+// id; colour fields must be strings; ansiColors must be an object
+// with string-valued entries for every ANSI key.
+
+const KNOWN_THEME_PRESET_IDS = new Set(THEME_PRESETS.map((p) => p.id));
+
+function validateAnsiColors(input: unknown): AnsiColors {
+  const def = DEFAULT_ANSI_COLORS;
+  if (!input || typeof input !== "object") return { ...def };
+  const rec = input as Record<string, unknown>;
+  const out = {} as AnsiColors;
+  for (const key of Object.keys(def) as Array<keyof AnsiColors>) {
+    const v = rec[key];
+    out[key] = typeof v === "string" ? v : def[key];
+  }
+  return out;
+}
+
+export const THEME_PRESET_SCHEMA = wrapped(
+  THEME_PRESETS[0].id,
+  (input: unknown): string =>
+    typeof input === "string" && KNOWN_THEME_PRESET_IDS.has(input)
+      ? input
+      : THEME_PRESETS[0].id,
+);
+
+export const ACCENT_COLOR_SCHEMA = string(THEME_PRESETS[0].accentColor);
+export const SECONDARY_COLOR_SCHEMA = string(THEME_PRESETS[0].secondaryColor);
+export const FOREGROUND_COLOR_SCHEMA = string(THEME_PRESETS[0].foregroundColor);
+export const BG_BASE_SCHEMA = string(THEME_PRESETS[0].bgBase);
+export const ANSI_COLORS_SCHEMA = wrapped(
+  { ...DEFAULT_ANSI_COLORS },
+  validateAnsiColors,
 );
 
 /** Compose the final ordered list of visible `ht set-status` keys
