@@ -1696,8 +1696,8 @@ body.sidebar-resizing {
 .workspace-package {
   margin: 6px 10px 6px 14px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--ht-package-bg);
+  border: 1px solid var(--ht-package-border);
   overflow: hidden;
 }
 
@@ -1717,12 +1717,12 @@ body.sidebar-resizing {
 }
 
 .workspace-package-header:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ht-package-header-bg-hover);
   color: var(--text-strong);
 }
 
 .workspace-package.expanded .workspace-package-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--ht-package-border);
 }
 
 .workspace-package-caret {
@@ -1752,7 +1752,7 @@ body.sidebar-resizing {
  * from the npm card at a glance. Only the leading icon is tinted —
  * everything else inherits the shared manifest-card styling. */
 .workspace-manifest-cargo .workspace-package-icon {
-  color: #f38020;
+  color: var(--ht-cargo-icon);
 }
 
 .workspace-package-name {
@@ -1776,8 +1776,8 @@ body.sidebar-resizing {
   color: var(--accent-primary);
   padding: 1px 5px;
   border-radius: 3px;
-  background: rgba(111, 233, 255, 0.08);
-  border: 1px solid rgba(111, 233, 255, 0.2);
+  background: var(--ht-package-type-bg);
+  border: 1px solid var(--ht-package-type-border);
   margin-left: auto;
 }
 
@@ -1814,8 +1814,8 @@ body.sidebar-resizing {
   border-radius: 3px;
   font-family: var(--font-mono, monospace);
   color: var(--accent-secondary);
-  background: rgba(255, 197, 107, 0.08);
-  border: 1px solid rgba(255, 197, 107, 0.22);
+  background: var(--ht-badge-warn-bg);
+  border: 1px solid var(--ht-badge-warn-border);
 }
 
 .workspace-package-scripts {
@@ -9401,7 +9401,7 @@ body::after {
 }
 
 #sidebar.sidebar-v2 .workspace-manifest-cargo .workspace-package-icon {
-  color: #f38020;
+  color: var(--ht-cargo-icon);
 }
 
 #sidebar.sidebar-v2 .workspace-package-name {

@@ -274,6 +274,21 @@
   --ht-cwd-chip-active-border: rgba(111, 233, 255, 0.32);
   --ht-cwd-chip-active-glow: rgba(111, 233, 255, 0.14);
 
+  /* P7 S21 — workspace package card (sidebar manifest summary). The
+   *  card chrome uses fainter white-on-dark depths than .surface-chip
+   *  to read as "secondary container, not interactive primary". The
+   *  type chip uses an info cyan tint (slightly softer than --ht-
+   *  badge-info-* to read as informational, not focused). The cargo
+   *  icon uses Rust's signature orange so the eye can tell the cargo
+   *  card from the npm card at a glance. The ht-package prefix sits
+   *  outside the U2 light/HC override gate. */
+  --ht-package-bg: rgba(255, 255, 255, 0.02);
+  --ht-package-border: rgba(255, 255, 255, 0.04);
+  --ht-package-header-bg-hover: rgba(255, 255, 255, 0.03);
+  --ht-package-type-bg: rgba(111, 233, 255, 0.08);
+  --ht-package-type-border: rgba(111, 233, 255, 0.2);
+  --ht-cargo-icon: #f38020;
+
   /* P7 S19 — notification overlay + sidebar notification item.
    *  The .tau-notif-overlay-* stack (top-right toasts) uses a slightly
    *  bluer dark surface than the rest of the chrome, with a noticeable
