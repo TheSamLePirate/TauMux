@@ -20,6 +20,7 @@
  */
 import type { VariantContext, VariantHandle } from "./types";
 import { IconTau } from "../tau-icons";
+import { variantContext as variantHandles } from "./variant-context";
 
 const RAIL_ID = "tau-cockpit-rail";
 const HUD_CLASS = "tau-hud";
@@ -98,8 +99,7 @@ function renderRail(rail: HTMLElement, _ctx: VariantContext): void {
   // Workspace buttons. Pull the list from surfaceManager via the
   // existing public API — accessed through window to avoid a circular
   // import (controller owns no surface-manager ref).
-  const sm = (window as unknown as { __tauSurfaceManager?: SurfaceManagerLike })
-    .__tauSurfaceManager;
+  const sm = variantHandles.getSurfaceManager() as SurfaceManagerLike | null;
   const workspaces = sm?.getWorkspaceState?.()?.workspaces ?? [];
   const activeId = sm?.getWorkspaceState?.()?.activeWorkspaceId;
   const hasRunningAgent = (ws: { surfaceIds: string[] }) =>
@@ -137,10 +137,8 @@ function renderRail(rail: HTMLElement, _ctx: VariantContext): void {
     }
     // Workspace-level notification dot — driven by the same state
     // event as Bridge pills so the signal is identical everywhere.
-    const notifySet: Set<string> | undefined = (
-      window as unknown as { __tauNotifyWorkspaces?: Set<string> }
-    ).__tauNotifyWorkspaces;
-    if (notifySet?.has(ws.id)) {
+    const notifySet = variantHandles.getNotifyWorkspaces();
+    if (notifySet.has(ws.id)) {
       btn.classList.add("tau-notify-dot");
       if (!hasRunningAgent(ws)) btn.classList.add("tau-notify-human");
     }

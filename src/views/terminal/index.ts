@@ -12,6 +12,7 @@ import {
 import { SurfaceManager } from "./surface-manager";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
 import { htEvents } from "../../shared/event-bus";
+import { variantContext } from "./variants/variant-context";
 import { KeyboardCheatsheet } from "./keyboard-cheatsheet";
 import { createIcon } from "./icons";
 import { IconTau } from "./tau-icons";
@@ -361,9 +362,11 @@ surfaceManager.getSidebar().setFileExplorerRequester((request) => {
 // to read workspace state and dispatch workspace switches without
 // taking a circular import on index.ts. Installing on window is the
 // same escape hatch index.ts already uses for panel registrations.
-(
-  window as unknown as { __tauSurfaceManager: SurfaceManager }
-).__tauSurfaceManager = surfaceManager;
+// P7 S9 (A7) — register the surface manager handle for the variant
+// chrome (Atlas / Cockpit) via the typed VariantContext singleton.
+// The legacy `window.__tauSurfaceManager` is still written as a
+// back-compat shim until the design-review harness migrates.
+variantContext.setSurfaceManager(surfaceManager);
 
 // Plan #10 commit C — install the ask-user modal. The state is
 // already populated via the askUserEvent rpc handler above; the
@@ -1324,10 +1327,9 @@ window.addEventListener("ht-notify-state-changed", (e) => {
     e as CustomEvent<{ surfaces: string[]; workspaces: string[] }>
   ).detail;
   lastNotifyWorkspaces = new Set(detail?.workspaces ?? []);
-  // Mirror onto window so variants can read without a back-channel.
-  (
-    window as unknown as { __tauNotifyWorkspaces: Set<string> }
-  ).__tauNotifyWorkspaces = lastNotifyWorkspaces;
+  // P7 S9 (A7) — typed VariantContext replaces the
+  // window.__tauNotifyWorkspaces shim.
+  variantContext.setNotifyWorkspaces(lastNotifyWorkspaces);
   syncToolbarState();
 });
 

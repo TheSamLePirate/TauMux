@@ -18,6 +18,7 @@
  */
 import type { VariantContext, VariantHandle } from "./types";
 import { IconTau } from "../tau-icons";
+import { variantContext as variantHandles } from "./variant-context";
 
 const GRAPH_ID = "tau-atlas-graph";
 const TAB_RAIL_ID = "tau-atlas-tab-rail";
@@ -101,15 +102,13 @@ function renderGraph(host: HTMLElement): void {
   const height = host.clientHeight || 500;
 
   // ── data ──
-  const sm = (
-    window as unknown as { __tauSurfaceManager?: AtlasSurfaceManagerLike }
-  ).__tauSurfaceManager;
+  const sm =
+    variantHandles.getSurfaceManager() as AtlasSurfaceManagerLike | null;
   const state = sm?.getWorkspaceState?.();
   const workspaces = state?.workspaces ?? [];
   const activeId = state?.activeWorkspaceId;
   const pmData = sm?.getProcessManagerData?.() ?? [];
-  const focusedId = (window as unknown as { __tauFocusedSurfaceId?: string })
-    .__tauFocusedSurfaceId;
+  const focusedId = variantHandles.getFocusedSurfaceId() ?? undefined;
 
   const nodes: GraphNodeWithMeta[] = [];
   const edges: GraphEdge[] = [];
@@ -299,10 +298,8 @@ function renderGraph(host: HTMLElement): void {
     // Workspace-level notification mirror — if this node's id is in
     // the shared notify-workspace set, render a pulsing amber ring
     // around it. Agent identity on the pane flips the ring to cyan.
-    const notifySet: Set<string> | undefined = (
-      window as unknown as { __tauNotifyWorkspaces?: Set<string> }
-    ).__tauNotifyWorkspaces;
-    if (n.parentWsId && notifySet?.has(n.parentWsId)) {
+    const notifySet = variantHandles.getNotifyWorkspaces();
+    if (n.parentWsId && notifySet.has(n.parentWsId)) {
       const notifyRing = document.createElementNS(NS_SVG, "circle");
       notifyRing.setAttribute("cx", String(n.x));
       notifyRing.setAttribute("cy", String(n.y));
@@ -336,11 +333,8 @@ function renderGraph(host: HTMLElement): void {
     if (n.id !== "__self__") {
       circle.style.cursor = "pointer";
       circle.addEventListener("click", () => {
-        const sm2 = (
-          window as unknown as {
-            __tauSurfaceManager?: AtlasSurfaceManagerLike;
-          }
-        ).__tauSurfaceManager;
+        const sm2 =
+          variantHandles.getSurfaceManager() as AtlasSurfaceManagerLike | null;
         if (n.kind === "repo") {
           const ws = sm2?.getWorkspaceState?.();
           const idx = ws?.workspaces.findIndex((w) => w.id === n.id) ?? -1;
@@ -442,16 +436,14 @@ function unmountTabRail(): void {
 
 function renderTabRail(rail: HTMLElement): void {
   rail.replaceChildren();
-  const sm = (
-    window as unknown as { __tauSurfaceManager?: AtlasSurfaceManagerLike }
-  ).__tauSurfaceManager;
+  const sm =
+    variantHandles.getSurfaceManager() as AtlasSurfaceManagerLike | null;
   const state = sm?.getWorkspaceState?.();
   const active = state?.workspaces.find(
     (w) => w.id === state.activeWorkspaceId,
   );
   if (!active) return;
-  const focusedId = (window as unknown as { __tauFocusedSurfaceId?: string })
-    .__tauFocusedSurfaceId;
+  const focusedId = variantHandles.getFocusedSurfaceId() ?? undefined;
   for (const sid of active.surfaceIds) {
     const el = document.querySelector<HTMLElement>(
       `.surface-container[data-surface-id="${sid}"]`,
@@ -554,9 +546,7 @@ function attachListeners(): void {
   focusHandler = (e: Event) => {
     const detail = (e as CustomEvent<{ surfaceId: string }>).detail;
     if (detail?.surfaceId) {
-      (
-        window as unknown as { __tauFocusedSurfaceId?: string }
-      ).__tauFocusedSurfaceId = detail.surfaceId;
+      variantHandles.setFocusedSurfaceId(detail.surfaceId);
     }
     schedule();
   };
