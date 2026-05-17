@@ -1040,6 +1040,109 @@ export class SettingsPanel {
       "autoStartWebMirror",
       { note: "Start the web mirror server when the app launches." },
     );
+
+    // P7 S8 / H.9 — manifest-auth ergonomics. The token has lived as
+    // a hidden setting since H.4 (one of the few sensitive fields the
+    // wire snapshot deliberately omits). Surface it here with a copy
+    // button + a regenerate action so users don't have to hand-edit
+    // settings.json to rotate it.
+    this.renderAuthTokenRow(c, s);
+  }
+
+  /** P7 S8 / H.9 — auth-token row: shows the current token (masked
+   *  by default with a peek toggle), a copy-to-clipboard button, and
+   *  a one-click regenerate. The new token is dispatched through the
+   *  existing `updateSettings` pipeline so the running web server
+   *  picks it up. */
+  private renderAuthTokenRow(c: HTMLElement, s: AppSettings): void {
+    const row = this.fieldRow(c, "Auth Token");
+
+    const wrap = document.createElement("div");
+    wrap.className = "settings-color-wrap"; // re-use the input + button row layout
+
+    const input = document.createElement("input");
+    input.type = "password";
+    input.className = "settings-input";
+    input.value = s.webMirrorAuthToken;
+    input.placeholder = "(no token — anyone on the LAN can connect)";
+    input.style.flex = "1";
+    input.setAttribute("aria-label", "Web mirror auth token");
+    input.addEventListener("change", () => {
+      this.emit({ webMirrorAuthToken: input.value.trim() });
+    });
+
+    const peekBtn = document.createElement("button");
+    peekBtn.type = "button";
+    peekBtn.className = "settings-segment";
+    peekBtn.textContent = "Show";
+    peekBtn.setAttribute("aria-pressed", "false");
+    peekBtn.addEventListener("click", () => {
+      const peeking = input.type === "text";
+      input.type = peeking ? "password" : "text";
+      peekBtn.textContent = peeking ? "Show" : "Hide";
+      peekBtn.setAttribute("aria-pressed", peeking ? "false" : "true");
+    });
+
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "settings-segment";
+    copyBtn.textContent = "Copy";
+    copyBtn.title = "Copy auth token to clipboard";
+    copyBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          await navigator.clipboard.writeText(input.value);
+          const prev = copyBtn.textContent;
+          copyBtn.textContent = "Copied";
+          setTimeout(() => {
+            copyBtn.textContent = prev;
+          }, 1100);
+        } catch {
+          /* clipboard unavailable — silent */
+        }
+      })();
+    });
+
+    const regenBtn = document.createElement("button");
+    regenBtn.type = "button";
+    regenBtn.className = "settings-segment";
+    regenBtn.textContent = "Regenerate";
+    regenBtn.title =
+      "Replace with a fresh 32-byte hex token. Existing connections must reconnect.";
+    regenBtn.addEventListener("click", () => {
+      if (
+        s.webMirrorAuthToken.length > 0 &&
+        !confirm(
+          "Replace the current auth token? Connected web mirror clients will need to reconnect with the new URL.",
+        )
+      ) {
+        return;
+      }
+      const next = generateAuthToken();
+      input.value = next;
+      this.emit({ webMirrorAuthToken: next });
+    });
+
+    wrap.appendChild(input);
+    wrap.appendChild(peekBtn);
+    wrap.appendChild(copyBtn);
+    wrap.appendChild(regenBtn);
+    row.appendChild(wrap);
+
+    // Show the LAN URL the user can paste into a phone / laptop.
+    if (s.webMirrorAuthToken.length > 0) {
+      const note = document.createElement("div");
+      note.className = "settings-field-note";
+      note.style.marginTop = "6px";
+      const hostname =
+        typeof window !== "undefined" && window.location.hostname.length > 0
+          ? window.location.hostname
+          : "<your-host>";
+      note.textContent = `Mirror URL: http://${hostname}:${s.webMirrorPort}/?t=${s.webMirrorAuthToken.slice(0, 6)}…`;
+      note.title =
+        "Token is truncated for display. Use Copy to grab the full URL.";
+      c.appendChild(note);
+    }
   }
 
   private renderBrowser(c: HTMLElement, s: AppSettings): void {
@@ -1912,4 +2015,19 @@ function renderAtlasMiniature(): SVGSVGElement {
   brand.setAttribute("fill", "var(--tau-cyan)");
   svg.appendChild(brand);
   return svg;
+}
+
+/** P7 S8 / H.9 — generate a fresh web-mirror auth token. 32 bytes of
+ *  crypto-quality randomness rendered as 64 hex chars; matches the
+ *  bun-side default-on-empty fallback. `crypto.getRandomValues` is
+ *  available in every modern webview; this never runs in tests
+ *  without a polyfill. */
+export function generateAuthToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  let hex = "";
+  for (const b of bytes) {
+    hex += b.toString(16).padStart(2, "0");
+  }
+  return hex;
 }
