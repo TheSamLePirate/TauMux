@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.56
+**Version:** 0.3.59
 **Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 6 landed: Telegram DB grows a 90-day message TTL prune alongside the existing link prunes (telegram-bridge stays at S, with last named gap closed); auto-continue paused-surfaces now persist across restarts via a v1 JSON snapshot with debounced atomic writes (auto-continue A→S); browser panes get per-surface partition isolation by default (new `browserPartitionMode = 'per-surface'` setting derives `persist:browser-<id>` jars so cookies / localStorage / IndexedDB don't cross-contaminate — H.8 / browser-pane stays at S, with new isolation evidence). Cumulative P7: 20 lifts across 6 sessions. Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — deferred as a dedicated session, settings.ts is 1166 LOC / ~396 fields) + literal-to-token migration + H.9 session cap + manifest-auth + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.
+Phase 7 polish — session 7 landed: web mirror grows a `MAX_SESSIONS = 64` soft cap with LRU detached-session eviction; upgrade past the cap with no detached candidate returns HTTP 503 + retry-after (H.9 / web-mirror stays at S, with new cap evidence); sidebar gets Alt+Up / Alt+Down keyboard reorder mirroring the mouse drag plus a polite live-region announcement and aria-roledescription (sidebar A→S); `browserSearchEngine` plumbed properly through SurfaceManager (closes the S6 punt). Cumulative P7: 23 lifts across 7 sessions. Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — deferred as a dedicated session, settings.ts is 1166 LOC / ~396 fields) + literal-to-token migration + manifest-auth ergonomics + mouse-drag drop indicator + …. Owned across future sessions of P7.
 
 ---
 
@@ -34,8 +34,8 @@ Phase 7 polish — session 6 landed: Telegram DB grows a 90-day message TTL prun
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **18** | Best-in-class — 18 features cleared every gap. |
-| A | **21** | Most "production-shaped" subsystems. |
+| S (AAA) | **19** | Best-in-class — 19 features cleared every gap. |
+| A | **20** | Most "production-shaped" subsystems. |
 | B (incl. B+) | **7** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
@@ -160,11 +160,10 @@ Phase 7 polish — session 6 landed: Telegram DB grows a 90-day message TTL prun
 ## 3. UI surfaces / chrome
 
 ### Sidebar
-- **Grade: A**
-- **Evidence:** `sidebar.ts` (2964 LOC) — perf-tuned slice rendering with card-slot cache (lines 24-43); state slice tests exist (sidebar-state.test.ts, sidebar-card-stability.test.ts). Phase 1 (U12) added roving-tabindex on the workspace list — active card carries `tabindex="0"`, arrow-nav rotates it. New tests in `tests/sidebar-roving-tabindex.test.ts`.
+- **Grade: S**
+- **Evidence:** `sidebar.ts` (2964 LOC) — perf-tuned slice rendering with card-slot cache (lines 24-43); state slice tests exist (sidebar-state.test.ts, sidebar-card-stability.test.ts). Phase 1 (U12) added roving-tabindex on the workspace list — active card carries `tabindex="0"`, arrow-nav rotates it. Phase 7 (S7) closed the U14 a11y leg: Alt+ArrowUp / Alt+ArrowDown keyboard reorder mirrors the mouse drag path with the same `manualOrder` + `ht-reorder-workspaces` plumbing; a polite `.sidebar-live-region` announces 'Moved {name} to position N of M'; every card carries `aria-roledescription` advertising the option. Tests in `tests/sidebar-keyboard-reorder.test.ts` (+6) + the 73-test sidebar suite stays green.
 - **Gaps to AAA:**
-  - Drop indicator + Escape-cancel + `aria-live` on reorder (U14).
-  - DOM-level integration tests beyond the per-slice ones.
+  - Drop indicator + Escape-cancel on mouse drag (announcement + keyboard path landed; the mouse visual cues are the remaining polish).
 
 ### Sidebar CWD file explorer
 - **Grade: B**
@@ -243,9 +242,9 @@ Phase 7 polish — session 6 landed: Telegram DB grows a 90-day message TTL prun
 
 ### Web mirror (WebSocket bridge)
 - **Grade: S**
-- **Evidence:** M1–M10 shipped; session ring + resume-on-reconnect; reducer-driven store; @xterm/headless for state correctness; 16 ms coalescing; Graphite theme tokens. WS heartbeat + reconnect jitter landed (H.5). Phase 2 typed `protocol-dispatcher.ts` (A2 — `ServerPayloadByType` mapped type). Phase 4 (S2/H.7) sandboxed sideband HTML/SVG via iframe srcdoc + strict CSP. The full hardening leg is now complete: token entropy floor, brute-force throttle, security headers, sandbox+CSP, heartbeat — all catalogued in `doc/system-security.md`.
+- **Evidence:** M1–M10 shipped; session ring + resume-on-reconnect; reducer-driven store; @xterm/headless for state correctness; 16 ms coalescing; Graphite theme tokens. WS heartbeat + reconnect jitter landed (H.5). Phase 2 typed `protocol-dispatcher.ts` (A2 — `ServerPayloadByType` mapped type). Phase 4 (S2/H.7) sandboxed sideband HTML/SVG via iframe srcdoc + strict CSP. Phase 7 (S7 / H.9) added a `MAX_SESSIONS = 64` soft cap with LRU detached-session eviction: when the cap is reached the upgrade path evicts the oldest detached resumable session to make room; if every session is attached the upgrade is rejected with HTTP 503 + `retry-after: 30`. Caps worst-case queued resume rings to ~128 MB.
 - **Gaps to AAA:**
-  - Per-surface browser partition (H.8) and session cap + manifest-auth + cross-site origin check (H.9) — owned by P7.
+  - Manifest-auth + cross-site origin check (the remaining H.9 polish — Origin header is checked but the manifest-auth ergonomic story is deferred).
 
 ### Telegram bridge
 - **Grade: S**

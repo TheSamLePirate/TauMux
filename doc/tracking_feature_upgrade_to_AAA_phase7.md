@@ -365,3 +365,57 @@ Grade distribution after S6: **18 S / 21 A / 7 B / 3 C** (was 17 / 22 / 7 / 3).
 - Cluster G remainder: H.9 session cap + manifest-auth + cross-site origin check.
 - Cluster H: theme-token migration (~1013 colour literals) + sidebar drag-reorder polish.
 - Plumb `browserSearchEngine` through `SurfaceManager` (cleanup from S6 punt).
+
+---
+
+## Session 7 (2026-05-17)
+
+Slice picked: **S6 cleanup punt** (`browserSearchEngine` plumbing) + **H.9 web-mirror session cap** + **sidebar drag-reorder a11y polish** (keyboard + announcement). Three small lifts spanning cluster G + H plus the explicit S6 follow-up.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| browserSearchEngine plumbing | `3d7625f` | `src/views/terminal/surface-manager.ts` | (no new tests — existing 13 sidebar tests stay green) |
+| H.9 web-mirror session cap | `5869e61` | `src/bun/web/connection.ts`, `src/bun/web/server.ts`, `tests/web-server.test.ts` | +3 (eviction frees slot, attached can't be evicted, cap with no detached returns 503) |
+| Sidebar keyboard reorder a11y | `924d8b2` | `src/views/terminal/sidebar.ts`, `tests/sidebar-keyboard-reorder.test.ts` (new) | +6 (aria-roledescription on every card, Alt+Down moves one slot, Alt+Up moves one slot, no-op at edges, ht-reorder-workspaces dispatch, polite live-region) |
+
+Bumps: `bun run bump:patch` ran before each functional commit.
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `web-mirror` | S | S | Already S after P4 hardening. P7 S7 / H.9 added `MAX_SESSIONS = 64` with LRU detached-session eviction. When at cap with no detached candidate, the upgrade is rejected with HTTP 503 + `retry-after: 30`. Caps worst-case queued resume-ring memory to ~128 MB. |
+| `sidebar` | A | **S** | Closes the U14 a11y leg: Alt+ArrowUp / Alt+ArrowDown keyboard reorder mirrors the mouse drag through the same `manualOrder` + `ht-reorder-workspaces` pipeline; a polite `.sidebar-live-region` announces the move; every card carries `aria-roledescription` advertising the option to AT users. |
+| `browser-pane` infra | S | S | (cleanup) — `browserSearchEngine` is now read from the cached AppSettings field on SurfaceManager instead of the hardcoded `"google"` default punted in S6. Users with bing / duckduckgo / kagi selected no longer have a fresh browser pane silently fall back to Google for non-URL queries. |
+
+Grade distribution after S7: **19 S / 20 A / 7 B / 3 C** (was 18 / 21 / 7 / 3 at start of S7).
+
+### Issues encountered
+
+- **Keyboard handler ordering bug**: my first attempt placed the Alt+Arrow check as an `else if` after the plain ArrowDown/ArrowUp handler — the plain branch always matched first so the Alt path never fired. Fixed by checking the modifier path before the plain path. Caught by the new tests.
+- **localStorage state leak between tests**: the keyboard reorder tests interacted via the persisted `manualOrder` key. Added `localStorage.clear()` in `beforeEach`.
+- **Test design bug**: my `Alt+ArrowUp moves one slot up` test originally moved the wrong card and asserted the wrong final order. Fixed to ArrowDown twice → highlight ws:2 → Alt+ArrowUp → [ws:2, ws:1, ws:3].
+- **Pre-existing typecheck noise** unchanged: same 2 errors.
+- **2 pre-existing flakes** in the full suite run: `byte-buffer fallback` (chronic across S2..S5) and `PtyManager kill sends signal` (process-spawning timing). Neither caused by S7 changes.
+
+### Exit criteria (session 7)
+
+| Criterion | Status |
+|---|---|
+| browserSearchEngine read from settings | ✅ |
+| Web-mirror session cap with LRU eviction | ✅ |
+| Sidebar keyboard reorder + a11y | ✅ |
+| `bun test` green (modulo pre-existing flakes) | ✅ 2093 / 2 known flakes |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 7)
+
+- F.6 `settings.schema.ts` source-of-truth — still pending as a dedicated session.
+- Cluster F refactors: A6 typed `EventBus`, A7 `VariantContext`, F.11 `WorkspaceCollection`.
+- Cluster H: theme-token migration (~1013 colour literals).
+- Mouse-drag drop indicator + Escape-cancel (the remaining sidebar polish from S7).
+- Manifest-auth ergonomic UX (final H.9 sliver).

@@ -265,9 +265,9 @@
   <h1>From baseline to AAA — every change, by phase</h1>
   <p class="subtitle">
     A 10-phase plan-of-plans that lifted τ-mux from a mostly-A codebase
-    with named gaps into a release-shape product. Six sessions of Phase 7
-    polish carried the final 20 lifts on top of seven earlier landed
-    phases. This document catalogues every functional change.
+    with named gaps into a release-shape product. Seven sessions of
+    Phase 7 polish carried the final 23 lifts on top of seven earlier
+    landed phases. This document catalogues every functional change.
   </p>
   <div class="meta">
     <span class="chip">Phases landed: <strong>0 → 7</strong> (Phase 7 multi-session)</span>
@@ -279,7 +279,7 @@
 <div class="key-result">
   <strong>Headline result.</strong> Grade distribution went from
   ≈ 2 S / 27 A / 17 B / 3 C at the start of Phase 0 to
-  <span class="grade-s">18 S</span> / <span class="grade-a">21 A</span> /
+  <span class="grade-s">19 S</span> / <span class="grade-a">20 A</span> /
   <span class="grade-b">7 B</span> / <span class="grade-c">3 C</span>
   across 49 features after Phase 7 session 6. Tests grew from ~1500
   to <strong>2086 passing</strong>; the typecheck baseline holds at
@@ -287,8 +287,8 @@
 </div>
 
 <div class="tally">
-  <div class="cell"><div class="num num-s">18</div><div class="label">S (AAA)</div><div class="delta">+16 from baseline</div></div>
-  <div class="cell"><div class="num num-a">21</div><div class="label">A</div><div class="delta">−6 (promoted to S)</div></div>
+  <div class="cell"><div class="num num-s">19</div><div class="label">S (AAA)</div><div class="delta">+17 from baseline</div></div>
+  <div class="cell"><div class="num num-a">20</div><div class="label">A</div><div class="delta">−7 (promoted to S)</div></div>
   <div class="cell"><div class="num num-b">7</div><div class="label">B</div><div class="delta">−10 (promoted to A/S)</div></div>
   <div class="cell"><div class="num num-c">3</div><div class="label">C</div><div class="delta">audits + release plumbing</div></div>
 </div>
@@ -411,10 +411,10 @@
   <li><span class="sha">f971b63</span> <strong>tests/regressions/ catalogue</strong> + <code>catalogue.test.ts</code> gate.</li>
 </ul>
 
-<h2 id="phase-7"><span class="phase-tag">PHASE 7</span>Per-feature polish sweep — 6 sessions, 20 lifts</h2>
+<h2 id="phase-7"><span class="phase-tag">PHASE 7</span>Per-feature polish sweep — 7 sessions, 23 lifts</h2>
 <p class="phase-blurb">
   The biggest single phase: a polish sweep walking the per-feature
-  grades and closing the named gaps in each. Split across six
+  grades and closing the named gaps in each. Split across seven
   sessions because the long tail spans clusters B / C / D / E / F / G / H.
 </p>
 
@@ -534,6 +534,24 @@
   </div>
 </div>
 
+<h3 id="p7s7">Session 7 — Cluster G + H + S6 cleanup</h3>
+<div class="card">
+  <div class="lifts">
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">surface-manager (search engine)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">3d7625f</span></div>
+      <p class="lift-body">Closes the S6 punt — <code>SurfaceManager</code> now caches the <code>browserSearchEngine</code> setting and threads it into new browser panes. Users with bing / duckduckgo / kagi selected no longer have a fresh pane silently fall back to Google for non-URL queries.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">web-mirror (H.9 session cap)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">5869e61</span></div>
+      <p class="lift-body"><code>MAX_SESSIONS = 64</code> with LRU detached-session eviction. When the cap is reached, the oldest detached resumable session is evicted to make room; if every session is attached the upgrade is rejected with HTTP 503 + <code>retry-after: 30</code>. Caps worst-case queued resume-ring memory to ~128 MB.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">sidebar (keyboard reorder)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-a">A</span> → <span class="grade-s">S</span></span><span class="sha">924d8b2</span></div>
+      <p class="lift-body">Closes U14. <strong>Alt+ArrowUp / Alt+ArrowDown</strong> reorders the highlighted workspace through the same <code>manualOrder</code> + <code>ht-reorder-workspaces</code> pipeline the mouse drag uses. A polite <code>.sidebar-live-region</code> announces &ldquo;Moved {name} to position N of M&rdquo; for screen readers; every card carries <code>aria-roledescription</code> advertising the option.</p>
+    </div>
+  </div>
+</div>
+
 <h2 id="remaining">Remaining long tail (deferred from P7)</h2>
 <p class="phase-blurb">
   These items were explicitly captured for future P7 sessions. None are
@@ -631,6 +649,9 @@
     <tr><td>P7 S6</td><td><span class="sha">082f189</span></td><td>telegram message TTL prune</td></tr>
     <tr><td>P7 S6</td><td><span class="sha">1f34791</span></td><td>auto-continue paused-surfaces persistence</td></tr>
     <tr><td>P7 S6</td><td><span class="sha">2106f6d</span></td><td>browser per-surface partition (H.8)</td></tr>
+    <tr><td>P7 S7</td><td><span class="sha">3d7625f</span></td><td>plumb browserSearchEngine through SurfaceManager</td></tr>
+    <tr><td>P7 S7</td><td><span class="sha">5869e61</span></td><td>web-mirror session cap + LRU eviction (H.9)</td></tr>
+    <tr><td>P7 S7</td><td><span class="sha">924d8b2</span></td><td>sidebar keyboard reorder + a11y</td></tr>
   </tbody>
 </table>
 
