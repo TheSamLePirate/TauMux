@@ -878,13 +878,13 @@ export function validateSettings(s: AppSettings): AppSettings {
     telegramAllowedUserIds: normalizeAllowedIds(s.telegramAllowedUserIds),
     telegramNotificationsEnabled: !!s.telegramNotificationsEnabled,
     telegramNotificationButtonsEnabled:
-      typeof s.telegramNotificationButtonsEnabled === "boolean"
-        ? s.telegramNotificationButtonsEnabled
-        : false,
+      SETTINGS_FIELD_SCHEMAS.telegramNotificationButtonsEnabled.validate(
+        s.telegramNotificationButtonsEnabled,
+      ),
     telegramAskUserEnabled:
-      typeof s.telegramAskUserEnabled === "boolean"
-        ? s.telegramAskUserEnabled
-        : false,
+      SETTINGS_FIELD_SCHEMAS.telegramAskUserEnabled.validate(
+        s.telegramAskUserEnabled,
+      ),
     cursorStyle:
       s.cursorStyle === "bar" || s.cursorStyle === "underline"
         ? s.cursorStyle
@@ -905,15 +905,12 @@ export function validateSettings(s: AppSettings): AppSettings {
         ) as string[])
       : ["workspace", "panes", "cpu", "mem", "fg", "cwd", "branch", "time"],
     bloomMigratedToTau: !!s.bloomMigratedToTau,
-    legacyBloomIntensity: clamp(
-      typeof s.legacyBloomIntensity === "number" ? s.legacyBloomIntensity : 0,
-      0,
-      2,
+    legacyBloomIntensity: SETTINGS_FIELD_SCHEMAS.legacyBloomIntensity.validate(
+      s.legacyBloomIntensity,
     ),
-    terminalOsc94Enabled:
-      typeof s.terminalOsc94Enabled === "boolean"
-        ? s.terminalOsc94Enabled
-        : true,
+    terminalOsc94Enabled: SETTINGS_FIELD_SCHEMAS.terminalOsc94Enabled.validate(
+      s.terminalOsc94Enabled,
+    ),
     auditsGitUserNameExpected:
       s.auditsGitUserNameExpected === null
         ? null
@@ -929,57 +926,54 @@ export function validateSettings(s: AppSettings): AppSettings {
         ? s.chromeTheme
         : "system",
     notificationOverlayEnabled:
-      typeof s.notificationOverlayEnabled === "boolean"
-        ? s.notificationOverlayEnabled
-        : true,
+      SETTINGS_FIELD_SCHEMAS.notificationOverlayEnabled.validate(
+        s.notificationOverlayEnabled,
+      ),
     notificationOverlayMs:
-      typeof s.notificationOverlayMs === "number" &&
-      Number.isFinite(s.notificationOverlayMs) &&
-      s.notificationOverlayMs >= 0
-        ? Math.min(60_000, Math.max(0, Math.floor(s.notificationOverlayMs)))
-        : 6000,
+      SETTINGS_FIELD_SCHEMAS.notificationOverlayMs.validate(
+        s.notificationOverlayMs,
+      ),
     workspaceCardDensity:
       s.workspaceCardDensity === "compact" ||
       s.workspaceCardDensity === "spacious"
         ? s.workspaceCardDensity
         : "comfortable",
     workspaceCardShowMeta:
-      typeof s.workspaceCardShowMeta === "boolean"
-        ? s.workspaceCardShowMeta
-        : true,
+      SETTINGS_FIELD_SCHEMAS.workspaceCardShowMeta.validate(
+        s.workspaceCardShowMeta,
+      ),
     workspaceCardShowStats:
-      typeof s.workspaceCardShowStats === "boolean"
-        ? s.workspaceCardShowStats
-        : true,
+      SETTINGS_FIELD_SCHEMAS.workspaceCardShowStats.validate(
+        s.workspaceCardShowStats,
+      ),
     workspaceCardShowPanes:
-      typeof s.workspaceCardShowPanes === "boolean"
-        ? s.workspaceCardShowPanes
-        : true,
+      SETTINGS_FIELD_SCHEMAS.workspaceCardShowPanes.validate(
+        s.workspaceCardShowPanes,
+      ),
     workspaceCardShowManifests:
-      typeof s.workspaceCardShowManifests === "boolean"
-        ? s.workspaceCardShowManifests
-        : true,
+      SETTINGS_FIELD_SCHEMAS.workspaceCardShowManifests.validate(
+        s.workspaceCardShowManifests,
+      ),
     workspaceCardShowFileExplorer:
-      typeof s.workspaceCardShowFileExplorer === "boolean"
-        ? s.workspaceCardShowFileExplorer
-        : true,
+      SETTINGS_FIELD_SCHEMAS.workspaceCardShowFileExplorer.validate(
+        s.workspaceCardShowFileExplorer,
+      ),
     workspaceFileExplorerShowHidden:
-      typeof s.workspaceFileExplorerShowHidden === "boolean"
-        ? s.workspaceFileExplorerShowHidden
-        : false,
+      SETTINGS_FIELD_SCHEMAS.workspaceFileExplorerShowHidden.validate(
+        s.workspaceFileExplorerShowHidden,
+      ),
     workspaceFileExplorerMaxEntries:
-      typeof s.workspaceFileExplorerMaxEntries === "number" &&
-      Number.isFinite(s.workspaceFileExplorerMaxEntries)
-        ? clamp(Math.round(s.workspaceFileExplorerMaxEntries), 20, 1000)
-        : 200,
+      SETTINGS_FIELD_SCHEMAS.workspaceFileExplorerMaxEntries.validate(
+        s.workspaceFileExplorerMaxEntries,
+      ),
     workspaceCardShowStatusPills:
-      typeof s.workspaceCardShowStatusPills === "boolean"
-        ? s.workspaceCardShowStatusPills
-        : true,
+      SETTINGS_FIELD_SCHEMAS.workspaceCardShowStatusPills.validate(
+        s.workspaceCardShowStatusPills,
+      ),
     workspaceCardShowProgress:
-      typeof s.workspaceCardShowProgress === "boolean"
-        ? s.workspaceCardShowProgress
-        : true,
+      SETTINGS_FIELD_SCHEMAS.workspaceCardShowProgress.validate(
+        s.workspaceCardShowProgress,
+      ),
     htStatusKeyOrder: Array.isArray(s.htStatusKeyOrder)
       ? (s.htStatusKeyOrder.filter(
           (k): k is string => typeof k === "string" && k.length > 0,

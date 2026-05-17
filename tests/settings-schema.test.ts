@@ -8,7 +8,9 @@ import { describe, expect, test } from "bun:test";
 import {
   SETTINGS_FIELD_SCHEMAS,
   bool,
+  boolStrict,
   numberRange,
+  numberRangeStrict,
 } from "../src/shared/settings.schema";
 import {
   DEFAULT_SETTINGS,
@@ -113,5 +115,104 @@ describe("validateSettings uses the schema for migrated fields", () => {
       notificationSoundEnabled: 0 as unknown as boolean,
     });
     expect(out2.notificationSoundEnabled).toBe(false);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// P7 S14 — strict-bool + strict-number batch
+// ──────────────────────────────────────────────────────────────────
+
+describe("FieldSchema factories — strict variants (S14)", () => {
+  test("boolStrict returns the input when boolean, default otherwise", () => {
+    const s = boolStrict(true);
+    expect(s.validate(true)).toBe(true);
+    expect(s.validate(false)).toBe(false);
+    // Non-boolean inputs fall back to default — NOT !!-coerced.
+    expect(s.validate(1 as unknown)).toBe(true);
+    expect(s.validate(0 as unknown)).toBe(true); // !!0 would be false; strict keeps default.
+    expect(s.validate("" as unknown)).toBe(true);
+    expect(s.validate(undefined)).toBe(true);
+    expect(s.validate(null)).toBe(true);
+    expect(s.validate("false" as unknown)).toBe(true);
+  });
+
+  test("boolStrict with default=false also keeps default on non-boolean", () => {
+    const s = boolStrict(false);
+    expect(s.validate(true)).toBe(true);
+    expect(s.validate("anything" as unknown)).toBe(false);
+    expect(s.validate(undefined)).toBe(false);
+  });
+
+  test("numberRangeStrict falls back on non-number / non-finite", () => {
+    const s = numberRangeStrict(50, 0, 100);
+    expect(s.validate(25)).toBe(25);
+    expect(s.validate(-10)).toBe(0);
+    expect(s.validate(200)).toBe(100);
+    expect(s.validate(Number.NaN)).toBe(50);
+    expect(s.validate(Infinity)).toBe(50);
+    expect(s.validate("100" as unknown)).toBe(50);
+    expect(s.validate(undefined)).toBe(50);
+  });
+
+  test("numberRangeStrict with floor option", () => {
+    const s = numberRangeStrict(6000, 0, 60_000, { floor: true });
+    expect(s.validate(1234.7)).toBe(1234);
+    expect(s.validate(0.9)).toBe(0);
+    expect(s.validate(-5)).toBe(0);
+    expect(s.validate(100_000)).toBe(60_000);
+  });
+});
+
+describe("validateSettings uses the schema for strict-bool fields (S14)", () => {
+  test("strict-bool fields keep default for non-boolean input", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      // Force-cast bogus values past TypeScript.
+      workspaceCardShowMeta: 0 as unknown as boolean,
+      workspaceCardShowStats: undefined as unknown as boolean,
+      terminalOsc94Enabled: "" as unknown as boolean,
+      notificationOverlayEnabled: null as unknown as boolean,
+    });
+    // All defaults are true — strict keeps true regardless of input shape.
+    expect(out.workspaceCardShowMeta).toBe(true);
+    expect(out.workspaceCardShowStats).toBe(true);
+    expect(out.terminalOsc94Enabled).toBe(true);
+    expect(out.notificationOverlayEnabled).toBe(true);
+  });
+
+  test("strict-bool fields honour an explicit false", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      workspaceCardShowMeta: false,
+      terminalOsc94Enabled: false,
+      notificationOverlayEnabled: false,
+    });
+    expect(out.workspaceCardShowMeta).toBe(false);
+    expect(out.terminalOsc94Enabled).toBe(false);
+    expect(out.notificationOverlayEnabled).toBe(false);
+  });
+
+  test("strict-number fields clamp + floor identically to prior inline logic", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      notificationOverlayMs: 1234.7,
+      workspaceFileExplorerMaxEntries: 99.4,
+      legacyBloomIntensity: 5,
+    });
+    expect(out.notificationOverlayMs).toBe(1234);
+    expect(out.workspaceFileExplorerMaxEntries).toBe(99);
+    expect(out.legacyBloomIntensity).toBe(2);
+  });
+
+  test("strict-number fields fall back to default for non-finite input", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      notificationOverlayMs: "abc" as unknown as number,
+      workspaceFileExplorerMaxEntries: Number.NaN,
+      legacyBloomIntensity: "x" as unknown as number,
+    });
+    expect(out.notificationOverlayMs).toBe(6000);
+    expect(out.workspaceFileExplorerMaxEntries).toBe(200);
+    expect(out.legacyBloomIntensity).toBe(0);
   });
 });
