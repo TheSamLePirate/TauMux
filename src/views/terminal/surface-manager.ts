@@ -99,10 +99,7 @@ import {
 
 const NATIVE_CHIP_DEPS: PaneChipsDeps = {
   onPortClick: (port) => {
-    const url = `http://localhost:${port}`;
-    window.dispatchEvent(
-      new CustomEvent("ht-open-external", { detail: { url } }),
-    );
+    htEvents.emit("ht-open-external", { url: `http://localhost:${port}` });
   },
 };
 
@@ -270,11 +267,7 @@ export class SurfaceManager {
         const ws = this.workspaces.find((w) => w.id === id);
         if (ws) {
           for (const sid of [...ws.surfaceIds]) {
-            window.dispatchEvent(
-              new CustomEvent("ht-close-surface", {
-                detail: { surfaceId: sid },
-              }),
-            );
+            htEvents.emit("ht-close-surface", { surfaceId: sid });
           }
         }
       },
@@ -309,11 +302,7 @@ export class SurfaceManager {
           `${width}px`,
         );
         this.requestLayout("full");
-        window.dispatchEvent(
-          new CustomEvent("ht-sidebar-resize-commit", {
-            detail: { width },
-          }),
-        );
+        htEvents.emit("ht-sidebar-resize-commit", { width });
       },
     });
   }
@@ -1497,9 +1486,7 @@ export class SurfaceManager {
     const ws = this.workspaces.find((w) => w.id === id);
     if (!ws) return;
     for (const sid of [...ws.surfaceIds]) {
-      window.dispatchEvent(
-        new CustomEvent("ht-close-surface", { detail: { surfaceId: sid } }),
-      );
+      htEvents.emit("ht-close-surface", { surfaceId: sid });
     }
   }
 
@@ -1697,7 +1684,7 @@ export class SurfaceManager {
   }
 
   private notifyWorkspaceChanged(): void {
-    window.dispatchEvent(new CustomEvent("ht-workspace-changed"));
+    htEvents.emit("ht-workspace-changed", undefined);
   }
 
   // Metadata
@@ -1792,9 +1779,7 @@ export class SurfaceManager {
    *  refreshStatusBar() so ht-status / ht-warning / ht-title / ht-all
    *  keys repaint without waiting for the next workspace event. */
   private emitStatusesChanged(workspaceId: string): void {
-    window.dispatchEvent(
-      new CustomEvent("ht-statuses-changed", { detail: { workspaceId } }),
-    );
+    htEvents.emit("ht-statuses-changed", { workspaceId });
   }
 
   setProgress(
@@ -1999,18 +1984,10 @@ export class SurfaceManager {
           this.focusSurface(sid);
         },
         onClose: (sid) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-close-surface", {
-              detail: { surfaceId: sid },
-            }),
-          );
+          htEvents.emit("ht-close-surface", { surfaceId: sid });
         },
         onSplit: (sid, direction) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-split", {
-              detail: { surfaceId: sid, direction },
-            }),
-          );
+          htEvents.emit("ht-split", { surfaceId: sid, direction });
         },
         onEvalResult: (sid, reqId, result, error) => {
           window.dispatchEvent(
@@ -2109,16 +2086,10 @@ export class SurfaceManager {
         );
       },
       onClose: (sid) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-close-surface", { detail: { surfaceId: sid } }),
-        );
+        htEvents.emit("ht-close-surface", { surfaceId: sid });
       },
       onSplit: (sid, direction) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-split", {
-            detail: { surfaceId: sid, direction },
-          }),
-        );
+        htEvents.emit("ht-split", { surfaceId: sid, direction });
       },
       onFocus: (sid) => {
         this.focusSurface(sid);
@@ -2206,11 +2177,7 @@ export class SurfaceManager {
     splitRightBtn.append(createIcon("splitHorizontal"));
     splitRightBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      window.dispatchEvent(
-        new CustomEvent("ht-split", {
-          detail: { surfaceId, direction: "horizontal" },
-        }),
-      );
+      htEvents.emit("ht-split", { surfaceId, direction: "horizontal" });
     });
     barActions.appendChild(splitRightBtn);
 
@@ -2221,11 +2188,7 @@ export class SurfaceManager {
     splitDownBtn.append(createIcon("splitVertical"));
     splitDownBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      window.dispatchEvent(
-        new CustomEvent("ht-split", {
-          detail: { surfaceId, direction: "vertical" },
-        }),
-      );
+      htEvents.emit("ht-split", { surfaceId, direction: "vertical" });
     });
     barActions.appendChild(splitDownBtn);
 
@@ -2236,9 +2199,7 @@ export class SurfaceManager {
     closeBtn.append(createIcon("close"));
     closeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      window.dispatchEvent(
-        new CustomEvent("ht-close-surface", { detail: { surfaceId } }),
-      );
+      htEvents.emit("ht-close-surface", { surfaceId });
     });
     barActions.appendChild(closeBtn);
 
@@ -2441,9 +2402,7 @@ export class SurfaceManager {
         );
       },
       onClose: (sid) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-close-surface", { detail: { surfaceId: sid } }),
-        );
+        htEvents.emit("ht-close-surface", { surfaceId: sid });
       },
       onSplit: (_sid, direction) => {
         window.dispatchEvent(
@@ -2497,16 +2456,10 @@ export class SurfaceManager {
         window.dispatchEvent(new CustomEvent("ht-telegram-request-state"));
       },
       onClose: (sid) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-close-surface", { detail: { surfaceId: sid } }),
-        );
+        htEvents.emit("ht-close-surface", { surfaceId: sid });
       },
       onSplit: (sid, direction) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-split", {
-            detail: { surfaceId: sid, direction },
-          }),
-        );
+        htEvents.emit("ht-split", { surfaceId: sid, direction });
       },
       onFocus: (sid) => this.focusSurface(sid),
     });

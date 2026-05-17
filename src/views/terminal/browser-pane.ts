@@ -7,6 +7,7 @@
  */
 
 import { createIcon } from "./icons";
+import { htEvents } from "../../shared/event-bus";
 
 // ── Electrobun webview tag type (matches the runtime custom element) ──
 
@@ -292,9 +293,7 @@ export function createBrowserPaneView(
   infoBtn.append(createIcon("info"));
   infoBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    window.dispatchEvent(
-      new CustomEvent("ht-show-surface-info", { detail: { surfaceId } }),
-    );
+    htEvents.emit("ht-show-surface-info", { surfaceId });
   });
   barActions.appendChild(infoBtn);
 

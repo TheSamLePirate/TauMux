@@ -481,11 +481,7 @@ export class Sidebar {
   toggle(): void {
     this.visible = !this.visible;
     this.container.classList.toggle("collapsed", !this.visible);
-    window.dispatchEvent(
-      new CustomEvent("ht-sidebar-toggle", {
-        detail: { visible: this.visible },
-      }),
-    );
+    htEvents.emit("ht-sidebar-toggle", { visible: this.visible });
   }
 
   isVisible(): boolean {
@@ -1433,11 +1429,9 @@ export class Sidebar {
         chip.title = `Open http://localhost:${port}`;
         chip.addEventListener("click", (e) => {
           e.stopPropagation();
-          window.dispatchEvent(
-            new CustomEvent("ht-open-external", {
-              detail: { url: `http://localhost:${port}` },
-            }),
-          );
+          htEvents.emit("ht-open-external", {
+            url: `http://localhost:${port}`,
+          });
         });
         ports.appendChild(chip);
       }
@@ -2487,11 +2481,10 @@ export class Sidebar {
       this.acknowledgedNotifications.add(n.id);
       el.classList.remove("glow");
       if (!hasSource) return;
-      window.dispatchEvent(
-        new CustomEvent("ht-focus-notification-source", {
-          detail: { notificationId: n.id, surfaceId: n.surfaceId },
-        }),
-      );
+      htEvents.emit("ht-focus-notification-source", {
+        notificationId: n.id,
+        surfaceId: n.surfaceId ?? "",
+      });
     });
 
     const titleEl = document.createElement("div");

@@ -94,10 +94,10 @@ export interface SurfaceFocusedPayload {
 }
 
 /** Workspace metadata changed — fired when name / color / ordering
- *  changes need to round-trip through the host. */
-export interface WorkspaceChangedPayload {
-  workspaceId: string;
-}
+ *  changes need to round-trip through the host. Currently dispatched
+ *  with no detail (consumers re-derive from getState); kept void so
+ *  call sites stay terse. */
+export type WorkspaceChangedPayload = void;
 
 /** Workspaces list changed — fired when the workspace set itself
  *  changes (add/remove/reorder). Consumers re-render summary UI. */
@@ -115,12 +115,73 @@ export interface OpenFileInEditorPayload {
   workspaceId?: string;
 }
 
+/** Surface close request — sent from sidebar workspace-card close and
+ *  pane-bar close button. The receiver wires this to `rpc.send("closeSurface", …)`. */
+export interface CloseSurfacePayload {
+  surfaceId: string;
+}
+
+/** Pane split request — fired by surface-manager and pane-bar split
+ *  buttons. `surfaceId` is the existing pane being split; `direction`
+ *  picks the new pane's orientation relative to it. */
+export interface SplitPayload {
+  surfaceId: string;
+  direction: "horizontal" | "vertical";
+}
+
+/** Show the surface info HUD for `surfaceId` — fired by sidebar
+ *  card click + browser pane info button. */
+export interface ShowSurfaceInfoPayload {
+  surfaceId: string;
+}
+
+/** Open a URL externally (system browser / Electron shell). Fired by
+ *  port chips, manifest cards, sidebar links. */
+export interface OpenExternalPayload {
+  url: string;
+}
+
+/** Status keys changed for a workspace — fired by ht set-status RPC.
+ *  Consumers redraw the workspace card status row. */
+export interface StatusesChangedPayload {
+  workspaceId: string;
+}
+
+/** Sidebar toggle — fired by the sidebar header button after the
+ *  internal `visible` flag has flipped. `visible` reports the new
+ *  state so listeners can sync without re-reading the DOM. */
+export interface SidebarTogglePayload {
+  visible: boolean;
+}
+
+/** Sidebar resize committed (mouse-up after drag). The host persists
+ *  the new width through `updateSettings`. */
+export interface SidebarResizeCommitPayload {
+  width: number;
+}
+
+/** Focus the surface that emitted a sidebar notification. Fired by
+ *  the sidebar item body click. */
+export interface FocusNotificationSourcePayload {
+  notificationId: string;
+  surfaceId: string;
+}
+
 export interface HtEventMap extends Record<string, unknown> {
   "ht-reorder-workspaces": ReorderWorkspacesPayload;
   "ht-surface-focused": SurfaceFocusedPayload;
   "ht-workspace-changed": WorkspaceChangedPayload;
   "ht-workspaces-changed": WorkspacesChangedPayload;
   "ht-open-file-in-editor": OpenFileInEditorPayload;
+  // P7 S9 — A6 batch 2 channels.
+  "ht-close-surface": CloseSurfacePayload;
+  "ht-split": SplitPayload;
+  "ht-show-surface-info": ShowSurfaceInfoPayload;
+  "ht-open-external": OpenExternalPayload;
+  "ht-statuses-changed": StatusesChangedPayload;
+  "ht-sidebar-toggle": SidebarTogglePayload;
+  "ht-sidebar-resize-commit": SidebarResizeCommitPayload;
+  "ht-focus-notification-source": FocusNotificationSourcePayload;
 }
 
 /** Singleton bus that dispatches on `window`. Importers can grab this

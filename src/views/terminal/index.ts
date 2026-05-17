@@ -11,6 +11,7 @@ import {
 } from "../../shared/settings";
 import { SurfaceManager } from "./surface-manager";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
+import { htEvents } from "../../shared/event-bus";
 import { KeyboardCheatsheet } from "./keyboard-cheatsheet";
 import { createIcon } from "./icons";
 import { IconTau } from "./tau-icons";
@@ -1306,7 +1307,7 @@ function syncToolbarState() {
   // Notify variant chrome (Cockpit rail, Atlas graph) that the
   // workspace set or active workspace changed. Variants that don't
   // care ignore the event; ones that do re-render on the next tick.
-  window.dispatchEvent(new CustomEvent("ht-workspaces-changed"));
+  htEvents.emit("ht-workspaces-changed", undefined);
 }
 
 // refreshBridgeSwitcher() + #tau-workspace-switcher removed — the
