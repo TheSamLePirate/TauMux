@@ -1328,3 +1328,48 @@ Grade distribution after S26: **20 S / 20 A / 6 B / 3 C** (unchanged — the aud
 - Cluster F.10: audit remaining ad-hoc handlers.
 - Cluster H literal migration — next chunk: sidebar workspace card status entries / progress / pane chips, plan-panel sidebar widget remaining literals, telegram bridge sub-states.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 27 (2026-05-18)
+
+Slice picked: **Cluster B U15** (agent panel IME composition guards) + **Cluster H workspace card item + notify-bar-flash keyframe**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster B U15 — agent IME guards | `2176555` | `src/views/terminal/agent-panel.ts`, `tests/agent-panel-ime.test.ts` (new) + factory updates in 3 existing agent-panel tests | +3 (composing flips on start/end; `/` during composition doesn't open slash menu; Enter while composing leaves input untouched) |
+| Cluster H workspace card + keyframe | `dae71996` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-workspace-item.test.ts` (new) | +8 (4 new tokens defined; workspace-dot shadow + workspace-name fg + close hover + 4-stop notify-bar-flash keyframe all migrated) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.102 → 0.3.103 (IME) → 0.3.104 (workspace card tokens).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `app-variants` / agent panel | S | S | **Cluster B U15 closed.** Agent panel input now mirrors the command-palette + ask-user-modal IME pattern — `composing` flag on AgentPanelState wired via compositionstart/end listeners; the input handler skips `handleSlashInput` while composing (so a transient `/` in the romaji buffer doesn't spuriously open the slash menu) and the keydown handler skips Enter/Tab while composing OR when the event's own `isComposing` is set. The 3 existing agent-panel test files' state factories add `composing: false` so they keep typechecking. |
+| `tau-primitives` | S | S | Cluster H continues — workspace card item + notify-bar-flash keyframe migrated to 4 new tokens (`--ht-workspace-name-fg`, `--ht-workspace-dot-shadow`, `--ht-surface-bar-notify-rest`, `--ht-notify-amber-flash`) + 3 cross-component reuses (`--ht-button-fg-hover` for active name, `--ht-sem-error` for close-hover, `--ht-notify-cyan-glow` for the keyframe's cyan stop — token already existed). 9 literals migrated. audit:theming: 776 → 767 (−9). |
+
+Grade distribution after S27: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **Test scope leak**: the first version of the notify-bar-flash assertion checked the WHOLE indexCss for a 0.15-alpha amber literal — but an unrelated chip rule at line 8038 also uses that same alpha. Scoped the negative match to the keyframe block only.
+- **Test factory drift**: AgentPanelState gained a new `composing` field; three existing agent-panel test files construct the state inline and would have failed typecheck. Updated those factories to include the new field.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 27)
+
+| Criterion | Status |
+|---|---|
+| Cluster B U15 — agent panel IME guards | ✅ landed |
+| Cluster H workspace card item region migrated | ✅ 776 → 767 (−9) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2440 / 0–2 known flakes; +11 new tests |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 27)
+
+- Cluster F.10: audit remaining ad-hoc handlers; move webview dispatch into `src/bun/rpc-handlers/`.
+- Cluster H literal migration — next chunk: workspace status entries / progress / pane chips, plan-panel sidebar widget remaining literals, telegram bridge sub-states.
+- Phases 8 (release engineering) + 9 (docs / observability).
