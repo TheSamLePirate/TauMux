@@ -134,6 +134,13 @@ export interface SettingsSnapshotPayload {
   /** From `AppSettings.autoContinue.engine` so the plan-panel mirror
    *  can hide the audit strip when the engine is off. */
   autoContinueEngine: "off" | "heuristic" | "model" | "hybrid";
+
+  /** Phase 5 / U2 — chrome theme. Mirror applies via
+   *  `document.documentElement.dataset.theme = chromeTheme` so the
+   *  `[data-theme="…"]` token blocks in web-theme-tokens.css fire.
+   *  Optional in older payloads so a v0 server can still talk to
+   *  a v1 client; mirror defaults to "system" when missing. */
+  chromeTheme?: "system" | "graphite-dark" | "graphite-light" | "high-contrast";
 }
 
 export interface Snapshot {

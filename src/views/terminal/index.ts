@@ -232,11 +232,19 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       },
       socketAction: (payload) => {
         if (payload.action === "editorSave") {
-          surfaceManager.saveEditorSurface((payload.payload["surfaceId"] ?? payload.payload["surface_id"]) as string | undefined);
+          surfaceManager.saveEditorSurface(
+            (payload.payload["surfaceId"] ?? payload.payload["surface_id"]) as
+              | string
+              | undefined,
+          );
           return;
         }
         if (payload.action === "editorReload") {
-          surfaceManager.reloadEditorSurface((payload.payload["surfaceId"] ?? payload.payload["surface_id"]) as string | undefined);
+          surfaceManager.reloadEditorSurface(
+            (payload.payload["surfaceId"] ?? payload.payload["surface_id"]) as
+              | string
+              | undefined,
+          );
           return;
         }
         handleSocketAction(payload.action, payload.payload);
@@ -476,6 +484,11 @@ function afterTransition(
 
 function applySettings(settings: AppSettings): void {
   currentSettings = settings;
+  // Phase 5 / U2 — apply the chrome theme via `data-theme` so the
+  // `[data-theme="…"]` token blocks in web-theme-tokens.css activate.
+  // The `forced-colors: active` media query layers on top regardless,
+  // and `[data-theme="system"]` defers to `prefers-color-scheme: light`.
+  document.documentElement.dataset["theme"] = settings.chromeTheme;
   surfaceManager.applySettings(settings);
   planPanel.setAutoContinueAuditVisible(settings.autoContinue.engine !== "off");
   if (settingsPanel.isVisible()) settingsPanel.updateSettings(settings);
@@ -2278,7 +2291,8 @@ window.addEventListener("ht-editor-save-file", (e: Event) => {
         expectedMtimeMs?: number | null;
       }
     | undefined;
-  if (!detail?.surfaceId || !detail.path || typeof detail.content !== "string") return;
+  if (!detail?.surfaceId || !detail.path || typeof detail.content !== "string")
+    return;
   rpc.send("editorSaveFile", {
     surfaceId: detail.surfaceId,
     path: detail.path,
@@ -2292,7 +2306,10 @@ window.addEventListener("ht-editor-reload-file", (e: Event) => {
     | { surfaceId?: string; path?: string }
     | undefined;
   if (!detail?.surfaceId || !detail.path) return;
-  rpc.send("editorReloadFile", { surfaceId: detail.surfaceId, path: detail.path });
+  rpc.send("editorReloadFile", {
+    surfaceId: detail.surfaceId,
+    path: detail.path,
+  });
 });
 
 window.addEventListener("ht-split-editor", (e: Event) => {

@@ -38,6 +38,14 @@ export interface AppSettings {
   bgBase: string; // base background tint, e.g. "7, 7, 10"
   ansiColors: AnsiColors;
 
+  /** Phase 5 / U2 — chrome theme. Selects which `:root[data-theme=…]`
+   *  token block in `src/shared/web-theme-tokens.css` is active.
+   *  `system` honours the OS `prefers-color-scheme` automatically;
+   *  the other values pin the chrome to that explicit palette.
+   *  Independent from `themePreset` (which controls the in-pane
+   *  terminal ANSI palette). */
+  chromeTheme: "system" | "graphite-dark" | "graphite-light" | "high-contrast";
+
   // Effects
   terminalBloom: boolean;
   bloomIntensity: number;
@@ -673,6 +681,11 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   bgBase: THEME_PRESETS[0].bgBase,
   ansiColors: { ...THEME_PRESETS[0].ansiColors },
 
+  /** Phase 5 default — honour OS preference. Existing users land on
+   *  Graphite Dark unless their OS reports `prefers-color-scheme:
+   *  light`, in which case they get Graphite Light automatically. */
+  chromeTheme: "system",
+
   // τ-mux §4 + §11: bloom is OFF by design. The design system uses
   // only the focused-pane glow; a chrome-wide WebGL bloom pass
   // competes with that signal and also costs CPU/GPU while being
@@ -874,6 +887,13 @@ export function validateSettings(s: AppSettings): AppSettings {
             s.auditsGitUserNameExpected.length > 0
           ? s.auditsGitUserNameExpected
           : "olivierveinand",
+    chromeTheme:
+      s.chromeTheme === "graphite-dark" ||
+      s.chromeTheme === "graphite-light" ||
+      s.chromeTheme === "high-contrast" ||
+      s.chromeTheme === "system"
+        ? s.chromeTheme
+        : "system",
     notificationOverlayEnabled:
       typeof s.notificationOverlayEnabled === "boolean"
         ? s.notificationOverlayEnabled
@@ -1100,6 +1120,7 @@ export function pickWebSettings(s: AppSettings): {
   htStatusKeyHidden: string[];
   terminalOsc94Enabled: boolean;
   autoContinueEngine: "off" | "heuristic" | "model" | "hybrid";
+  chromeTheme: "system" | "graphite-dark" | "graphite-light" | "high-contrast";
 } {
   return {
     themePreset: s.themePreset,
@@ -1131,6 +1152,7 @@ export function pickWebSettings(s: AppSettings): {
     htStatusKeyHidden: s.htStatusKeyHidden.slice(),
     terminalOsc94Enabled: s.terminalOsc94Enabled,
     autoContinueEngine: s.autoContinue.engine,
+    chromeTheme: s.chromeTheme,
   };
 }
 

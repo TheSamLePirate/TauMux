@@ -26,6 +26,11 @@ export function applyThemeFromSettings(
   root: HTMLElement,
 ): void {
   if (!settings) return;
+  // Phase 5 / U2 — apply the chrome theme via `data-theme` so the
+  // `[data-theme="…"]` token blocks in `web-theme-tokens.css`
+  // activate. Older payloads (no `chromeTheme` field) default to
+  // "system" so the OS preference still wires through.
+  root.dataset["theme"] = settings.chromeTheme ?? "system";
   const accRgb = hexToRgb(settings.accentColor);
   const secRgb = hexToRgb(settings.secondaryColor);
   const bg = settings.bgBase;
