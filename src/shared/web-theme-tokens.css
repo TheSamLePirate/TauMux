@@ -62,6 +62,24 @@
    *  not part of the cyan-pane cue). */
   --ht-notify-cyan-glow: rgba(103, 232, 249, 0.08);
 
+  /* P7 S10 — sidebar workspace card tints. The card row uses several
+   *  fine-tuned white-on-dark alphas for resting / hover / active /
+   *  border / inset states; collapsing them into named tokens lets a
+   *  future palette swap repaint the sidebar in one place. The
+   *  `--ht-sidebar-*` prefix sits outside the U2 light/HC override
+   *  gate (which fires on --ht-bg-/--ht-text-/--ht-border-/--ht-accent-
+   *  /--ht-secondary/--ht-sem-) because the sidebar is a single dark
+   *  surface across all current themes. */
+  --ht-sidebar-row-bg: rgba(255, 255, 255, 0.022);
+  --ht-sidebar-row-bg-hover: rgba(255, 255, 255, 0.045);
+  --ht-sidebar-row-bg-stripe-soft: rgba(255, 255, 255, 0.014);
+  --ht-sidebar-row-bg-stripe: rgba(255, 255, 255, 0.025);
+  --ht-sidebar-row-border: rgba(255, 255, 255, 0.045);
+  --ht-sidebar-row-border-hover: rgba(255, 255, 255, 0.1);
+  --ht-sidebar-inset-highlight: rgba(255, 255, 255, 0.028);
+  --ht-sidebar-inset-strong: rgba(255, 255, 255, 0.06);
+  --ht-sidebar-row-shadow: 0 8px 20px rgba(0, 0, 0, 0.26);
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;
