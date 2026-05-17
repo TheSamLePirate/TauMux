@@ -191,6 +191,11 @@ export class SurfaceManager {
   /** Cached `ht set-status` hidden keys — same as above for
    *  visibility. */
   private htStatusKeyHidden: readonly string[] = [];
+  /** P7 S7 — cached browser search-engine choice from settings so a new
+   *  browser pane uses the user's pick (was hardcoded `"google"` after
+   *  the S6 punt). Updated by `applySettings`; read by
+   *  `createBrowserSurfaceView`. */
+  private browserSearchEngine: AppSettings["browserSearchEngine"] = "google";
   private wsCounter = 0;
   private paneDrag: PaneDragController;
   private fontSize: number;
@@ -1109,6 +1114,10 @@ export class SurfaceManager {
     this.osc94Enabled = s.terminalOsc94Enabled;
     this.htStatusKeyOrder = s.htStatusKeyOrder ?? [];
     this.htStatusKeyHidden = s.htStatusKeyHidden ?? [];
+    // P7 S7 — cache the browser search engine choice so the next
+    // `createBrowserSurfaceView` picks up the user's setting instead
+    // of the hardcoded fallback that S6 punted.
+    this.browserSearchEngine = s.browserSearchEngine;
     // Plan #06 — push the workspace-card display preferences into
     // the sidebar. Each toggle gates whether the corresponding
     // section is rendered for the active workspace; density drives
@@ -2029,7 +2038,7 @@ export class SurfaceManager {
           );
         },
       },
-      "google",
+      this.browserSearchEngine,
       partition,
     );
 
