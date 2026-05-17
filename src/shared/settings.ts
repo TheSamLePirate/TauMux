@@ -918,12 +918,21 @@ export function validateSettings(s: AppSettings): AppSettings {
       s.terminalOsc94Enabled,
     ),
     auditsGitUserNameExpected:
-      s.auditsGitUserNameExpected === null
-        ? null
-        : typeof s.auditsGitUserNameExpected === "string" &&
-            s.auditsGitUserNameExpected.length > 0
-          ? s.auditsGitUserNameExpected
-          : "olivierveinand",
+      SETTINGS_FIELD_SCHEMAS.auditsGitUserNameExpected.validate(
+        s.auditsGitUserNameExpected,
+      ),
+    // P7 S16 — five fields that previously slipped through validateSettings
+    // via the unmodified `...s` spread with no guard. Folding them through
+    // the schema closes the silent gap.
+    terminalBloom: SETTINGS_FIELD_SCHEMAS.terminalBloom.validate(
+      s.terminalBloom,
+    ),
+    cursorBlink: SETTINGS_FIELD_SCHEMAS.cursorBlink.validate(s.cursorBlink),
+    autoStartWebMirror: SETTINGS_FIELD_SCHEMAS.autoStartWebMirror.validate(
+      s.autoStartWebMirror,
+    ),
+    shellPath: SETTINGS_FIELD_SCHEMAS.shellPath.validate(s.shellPath),
+    fontFamily: SETTINGS_FIELD_SCHEMAS.fontFamily.validate(s.fontFamily),
     chromeTheme: SETTINGS_FIELD_SCHEMAS.chromeTheme.validate(s.chromeTheme),
     notificationOverlayEnabled:
       SETTINGS_FIELD_SCHEMAS.notificationOverlayEnabled.validate(

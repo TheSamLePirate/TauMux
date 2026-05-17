@@ -108,6 +108,36 @@ export function stringTrim(def: string = ""): FieldSchema<string> {
   };
 }
 
+// P7 S16 — pass-through string factory. Used by shellPath / fontFamily
+// where the prior code spread the input through validateSettings
+// without any guard. Coerces non-strings to default but does NOT trim
+// (callers that need trimming use `stringTrim()` instead).
+export function string(def: string = ""): FieldSchema<string> {
+  return {
+    default: def,
+    validate(input) {
+      return typeof input === "string" ? input : def;
+    },
+  };
+}
+
+// P7 S16 — nullable-string factory with non-empty guard. Used by
+// `auditsGitUserNameExpected`: `null` means "opt out of the audit",
+// any non-empty string is the expected git user, and anything else
+// (missing, undefined, empty string, non-string) falls back to the
+// documented default. Mirrors the prior inline `=== null ? null :
+// typeof X === "string" && X.length > 0 ? X : default` chain.
+export function nullableString(def: string): FieldSchema<string | null> {
+  return {
+    default: def,
+    validate(input) {
+      if (input === null) return null;
+      if (typeof input === "string" && input.length > 0) return input;
+      return def;
+    },
+  };
+}
+
 // P7 S15 — string-array factory. Used by statusBarKeys / htStatusKeyOrder
 // / htStatusKeyHidden — filters input to non-empty strings; non-array
 // input falls back to default.
@@ -239,6 +269,24 @@ export const SETTINGS_FIELD_SCHEMAS = {
   browserInterceptTerminalLinks: bool(false),
   telegramEnabled: bool(false),
   telegramNotificationsEnabled: bool(false),
+
+  // S16 final-simple batch. These five fields previously flowed through
+  // validateSettings via the unmodified `...s` spread with no guard at
+  // all — folding them onto the schema closes silent gaps where a
+  // non-boolean cursorBlink or non-string shellPath could slip through
+  // unchanged. shellPath / fontFamily are pass-through `string()`
+  // (no trim) to match prior behaviour.
+  terminalBloom: bool(false),
+  cursorBlink: bool(true),
+  autoStartWebMirror: bool(false),
+  shellPath: string(""),
+  fontFamily: string(
+    "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Berkeley Mono', 'SF Mono', 'Menlo', monospace",
+  ),
+
+  // S16 nullable-string batch. auditsGitUserNameExpected: null opts out
+  // of the audit, any non-empty string is the expected git user.
+  auditsGitUserNameExpected: nullableString("olivierveinand"),
 } as const;
 
 export type SchemaFieldName = keyof typeof SETTINGS_FIELD_SCHEMAS;

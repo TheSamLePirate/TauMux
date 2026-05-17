@@ -10,8 +10,10 @@ import {
   bool,
   boolStrict,
   enumStr,
+  nullableString,
   numberRange,
   numberRangeStrict,
+  string,
   stringArray,
   stringTrim,
 } from "../src/shared/settings.schema";
@@ -339,5 +341,84 @@ describe("validateSettings uses the schema for S15 enum / string / array fields"
     });
     expect(out.telegramEnabled).toBe(true);
     expect(out.bloomMigratedToTau).toBe(false);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// P7 S16 — string / nullableString + final-simple batch
+// ──────────────────────────────────────────────────────────────────
+
+describe("FieldSchema factories — string / nullableString (S16)", () => {
+  test("string pass-through returns input when string, default otherwise", () => {
+    const s = string("default");
+    expect(s.validate("hello")).toBe("hello");
+    expect(s.validate("  preserves whitespace  ")).toBe(
+      "  preserves whitespace  ",
+    );
+    expect(s.validate("")).toBe("");
+    expect(s.validate(undefined)).toBe("default");
+    expect(s.validate(null)).toBe("default");
+    expect(s.validate(42 as unknown)).toBe("default");
+  });
+
+  test("nullableString accepts null, non-empty string, or default", () => {
+    const s = nullableString("fallback");
+    expect(s.validate(null)).toBe(null);
+    expect(s.validate("alice")).toBe("alice");
+    expect(s.validate("")).toBe("fallback");
+    expect(s.validate(undefined)).toBe("fallback");
+    expect(s.validate(42 as unknown)).toBe("fallback");
+  });
+});
+
+describe("validateSettings uses the schema for S16 final-simple fields", () => {
+  test("five previously-unguarded fields now coerce non-matching input", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      // None of these were validated before; non-matching input slipped
+      // through. They MUST now fall back to default.
+      terminalBloom: 1 as unknown as boolean,
+      cursorBlink: "yes" as unknown as boolean,
+      autoStartWebMirror: 0 as unknown as boolean,
+      shellPath: 42 as unknown as string,
+      fontFamily: null as unknown as string,
+    });
+    // bool() does !!-coerce, so 1→true, 0→false, "yes"→true.
+    expect(out.terminalBloom).toBe(true);
+    expect(out.cursorBlink).toBe(true);
+    expect(out.autoStartWebMirror).toBe(false);
+    // string() falls back to default for non-string input.
+    expect(out.shellPath).toBe("");
+    expect(out.fontFamily).toContain("JetBrainsMono"); // default
+  });
+
+  test("auditsGitUserNameExpected honours null + non-empty + fallback", () => {
+    const optedOut = validateSettings({
+      ...DEFAULT_SETTINGS,
+      auditsGitUserNameExpected: null,
+    });
+    expect(optedOut.auditsGitUserNameExpected).toBe(null);
+
+    const custom = validateSettings({
+      ...DEFAULT_SETTINGS,
+      auditsGitUserNameExpected: "alice",
+    });
+    expect(custom.auditsGitUserNameExpected).toBe("alice");
+
+    const empty = validateSettings({
+      ...DEFAULT_SETTINGS,
+      auditsGitUserNameExpected: "" as string,
+    });
+    expect(empty.auditsGitUserNameExpected).toBe("olivierveinand");
+  });
+
+  test("shellPath / fontFamily pass through string input verbatim", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      shellPath: "/bin/zsh",
+      fontFamily: "Comic Sans MS",
+    });
+    expect(out.shellPath).toBe("/bin/zsh");
+    expect(out.fontFamily).toBe("Comic Sans MS");
   });
 });
