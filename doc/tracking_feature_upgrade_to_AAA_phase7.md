@@ -725,3 +725,49 @@ Grade distribution after S13: **20 S / 20 A / 6 B / 3 C** (unchanged — both li
 - Fold the remaining ~40 settings fields onto the new `FieldSchema` seam (incremental — one cluster at a time).
 - Cluster H literal migration — next chunk (telegram pane, status bar, agent accent cyan/amber).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 14 (2026-05-17)
+
+Slice picked: **F.6 batch 2 (strict-bool + strict-number fields)** + **Cluster H telegram pane region**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| F.6 batch 2 — strict variants | `37f230a` | `src/shared/settings.schema.ts`, `src/shared/settings.ts`, `tests/settings-schema.test.ts` | +8 (boolStrict / numberRangeStrict factories + delegated workspaceCardShow* / notificationOverlay* / telegram toggles) |
+| Cluster H telegram pane tokens | `0df85f9` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-telegram.test.ts` (new) | +12 (each `--ht-telegram-*` token defined; toolbar / chat-select / msg bubbles / composer / send-btn rules use them) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.76 → 0.3.77 (F.6 batch 2) → 0.3.78 (Cluster H telegram).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `settings-persistence` | A | A | F.6 seam extended with `boolStrict()` + `numberRangeStrict()` factories — the strict variants fall back to the documented default on non-boolean / non-finite input instead of `!!`-coercing. 15 more fields migrated (11 strict-bool, 3 strict-number, 1 telegram toggle, but `telegramNotificationButtonsEnabled` + `telegramAskUserEnabled` count under "telegram toggles" — 11 + 3 + 1 = 15). Cumulative 25 / ~50 settings fields migrated. |
+| `tau-primitives` | S | S | Cluster H continues — telegram pane region migrated to a new `--ht-telegram-*` token group (9 tokens; indigo brand accent lives in named tokens now). audit:theming: 963 → 949. Semantic status pills + msg-failed badge stay for a later session. |
+
+Grade distribution after S14: **20 S / 20 A / 6 B / 3 C** (unchanged — both lifts continued seam-introduction / migration work that didn't cross a grade boundary).
+
+### Issues encountered
+
+- **No regressions introduced this session.**
+- **One semantic note**: `legacyBloomIntensity` previously did `typeof X === "number" ? X : 0` then clamped — which would clamp `Infinity` to 2. The new `numberRangeStrict()` factory rejects non-finite numbers and falls back to default (0). Acceptable: `Infinity` for a bloom intensity is junk input; defaulting is more defensive than clamping.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+- **1 pre-existing flake**: `byte-buffer fallback`. Same as previous sessions.
+
+### Exit criteria (session 14)
+
+| Criterion | Status |
+|---|---|
+| F.6 batch 2 — strict-bool + strict-number factories + 15 migrated fields | ✅ landed |
+| Cluster H telegram pane region migrated | ✅ 963 → 949 (−14) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2212 / 1 known flake; +20 new tests (8 schema batch 2 + 12 telegram tokens) |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 14)
+
+- Fold the remaining ~25 settings fields (enum string unions like cursorStyle / packageRunner / layoutVariant / chromeTheme / workspaceCardDensity / browserSearchEngine / browserPartitionMode; plus array fields like statusBarKeys / htStatusKeyOrder; plus plain-string fields like telegramBotToken / browserHomePage) onto the `FieldSchema` seam — needs an `enumStr<T>()` + `stringTrim()` + `stringArray()` factory family.
+- Cluster H literal migration — next chunk (status bar, agent accent cyan/amber, plan panel).
+- Phases 8 (release engineering) + 9 (docs / observability).
