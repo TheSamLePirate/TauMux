@@ -106,15 +106,40 @@ export class BrowserHistoryStore {
 
   // ── Internals ──
 
+  /** Phase 7 — collapse the common dupe sources into a single
+   *  canonical form so the visit-count for one logical page actually
+   *  aggregates instead of fanning out across protocol-relative,
+   *  cased-host, fragment-only, and default-port variants. Order
+   *  matters: lowercase the host before stripping the www prefix
+   *  (the regex is anchored), and drop the fragment before slicing
+   *  the trailing slash (so `/foo/#bar` and `/foo/` collide). */
   private normalizeUrl(url: string): string {
     try {
       const u = new URL(url);
-      // Remove trailing slash from pathname (unless it IS the pathname)
+      // Hostnames are case-insensitive per RFC 3986; `Example.com`
+      // and `example.com` are the same site.
+      u.hostname = u.hostname.toLowerCase();
+      // Strip the `www.` prefix — sites that serve both bare apex
+      // and www subdomain should aggregate in history.
+      u.hostname = u.hostname.replace(/^www\./, "");
+      // Drop the fragment — `#anchor` doesn't change the page
+      // identity for history-aggregation purposes.
+      u.hash = "";
+      // Strip the default port for the protocol — `:80` on http and
+      // `:443` on https are noise.
+      if (
+        (u.protocol === "http:" && u.port === "80") ||
+        (u.protocol === "https:" && u.port === "443")
+      ) {
+        u.port = "";
+      }
+      // Remove trailing slash from the pathname (unless it IS the
+      // pathname). Must run AFTER fragment strip so a URL like
+      // `https://x.com/#a` ends up as `https://x.com` not
+      // `https://x.com/`.
       if (u.pathname.length > 1 && u.pathname.endsWith("/")) {
         u.pathname = u.pathname.slice(0, -1);
       }
-      // Remove www prefix from hostname
-      u.hostname = u.hostname.replace(/^www\./, "");
       return u.toString();
     } catch {
       return url;
