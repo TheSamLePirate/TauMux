@@ -16,8 +16,10 @@ import {
   string,
   stringArray,
   stringTrim,
+  wrapped,
 } from "../src/shared/settings.schema";
 import {
+  AUTO_CONTINUE_SCHEMA,
   DEFAULT_SETTINGS,
   validateSettings,
   type AppSettings,
@@ -420,5 +422,71 @@ describe("validateSettings uses the schema for S16 final-simple fields", () => {
     });
     expect(out.shellPath).toBe("/bin/zsh");
     expect(out.fontFamily).toBe("Comic Sans MS");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// P7 S17 — wrapped() factory + AUTO_CONTINUE_SCHEMA
+// ──────────────────────────────────────────────────────────────────
+
+describe("FieldSchema factory — wrapped (S17)", () => {
+  test("wrapped delegates validation to the supplied helper", () => {
+    const helper = (input: unknown): string => {
+      return typeof input === "string" ? input.toUpperCase() : "FALLBACK";
+    };
+    const s = wrapped("FALLBACK", helper);
+    expect(s.default).toBe("FALLBACK");
+    expect(s.validate("hello")).toBe("HELLO");
+    expect(s.validate(undefined)).toBe("FALLBACK");
+    expect(s.validate(42 as unknown)).toBe("FALLBACK");
+  });
+
+  test("AUTO_CONTINUE_SCHEMA exposes the validateAutoContinue helper through the seam", () => {
+    expect(AUTO_CONTINUE_SCHEMA.default).toEqual(DEFAULT_SETTINGS.autoContinue);
+
+    // Non-object input → fresh copy of default.
+    const fromNull = AUTO_CONTINUE_SCHEMA.validate(null);
+    expect(fromNull).toEqual(DEFAULT_SETTINGS.autoContinue);
+    // Sanity: not the same reference.
+    expect(fromNull).not.toBe(DEFAULT_SETTINGS.autoContinue);
+
+    // Engine sanitisation flows through.
+    const fromBogus = AUTO_CONTINUE_SCHEMA.validate({
+      engine: "nonsense",
+      dryRun: "not a bool",
+      cooldownMs: -5,
+      maxConsecutive: 999,
+      modelName: "  custom-haiku  ",
+      modelApiKeyEnv: "  MY_KEY  ",
+    });
+    expect(fromBogus.engine).toBe("off");
+    // dryRun non-boolean → fallback to default (true).
+    expect(fromBogus.dryRun).toBe(DEFAULT_SETTINGS.autoContinue.dryRun);
+    // cooldown clamps to >= 0.
+    expect(fromBogus.cooldownMs).toBe(0);
+    // maxConsecutive clamps to <= 50.
+    expect(fromBogus.maxConsecutive).toBe(50);
+    // Strings trim.
+    expect(fromBogus.modelName).toBe("custom-haiku");
+    expect(fromBogus.modelApiKeyEnv).toBe("MY_KEY");
+  });
+
+  test("validateSettings routes autoContinue through AUTO_CONTINUE_SCHEMA", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      autoContinue: {
+        engine: "hybrid",
+        dryRun: false,
+        cooldownMs: 2000,
+        maxConsecutive: 5,
+        modelProvider: "anthropic",
+        modelName: "claude-haiku-4-5",
+        modelApiKeyEnv: "ANTHROPIC_API_KEY",
+      },
+    });
+    expect(out.autoContinue.engine).toBe("hybrid");
+    expect(out.autoContinue.dryRun).toBe(false);
+    expect(out.autoContinue.cooldownMs).toBe(2000);
+    expect(out.autoContinue.maxConsecutive).toBe(5);
   });
 });

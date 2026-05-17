@@ -121,6 +121,21 @@ export function string(def: string = ""): FieldSchema<string> {
   };
 }
 
+// P7 S17 — wrapper factory for fields whose validation needs a custom
+// helper (nested records, multi-field interlocks, etc.). The helper
+// owns the validation; the schema just provides the default + a
+// uniform call-site. Used by `autoContinue` (delegates to
+// `validateAutoContinue`).
+export function wrapped<T>(
+  def: T,
+  validator: (input: unknown) => T,
+): FieldSchema<T> {
+  return {
+    default: def,
+    validate: validator,
+  };
+}
+
 // P7 S16 — nullable-string factory with non-empty guard. Used by
 // `auditsGitUserNameExpected`: `null` means "opt out of the audit",
 // any non-empty string is the expected git user, and anything else

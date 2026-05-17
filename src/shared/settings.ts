@@ -1,4 +1,4 @@
-import { SETTINGS_FIELD_SCHEMAS } from "./settings.schema";
+import { SETTINGS_FIELD_SCHEMAS, wrapped } from "./settings.schema";
 
 export interface AnsiColors {
   black: string;
@@ -987,7 +987,7 @@ export function validateSettings(s: AppSettings): AppSettings {
     htStatusKeyHidden: SETTINGS_FIELD_SCHEMAS.htStatusKeyHidden.validate(
       s.htStatusKeyHidden,
     ),
-    autoContinue: validateAutoContinue(s.autoContinue),
+    autoContinue: AUTO_CONTINUE_SCHEMA.validate(s.autoContinue),
   };
 }
 
@@ -1033,6 +1033,21 @@ export function validateAutoContinue(
     modelApiKeyEnv,
   };
 }
+
+// P7 S17 — autoContinue exposed through the FieldSchema seam via the
+// `wrapped()` factory. The validator is colocated with the type here
+// (settings.ts) rather than in settings.schema.ts because the type +
+// helper are themselves big enough to live in their own block. The
+// schema wraps the existing helper so the call site in
+// `validateSettings` looks like every other migrated field. Completes
+// F.6 at 50 / ~50 simple settings fields (excluding the theme-preset
+// interlock, which gates 6 fields together and needs a `derived()`
+// factory shape — owned by a future session).
+export const AUTO_CONTINUE_SCHEMA = wrapped(
+  DEFAULT_SETTINGS.autoContinue,
+  (input: unknown): AutoContinueSettings =>
+    validateAutoContinue(input as AutoContinueSettings | undefined | null),
+);
 
 /** Compose the final ordered list of visible `ht set-status` keys
  *  from a discovered-key set + user's order/hide preferences.
