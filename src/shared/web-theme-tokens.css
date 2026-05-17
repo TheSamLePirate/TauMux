@@ -194,6 +194,41 @@
   --ht-ask-badge-border: rgba(111, 233, 255, 0.42);
   --ht-ask-badge-fg: rgba(111, 233, 255, 0.96);
 
+  /* P7 S18 — process manager (⌘⌥P) overlay chrome. The PM is the
+   *  "where is everything I spawned?" sheet — denser than the
+   *  ask-user modal, with workspace cards stacked vertically and a
+   *  per-process table inside each. The chrome reuses the
+   *  white-on-dark tint ladder one more time (overlay scrim, panel
+   *  bg/border/shadow, workspace card bg/border, header divider,
+   *  table row stripe, foreground-row highlight). The ht-pm prefix
+   *  sits outside the U2 light/HC override gate. */
+  --ht-pm-scrim-bg: rgba(5, 5, 8, 0.7);
+  --ht-pm-panel-bg: rgba(10, 10, 14, 0.98);
+  --ht-pm-panel-border: rgba(255, 255, 255, 0.06);
+  --ht-pm-panel-shadow: rgba(0, 0, 0, 0.55);
+  --ht-pm-close-border-hover: rgba(255, 255, 255, 0.08);
+  --ht-pm-card-bg: rgba(255, 255, 255, 0.015);
+  --ht-pm-card-border: rgba(255, 255, 255, 0.05);
+  --ht-pm-card-border-active: rgba(111, 233, 255, 0.28);
+  --ht-pm-card-header-bg: rgba(255, 255, 255, 0.02);
+  --ht-pm-card-divider: rgba(255, 255, 255, 0.04);
+  --ht-pm-surface-divider: rgba(255, 255, 255, 0.03);
+  --ht-pm-surface-hover-bg: rgba(255, 255, 255, 0.02);
+  --ht-pm-table-row-divider: rgba(255, 255, 255, 0.03);
+  --ht-pm-table-header-bg: rgba(255, 255, 255, 0.015);
+  --ht-pm-table-fg-row-bg: rgba(111, 233, 255, 0.05);
+
+  /* P7 S18 — process-manager kill button. Soft-red danger family —
+   *  distinct from `--ht-ask-danger-*` (which is solid-red for an
+   *  imperative trust prompt) because the PM kill button is a quiet
+   *  inline action, not a modal confirmation. */
+  --ht-pm-kill-fg: #fca5a5;
+  --ht-pm-kill-bg: rgba(248, 113, 113, 0.08);
+  --ht-pm-kill-border: rgba(248, 113, 113, 0.2);
+  --ht-pm-kill-fg-hover: #fecaca;
+  --ht-pm-kill-bg-hover: rgba(248, 113, 113, 0.22);
+  --ht-pm-kill-border-hover: rgba(248, 113, 113, 0.52);
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;
