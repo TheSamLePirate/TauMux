@@ -362,8 +362,9 @@ export class SurfaceManager {
       name: this.uniqueWorkspaceName(name),
       counter: ++this.wsCounter,
     });
-    this.workspaces.push(ws);
-    this.switchToWorkspace(this.workspaces.length - 1);
+    // P7 S12 (F.11) — mutation routed through the collection.
+    const newIndex = this.workspaceCollection.push(ws);
+    this.switchToWorkspace(newIndex);
     this.updateSidebar();
     this.scheduleLayoutForNewSurface(onReady);
   }
@@ -643,8 +644,11 @@ export class SurfaceManager {
     _surfaceMapping: Record<string, string>,
   ): void {
     // Clear any default workspace that was auto-created
-    // (surfaces were already created by bun and added via surfaceCreated)
-    this.workspaces = [];
+    // (surfaces were already created by bun and added via surfaceCreated).
+    // P7 S12 (F.11) — clear through the collection so the underlying
+    // array reference stays stable (the collection holds it via the
+    // shared source object).
+    this.workspaceCollection.clear();
     this.activeWorkspaceIndex = -1;
 
     for (const ws of layout.workspaces) {
@@ -661,7 +665,8 @@ export class SurfaceManager {
         progress: null,
         logs: [],
       };
-      this.workspaces.push(workspace);
+      // P7 S12 (F.11) — append through the collection.
+      this.workspaceCollection.push(workspace);
       // Rehydrate the user's pinned "workspace cwd" — the card will pick it
       // back up on the next updateSidebar, and auto-clear if the pinned dir
       // doesn't match any of the (re-)spawned surfaces.
@@ -1883,7 +1888,8 @@ export class SurfaceManager {
   }
 
   private removeWorkspace(index: number): void {
-    this.workspaces.splice(index, 1);
+    // P7 S12 (F.11) — splice through the collection.
+    this.workspaceCollection.removeAt(index);
 
     if (this.workspaces.length === 0) {
       this.activeWorkspaceIndex = -1;

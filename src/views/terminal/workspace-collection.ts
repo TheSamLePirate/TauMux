@@ -90,4 +90,50 @@ export class WorkspaceCollection {
   map<T>(fn: (ws: Workspace, index: number) => T): T[] {
     return this.source.workspaces.map(fn);
   }
+
+  // ──────────────────────────────────────────────────────────────────
+  // P7 S12 — F.11 mutation API.
+  //
+  // Mutations still rewrite `source.workspaces` in place so the
+  // SurfaceManager holds the same live reference; only the operation
+  // intent has moved here. The next slice can flip the owner so the
+  // collection holds the array and SurfaceManager reads through it.
+  // ──────────────────────────────────────────────────────────────────
+
+  /** Append a workspace and return its new index. */
+  push(ws: Workspace): number {
+    return this.source.workspaces.push(ws) - 1;
+  }
+
+  /** Remove the workspace at `index`. Returns true when something
+   *  was removed; false when the index was out of bounds. */
+  removeAt(index: number): boolean {
+    if (index < 0 || index >= this.source.workspaces.length) return false;
+    this.source.workspaces.splice(index, 1);
+    return true;
+  }
+
+  /** Remove the workspace with id `id`. Returns the removed index
+   *  for callers that need to update an active-index cursor, or -1
+   *  when the id wasn't found. */
+  removeById(id: string): number {
+    const idx = this.findIndexById(id);
+    if (idx === -1) return -1;
+    this.source.workspaces.splice(idx, 1);
+    return idx;
+  }
+
+  /** Replace the entire workspace list with `next`. Used by the
+   *  layout-restore + manual-reorder paths that compute a fresh
+   *  ordering and want to drop the old one wholesale. */
+  replaceAll(next: readonly Workspace[]): void {
+    this.source.workspaces.length = 0;
+    for (const w of next) this.source.workspaces.push(w);
+  }
+
+  /** Drop every workspace. Equivalent to `replaceAll([])` but reads
+   *  better at call sites that want a hard reset. */
+  clear(): void {
+    this.source.workspaces.length = 0;
+  }
 }

@@ -93,4 +93,64 @@ describe("WorkspaceCollection (P7 S11 / F.11)", () => {
     expect(col.count).toBe(2);
     expect(col.findById("b")?.id).toBe("b");
   });
+
+  // ──────────────────────────────────────────────────────────────────
+  // P7 S12 — mutation API
+  // ──────────────────────────────────────────────────────────────────
+
+  test("push appends and returns the new index", () => {
+    const source = { workspaces: [ws("a")] };
+    const col = new WorkspaceCollection(source);
+    const i = col.push(ws("b"));
+    expect(i).toBe(1);
+    expect(col.count).toBe(2);
+    expect(col.findById("b")?.id).toBe("b");
+  });
+
+  test("removeAt drops the entry and returns true", () => {
+    const source = { workspaces: [ws("a"), ws("b"), ws("c")] };
+    const col = new WorkspaceCollection(source);
+    expect(col.removeAt(1)).toBe(true);
+    expect(col.map((w) => w.id)).toEqual(["a", "c"]);
+  });
+
+  test("removeAt returns false on out-of-bounds + leaves the list intact", () => {
+    const source = { workspaces: [ws("a")] };
+    const col = new WorkspaceCollection(source);
+    expect(col.removeAt(-1)).toBe(false);
+    expect(col.removeAt(5)).toBe(false);
+    expect(col.count).toBe(1);
+  });
+
+  test("removeById returns the removed index", () => {
+    const source = { workspaces: [ws("a"), ws("b"), ws("c")] };
+    const col = new WorkspaceCollection(source);
+    expect(col.removeById("b")).toBe(1);
+    expect(col.map((w) => w.id)).toEqual(["a", "c"]);
+  });
+
+  test("removeById returns -1 for an unknown id", () => {
+    const source = { workspaces: [ws("a")] };
+    const col = new WorkspaceCollection(source);
+    expect(col.removeById("missing")).toBe(-1);
+    expect(col.count).toBe(1);
+  });
+
+  test("replaceAll swaps the contents in place (array ref stays stable)", () => {
+    const source = { workspaces: [ws("a"), ws("b")] };
+    const col = new WorkspaceCollection(source);
+    const arrayRef = source.workspaces;
+    col.replaceAll([ws("x"), ws("y"), ws("z")]);
+    expect(source.workspaces).toBe(arrayRef); // same array, mutated in place
+    expect(col.map((w) => w.id)).toEqual(["x", "y", "z"]);
+  });
+
+  test("clear empties the list without swapping the array ref", () => {
+    const source = { workspaces: [ws("a"), ws("b")] };
+    const col = new WorkspaceCollection(source);
+    const arrayRef = source.workspaces;
+    col.clear();
+    expect(source.workspaces).toBe(arrayRef);
+    expect(col.count).toBe(0);
+  });
 });
