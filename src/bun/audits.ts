@@ -1,3 +1,5 @@
+import { statSync } from "node:fs";
+
 /**
  * Startup audits — small canary checks that catch wrong-state-on-this-
  * machine drift the user keeps tripping over. The first audit landed
@@ -100,6 +102,14 @@ export interface AuditRegistryOptions {
   gitUserNameExpected: string | null;
   /** Subprocess hook for git invocations. Defaults to the live git. */
   runGit?: GitRunner;
+  /** P7 S24 — test hooks. The four new audits each take an injectable
+   *  probe so tests can drive them without spawning subprocesses or
+   *  touching the real process env / filesystem. Each defaults to the
+   *  real-world implementation when omitted. */
+  envOverride?: Record<string, string>;
+  localeOverride?: string | null;
+  bunProbe?: () => Promise<boolean>;
+  fileExists?: (path: string) => boolean;
 }
 
 /** Build the canonical audit list from the user's settings + an
@@ -115,6 +125,30 @@ export function defaultAudits(opts: AuditRegistryOptions): Audit[] {
       check: () => gitUserAudit(opts.gitUserNameExpected!, runGit),
     });
   }
+
+  // P7 S24 — three new startup audits. Each is independent of the
+  // existing git-user-name check + each reads the live process env
+  // / filesystem. None ships a `fix` because the remedies live
+  // outside the app's reach (shell rc files, dotfile installers,
+  // brew install bun) — the audit's value is "this is why your
+  // terminal looks weird / scripts fail", not auto-repair.
+  const env = opts.envOverride ?? (process.env as Record<string, string>);
+  const localeProbe = opts.localeOverride ?? null;
+  out.push({
+    id: "locale-utf8",
+    description: "LC_ALL / LANG indicate a UTF-8 locale",
+    check: () => localeAudit(env, localeProbe),
+  });
+  out.push({
+    id: "bun-on-path",
+    description: "bun is reachable on PATH",
+    check: () => bunOnPathAudit(opts.bunProbe),
+  });
+  out.push({
+    id: "shell-exists",
+    description: "$SHELL points to an executable",
+    check: () => shellExistsAudit(env, opts.fileExists),
+  });
 
   return out;
 }
@@ -158,6 +192,141 @@ export async function gitUserAudit(
       },
     },
   };
+}
+
+// ── P7 S24 — new startup audits ─────────────────────────────────────
+
+/** Probe the OS-level locale. Default reads `LC_ALL || LANG` from the
+ *  passed env map; tests can short-circuit via the second argument. */
+export async function localeAudit(
+  env: Record<string, string | undefined>,
+  override: string | null = null,
+): Promise<AuditResult> {
+  // Resolve in priority order: explicit override → LC_ALL → LANG.
+  // Empty strings count as "unset" per POSIX so they fall through.
+  const pick = (v: string | null | undefined): string =>
+    typeof v === "string" && v.length > 0 ? v : "";
+  const effective = pick(override) || pick(env["LC_ALL"]) || pick(env["LANG"]);
+  if (!effective) {
+    return {
+      id: "locale-utf8",
+      ok: false,
+      severity: "warn",
+      message:
+        "Neither LC_ALL nor LANG is set. UTF-8 characters may render as ??? in subprocess output.",
+    };
+  }
+  const utf8 = /\bUTF-?8\b/i.test(effective);
+  if (utf8) {
+    return {
+      id: "locale-utf8",
+      ok: true,
+      severity: "info",
+      message: `Locale OK (${effective})`,
+    };
+  }
+  return {
+    id: "locale-utf8",
+    ok: false,
+    severity: "warn",
+    message: `Locale "${effective}" is not UTF-8. UTF-8 characters may render as ??? in subprocess output.`,
+  };
+}
+
+/** Check whether `bun` is on PATH so script-runner panes that shell
+ *  out to `bun run …` can resolve the binary. The probe runs `bun
+ *  --version` with a 5 s timeout and resolves to true on a zero exit
+ *  with non-empty stdout; tests pass a stub via `bunProbe`. */
+export async function defaultBunProbe(): Promise<boolean> {
+  try {
+    const proc = Bun.spawn(["bun", "--version"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdoutP = new Response(proc.stdout).text();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<string>((resolve) => {
+      timer = setTimeout(() => {
+        try {
+          proc.kill();
+        } catch {
+          /* already gone */
+        }
+        resolve("");
+      }, GIT_AUDIT_TIMEOUT_MS);
+    });
+    const stdout = await Promise.race([stdoutP, timeout]);
+    if (timer) clearTimeout(timer);
+    proc.exited.catch(() => {
+      /* ignore */
+    });
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export async function bunOnPathAudit(
+  probe: () => Promise<boolean> = defaultBunProbe,
+): Promise<AuditResult> {
+  const ok = await probe();
+  if (ok) {
+    return {
+      id: "bun-on-path",
+      ok: true,
+      severity: "info",
+      message: "bun is on PATH",
+    };
+  }
+  return {
+    id: "bun-on-path",
+    ok: false,
+    severity: "warn",
+    message:
+      "bun is not on PATH. Script-runner panes that shell out to `bun run` will fail; install from https://bun.sh or add it to PATH.",
+  };
+}
+
+/** Probe `$SHELL` exists as a regular file. We don't `stat` the live
+ *  fs by default in tests; tests inject `fileExists`. */
+export async function shellExistsAudit(
+  env: Record<string, string | undefined>,
+  fileExists: (path: string) => boolean = defaultFileExists,
+): Promise<AuditResult> {
+  const shell = env["SHELL"] ?? "";
+  if (!shell) {
+    return {
+      id: "shell-exists",
+      ok: false,
+      severity: "warn",
+      message:
+        "$SHELL is not set. Terminal spawns will fall back to /bin/sh, which may not be what you want.",
+    };
+  }
+  if (!fileExists(shell)) {
+    return {
+      id: "shell-exists",
+      ok: false,
+      severity: "warn",
+      message: `$SHELL = ${shell}, but that path does not exist. Terminal spawns may fail.`,
+    };
+  }
+  return {
+    id: "shell-exists",
+    ok: true,
+    severity: "info",
+    message: `$SHELL OK (${shell})`,
+  };
+}
+
+function defaultFileExists(path: string): boolean {
+  try {
+    // statSync throws on missing paths; treat that as "no".
+    const stat = statSync(path);
+    return Boolean(stat);
+  } catch {
+    return false;
+  }
 }
 
 /** Run every audit in `list`, swallowing thrown errors into `err`-
