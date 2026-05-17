@@ -862,3 +862,48 @@ Grade distribution after S16: **20 S / 20 A / 6 B / 3 C** (unchanged — both li
 - F.6 seam — close the last two fields. Needs a `derived(fn)` factory shape for the theme-preset interlock (themePreset selection drives accentColor / secondaryColor / foregroundColor / bgBase / ansiColors), and a `validatorWrapper(fn)` shape for autoContinue.
 - Cluster H literal migration — next chunk (settings panel section, process manager, ask-user modal, plan panel fallback strip).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 17 (2026-05-17)
+
+Slice picked: **F.6 batch 5 (wrapped() factory + autoContinue)** + **Cluster H ask-user modal + workspace-ask badge region**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| F.6 batch 5 — wrapped() factory + autoContinue | `d1ff266` | `src/shared/settings.schema.ts`, `src/shared/settings.ts`, `tests/settings-schema.test.ts` | +3 (wrapped factory + AUTO_CONTINUE_SCHEMA exposed through the seam + validateSettings routes through it) |
+| Cluster H ask-user modal tokens | `fb590cf` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-ask.test.ts` (new) | +18 (each `--ht-ask-*` token defined; .ask-user-* + .workspace-ask-badge rules use them) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.82 → 0.3.83 (F.6 batch 5) → 0.3.84 (Cluster H ask-user).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `settings-persistence` | A | A | **F.6 seam coverage now 100% of non-interlock surface (50 / ~50 simple fields).** New `wrapped(default, validator)` factory exposes nested-record validators through the same uniform call-site as primitive fields — autoContinue routes through `AUTO_CONTINUE_SCHEMA` in validateSettings exactly like every other field. Only the theme-preset interlock (themePreset selection drives 6 colour fields together) remains on the per-clause path. |
+| `tau-primitives` | S | S | Cluster H continues — ask-user trust-boundary modal + sidebar workspace-ask badge migrated to a new `--ht-ask-*` token group (14 tokens covering scrim, sheet, codebox, danger banner/button, cyan badge). audit:theming: 922 → 907 (−15). The danger-red rgba(239,68,68,*) family now lives in named tokens. |
+
+Grade distribution after S17: **20 S / 20 A / 6 B / 3 C** (unchanged — both lifts continued seam-extension / migration work).
+
+### Issues encountered
+
+- **Typecheck error caught + fixed**: `wrapped()` types its validator as `(input: unknown) => T`, but `validateAutoContinue` declares `(raw: AutoContinueSettings | undefined | null) => AutoContinueSettings`. Bridged with a single-line cast wrapper at the `AUTO_CONTINUE_SCHEMA` definition.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+- **1 pre-existing flake**: `byte-buffer fallback`. Same as previous sessions.
+
+### Exit criteria (session 17)
+
+| Criterion | Status |
+|---|---|
+| F.6 batch 5 — wrapped() factory + autoContinue (100% non-interlock coverage) | ✅ landed |
+| Cluster H ask-user modal + workspace-ask badge region migrated | ✅ 922 → 907 (−15) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2275 / 1 known flake; +21 new tests (3 schema batch 5 + 18 ask-user tokens) |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 17)
+
+- F.6 — theme-preset interlock factory: themePreset selection drives accentColor / secondaryColor / foregroundColor / bgBase / ansiColors. Needs a `derived(fn)` shape that takes the whole settings record (or at least themePreset).
+- Cluster H literal migration — next chunk (process manager, settings panel section, plan panel fallback strip, notification overlay).
+- Phases 8 (release engineering) + 9 (docs / observability).
