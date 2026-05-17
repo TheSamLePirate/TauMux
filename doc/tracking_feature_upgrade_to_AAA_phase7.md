@@ -154,3 +154,57 @@ Grade distribution after S2: **12 S / 25 A / 9 B**.
 - Cluster H theme-selector UI in the Settings panel (now infra is wired — small, visible).
 - Cluster F refactors (A6 EventBus, A7 VariantContext, F.11) when ready for higher-risk work.
 - Cluster E remainder: surface-metadata rot detection, event-writer backpressure, audit auto-rerun.
+
+---
+
+## Session 3 (2026-05-17)
+
+Slice picked: **theme selector UI** (H) + **ARIA chip labels** (B) + **notifications copy + persistent history** (C). Three user-visible lifts across three clusters.
+
+A fourth item (F.6 `settings.schema.ts` source-of-truth) was scoped in but deferred: `src/shared/settings.ts` is 1166 LOC / ~396 field declarations; the refactor warrants its own dedicated session rather than sharing wall time with smaller items.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Chrome Theme selector UI | `741560c` | `src/views/terminal/settings-panel.ts`, `tests/settings-panel-theme.test.ts` | +2 (segment labels + click → partial) |
+| Pane-chip ARIA labels | `ac985b2` | `src/shared/pane-chips.ts`, `tests/pane-chips.test.ts` | +6 (live-region + per-chip aria-label) |
+| Notifications copy + persistence | `d5b4829` | `src/bun/notification-persistence.ts` (new), `src/bun/rpc-handler.ts`, `src/bun/rpc-handlers/{notification,types}.ts`, `src/bun/index.ts`, `src/views/terminal/{sidebar,icons}.ts`, `tests/{notification-persistence,sidebar-notifications}.test.ts` | +7 (persistence) + 2 (sidebar copy) |
+
+Bumps: `bun run bump:patch` ran before each functional commit per CLAUDE.md.
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Already S after P5 / P7-S2. P7 S3 closed the user-facing seam: the Settings → Theme section grows a four-way segmented selector for `chromeTheme` (System / Dark / Light / High Contrast) that emits through the existing `updateSettings` pipeline. |
+| `pane-chip-rendering` | A | **S** | Screen-reader users no longer get nothing from the chip row. Host carries `role="status"` + `aria-live="polite"`; every chip carries an `aria-label` with the full value (cwd, foreground command, port click target, git state prose). |
+| `notifications` | B | **A** | Sidebar items gain a Copy button (`navigator.clipboard.writeText` + `.copied` pulse) that copies `${title}\n${body}` or just the title when body is empty. Disk persistence via versioned JSON snapshot (`$HT_CONFIG_DIR/notifications.json`) with 300 ms-debounced atomic writes; `loadInto` hydrates on boot and silently treats corrupt / unknown-version files as empty. |
+
+Grade distribution after S3: **13 S / 25 A / 8 B / 3 C** (was 12 S / 25 A / 9 B / 3 C at start of S3).
+
+### Issues encountered
+
+- **Stale worktree base**: the new worktree (S3) branched from `origin/main` instead of local `main` — the default `worktree.baseRef: fresh` setting pulls from origin. Local main was 90 commits ahead with the entire P7 series. Fixed inline with `git reset --hard refs/heads/main` so the chromeTheme infra from S2 was visible.
+- **Wrong CSS selector in first-pass test**: my test used `.settings-field-row` for the segmented field; the actual class is `.settings-field`. Replace_all fix.
+- **Scope deferral**: F.6 `settings.schema.ts` was on the slice but `settings.ts` is too large for shared wall time with the other items. Captured for a dedicated future session.
+
+### Exit criteria (session 3)
+
+| Criterion | Status |
+|---|---|
+| Chrome Theme selector visible + wired | ✅ |
+| Pane chips carry ARIA labels + live-region | ✅ |
+| Notifications copy + disk persistence | ✅ |
+| `bun test` green | ✅ 2033 / 0 |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ F.6 explicitly deferred + multi-session work continues |
+
+### Next slice (after session 3)
+
+- F.6 `settings.schema.ts` source-of-truth — dedicated session.
+- Cluster F refactors (A6 EventBus, A7 VariantContext, F.11) — higher risk.
+- Cluster D: editor save-race UX, browser pane navigation-rule validation, OSC per-pane chips.
+- Cluster E remainder: audit auto-rerun, event-writer backpressure.
+- Cluster H: literal-to-token migration (the ~1013 hard-coded colour literals).

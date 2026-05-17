@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.39
+**Version:** 0.3.47
 **Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 2 landed: chromeTheme settings field + boot-time `data-theme` apply on both native and web mirror (tau-primitives stays at S, with explicit override on top of OS preference); terminal-search gets persisted case + regex toggles via `ISearchOptions` (A→S); SurfaceMetadataPoller gets a 30 s stale-git skip-tick cooldown so parallel NFS hangs can't stack (A→S); HealthRegistry gets a wire-safe `fix()` + `runFix(id)` remediation channel (A→S). Cumulative P7: 4 lifts in S1 (cookie-store, browser-history, manifest-scanner, plan-panel) + 4 lifts in S2 (terminal-search, surface-metadata, health-checks, tau-primitives infra). Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6) + theme-selector Settings UI + ARIA chip labels + literal-to-token migration + browser partition (H.8/H.9) + telegram DB TTL + auto-continue persistence + notifications copy/expand/history + editor save-race UX + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.
+Phase 7 polish — session 3 landed: Chrome Theme selector UI in Settings → Theme (closes the chromeTheme infra landed in S2); pane-bar chips gain ARIA labels + `aria-live="polite"` host region so AT users hear cwd / fg command / git state / port chips (pane-chip-rendering A→S); sidebar notifications gain a Copy button + bun-side disk persistence (load+save under $HT_CONFIG_DIR/notifications.json) so restarts keep the history (notifications B→A). Cumulative P7: 4 lifts in S1 (cookie-store, browser-history, manifest-scanner, plan-panel) + 4 lifts in S2 (terminal-search, surface-metadata, health-checks, tau-primitives infra) + 3 lifts in S3 (theme selector UI, pane-chip ARIA, notifications). Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — deferred from S3 as a dedicated session, settings.ts is 1166 LOC / ~396 fields) + literal-to-token migration + browser partition (H.8/H.9) + telegram DB TTL + auto-continue persistence + editor save-race UX + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.
 
 ---
 
@@ -34,9 +34,9 @@ Phase 7 polish — session 2 landed: chromeTheme settings field + boot-time `dat
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **12** | Best-in-class — 12 features cleared every gap. |
+| S (AAA) | **13** | Best-in-class — 13 features cleared every gap. |
 | A | **25** | Most "production-shaped" subsystems. |
-| B (incl. B+) | **9** | Functional, with named polish / test / lifecycle gaps. |
+| B (incl. B+) | **8** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
 
@@ -204,12 +204,11 @@ Phase 7 polish — session 2 landed: chromeTheme settings field + boot-time `dat
   - Touch-friendly mobile alt (lives partly in the touch-target shim landed alongside).
 
 ### Notifications + overlay + toasts
-- **Grade: B**
-- **Evidence:** Shared overlay in `src/shared/notification-overlay.ts` (mirror reuse, M15). Pure `composeStack` (lines 77-87) for unit testing. Toast uses `aria-live` polite + error-alert role. Auto-dismiss + hover pause.
+- **Grade: A**
+- **Evidence:** Shared overlay in `src/shared/notification-overlay.ts` (mirror reuse, M15). Pure `composeStack` (lines 77-87) for unit testing. Toast uses `aria-live` polite + error-alert role. Auto-dismiss + hover pause. Phase 7 (S3) added: (a) a `.notification-copy` button on every sidebar item that writes `${title}\n${body}` to `navigator.clipboard` and pulses a `.copied` class for ~1 s — falls back silently when the clipboard API is unavailable; (b) versioned disk persistence (`src/bun/notification-persistence.ts`): `loadInto` hydrates on boot, `createDebouncedPersister` writes 300 ms-debounced atomic snapshots to `$HT_CONFIG_DIR/notifications.json`. Handlers (`notification.create / .clear / .dismiss`) call `notifications.persist?.()` after each mutation. Corrupt / unknown-version files are silently treated as empty history. 7 new persistence tests + 2 sidebar copy tests.
 - **Gaps to AAA:**
-  - Error toasts: copy button + detail expansion (U8).
-  - Persistent sidebar notification history (U7).
-  - Older notifications evaporate silently when max-3 cap hit.
+  - Detail expansion modal for long bodies (U8 follow-up).
+  - Older notifications evaporate silently when max-3 overlay cap hit (UX cue still missing).
 
 ### Native menus
 - **Grade: A**
@@ -229,10 +228,9 @@ Phase 7 polish — session 2 landed: chromeTheme settings field + boot-time `dat
 
 ### Tau primitives / icons / tokens
 - **Grade: S**
-- **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference.
+- **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference. Phase 7 (S3) closed the loop with a four-way segmented selector at the top of Settings → Theme that flows through the existing `updateSettings` pipeline.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
-  - Settings-panel selector UI for `chromeTheme` (infra wired; UI follow-up in cluster H).
   - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens (audit:theming reports them; owned by P7 polish).
 
 ---
@@ -320,11 +318,10 @@ Phase 7 polish — session 2 landed: chromeTheme settings field + boot-time `dat
   - Deeper tree-diff than `tree.length` (descendant swap goes undetected).
 
 ### Pane-bar chip rendering
-- **Grade: A**
-- **Evidence:** Extracted to `src/shared/pane-chips.ts:32-94` with signature cache to skip redundant DOM rebuilds; web-mirror parity tested. Phase 2 (F.1) verified the dual-implementation drift is closed — both native (`surface-manager.ts:949`) and mirror (`web-client/main.ts:650, :907`) import from the same shared module.
+- **Grade: S**
+- **Evidence:** Extracted to `src/shared/pane-chips.ts:32-94` with signature cache to skip redundant DOM rebuilds; web-mirror parity tested. Phase 2 (F.1) verified the dual-implementation drift is closed — both native (`surface-manager.ts:949`) and mirror (`web-client/main.ts:650, :907`) import from the same shared module. Phase 7 (S3) added A11y coverage: the chip host carries `role="status"` + `aria-live="polite"` so screen readers announce metadata changes politely; every chip carries an `aria-label` spelling out its value — cwd (full path), command (full command, no truncation), port ("Open port N (proto address, pid X)"), git ("branch X, N ahead, N behind, +X lines, -Y lines" via new `formatGitAria` helper). +6 tests.
 - **Gaps to AAA:**
   - Unified port-click handler / config (native dispatches `ht-open-external` CustomEvent; mirror routes via `http://${location.hostname}:${port}` which fails on `0.0.0.0` when hostname≠IP).
-  - ARIA labels + live-region for git status transitions.
   - Tooltip overflow tests.
 
 ### Settings persistence & migration
