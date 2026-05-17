@@ -6,6 +6,7 @@ import {
 } from "../../shared/settings";
 import { ModalHost } from "./a11y/modal-host";
 import { createIcon } from "./icons";
+import { htEvents } from "../../shared/event-bus";
 import {
   STATUS_KEY_GROUPS,
   getStatusKeyMeta,
@@ -1220,11 +1221,7 @@ export class SettingsPanel {
           text.trimStart().startsWith("[") || text.trimStart().startsWith("{")
             ? "json"
             : "netscape";
-        window.dispatchEvent(
-          new CustomEvent("ht-cookie-import", {
-            detail: { data: text, format },
-          }),
-        );
+        htEvents.emit("ht-cookie-import", { data: text, format });
       };
       reader.readAsText(file);
       // Reset so the same file can be re-imported
@@ -1249,9 +1246,7 @@ export class SettingsPanel {
     exportBtn.textContent = "Export All Cookies";
     exportBtn.style.marginTop = "0";
     exportBtn.addEventListener("click", () => {
-      window.dispatchEvent(
-        new CustomEvent("ht-cookie-export", { detail: { format: "json" } }),
-      );
+      htEvents.emit("ht-cookie-export", { format: "json" });
     });
     btnRow.appendChild(exportBtn);
 
@@ -1260,7 +1255,7 @@ export class SettingsPanel {
     clearBtn.textContent = "Clear All Cookies";
     clearBtn.style.marginTop = "0";
     clearBtn.addEventListener("click", () => {
-      window.dispatchEvent(new CustomEvent("ht-cookie-clear"));
+      htEvents.emit("ht-cookie-clear", undefined);
     });
     btnRow.appendChild(clearBtn);
 

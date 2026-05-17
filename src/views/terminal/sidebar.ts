@@ -958,7 +958,7 @@ export class Sidebar {
         name: ws.name,
         color: ws.color,
       };
-      window.dispatchEvent(new CustomEvent("ht-open-context-menu", { detail }));
+      htEvents.emit("ht-open-context-menu", detail);
     });
 
     this.wireDragAndDrop(item, id);
@@ -1464,11 +1464,7 @@ export class Sidebar {
         : "No processes";
     barWrap.addEventListener("click", (e) => {
       e.stopPropagation();
-      window.dispatchEvent(
-        new CustomEvent("ht-open-process-manager", {
-          detail: { workspaceId: ws.id },
-        }),
-      );
+      htEvents.emit("ht-open-process-manager", { workspaceId: ws.id });
     });
     // Fill width = cpu% clamped to 400% (4 cores)
     const capped = Math.min(ws.cpuPercent, 400);
@@ -2447,7 +2443,7 @@ export class Sidebar {
     clearBtn.append(createIcon("close", "", 11));
     clearBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      window.dispatchEvent(new CustomEvent("ht-clear-notifications"));
+      htEvents.emit("ht-clear-notifications", undefined);
     });
     header.appendChild(clearBtn);
     this.notificationsEl.appendChild(header);
@@ -2527,11 +2523,7 @@ export class Sidebar {
     dismissBtn.append(createIcon("close", "", 10));
     dismissBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      window.dispatchEvent(
-        new CustomEvent("ht-dismiss-notification", {
-          detail: { id: n.id },
-        }),
-      );
+      htEvents.emit("ht-dismiss-notification", { id: n.id });
     });
     el.appendChild(dismissBtn);
 
@@ -2612,7 +2604,7 @@ export class Sidebar {
     clearBtn.append(createIcon("close", "", 11));
     clearBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      window.dispatchEvent(new CustomEvent("ht-clear-logs"));
+      htEvents.emit("ht-clear-logs", undefined);
     });
     header.appendChild(clearBtn);
 

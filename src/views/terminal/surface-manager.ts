@@ -261,7 +261,7 @@ export class SurfaceManager {
         if (idx !== -1) this.switchToWorkspace(idx);
       },
       onNewWorkspace: () => {
-        window.dispatchEvent(new CustomEvent("ht-new-workspace"));
+        htEvents.emit("ht-new-workspace", undefined);
       },
       onCloseWorkspace: (id) => {
         const ws = this.workspaces.find((w) => w.id === id);
@@ -1673,14 +1673,10 @@ export class SurfaceManager {
         }
       }
     }
-    window.dispatchEvent(
-      new CustomEvent("ht-notify-state-changed", {
-        detail: {
-          surfaces: [...surfacesWithNotify],
-          workspaces: [...workspacesWithNotify],
-        },
-      }),
-    );
+    htEvents.emit("ht-notify-state-changed", {
+      surfaces: [...surfacesWithNotify],
+      workspaces: [...workspacesWithNotify],
+    });
   }
 
   private notifyWorkspaceChanged(): void {
@@ -2160,9 +2156,7 @@ export class SurfaceManager {
     infoBtn.append(createIcon("info"));
     infoBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      window.dispatchEvent(
-        new CustomEvent("ht-show-surface-info", { detail: { surfaceId } }),
-      );
+      htEvents.emit("ht-show-surface-info", { surfaceId });
     });
     barActions.appendChild(infoBtn);
 
@@ -2215,11 +2209,7 @@ export class SurfaceManager {
         x: e.clientX,
         y: e.clientY,
       };
-      window.dispatchEvent(
-        new CustomEvent("ht-open-surface-context-menu", {
-          detail,
-        }),
-      );
+      htEvents.emit("ht-open-surface-context-menu", detail);
     });
 
     container.appendChild(bar);
@@ -2372,30 +2362,25 @@ export class SurfaceManager {
   ): SurfaceView {
     const editorView = createEditorPaneView(surfaceId, path, {
       onRead: (sid, filePath, create) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-editor-read-file", {
-            detail: { surfaceId: sid, path: filePath, create },
-          }),
-        );
+        htEvents.emit("ht-editor-read-file", {
+          surfaceId: sid,
+          path: filePath,
+          create,
+        });
       },
       onSave: (sid, filePath, content, expectedMtimeMs) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-editor-save-file", {
-            detail: {
-              surfaceId: sid,
-              path: filePath,
-              content,
-              expectedMtimeMs,
-            },
-          }),
-        );
+        htEvents.emit("ht-editor-save-file", {
+          surfaceId: sid,
+          path: filePath,
+          content,
+          expectedMtimeMs,
+        });
       },
       onReload: (sid, filePath) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-editor-reload-file", {
-            detail: { surfaceId: sid, path: filePath },
-          }),
-        );
+        htEvents.emit("ht-editor-reload-file", {
+          surfaceId: sid,
+          path: filePath,
+        });
       },
       onClose: (sid) => {
         htEvents.emit("ht-close-surface", { surfaceId: sid });

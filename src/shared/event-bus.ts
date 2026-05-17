@@ -230,6 +230,103 @@ export interface PinWorkspacePayload {
   pinned: boolean;
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// P7 S11 — A6 batch 4 payloads.
+// ─────────────────────────────────────────────────────────────────────
+
+/** Dismiss one notification by id — fired by sidebar dismiss + overlay
+ *  close button. */
+export interface DismissNotificationPayload {
+  id: string;
+}
+
+/** Clear every notification — sidebar header clear button + ht CLI
+ *  notification.clear. Void payload. */
+export type ClearNotificationsPayload = void;
+
+/** Clear log history — sidebar header clear button on the logs
+ *  section. Void payload. */
+export type ClearLogsPayload = void;
+
+/** Cookie store maintenance from the Settings panel. Import accepts a
+ *  raw text payload auto-detected as JSON or Netscape format by the
+ *  Settings producer; export streams the current store back; clear is
+ *  destructive. */
+export interface CookieImportPayload {
+  data: string;
+  format: "json" | "netscape";
+}
+export interface CookieExportPayload {
+  format: "json";
+}
+export type CookieClearPayload = void;
+
+/** Editor pane file IO requests routed through the host: read seeds
+ *  the buffer, save commits, reload re-reads from disk discarding the
+ *  buffer. `expectedMtimeMs` round-trips so the save handler can spot
+ *  out-of-band edits (P7 S5 save-race UX). */
+export interface EditorReadFilePayload {
+  surfaceId: string;
+  path: string;
+  create?: boolean;
+}
+export interface EditorSaveFilePayload {
+  surfaceId: string;
+  path: string;
+  content: string;
+  expectedMtimeMs: number | null;
+}
+export interface EditorReloadFilePayload {
+  surfaceId: string;
+  path: string;
+}
+
+/** Create a new (terminal) workspace. Void payload — the host owns
+ *  the cwd / shell defaults. */
+export type NewWorkspacePayload = void;
+
+/** Focus a surface programmatically — sidebar notification-source
+ *  click + cmd-palette result. */
+export interface FocusSurfacePayload {
+  surfaceId: string;
+}
+
+/** Aggregate notify state across the workspace set. Producers
+ *  rebuild this on every notification arrival / dismissal so the
+ *  variant chrome can highlight workspaces with pending notifs. */
+export interface NotifyStateChangedPayload {
+  surfaces: string[];
+  workspaces: string[];
+}
+
+/** Context-menu requests. Both share the `NativeContextMenuRequest`
+ *  discriminated union from `src/shared/types.ts`. The sidebar fires
+ *  the generic `ht-open-context-menu` (workspace OR surface flavour);
+ *  the pane bar fires the surface-only `ht-open-surface-context-menu`
+ *  so the host can apply different action sets. */
+export type OpenContextMenuPayload = import("./types").NativeContextMenuRequest;
+export type OpenSurfaceContextMenuPayload =
+  import("./types").SurfaceContextMenuRequest;
+
+/** Open the Process Manager overlay. The sidebar CPU-bar producer
+ *  includes a `workspaceId` hint so the overlay focuses the right
+ *  workspace; keyboard / cmd-palette callers omit the hint and let
+ *  the overlay read the focused workspace from app state. */
+export interface OpenProcessManagerPayload {
+  workspaceId?: string;
+}
+
+/** Run a manifest-card script (npm script / cargo action). Carries
+ *  enough context that the host doesn't need to re-resolve the cwd. */
+export interface RunScriptPayload {
+  workspaceId: string;
+  cwd: string;
+  scriptKey: string;
+  /** When present, used verbatim; otherwise synthesised from the
+   *  configured packageRunner + scriptKey. */
+  command?: string;
+}
+
 export interface HtEventMap extends Record<string, unknown> {
   "ht-reorder-workspaces": ReorderWorkspacesPayload;
   "ht-surface-focused": SurfaceFocusedPayload;
@@ -255,6 +352,23 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-select-workspace-cwd": SelectWorkspaceCwdPayload;
   "ht-rename-workspace": RenameWorkspacePayload;
   "ht-pin-workspace": PinWorkspacePayload;
+  // P7 S11 — A6 batch 4 channels.
+  "ht-dismiss-notification": DismissNotificationPayload;
+  "ht-clear-notifications": ClearNotificationsPayload;
+  "ht-clear-logs": ClearLogsPayload;
+  "ht-cookie-import": CookieImportPayload;
+  "ht-cookie-export": CookieExportPayload;
+  "ht-cookie-clear": CookieClearPayload;
+  "ht-editor-read-file": EditorReadFilePayload;
+  "ht-editor-save-file": EditorSaveFilePayload;
+  "ht-editor-reload-file": EditorReloadFilePayload;
+  "ht-new-workspace": NewWorkspacePayload;
+  "ht-focus-surface": FocusSurfacePayload;
+  "ht-notify-state-changed": NotifyStateChangedPayload;
+  "ht-open-context-menu": OpenContextMenuPayload;
+  "ht-open-surface-context-menu": OpenSurfaceContextMenuPayload;
+  "ht-open-process-manager": OpenProcessManagerPayload;
+  "ht-run-script": RunScriptPayload;
 }
 
 /** Singleton bus that dispatches on `window`. Importers can grab this

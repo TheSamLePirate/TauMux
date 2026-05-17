@@ -2382,9 +2382,7 @@ window.addEventListener("ht-split", (e: Event) => {
 const notificationOverlay = new NotificationOverlay({
   onCardActivate: ({ id, surfaceId }) => {
     notificationOverlay.dismiss(surfaceId, id);
-    window.dispatchEvent(
-      new CustomEvent("ht-focus-surface", { detail: { surfaceId } }),
-    );
+    htEvents.emit("ht-focus-surface", { surfaceId });
     rpc.send("dismissNotification", { id });
   },
   onCardDismiss: ({ id, surfaceId }) => {
