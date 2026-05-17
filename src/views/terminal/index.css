@@ -4403,6 +4403,38 @@ body.terminal-typing .panel {
   line-height: 1.4;
 }
 
+/* P7 S25 / B.U10 — per-field reset-to-default button. Sits aligned
+ * with the label, only shows when the live value differs from
+ * DEFAULT_SETTINGS. Visually quiet (no border resting); brightens on
+ * hover/focus so it's discoverable without being noisy. */
+.settings-field-reset {
+  align-self: flex-start;
+  margin-top: 4px;
+  height: 18px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 0.5px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.settings-field-reset:hover,
+.settings-field-reset:focus-visible {
+  color: var(--text-strong);
+  background: var(--ht-button-bg);
+  border-color: var(--ht-button-border);
+  outline: none;
+}
+
+.settings-field-reset-hidden {
+  display: none;
+}
+
 .settings-input {
   padding: 6px 10px;
   border: 0.5px solid rgba(255, 255, 255, 0.08);

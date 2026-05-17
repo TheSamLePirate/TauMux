@@ -1488,7 +1488,7 @@ export class SettingsPanel {
     key: keyof AppSettings,
     opts: { placeholder?: string; note?: string } = {},
   ): void {
-    const row = this.fieldRow(c, label, opts.note);
+    const row = this.fieldRow(c, label, opts.note, key);
     const wrap = document.createElement("div");
     wrap.style.display = "flex";
     wrap.style.gap = "6px";
@@ -1649,7 +1649,7 @@ export class SettingsPanel {
     key: keyof AppSettings,
     opts: { placeholder?: string; note?: string } = {},
   ): void {
-    const row = this.fieldRow(c, label, opts.note);
+    const row = this.fieldRow(c, label, opts.note, key);
     const input = document.createElement("input");
     input.type = "text";
     input.className = "settings-input";
@@ -1668,7 +1668,7 @@ export class SettingsPanel {
     key: keyof AppSettings,
     opts: { min: number; max: number; step: number; note?: string },
   ): void {
-    const row = this.fieldRow(c, label, opts.note);
+    const row = this.fieldRow(c, label, opts.note, key);
     const input = document.createElement("input");
     input.type = "number";
     input.className = "settings-input settings-input-number";
@@ -1696,7 +1696,7 @@ export class SettingsPanel {
     opts: { min: number; max: number; step: number },
     fmt: (v: number) => string,
   ): void {
-    const row = this.fieldRow(c, label);
+    const row = this.fieldRow(c, label, undefined, key);
     const wrap = document.createElement("div");
     wrap.className = "settings-slider-wrap";
 
@@ -1730,7 +1730,7 @@ export class SettingsPanel {
     key: keyof AppSettings,
     opts: { note?: string } = {},
   ): void {
-    const row = this.fieldRow(c, label, opts.note);
+    const row = this.fieldRow(c, label, opts.note, key);
     const toggle = document.createElement("label");
     toggle.className = "settings-toggle";
 
@@ -1757,7 +1757,7 @@ export class SettingsPanel {
     options: { value: string; label: string }[],
     note?: string,
   ): void {
-    const row = this.fieldRow(c, label, note);
+    const row = this.fieldRow(c, label, note, key);
     const select = document.createElement("select");
     select.className = "settings-input";
     for (const opt of options) {
@@ -1780,7 +1780,7 @@ export class SettingsPanel {
     key: keyof AppSettings,
     options: { value: string; label: string }[],
   ): void {
-    const row = this.fieldRow(c, label);
+    const row = this.fieldRow(c, label, undefined, key);
     const group = document.createElement("div");
     group.className = "settings-segmented";
 
@@ -1807,7 +1807,7 @@ export class SettingsPanel {
     value: string,
     key: keyof AppSettings,
   ): void {
-    const row = this.fieldRow(c, label);
+    const row = this.fieldRow(c, label, undefined, key);
     const wrap = document.createElement("div");
     wrap.className = "settings-color-wrap";
 
@@ -1842,6 +1842,7 @@ export class SettingsPanel {
     c: HTMLElement,
     label: string,
     note?: string,
+    resetKey?: keyof AppSettings,
   ): HTMLDivElement {
     const row = document.createElement("div");
     row.className = "settings-field";
@@ -1859,6 +1860,27 @@ export class SettingsPanel {
       noteEl.className = "settings-field-note";
       noteEl.textContent = note;
       labelWrap.appendChild(noteEl);
+    }
+
+    // P7 S25 / B.U10 — per-field reset-to-default. The button only
+    // shows when the live value differs from DEFAULT_SETTINGS. We
+    // compare by JSON shape so array / nested-record fields (ansiColors,
+    // statusBarKeys, autoContinue) compare value-equal, not ref-equal.
+    if (resetKey !== undefined) {
+      const current = this.settings[resetKey];
+      const def = DEFAULT_SETTINGS[resetKey];
+      const dirty = JSON.stringify(current) !== JSON.stringify(def);
+      const resetBtn = document.createElement("button");
+      resetBtn.type = "button";
+      resetBtn.className = "settings-field-reset";
+      resetBtn.textContent = "↺";
+      resetBtn.title = `Reset ${label} to default`;
+      resetBtn.setAttribute("aria-label", `Reset ${label} to default`);
+      if (!dirty) resetBtn.classList.add("settings-field-reset-hidden");
+      resetBtn.addEventListener("click", () => {
+        this.emit({ [resetKey]: def } as Partial<AppSettings>);
+      });
+      labelWrap.appendChild(resetBtn);
     }
 
     row.appendChild(labelWrap);
