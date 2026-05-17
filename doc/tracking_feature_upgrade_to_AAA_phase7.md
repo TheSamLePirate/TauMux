@@ -1186,3 +1186,51 @@ Grade distribution after S23: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers; move into `src/bun/rpc-handlers/`.
 - Cluster H literal migration — next chunk: surface bar / pane bar deeper, ask-user IME wrap chrome, ansi-color hex literals in theme presets (or skip those — they're intentionally literal).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 24 (2026-05-17)
+
+Slice picked: **Cluster E startup-audit expansion** (locale + bun-on-path + shell-exists) + **Cluster H surface-details overlay** (largest cross-component reuse landing yet).
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster E — three new startup audits | `480e52a` | `src/bun/audits.ts`, `tests/audits.test.ts` | +12 (locale resolves LC_ALL→LANG with empty-string skip; bun probe ok/missing; shell-exists set/unset/missing-path; registry shape; round-trip via runAudits) |
+| Cluster H — surface-details overlay | `b4bfbaa` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-surface-details.test.ts` (new) | +8 (4 new --ht-pm-secondary-btn-* tokens; chrome reuses --ht-pm-*; port green reuses --ht-badge-success-fg; CPU heatmap reuses --ht-sem-error; danger reuses --ht-pm-kill-*) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.96 → 0.3.97 (audits) → 0.3.98 (surface-details).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `audits` | S | S | **Cluster E backlog item closed.** Startup canary set tripled from 1 → 4: original `git-user-name` plus three new audits — `locale-utf8`, `bun-on-path`, `shell-exists`. Each takes an injected probe/env/fileExists hook so tests stay hermetic. The new audits intentionally ship without `fix` — remedies live outside the app's reach. |
+| `tau-primitives` | S | S | Cluster H continues — surface-details overlay migrated with the LARGEST cross-component reuse landing yet. ~21 literals migrated via direct reuse of S18 `--ht-pm-*` + `--ht-badge-*` + `--ht-sem-*` tokens; only 4 new `--ht-pm-secondary-btn-*` neutral inline-action tokens minted. audit:theming: 813 → 792 (−21). |
+
+Grade distribution after S24: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **`require()` ESLint error caught + fixed**: the initial `defaultFileExists` used `require("node:fs").statSync` for terseness; the workspace forbids CommonJS require. Moved to `import { statSync } from "node:fs"` at the top of `audits.ts`.
+- **Locale empty-string fall-through**: an explicit `LC_ALL=""` is POSIX "unset" but `??` treats it as set. Rewrote the resolution as a tiny `pick()` helper that treats empty strings as missing so the LC_ALL → LANG fall-through works correctly.
+- **Existing audit-registry tests assumed length 1**: three new audits changed `defaultAudits(...).length`. Updated to use `.toContain(id)` rather than counting + threaded happy stubs through runAudits.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 24)
+
+| Criterion | Status |
+|---|---|
+| Cluster E — locale + bun + shell audits | ✅ landed (registry tripled) |
+| Cluster H surface-details overlay region migrated | ✅ 813 → 792 (−21) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2410 / 0–1 known flake; +20 new tests |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 24)
+
+- Cluster B residuals: settings reset-to-default per field (U10), IME composition guards.
+- Cluster E residuals: health-check `fix()` remediation UX.
+- Cluster F.10: audit remaining ad-hoc handlers; move webview dispatch into `src/bun/rpc-handlers/`.
+- Cluster H literal migration — next chunk: surface bar / pane bar deeper, sidebar workspace card sub-rows, plan-panel sidebar widget remaining literals.
+- Phases 8 (release engineering) + 9 (docs / observability).
