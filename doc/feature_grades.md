@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.35
+**Version:** 0.3.39
 **Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-After Phase 6 (lifecycle regression tests), every named L# fix has a behavioural test that breaks when reverted: L1 forced-crash for `PiAgentManager._managerExit` (real subprocess exits non-zero, manager evicts), L5 reconnect-jitter spread (deterministic + real-Math.random distribution invariants), L2/L3/L4/L6/L7/L13/L14 covered by Phase 0's tests linked from the new `tests/regressions/README.md` catalogue. The catalogue is gated by `tests/regressions/catalogue.test.ts` — every quoted test name must resolve to a real test in the suite. Remaining blockers: typed event bus + variant-context + workspace-collection refactors (P7), and the design-report + coverage gate CI wiring (P8).
+Phase 7 polish — first slice landed: cookie-store gains URL-host normalize + per-domain cap (B→A); browser-history extends normalize to case/fragment/port (B→A); manifest-scanner gets a realpath-aware $HOME boundary (A→S); plan-panel rejects typos in step.state instead of silently coercing (A→S). Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6) + theme switcher UI + ARIA chip labels + literal-to-token migration + browser partition (H.8/H.9) + telegram DB TTL + auto-continue persistence + notifications copy/expand/history + terminal-search regex + editor save-race UX + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.
 
 ---
 
@@ -34,9 +34,9 @@ After Phase 6 (lifecycle regression tests), every named L# fix has a behavioural
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **7** | Best-in-class — 7 features cleared every gap. |
+| S (AAA) | **9** | Best-in-class — 9 features cleared every gap. |
 | A | **28** | Most "production-shaped" subsystems. |
-| B (incl. B+) | **11** | Functional, with named polish / test / lifecycle gaps. |
+| B (incl. B+) | **9** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
 
@@ -280,11 +280,10 @@ After Phase 6 (lifecycle regression tests), every named L# fix has a behavioural
   - `findInPage` exposed to CLI.
 
 ### Plan panel
-- **Grade: A**
-- **Evidence:** Shared `plan-panel-render.ts` used by both native + mirror; debounced 100 ms snapshot broadcast; per-surface audit ring cap 50.
+- **Grade: S**
+- **Evidence:** Shared `plan-panel-render.ts` used by both native + mirror; debounced 100 ms snapshot broadcast; per-surface audit ring cap 50. Phase 7 added a `PLAN_STATE_VALUES` allow-list shared between `plan.set` and `plan.update`: a typo like `state: "complete"` now throws with a clear error (was silently coerced to `waiting`). Tests pin missing-state → waiting (back-compat), every valid value, and the typo throw on both handlers.
 - **Gaps to AAA:**
-  - RPC input validation for `state` strings (currently any string accepted, normalized on `set`).
-  - Configurable audit-ring size.
+  - Configurable audit-ring size (small follow-up).
   - Mirror persists audit across page reload.
 
 ### Auto-continue engine
@@ -368,28 +367,23 @@ After Phase 6 (lifecycle regression tests), every named L# fix has a behavioural
   - Staleness auto-demotion if entry goes silent N seconds.
 
 ### Manifest scanner
-- **Grade: A**
-- **Evidence:** `manifest-scanner.ts` — generic walk-up + TTL cache; max-depth 40 to bound symlink cycles; per-cwd TTL (3 s default) with mtime invalidation; idle eviction at 4× TTL.
+- **Grade: S**
+- **Evidence:** `manifest-scanner.ts` — generic walk-up + TTL cache; max-depth 40 to bound symlink cycles; per-cwd TTL (3 s default) with mtime invalidation; idle eviction at 4× TTL. Phase 7 added a realpath-aware `$HOME` boundary check: when the env value differs from its realpath (macOS firmlinks, Linux build-mount realpaths), the walk resolves the current dir and compares against the realpath'd `$HOME` so symlinked homes don't escape.
 - **Gaps to AAA:**
-  - Symlinked `$HOME` handling (real-path vs symlink-path mismatch).
-  - Test for the 4× TTL eviction.
-  - Symmetric depth between `Cargo.toml` parser (name+version only) and `package.json` parser.
+  - Symmetric depth between `Cargo.toml` parser (name+version only) and `package.json` parser (small follow-up).
 
 ### Cookie store
-- **Grade: B**
-- **Evidence:** `cookie-store.ts` — JSON-persisted with domain index for O(k) lookup; LRU 50 k cap; debounced async save + sync `saveNow` on shutdown; atomic writes (H.1).
+- **Grade: A**
+- **Evidence:** `cookie-store.ts` — JSON-persisted with domain index for O(k) lookup; LRU 50 k global cap; debounced async save + sync `saveNow` on shutdown; atomic writes (H.1). Phase 7 added URL-host normalization on insert (`Example.com`, `.example.com`, `EXAMPLE.COM` collide as the browser does) + per-domain cap (`MAX_PER_DOMAIN = 500` evicts oldest entries inside one bucket — a hostile site can't dominate the global cap). `delete()` and `deleteForDomain()` also normalize input so pre- and post-normalize callers both work.
 - **Gaps to AAA:**
-  - Per-domain cap (currently only global).
-  - Export/import (test-automation use case).
-  - URL-host normalization on insert.
+  - Export / import (test-automation use case; small follow-up).
 
 ### Browser history
-- **Grade: B**
-- **Evidence:** `browser-history.ts` — JSON-persisted; relevance ranking = recency boost × visit count; LRU 10 k cap; atomic writes.
+- **Grade: A**
+- **Evidence:** `browser-history.ts` — JSON-persisted; relevance ranking = recency boost × visit count; LRU 10 k cap; atomic writes. Phase 7 extended `normalizeUrl()` with case-insensitive hostname (RFC 3986), fragment strip, and default-port strip (`:80` http, `:443` https) on top of the existing trailing-slash + www handling. Combined: WWW + case + port + fragment + trailing-slash all aggregate into one entry.
 - **Gaps to AAA:**
-  - Normalize URLs on insert (trailing slash, `www`) — currently dupes leak in.
-  - Time-window filter.
-  - Privacy / clear command.
+  - Time-window filter (small follow-up).
+  - Privacy / clear command (small follow-up).
 
 ### Test suite breadth & quality
 - **Grade: A**
