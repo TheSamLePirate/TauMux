@@ -15,6 +15,7 @@ import {
 } from "./sidebar-manifest-card";
 import { renderStatusEntry } from "./status-renderers";
 import type { WorkspaceInfo as SharedWorkspaceInfo } from "../../shared/sidebar-state";
+import { htEvents } from "../../shared/event-bus";
 
 // Re-export `WorkspaceInfo` from shared so existing native callers
 // (and the test suite) keep importing it from this module unchanged.
@@ -1713,15 +1714,13 @@ export class Sidebar {
         alert("Use a file name without slashes.");
         return;
       }
-      window.dispatchEvent(
-        new CustomEvent("ht-open-file-in-editor", {
-          detail: {
-            path: `${root.replace(/\/+$/, "")}/${name}`,
-            workspaceId: ws.id,
-            create: true,
-          },
-        }),
-      );
+      // P7 S8 — typed EventBus migration. Same DOM CustomEvent under
+      // the hood; the call site now type-checks the payload shape.
+      htEvents.emit("ht-open-file-in-editor", {
+        path: `${root.replace(/\/+$/, "")}/${name}`,
+        workspaceId: ws.id,
+        create: true,
+      });
     });
     head.appendChild(newBtn);
     wrap.appendChild(head);
@@ -1834,11 +1833,10 @@ export class Sidebar {
       row.addEventListener("click", (e) => {
         e.stopPropagation();
         if (!isDir) {
-          window.dispatchEvent(
-            new CustomEvent("ht-open-file-in-editor", {
-              detail: { path: entry.path, workspaceId: wsId },
-            }),
-          );
+          htEvents.emit("ht-open-file-in-editor", {
+            path: entry.path,
+            workspaceId: wsId,
+          });
           return;
         }
         const set = this.fileExplorerOpenDirs.get(wsId) ?? new Set<string>();
@@ -2287,11 +2285,11 @@ export class Sidebar {
     order.splice(to, 0, sourceId);
     this.manualOrder = order;
     saveJson(LS_ORDER, order);
-    window.dispatchEvent(
-      new CustomEvent("ht-reorder-workspaces", {
-        detail: { order: order.slice() },
-      }),
-    );
+    // P7 S8 — typed EventBus migration. Same wire format (DOM
+    // CustomEvent under the hood), but the call site now type-checks
+    // the payload shape and the existing window.addEventListener
+    // consumers keep working unchanged.
+    htEvents.emit("ht-reorder-workspaces", { order: order.slice() });
     this.renderWorkspaces();
   }
 
@@ -2795,11 +2793,7 @@ export class Sidebar {
     order.splice(to, 0, sourceId);
     this.manualOrder = order;
     saveJson(LS_ORDER, order);
-    window.dispatchEvent(
-      new CustomEvent("ht-reorder-workspaces", {
-        detail: { order: order.slice() },
-      }),
-    );
+    htEvents.emit("ht-reorder-workspaces", { order: order.slice() });
     this.announceReorder(sourceId, to, order.length);
     this.renderWorkspaces();
     // Re-focus the moved card after the re-render so subsequent

@@ -35,6 +35,7 @@ import { PaneDragController } from "./pane-drag";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
 import { attachSidebarResize } from "../../shared/sidebar-resize";
 import { focusXtermPreservingScroll } from "../../shared/xterm-focus";
+import { htEvents } from "../../shared/event-bus";
 import { playNotificationSound, setNotificationSoundSettings } from "./sounds";
 import {
   type AgentPaneView,
@@ -784,9 +785,11 @@ export class SurfaceManager {
       this.updateTitlebar(activeWorkspace);
       this.updateSidebar();
     }
-    window.dispatchEvent(
-      new CustomEvent("ht-surface-focused", { detail: { surfaceId } }),
-    );
+    // P7 S8 — typed EventBus migration. surfaceId is still string-only
+    // at this call site; the bus map allows `null` for future "no
+    // surface focused" payloads but consumers can rely on the value
+    // being present here.
+    htEvents.emit("ht-surface-focused", { surfaceId });
   }
 
   focusDirection(dir: "left" | "right" | "up" | "down"): void {
