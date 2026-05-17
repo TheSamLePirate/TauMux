@@ -2341,9 +2341,9 @@ body.sidebar-resizing {
   letter-spacing: 0.02em;
   text-transform: none;
   line-height: 1;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--ht-chip-bg);
   color: var(--text-muted);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ht-chip-border);
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2353,8 +2353,8 @@ body.sidebar-resizing {
 
 .surface-chip.chip-command {
   color: var(--text-strong);
-  background: rgba(111, 233, 255, 0.1);
-  border-color: rgba(111, 233, 255, 0.22);
+  background: var(--ht-badge-info-bg);
+  border-color: var(--ht-badge-info-border-soft);
 }
 
 .surface-chip.chip-cwd {
@@ -2365,16 +2365,16 @@ body.sidebar-resizing {
 
 .surface-chip.chip-git {
   color: var(--accent-secondary);
-  background: rgba(255, 197, 107, 0.08);
-  border-color: rgba(255, 197, 107, 0.22);
+  background: var(--ht-badge-warn-bg);
+  border-color: var(--ht-badge-warn-border);
   font-variant-numeric: tabular-nums;
   gap: 6px;
 }
 
 .surface-chip.chip-git.dirty {
   color: var(--accent-primary);
-  background: rgba(111, 233, 255, 0.1);
-  border-color: rgba(111, 233, 255, 0.3);
+  background: var(--ht-badge-info-bg);
+  border-color: var(--ht-badge-info-border);
 }
 
 .chip-git-branch {
@@ -2388,24 +2388,24 @@ body.sidebar-resizing {
 }
 
 .chip-git-conflicts {
-  color: #f87171;
+  color: var(--ht-sem-error);
   font-weight: 600;
 }
 
 .chip-git-add {
-  color: #4ade80;
+  color: var(--ht-sem-success);
   font-weight: 600;
 }
 
 .chip-git-del {
-  color: #f87171;
+  color: var(--ht-sem-error);
   font-weight: 600;
 }
 
 .surface-chip.chip-port {
-  color: #86efac;
-  background: rgba(74, 222, 128, 0.08);
-  border-color: rgba(74, 222, 128, 0.2);
+  color: var(--ht-badge-success-fg);
+  background: var(--ht-badge-success-bg);
+  border-color: var(--ht-badge-success-border);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
@@ -2413,9 +2413,9 @@ body.sidebar-resizing {
 
 .surface-chip.chip-port:hover,
 .surface-chip.chip-port:focus-visible {
-  background: rgba(74, 222, 128, 0.18);
-  border-color: rgba(74, 222, 128, 0.42);
-  color: #bbf7d0;
+  background: var(--ht-badge-success-bg-hover);
+  border-color: var(--ht-badge-success-border-hover);
+  color: var(--ht-badge-success-fg-hover);
   outline: none;
 }
 

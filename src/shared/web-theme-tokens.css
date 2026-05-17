@@ -244,6 +244,23 @@
   --ht-badge-warn-border: rgba(255, 197, 107, 0.22);
   --ht-badge-info-bg: rgba(111, 233, 255, 0.1);
   --ht-badge-info-border: rgba(111, 233, 255, 0.3);
+  /* P7 S19 — softer info border (0.22) for `chip-command` which uses
+   *  the info family at a slightly less assertive depth than `chip-
+   *  git.dirty`. */
+  --ht-badge-info-border-soft: rgba(111, 233, 255, 0.22);
+  /* P7 S19 — success hover state for the interactive `chip-port`
+   *  (the port chip is clickable; it ramps to a brighter success
+   *  family on hover/focus). */
+  --ht-badge-success-bg-hover: rgba(74, 222, 128, 0.18);
+  --ht-badge-success-border-hover: rgba(74, 222, 128, 0.42);
+  --ht-badge-success-fg-hover: #bbf7d0;
+
+  /* P7 S19 — neutral chip resting tint. The base `.surface-chip`
+   *  uses a fainter white-on-dark depth than the small icon button
+   *  (`--ht-button-bg` 0.055). The ht-chip prefix sits outside the
+   *  U2 light/HC override gate. */
+  --ht-chip-bg: rgba(255, 255, 255, 0.05);
+  --ht-chip-border: rgba(255, 255, 255, 0.04);
 
   /* P7 S19 — notification overlay + sidebar notification item.
    *  The .tau-notif-overlay-* stack (top-right toasts) uses a slightly
