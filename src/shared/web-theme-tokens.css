@@ -115,6 +115,25 @@
   --ht-agent-scrollbar-thumb: rgba(255, 255, 255, 0.08);
   --ht-agent-scrollbar-thumb-hover: rgba(255, 255, 255, 0.14);
 
+  /* P7 S14 — telegram pane chrome. The telegram surface carries its
+   *  own visual identity (indigo brand accent for the outgoing
+   *  message bubble + send button) that doesn't fit the shared
+   *  graphite palette. Toolbar / composer chrome reuses the neutral
+   *  white-on-dark tints already factored elsewhere, but giving them
+   *  a telegram-prefixed name keeps the call sites self-describing.
+   *  The ht-telegram prefix sits outside the U2 light/HC override
+   *  gate — the telegram pane is intentionally always dark across
+   *  current themes (the bot/chat metaphor reads better that way). */
+  --ht-telegram-toolbar-bg: rgba(0, 0, 0, 0.18);
+  --ht-telegram-input-bg: rgba(255, 255, 255, 0.04);
+  --ht-telegram-input-border: rgba(255, 255, 255, 0.08);
+  --ht-telegram-msg-in-bg: rgba(255, 255, 255, 0.06);
+  --ht-telegram-msg-out-bg: rgba(99, 102, 241, 0.18);
+  --ht-telegram-msg-out-fg: #e0e7ff;
+  --ht-telegram-accent-from: #6366f1;
+  --ht-telegram-accent-to: #4f46e5;
+  --ht-telegram-send-glow: rgba(99, 102, 241, 0.35);
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;
