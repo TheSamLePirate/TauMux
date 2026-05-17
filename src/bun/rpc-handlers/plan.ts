@@ -62,14 +62,16 @@ export function registerPlan(
         patch.title = params["title"];
       }
       if (typeof params["state"] === "string") {
+        // Phase 7 — share the allow-list with plan.set so the two
+        // handlers can't drift. isPlanState narrows the type AND
+        // surfaces the typo as an explicit throw.
         const s = params["state"];
-        if (s === "done" || s === "active" || s === "waiting" || s === "err") {
-          patch.state = s;
-        } else {
+        if (!isPlanState(s)) {
           throw new Error(
-            `plan.update: invalid state "${s}" (expect done|active|waiting|err)`,
+            `plan.update: invalid state "${s}" (expect ${PLAN_STATE_VALUES.join("|")})`,
           );
         }
+        patch.state = s;
       }
       const updated = plans.update({ workspaceId, agentId }, stepId, patch);
       return updated ?? null;
@@ -116,23 +118,44 @@ function optionalString(
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
+/** Allow-list of valid PlanStep.state values. Kept in sync with the
+ *  `PlanStep["state"]` literal-string union in `src/shared/types.ts`.
+ *  Phase 7 — a single source of truth so the validator below and
+ *  any future plan.* handler use the same set. */
+const PLAN_STATE_VALUES = ["done", "active", "waiting", "err"] as const;
+type PlanState = (typeof PLAN_STATE_VALUES)[number];
+
+function isPlanState(s: unknown): s is PlanState {
+  return (
+    typeof s === "string" &&
+    (PLAN_STATE_VALUES as readonly string[]).includes(s)
+  );
+}
+
 /** Best-effort coercion of an arbitrary JSON value into a `PlanStep`.
  *  Returns null when the input doesn't look like a step at all so
- *  the caller can drop it; PlanStore.set normalises whatever
- *  survives this filter. */
+ *  the caller can drop it.
+ *
+ *  Phase 7 — validate `state` UP FRONT. Previously the function
+ *  silently normalised any unknown string to "waiting", which hid
+ *  typos like `state: "complete"` (a common mistake). Missing
+ *  state still defaults to "waiting"; a present-but-wrong state
+ *  throws so the CLI surfaces the typo. */
 function coerceStep(raw: unknown): PlanStep | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const id = r["id"];
   if (typeof id !== "string" || id.length === 0) return null;
   const title = typeof r["title"] === "string" ? (r["title"] as string) : id;
-  const state = r["state"];
-  return {
-    id,
-    title,
-    state:
-      state === "done" || state === "active" || state === "err"
-        ? state
-        : "waiting",
-  };
+  let state: PlanState = "waiting";
+  if (r["state"] !== undefined && r["state"] !== null) {
+    if (!isPlanState(r["state"])) {
+      throw new Error(
+        `plan.set: step "${id}" has invalid state ${JSON.stringify(r["state"])} ` +
+          `(expect ${PLAN_STATE_VALUES.join("|")})`,
+      );
+    }
+    state = r["state"];
+  }
+  return { id, title, state };
 }

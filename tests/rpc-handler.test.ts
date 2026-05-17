@@ -467,6 +467,109 @@ describe("RPC Handler", () => {
     expect(plans.list().length).toBe(0);
   });
 
+  // ────────────────────────────────────────────────────────────────
+  // Phase 7 — plan.* state validation (currently silently coerced to
+  // "waiting"; the polish surfaces typos as explicit errors).
+  // ────────────────────────────────────────────────────────────────
+
+  test("plan.set throws on an invalid step state (typo surfaces, not silent coercion)", () => {
+    const { handler } = setupWithPlans({
+      workspaces: [
+        {
+          id: "ws:A",
+          name: "A",
+          color: "#89b4fa",
+          surfaceIds: ["surface:1"],
+          focusedSurfaceId: "surface:1",
+          layout: { type: "leaf", surfaceId: "surface:1" },
+        },
+      ],
+    });
+    expect(() =>
+      handler("plan.set", {
+        workspace_id: "ws:A",
+        steps: [{ id: "M1", title: "ok", state: "complete" }],
+      }),
+    ).toThrow(/invalid state/i);
+  });
+
+  test("plan.set still accepts the four valid states", () => {
+    const { handler, plans } = setupWithPlans({
+      workspaces: [
+        {
+          id: "ws:A",
+          name: "A",
+          color: "#89b4fa",
+          surfaceIds: ["surface:1"],
+          focusedSurfaceId: "surface:1",
+          layout: { type: "leaf", surfaceId: "surface:1" },
+        },
+      ],
+    });
+    handler("plan.set", {
+      workspace_id: "ws:A",
+      steps: [
+        { id: "a", title: "a", state: "waiting" },
+        { id: "b", title: "b", state: "active" },
+        { id: "c", title: "c", state: "done" },
+        { id: "d", title: "d", state: "err" },
+      ],
+    });
+    const plan = plans.list()[0];
+    expect(plan.steps.map((s) => s.state)).toEqual([
+      "waiting",
+      "active",
+      "done",
+      "err",
+    ]);
+  });
+
+  test("plan.set defaults a missing state to 'waiting' (back-compat)", () => {
+    const { handler, plans } = setupWithPlans({
+      workspaces: [
+        {
+          id: "ws:A",
+          name: "A",
+          color: "#89b4fa",
+          surfaceIds: ["surface:1"],
+          focusedSurfaceId: "surface:1",
+          layout: { type: "leaf", surfaceId: "surface:1" },
+        },
+      ],
+    });
+    handler("plan.set", {
+      workspace_id: "ws:A",
+      steps: [{ id: "x", title: "x" }],
+    });
+    expect(plans.list()[0].steps[0].state).toBe("waiting");
+  });
+
+  test("plan.update throws on invalid state (was already validating; pin it)", () => {
+    const { handler } = setupWithPlans({
+      workspaces: [
+        {
+          id: "ws:A",
+          name: "A",
+          color: "#89b4fa",
+          surfaceIds: ["surface:1"],
+          focusedSurfaceId: "surface:1",
+          layout: { type: "leaf", surfaceId: "surface:1" },
+        },
+      ],
+    });
+    handler("plan.set", {
+      workspace_id: "ws:A",
+      steps: [{ id: "M1", title: "x" }],
+    });
+    expect(() =>
+      handler("plan.update", {
+        workspace_id: "ws:A",
+        step_id: "M1",
+        state: "complete",
+      }),
+    ).toThrow(/invalid state/i);
+  });
+
   // ── Notifications ──
 
   test("notification.create stores and returns OK", () => {
