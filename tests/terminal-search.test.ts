@@ -54,11 +54,23 @@ beforeEach(() => {
         : ReturnType<TerminalSearchHooks["getActiveSearchAddon"]>,
     onClose: mock(() => {}),
   };
+  // Phase 7 — clear persisted toggles between tests so each starts
+  // from defaults. The bar reads localStorage at construction time.
+  try {
+    localStorage.removeItem("hyperterm-canvas.search.toggles");
+  } catch {
+    /* private mode */
+  }
   bar = new TerminalSearchBar(container, hooks);
 });
 
 afterEach(() => {
   document.body.innerHTML = "";
+  try {
+    localStorage.removeItem("hyperterm-canvas.search.toggles");
+  } catch {
+    /* private mode */
+  }
 });
 
 describe("TerminalSearchBar", () => {
@@ -74,8 +86,8 @@ describe("TerminalSearchBar", () => {
     expect(el).not.toBeNull();
     expect(el?.classList.contains("search-bar-visible")).toBe(true);
     expect(el?.querySelector(".search-bar-input")).not.toBeNull();
-    // Three buttons: prev, next, close.
-    expect(el?.querySelectorAll("button").length).toBe(3);
+    // Phase 7 — five buttons: case toggle, regex toggle, prev, next, close.
+    expect(el?.querySelectorAll("button").length).toBe(5);
   });
 
   test("calling show() a second time just refocuses the input — no re-mount", () => {
@@ -117,9 +129,17 @@ describe("TerminalSearchBar", () => {
       container.querySelector<HTMLInputElement>(".search-bar-input")!;
     input.value = "needle";
     bar.next();
-    expect(addon.findNext).toHaveBeenCalledWith("needle");
+    // Phase 7 — findNext now also receives an ISearchOptions arg
+    // carrying the persisted case/regex toggles.
+    expect(addon.findNext).toHaveBeenCalledWith("needle", {
+      caseSensitive: false,
+      regex: false,
+    });
     bar.previous();
-    expect(addon.findPrevious).toHaveBeenCalledWith("needle");
+    expect(addon.findPrevious).toHaveBeenCalledWith("needle", {
+      caseSensitive: false,
+      regex: false,
+    });
   });
 
   test("empty query short-circuits — no addon call", () => {
@@ -163,9 +183,20 @@ describe("TerminalSearchBar", () => {
 
   test("prev/next/close buttons dispatch the corresponding actions", () => {
     bar.show();
-    const [prev, next, close] = [
-      ...container.querySelectorAll<HTMLButtonElement>(".search-bar-btn"),
+    // Phase 7 — the bar gained two leading toggle buttons (case + regex)
+    // before prev/next/close. Select by their specific classes to stay
+    // robust against future button additions.
+    const prev = container.querySelector<HTMLButtonElement>(
+      ".search-bar-btn:not(.search-bar-toggle):not(.search-bar-close)",
+    )!;
+    const allBtns = [
+      ...container.querySelectorAll<HTMLButtonElement>(
+        ".search-bar-btn:not(.search-bar-toggle)",
+      ),
     ];
+    const next = allBtns[1];
+    const close =
+      container.querySelector<HTMLButtonElement>(".search-bar-close")!;
     const input =
       container.querySelector<HTMLInputElement>(".search-bar-input")!;
     input.value = "hit";
@@ -198,7 +229,11 @@ describe("TerminalSearchBar", () => {
       container.querySelector<HTMLInputElement>(".search-bar-input")!;
     input.value = "abc";
     input.dispatchEvent(new Event("input"));
-    expect(addon.findNext).toHaveBeenCalledWith("abc");
+    // Phase 7 — findNext now takes an ISearchOptions arg.
+    expect(addon.findNext).toHaveBeenCalledWith("abc", {
+      caseSensitive: false,
+      regex: false,
+    });
   });
 
   test("show() resets input value to empty even if user left text from a prior open", () => {
@@ -211,5 +246,71 @@ describe("TerminalSearchBar", () => {
     expect(
       container.querySelector<HTMLInputElement>(".search-bar-input")!.value,
     ).toBe("");
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // Phase 7 — case + regex toggle buttons + localStorage persistence
+  // ────────────────────────────────────────────────────────────────
+
+  test("toggles default to off; case + regex buttons render with aria-pressed=false", () => {
+    bar.show();
+    const caseBtn =
+      container.querySelector<HTMLButtonElement>(".search-bar-toggle");
+    expect(caseBtn).not.toBeNull();
+    expect(caseBtn!.getAttribute("aria-pressed")).toBe("false");
+    expect(caseBtn!.classList.contains("search-bar-toggle-active")).toBe(false);
+    expect(bar.getOptions()).toEqual({
+      caseSensitive: false,
+      regex: false,
+    });
+  });
+
+  test("clicking the case toggle flips state, persists, and re-runs the search", () => {
+    bar.show();
+    const input =
+      container.querySelector<HTMLInputElement>(".search-bar-input")!;
+    input.value = "hello";
+    const [caseBtn] = [
+      ...container.querySelectorAll<HTMLButtonElement>(".search-bar-toggle"),
+    ];
+    caseBtn.click();
+    expect(bar.getOptions().caseSensitive).toBe(true);
+    expect(caseBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(caseBtn.classList.contains("search-bar-toggle-active")).toBe(true);
+    // Re-runs the search with the new options.
+    expect(addon.findNext).toHaveBeenLastCalledWith("hello", {
+      caseSensitive: true,
+      regex: false,
+    });
+  });
+
+  test("toggle state persists across bar instances via localStorage", () => {
+    bar.show();
+    const [caseBtn, regexBtn] = [
+      ...container.querySelectorAll<HTMLButtonElement>(".search-bar-toggle"),
+    ];
+    caseBtn.click();
+    regexBtn.click();
+    expect(bar.getOptions()).toEqual({ caseSensitive: true, regex: true });
+
+    // Tear down and recreate — same hooks, fresh DOM.
+    bar.hide();
+    container.innerHTML = "";
+    const fresh = new TerminalSearchBar(container, hooks);
+    expect(fresh.getOptions()).toEqual({
+      caseSensitive: true,
+      regex: true,
+    });
+    fresh.show();
+    const freshCaseBtn =
+      container.querySelector<HTMLButtonElement>(".search-bar-toggle")!;
+    expect(freshCaseBtn.getAttribute("aria-pressed")).toBe("true");
+
+    // Reset for the next test.
+    freshCaseBtn.click();
+    const allToggles = [
+      ...container.querySelectorAll<HTMLButtonElement>(".search-bar-toggle"),
+    ];
+    allToggles[1].click();
   });
 });
