@@ -66,10 +66,10 @@
    *  fine-tuned white-on-dark alphas for resting / hover / active /
    *  border / inset states; collapsing them into named tokens lets a
    *  future palette swap repaint the sidebar in one place. The
-   *  `--ht-sidebar-*` prefix sits outside the U2 light/HC override
-   *  gate (which fires on --ht-bg-/--ht-text-/--ht-border-/--ht-accent-
-   *  /--ht-secondary/--ht-sem-) because the sidebar is a single dark
-   *  surface across all current themes. */
+   *  ht-sidebar prefix sits outside the U2 light/HC override gate
+   *  (which fires on the bg, text, border, accent, secondary, sem
+   *  groups) because the sidebar is a single dark surface across all
+   *  current themes. */
   --ht-sidebar-row-bg: rgba(255, 255, 255, 0.022);
   --ht-sidebar-row-bg-hover: rgba(255, 255, 255, 0.045);
   --ht-sidebar-row-bg-stripe-soft: rgba(255, 255, 255, 0.014);
