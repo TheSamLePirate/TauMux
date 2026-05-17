@@ -145,4 +145,128 @@ describe("shared pane-chips", () => {
     const b = chipsSignature(meta({ cwd: "/x", updatedAt: 9999 }));
     expect(a).toBe(b);
   });
+
+  // P7 S3 — A11y. The chip row is a derived telemetry surface; AT
+  // users get nothing from the icons + numbers alone, so the host is
+  // marked aria-live="polite" and each chip carries an aria-label
+  // with the spoken version of its value.
+  test("host carries an aria-live status region marker", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    renderSurfaceChips(host, meta({ cwd: "/work" }), { onPortClick: () => {} });
+    expect(host.getAttribute("role")).toBe("status");
+    expect(host.getAttribute("aria-live")).toBe("polite");
+  });
+
+  test("cwd chip aria-label spells out the full working directory", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    renderSurfaceChips(
+      host,
+      meta({ cwd: "/Users/me/Documents/DEV/crazyShell" }),
+      { onPortClick: () => {} },
+    );
+    const cwdChip = host.querySelector(".chip-cwd")!;
+    expect(cwdChip.getAttribute("aria-label")).toBe(
+      "Working directory: /Users/me/Documents/DEV/crazyShell",
+    );
+  });
+
+  test("command chip aria-label spells out the full command (no truncation)", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const longCmd = "node ".repeat(20).trim();
+    renderSurfaceChips(
+      host,
+      meta({
+        pid: 100,
+        foregroundPid: 200,
+        tree: [
+          { pid: 100, ppid: 1, command: "/bin/zsh", cpu: 0, rssKb: 0 },
+          { pid: 200, ppid: 100, command: longCmd, cpu: 0, rssKb: 0 },
+        ],
+      }),
+      { onPortClick: () => {} },
+    );
+    const chip = host.querySelector(".chip-command")!;
+    // Visible text is truncated for the chip; the aria-label keeps the
+    // full command so AT users hear what's actually running.
+    expect(chip.getAttribute("aria-label")).toBe(
+      `Foreground command: ${longCmd}`,
+    );
+  });
+
+  test("port chip aria-label tells AT users what the click does", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    renderSurfaceChips(
+      host,
+      meta({
+        listeningPorts: [
+          { pid: 42, port: 3000, proto: "tcp", address: "127.0.0.1" },
+        ],
+      }),
+      { onPortClick: () => {} },
+    );
+    const chip = host.querySelector(".chip-port")!;
+    expect(chip.getAttribute("aria-label")).toBe(
+      "Open port 3000 (tcp 127.0.0.1, pid 42)",
+    );
+  });
+
+  test("git chip aria-label folds branch + ahead/behind/dirty into prose", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    renderSurfaceChips(
+      host,
+      meta({
+        git: {
+          branch: "feature/x",
+          head: "abc",
+          upstream: "origin/feature/x",
+          ahead: 2,
+          behind: 1,
+          staged: 0,
+          unstaged: 3,
+          untracked: 0,
+          conflicts: 0,
+          insertions: 12,
+          deletions: 4,
+          detached: false,
+        },
+      }),
+      { onPortClick: () => {} },
+    );
+    const chip = host.querySelector(".chip-git")!;
+    expect(chip.getAttribute("aria-label")).toBe(
+      "Git: branch feature/x, 2 ahead, 1 behind, +12 lines, -4 lines",
+    );
+  });
+
+  test("git chip aria-label says 'clean' when the working tree is unmodified", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    renderSurfaceChips(
+      host,
+      meta({
+        git: {
+          branch: "main",
+          head: "abc",
+          upstream: "origin/main",
+          ahead: 0,
+          behind: 0,
+          staged: 0,
+          unstaged: 0,
+          untracked: 0,
+          conflicts: 0,
+          insertions: 0,
+          deletions: 0,
+          detached: false,
+        },
+      }),
+      { onPortClick: () => {} },
+    );
+    const chip = host.querySelector(".chip-git")!;
+    expect(chip.getAttribute("aria-label")).toBe("Git: branch main, clean");
+  });
 });

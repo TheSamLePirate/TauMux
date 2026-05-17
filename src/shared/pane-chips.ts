@@ -45,6 +45,14 @@ export function renderSurfaceChips(
   host.dataset["chipsSig"] = sig;
 
   host.replaceChildren();
+  // P7 S3 — the chip row aggregates derived telemetry that's otherwise
+  // invisible to assistive tech (icons + numbers without text context).
+  // Mark the host as a status region so screen readers announce changes
+  // politely; per-chip `aria-label`s below carry the human-readable
+  // version of each chip's value.
+  host.setAttribute("role", "status");
+  host.setAttribute("aria-live", "polite");
+  host.setAttribute("aria-atomic", "false");
 
   const fg = meta.tree.find((n) => n.pid === meta.foregroundPid);
   // Hide command chip when the foreground IS the shell itself —
@@ -52,12 +60,15 @@ export function renderSurfaceChips(
   const showCommand =
     fg && meta.foregroundPid !== meta.pid && fg.command.length > 0;
   if (showCommand) {
-    host.appendChild(buildChip("chip-command", truncate(fg.command, 48)));
+    const chip = buildChip("chip-command", truncate(fg.command, 48));
+    chip.setAttribute("aria-label", `Foreground command: ${fg.command}`);
+    host.appendChild(chip);
   }
 
   if (meta.cwd) {
     const chip = buildChip("chip-cwd", shortenCwd(meta.cwd));
     chip.title = meta.cwd;
+    chip.setAttribute("aria-label", `Working directory: ${meta.cwd}`);
     host.appendChild(chip);
   }
 
@@ -66,6 +77,7 @@ export function renderSurfaceChips(
     chip.className = "surface-chip chip-git";
     if (isDirtyGit(meta.git)) chip.classList.add("dirty");
     chip.title = formatGitTooltip(meta.git);
+    chip.setAttribute("aria-label", `Git: ${formatGitAria(meta.git)}`);
     fillGitChip(chip, meta.git);
     host.appendChild(chip);
   }
@@ -79,6 +91,10 @@ export function renderSurfaceChips(
     const chip = buildChip("chip-port", `:${p.port}`);
     chip.title = `${p.proto} ${p.address}:${p.port} (pid ${p.pid}) — click to open`;
     chip.setAttribute("role", "button");
+    chip.setAttribute(
+      "aria-label",
+      `Open port ${p.port} (${p.proto} ${p.address}, pid ${p.pid})`,
+    );
     chip.tabIndex = 0;
     chip.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -91,6 +107,21 @@ export function renderSurfaceChips(
     });
     host.appendChild(chip);
   }
+}
+
+/** Human-readable git state for screen readers — folds the
+ *  branch/ahead/behind/dirty counts into a single comma-separated
+ *  sentence. Keeps the visible chip terse while assistive tech still
+ *  hears the full picture. */
+function formatGitAria(g: NonNullable<SurfaceMetadata["git"]>): string {
+  const parts: string[] = [`branch ${g.branch}`];
+  if (g.ahead > 0) parts.push(`${g.ahead} ahead`);
+  if (g.behind > 0) parts.push(`${g.behind} behind`);
+  if (g.conflicts > 0) parts.push(`${g.conflicts} conflicts`);
+  if (g.insertions > 0) parts.push(`+${g.insertions} lines`);
+  if (g.deletions > 0) parts.push(`-${g.deletions} lines`);
+  if (!isDirtyGit(g)) parts.push("clean");
+  return parts.join(", ");
 }
 
 function buildChip(cls: string, text: string): HTMLSpanElement {
