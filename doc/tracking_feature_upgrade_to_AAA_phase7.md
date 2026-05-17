@@ -419,3 +419,55 @@ Grade distribution after S7: **19 S / 20 A / 7 B / 3 C** (was 18 / 21 / 7 / 3 at
 - Cluster H: theme-token migration (~1013 colour literals).
 - Mouse-drag drop indicator + Escape-cancel (the remaining sidebar polish from S7).
 - Manifest-auth ergonomic UX (final H.9 sliver).
+
+---
+
+## Session 8 (2026-05-17)
+
+Slice picked: **sidebar mouse-drag Escape-cancel + indicator hygiene** (closes S7 follow-up) + **A6 typed EventBus seam** (starts cluster F) + **manifest-auth ergonomics** (final H.9 sliver). Three lifts spanning cluster F + G + the sidebar finish.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Sidebar mouse-drag Escape + hygiene | `dc59389` | `src/views/terminal/sidebar.ts`, `tests/sidebar-drag-cancel.test.ts` (new) | +5 (dragstart marks source, Escape clears state + classes, drop after Escape is no-op, dragover on fresh card clears prior, dragleave inside rect keeps indicator) |
+| A6 typed EventBus seam + 5 migrations | `d4a0771` | `src/shared/event-bus.ts` (new), `src/views/terminal/{sidebar,surface-manager}.ts`, `tests/event-bus.test.ts` (new) | +7 (emit dispatches CustomEvent, on receives typed payload, unsubscribe thunk, primitive number, void payload, legacy listener interop, typed on/emit roundtrip) |
+| Manifest-auth UX | `2d67017` | `src/views/terminal/settings-panel.ts`, `tests/settings-panel-network.test.ts` (new) | +7 (masked input, show/hide flips type, copy writes clipboard, regenerate dispatches 64-char hex, mirror-URL hint visibility, generateAuthToken hex shape + non-determinism) |
+
+Bumps: `bun run bump:patch` ran before each functional commit.
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `sidebar` | S | S | Already S after S7 keyboard-reorder. P7 S8 cleared the mouse-drag follow-up gaps: Escape cancels an in-progress drag, indicator hygiene prevents trails on fast diagonal sweeps, dragleave honours the card rect properly. Gap list emptied. |
+| `app-variants` | B | B | Stays at B (VariantContext + remaining channel migrations still needed) but the **A6 EventBus seam landed** in `src/shared/event-bus.ts` with 5 channels migrated as proof: `ht-reorder-workspaces` × 2, `ht-surface-focused`, `ht-open-file-in-editor` × 2. Back-compat keeps legacy `window.addEventListener` consumers reachable so the migration is gradual. |
+| `web-mirror` | S | S | Already S after S7 session cap. P7 S8 closed the H.9 final sliver: auth token surfaced in Settings → Network with masked input, Show/Hide peek, Copy, and one-click Regenerate (`crypto.getRandomValues` → 64 hex). Mirror-URL hint shows the LAN URL shape with a truncated token preview. Gap list emptied. |
+
+Grade distribution after S8: **19 S / 20 A / 7 B / 3 C** (unchanged from S7 — S8 closed remaining gaps on already-S features and added evidence under a B-grade item that needs further migration to lift).
+
+### Issues encountered
+
+- **First-pass producer migration syntax error**: my initial sidebar.ts edit kept a `void (true ||` placeholder fragment that broke parsing. ESLint hook flagged it; fixed by removing the dead snippet and keeping the clean `htEvents.emit(...)` call.
+- **Pre-existing typecheck noise** unchanged: same 2 errors.
+- **1 pre-existing flake** in the full suite run: `byte-buffer fallback`. Same as previous sessions.
+
+### Exit criteria (session 8)
+
+| Criterion | Status |
+|---|---|
+| Sidebar Escape-cancel + indicator hygiene | ✅ |
+| Typed EventBus seam landed + 5 migrations | ✅ |
+| Web-mirror auth token visible + rotatable in Settings | ✅ |
+| `bun test` green (modulo pre-existing flake) | ✅ 2113 / 1 known flake |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 8)
+
+- F.6 `settings.schema.ts` source-of-truth — still pending as a dedicated session.
+- Remaining ~46 `ht-*` channels onto `htEvents` (A6 continuation — incremental).
+- A7 `VariantContext` — drop the `__tau*` window globals to lift `app-variants` to A/S.
+- F.11 `WorkspaceCollection` extraction.
+- Cluster H: theme-token migration (~1013 colour literals).

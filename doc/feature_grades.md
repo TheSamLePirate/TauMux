@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.59
+**Version:** 0.3.62
 **Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 7 landed: web mirror grows a `MAX_SESSIONS = 64` soft cap with LRU detached-session eviction; upgrade past the cap with no detached candidate returns HTTP 503 + retry-after (H.9 / web-mirror stays at S, with new cap evidence); sidebar gets Alt+Up / Alt+Down keyboard reorder mirroring the mouse drag plus a polite live-region announcement and aria-roledescription (sidebar A→S); `browserSearchEngine` plumbed properly through SurfaceManager (closes the S6 punt). Cumulative P7: 23 lifts across 7 sessions. Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — deferred as a dedicated session, settings.ts is 1166 LOC / ~396 fields) + literal-to-token migration + manifest-auth ergonomics + mouse-drag drop indicator + …. Owned across future sessions of P7.
+Phase 7 polish — session 8 landed: sidebar mouse-drag UX completed with Escape-cancel + indicator hygiene (clears stale indicators on fast diagonal sweeps; dragleave only fires on real exit; sidebar evidence updated, gaps cleared); typed `EventBus<HtEventMap>` seam introduced under `src/shared/event-bus.ts` with 5 channels migrated as proof of concept (A6 starts; back-compat keeps legacy listeners reachable; app-variants gains evidence); web-mirror auth token surfaced in Settings → Network with masked input + Show/Hide + Copy + Regenerate + LAN-URL hint, closing the last named H.9 gap (web-mirror gaps cleared). Cumulative P7: 26 lifts across 8 sessions. Remaining P7 long tail: rest of the A6 channel migration (~46 left) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — still a dedicated session) + literal-to-token migration. Owned across future sessions of P7.
 
 ---
 
@@ -161,9 +161,8 @@ Phase 7 polish — session 7 landed: web mirror grows a `MAX_SESSIONS = 64` soft
 
 ### Sidebar
 - **Grade: S**
-- **Evidence:** `sidebar.ts` (2964 LOC) — perf-tuned slice rendering with card-slot cache (lines 24-43); state slice tests exist (sidebar-state.test.ts, sidebar-card-stability.test.ts). Phase 1 (U12) added roving-tabindex on the workspace list — active card carries `tabindex="0"`, arrow-nav rotates it. Phase 7 (S7) closed the U14 a11y leg: Alt+ArrowUp / Alt+ArrowDown keyboard reorder mirrors the mouse drag path with the same `manualOrder` + `ht-reorder-workspaces` plumbing; a polite `.sidebar-live-region` announces 'Moved {name} to position N of M'; every card carries `aria-roledescription` advertising the option. Tests in `tests/sidebar-keyboard-reorder.test.ts` (+6) + the 73-test sidebar suite stays green.
+- **Evidence:** `sidebar.ts` (2964 LOC) — perf-tuned slice rendering with card-slot cache (lines 24-43); state slice tests exist (sidebar-state.test.ts, sidebar-card-stability.test.ts). Phase 1 (U12) added roving-tabindex; P7 S7 added Alt+ArrowUp/Down keyboard reorder + polite live-region + aria-roledescription. Phase 7 (S8) closed the mouse-drag UX: Escape cancels an in-flight drag (clears `dragState`, strips `.dragging`, removes drop indicators — subsequent drop event short-circuits); `dragover` on a new target clears the indicator on any other card so fast diagonal sweeps no longer leave a trail; `dragleave` only clears when the pointer truly left the rect, so moving over child elements (chips, title span) keeps the indicator. Tests in `tests/sidebar-drag-cancel.test.ts` (+5).
 - **Gaps to AAA:**
-  - Drop indicator + Escape-cancel on mouse drag (announcement + keyboard path landed; the mouse visual cues are the remaining polish).
 
 ### Sidebar CWD file explorer
 - **Grade: B**
@@ -218,9 +217,10 @@ Phase 7 polish — session 7 landed: web mirror grows a `MAX_SESSIONS = 64` soft
 
 ### App variants (Atlas / Cockpit / Bridge)
 - **Grade: B**
-- **Evidence:** Cockpit (296 LOC) cleanly mounts/unmounts rail + HUDs on enter/exit. Atlas (596 LOC) renders SVG workspace graph. Both restore sidebar on exit. Coupling via global `window` events (A6/A7 — 47+ implicit channels).
+- **Evidence:** Cockpit (296 LOC) cleanly mounts/unmounts rail + HUDs on enter/exit. Atlas (596 LOC) renders SVG workspace graph. Both restore sidebar on exit. Phase 7 (S8 / A6) introduced a typed `EventBus<HtEventMap>` seam in `src/shared/event-bus.ts` so producer / consumer payloads round-trip with type safety; first 5 channels migrated (ht-reorder-workspaces × 2, ht-surface-focused, ht-open-file-in-editor × 2). Tests in `tests/event-bus.test.ts` (+7). Back-compat: `emit()` still dispatches a real DOM CustomEvent so legacy `window.addEventListener` consumers stay reachable during the gradual migration.
 - **Gaps to AAA:**
-  - Typed `VariantContext` (drop the `__tau*` window globals).
+  - Migrate the remaining ~46 channels onto `htEvents` (incremental — back-compat is in place).
+  - Typed `VariantContext` (drop the `__tau*` window globals — A7).
   - Mount/unmount lifecycle tests.
   - Documented Bridge variant spec.
 
@@ -242,9 +242,8 @@ Phase 7 polish — session 7 landed: web mirror grows a `MAX_SESSIONS = 64` soft
 
 ### Web mirror (WebSocket bridge)
 - **Grade: S**
-- **Evidence:** M1–M10 shipped; session ring + resume-on-reconnect; reducer-driven store; @xterm/headless for state correctness; 16 ms coalescing; Graphite theme tokens. WS heartbeat + reconnect jitter landed (H.5). Phase 2 typed `protocol-dispatcher.ts` (A2 — `ServerPayloadByType` mapped type). Phase 4 (S2/H.7) sandboxed sideband HTML/SVG via iframe srcdoc + strict CSP. Phase 7 (S7 / H.9) added a `MAX_SESSIONS = 64` soft cap with LRU detached-session eviction: when the cap is reached the upgrade path evicts the oldest detached resumable session to make room; if every session is attached the upgrade is rejected with HTTP 503 + `retry-after: 30`. Caps worst-case queued resume rings to ~128 MB.
+- **Evidence:** M1–M10 shipped; session ring + resume-on-reconnect; reducer-driven store; @xterm/headless for state correctness; 16 ms coalescing; Graphite theme tokens. WS heartbeat + reconnect jitter landed (H.5). Phase 2 typed `protocol-dispatcher.ts` (A2 — `ServerPayloadByType` mapped type). Phase 4 (S2/H.7) sandboxed sideband HTML/SVG via iframe srcdoc + strict CSP. Phase 7 (S7 / H.9) added `MAX_SESSIONS = 64` with LRU detached-session eviction. Phase 7 (S8 / H.9 final sliver) surfaces the previously-hidden `webMirrorAuthToken` in Settings → Network with masked input, Show/Hide peek toggle, copy-to-clipboard, and one-click regenerate (`crypto.getRandomValues` → 64 hex chars). A 'Mirror URL' hint renders the LAN URL shape with a truncated token preview; full URL via Copy. Tests in `tests/settings-panel-network.test.ts` (+7).
 - **Gaps to AAA:**
-  - Manifest-auth + cross-site origin check (the remaining H.9 polish — Origin header is checked but the manifest-auth ergonomic story is deferred).
 
 ### Telegram bridge
 - **Grade: S**

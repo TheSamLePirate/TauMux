@@ -265,8 +265,8 @@
   <h1>From baseline to AAA — every change, by phase</h1>
   <p class="subtitle">
     A 10-phase plan-of-plans that lifted τ-mux from a mostly-A codebase
-    with named gaps into a release-shape product. Seven sessions of
-    Phase 7 polish carried the final 23 lifts on top of seven earlier
+    with named gaps into a release-shape product. Eight sessions of
+    Phase 7 polish carried the final 26 lifts on top of seven earlier
     landed phases. This document catalogues every functional change.
   </p>
   <div class="meta">
@@ -411,10 +411,10 @@
   <li><span class="sha">f971b63</span> <strong>tests/regressions/ catalogue</strong> + <code>catalogue.test.ts</code> gate.</li>
 </ul>
 
-<h2 id="phase-7"><span class="phase-tag">PHASE 7</span>Per-feature polish sweep — 7 sessions, 23 lifts</h2>
+<h2 id="phase-7"><span class="phase-tag">PHASE 7</span>Per-feature polish sweep — 8 sessions, 26 lifts</h2>
 <p class="phase-blurb">
   The biggest single phase: a polish sweep walking the per-feature
-  grades and closing the named gaps in each. Split across seven
+  grades and closing the named gaps in each. Split across eight
   sessions because the long tail spans clusters B / C / D / E / F / G / H.
 </p>
 
@@ -552,6 +552,24 @@
   </div>
 </div>
 
+<h3 id="p7s8">Session 8 — Sidebar finish + Cluster F start + H.9 final</h3>
+<div class="card">
+  <div class="lifts">
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">sidebar (mouse-drag Escape)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">dc59389</span></div>
+      <p class="lift-body">Finishes the sidebar feature: <strong>Escape during a mouse drag</strong> clears <code>dragState</code> + strips <code>.dragging</code> + removes drop indicators so a subsequent drop event becomes a no-op. <code>dragover</code> on a new target clears the indicator on any other card (fast diagonal sweeps no longer leave a trail). <code>dragleave</code> only clears when the pointer truly left the rect, so moving over child elements no longer blinks the indicator off.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">event-bus (A6 seam)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-b">B</span> → <span class="grade-b">B</span></span><span class="sha">d4a0771</span></div>
+      <p class="lift-body">Starts the Cluster F refactor. New <code>src/shared/event-bus.ts</code> introduces a typed <code>EventBus&lt;HtEventMap&gt;</code>; producers call <code>htEvents.emit(name, payload)</code>, consumers receive the typed payload directly. <code>emit</code> still dispatches a real DOM CustomEvent so legacy <code>window.addEventListener</code> consumers keep working. 5 channels migrated as proof: <code>ht-reorder-workspaces</code> × 2, <code>ht-surface-focused</code>, <code>ht-open-file-in-editor</code> × 2. Grade unchanged because <code>app-variants</code> needs A7 + the rest of the channels to lift.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">web-mirror (manifest-auth UX)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">2d67017</span></div>
+      <p class="lift-body">Closes the H.9 final sliver. The auth token was a hidden setting until now; Settings → Network surfaces it with a masked input, <strong>Show / Hide</strong> peek toggle (aria-pressed), <strong>Copy</strong> button with &ldquo;Copied&rdquo; pulse, and <strong>Regenerate</strong> (<code>crypto.getRandomValues</code> → 64 hex chars, confirms before replacing). A mirror-URL hint shows the LAN URL shape with a truncated token preview.</p>
+    </div>
+  </div>
+</div>
+
 <h2 id="remaining">Remaining long tail (deferred from P7)</h2>
 <p class="phase-blurb">
   These items were explicitly captured for future P7 sessions. None are
@@ -652,6 +670,9 @@
     <tr><td>P7 S7</td><td><span class="sha">3d7625f</span></td><td>plumb browserSearchEngine through SurfaceManager</td></tr>
     <tr><td>P7 S7</td><td><span class="sha">5869e61</span></td><td>web-mirror session cap + LRU eviction (H.9)</td></tr>
     <tr><td>P7 S7</td><td><span class="sha">924d8b2</span></td><td>sidebar keyboard reorder + a11y</td></tr>
+    <tr><td>P7 S8</td><td><span class="sha">dc59389</span></td><td>sidebar mouse-drag Escape-cancel + indicator hygiene</td></tr>
+    <tr><td>P7 S8</td><td><span class="sha">d4a0771</span></td><td>typed EventBus seam + 5 channel migrations (A6)</td></tr>
+    <tr><td>P7 S8</td><td><span class="sha">2d67017</span></td><td>web-mirror auth-token ergonomics (H.9 final)</td></tr>
   </tbody>
 </table>
 
