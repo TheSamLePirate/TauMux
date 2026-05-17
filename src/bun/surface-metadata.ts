@@ -644,6 +644,29 @@ export class SurfaceMetadataPoller {
     }
   }
 
+  /** Phase 7 — skip-tick cooldown after a git probe stalls.
+   *
+   *  The 5 s subprocess timeout caps any single probe, but multiple
+   *  cwds hitting a wedged NFS / contended FS lock can each burn the
+   *  full 5 s before bailing — and in a workspace with 3 panes on a
+   *  hung NFS root, that's 15 s spent on the metadata tick that
+   *  should have run in well under a second. Once we observe one
+   *  stall, suppress git probes for `gitStaleCooldownMs` so the
+   *  poller stays responsive on the other concerns (ps, lsof, cwd).
+   *
+   *  Cached results from the per-cwd TTL still flow during the
+   *  cooldown — the user sees "stale" git chips, not "missing" ones. */
+  private gitStaleUntil = 0;
+  /** Cooldown duration after a stall. 30 s is long enough that an
+   *  NFS recovery has typically finished by the next attempt; short
+   *  enough that real recovery surfaces within the same minute. */
+  private readonly gitStaleCooldownMs = 30_000;
+
+  /** Test seam — read the current cooldown state. */
+  isGitStale(now: number): boolean {
+    return now < this.gitStaleUntil;
+  }
+
   /**
    * Collect git snapshots for the given cwds, honoring the per-cwd TTL.
    * Runs at most one `git status` + one `git diff --shortstat` per stale
@@ -654,6 +677,18 @@ export class SurfaceMetadataPoller {
     now: number,
   ): Promise<Map<string, GitInfo | null>> {
     const result = new Map<string, GitInfo | null>();
+    // Phase 7 — if we're inside the skip-tick cooldown, return whatever
+    // the cache holds (no fresh probes). A cached entry beyond its TTL
+    // is still better than a 5 s stall per cwd; the chip will read
+    // "stale" but the rest of the metadata tick proceeds normally.
+    if (this.isGitStale(now)) {
+      for (const cwd of cwds) {
+        const cached = this.gitCache.get(cwd);
+        result.set(cwd, cached?.info ?? null);
+      }
+      return result;
+    }
+
     const stale: string[] = [];
     for (const cwd of cwds) {
       const cached = this.gitCache.get(cwd);
@@ -665,13 +700,27 @@ export class SurfaceMetadataPoller {
     }
     if (stale.length === 0) return result;
 
+    // Phase 7 — measure wall-clock per probe. A probe that consumes
+    // close to the full subprocess timeout (≥ 0.8 × SUBPROCESS_TIMEOUT_MS)
+    // is treated as a stall, regardless of whether runGit returned null
+    // via timeout or non-zero exit. The threshold leaves headroom for
+    // normal slow probes (large repos on cold cache) without triggering
+    // a false stall.
+    const stallThresholdMs = Math.floor(SUBPROCESS_TIMEOUT_MS * 0.8);
+    let anyStall = false;
     await Promise.all(
       stale.map(async (cwd) => {
+        const startedAt = Date.now();
         const info = await runGit(cwd);
+        const elapsed = Date.now() - startedAt;
+        if (elapsed >= stallThresholdMs) anyStall = true;
         this.gitCache.set(cwd, { info, at: now });
         result.set(cwd, info);
       }),
     );
+    if (anyStall) {
+      this.gitStaleUntil = now + this.gitStaleCooldownMs;
+    }
     return result;
   }
 }
