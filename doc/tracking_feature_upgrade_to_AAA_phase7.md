@@ -1281,3 +1281,50 @@ Grade distribution after S25: **20 S / 20 A / 6 B / 3 C** (unchanged — setting
 - Cluster F.10: audit remaining ad-hoc handlers.
 - Cluster H literal migration — next chunk: sidebar workspace card sub-rows, plan-panel sidebar widget remaining literals, telegram bridge sub-states.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 26 (2026-05-18)
+
+Slice picked: **Cluster E remediation UX hookup** (audit-fix → health bridge + telegram restart fix) + **Cluster H workspace port chip + script-run states** (pure cross-component reuse).
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster E — health-fix bridge | `5bcf389` | `src/bun/index.ts`, `tests/audit-fix-health-bridge.test.ts` (new) | +3 (publish loop wraps `r.fix` into a `health.fix` action that calls `applyFix` + re-publishes; runFix transitions degraded → ok in one tick) |
+| Cluster H — workspace port + script-run | `135dbe8` | `src/views/terminal/index.css`, `tests/theme-tokens-workspace-port.test.ts` (new) | +4 (workspace-port-chip resting + hover/focus reuse --ht-badge-success-*; workspace-script-btn states reuse --ht-badge-success-fg + --ht-pm-kill-fg; workspace-status divider reuses --ht-pm-card-border) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.100 → 0.3.101 (health-fix bridge) → 0.3.102 (workspace port chip).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `audits` | S | S | **Cluster E remediation UX hookup closed.** Audit results that carry `r.fix` now propagate through to the `HealthRegistry` via `health.set(id, sev, msg, fix)`. The wrapped `action` runs `applyFix(r, registry)` (which re-runs the audit's `check()` post-action) and then pushes the recovered result back to health in the same tick. Existing audits with a `fix` (git-user-name → "Set git user.name to …") now surface that button to any sidebar pill / `ht health fix audit:git-user-name` consumer. The "Remediation UX hookup" gap on the audits feature card is now closed. |
+| `telegram-bridge` | (same) | (same) | Telegram `error` + `conflict` health entries now attach a "Restart poller" fix that calls `telegramService.stop() + start()`. Next `onStatusChange` rewrites the entry to its recovered severity, so the button auto-disappears once polling is healthy again. |
+| `tau-primitives` | S | S | Cluster H continues — workspace port chip + script-run state colours migrated by pure cross-component REUSE. The .workspace-port-chip is the third "success-tinted interactive chip" in the codebase; harmonised onto the existing --ht-badge-success-* family despite a <2% alpha delta from the original literals (0.22 vs 0.20 border etc. — perceptually identical). Zero new tokens minted; 9 literals migrated. audit:theming: 785 → 776 (−9). |
+
+Grade distribution after S26: **20 S / 20 A / 6 B / 3 C** (unchanged — the audits gap closed cleanly but didn't cross a grade boundary).
+
+### Issues encountered
+
+- **Action wrapping**: `health.runFix(id)` already exists and just calls `entry.fix.action()`. Subsystems are expected to push a fresh `set(id, "ok", …)` from inside the action so the snapshot reflects recovery. For audits this means the wrapped action has to both run `applyFix` *and* re-publish — encoded inline at the publish site so the bridge stays in one place.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 26)
+
+| Criterion | Status |
+|---|---|
+| Cluster E — audit fixes propagate through HealthRegistry | ✅ landed |
+| Cluster E — telegram error/conflict ships "Restart poller" | ✅ landed |
+| Cluster H workspace port chip + script-run migrated | ✅ 785 → 776 (−9) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2430 / 0–2 known flakes; +7 new tests |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 26)
+
+- Cluster B residuals: IME composition guards on settings text inputs.
+- Cluster F.10: audit remaining ad-hoc handlers.
+- Cluster H literal migration — next chunk: sidebar workspace card status entries / progress / pane chips, plan-panel sidebar widget remaining literals, telegram bridge sub-states.
+- Phases 8 (release engineering) + 9 (docs / observability).
