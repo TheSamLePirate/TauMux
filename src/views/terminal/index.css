@@ -3195,7 +3195,7 @@ body.terminal-typing .panel {
   display: flex;
   justify-content: center;
   padding-top: 92px;
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--ht-palette-scrim-bg);
 }
 
 .palette-overlay.hidden {
@@ -3211,7 +3211,7 @@ body.terminal-typing .panel {
   align-items: center;
   justify-content: center;
   padding: 40px 24px;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--ht-palette-kbd-scrim-bg);
 }
 .kbd-cheatsheet.hidden {
   display: none;
@@ -3221,10 +3221,10 @@ body.terminal-typing .panel {
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  background: #000;
-  border: 0.5px solid rgba(111, 233, 255, 0.72);
+  background: var(--ht-palette-shell-bg);
+  border: 0.5px solid var(--ht-palette-border);
   border-radius: 12px;
-  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 34px 90px var(--ht-palette-shadow);
   overflow: hidden;
   color: var(--fg, #e6f4f7);
 }
@@ -3233,7 +3233,7 @@ body.terminal-typing .panel {
   align-items: center;
   justify-content: space-between;
   padding: 12px 18px;
-  border-bottom: 1px solid rgba(111, 233, 255, 0.18);
+  border-bottom: 1px solid var(--ht-palette-divider);
 }
 .kbd-header h2 {
   margin: 0;
@@ -3241,7 +3241,7 @@ body.terminal-typing .panel {
   font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: rgba(111, 233, 255, 0.92);
+  color: var(--ht-palette-kbd-keys-fg);
 }
 .kbd-close {
   background: transparent;
@@ -3268,7 +3268,7 @@ body.terminal-typing .panel {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(111, 233, 255, 0.72);
+  color: var(--ht-palette-kbd-section-fg);
 }
 .kbd-list {
   list-style: none;
@@ -3289,9 +3289,9 @@ body.terminal-typing .panel {
   flex: 0 0 auto;
   font-family: var(--mono, monospace);
   font-size: 11px;
-  color: rgba(111, 233, 255, 0.92);
-  background: rgba(111, 233, 255, 0.08);
-  border: 0.5px solid rgba(111, 233, 255, 0.24);
+  color: var(--ht-palette-kbd-keys-fg);
+  background: var(--ht-palette-kbd-keys-bg);
+  border: 0.5px solid var(--ht-palette-kbd-keys-border);
   border-radius: 4px;
   padding: 1px 6px;
   white-space: nowrap;
@@ -3303,7 +3303,7 @@ body.terminal-typing .panel {
 }
 .kbd-footer {
   padding: 8px 18px;
-  border-top: 1px solid rgba(111, 233, 255, 0.18);
+  border-top: 1px solid var(--ht-palette-divider);
   font-size: 11px;
   color: var(--fg-dim, #9aa);
   text-align: right;
@@ -3311,8 +3311,8 @@ body.terminal-typing .panel {
 .kbd-footer kbd {
   font-family: var(--mono, monospace);
   font-size: 11px;
-  background: rgba(111, 233, 255, 0.08);
-  border: 0.5px solid rgba(111, 233, 255, 0.24);
+  background: var(--ht-palette-kbd-keys-bg);
+  border: 0.5px solid var(--ht-palette-kbd-keys-border);
   border-radius: 3px;
   padding: 0 4px;
 }
@@ -3322,11 +3322,11 @@ body.terminal-typing .panel {
   max-height: 520px;
   display: flex;
   flex-direction: column;
-  background: #000;
-  border: 0.5px solid rgba(111, 233, 255, 0.72);
+  background: var(--ht-palette-shell-bg);
+  border: 0.5px solid var(--ht-palette-border);
   border-radius: 12px;
   box-shadow:
-    0 34px 90px rgba(0, 0, 0, 0.6);
+    0 34px 90px var(--ht-palette-shadow);
   overflow: hidden;
 }
 
@@ -3335,8 +3335,8 @@ body.terminal-typing .panel {
   align-items: center;
   gap: 14px;
   padding: 18px 22px;
-  background: #000;
-  border-bottom: 0.5px solid rgba(111, 233, 255, 0.14);
+  background: var(--ht-palette-shell-bg);
+  border-bottom: 0.5px solid var(--ht-palette-divider-soft);
 }
 
 .palette-prompt {
@@ -3358,7 +3358,7 @@ body.terminal-typing .panel {
 }
 
 .palette-input::placeholder {
-  color: rgba(82, 82, 91, 0.9);
+  color: var(--ht-palette-placeholder-fg);
 }
 
 .palette-results {
@@ -3368,8 +3368,7 @@ body.terminal-typing .panel {
   max-height: 400px;
   overflow-y: auto;
   padding: 10px;
-  background:
-    rgba(7, 7, 10, 0.96);
+  background: var(--ht-palette-results-bg);
 }
 
 .palette-item {
@@ -3388,7 +3387,7 @@ body.terminal-typing .panel {
 
 .palette-item:hover,
 .palette-item.selected {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--ht-palette-row-hover-bg);
   border-left-color: var(--accent-primary);
 }
 

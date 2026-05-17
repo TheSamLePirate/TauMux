@@ -147,6 +147,29 @@
   --ht-sidebar-inset-shadow: rgba(255, 255, 255, 0.02);
   --ht-sidebar-reduced-transparency-bg: #151720;
 
+  /* P7 S16 — command palette + kbd cheat-sheet shared chrome. Both
+   *  overlays use a black-on-black container with a strong cyan
+   *  border and a stack of fine-grained cyan tints for headers,
+   *  sub-dividers and the kbd-keys chip. Consolidating into a single
+   *  --ht-palette-* token group lets a future palette swap repaint
+   *  both overlays in one place. The ht-palette prefix sits outside
+   *  the U2 light/HC override gate — both overlays are intentionally
+   *  always dark across current themes (full-screen scrim metaphor). */
+  --ht-palette-scrim-bg: rgba(0, 0, 0, 0.28);
+  --ht-palette-kbd-scrim-bg: rgba(0, 0, 0, 0.5);
+  --ht-palette-shell-bg: #000;
+  --ht-palette-border: rgba(111, 233, 255, 0.72);
+  --ht-palette-shadow: rgba(0, 0, 0, 0.6);
+  --ht-palette-divider: rgba(111, 233, 255, 0.18);
+  --ht-palette-divider-soft: rgba(111, 233, 255, 0.14);
+  --ht-palette-results-bg: rgba(7, 7, 10, 0.96);
+  --ht-palette-row-hover-bg: rgba(255, 255, 255, 0.04);
+  --ht-palette-placeholder-fg: rgba(82, 82, 91, 0.9);
+  --ht-palette-kbd-section-fg: rgba(111, 233, 255, 0.72);
+  --ht-palette-kbd-keys-fg: rgba(111, 233, 255, 0.92);
+  --ht-palette-kbd-keys-bg: rgba(111, 233, 255, 0.08);
+  --ht-palette-kbd-keys-border: rgba(111, 233, 255, 0.24);
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;
