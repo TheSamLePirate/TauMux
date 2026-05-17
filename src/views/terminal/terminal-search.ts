@@ -30,6 +30,13 @@ export interface TerminalSearchHooks {
  *  workspace state. */
 const TOGGLE_STORAGE_KEY = "hyperterm-canvas.search.toggles";
 
+/** P7 S22 — persist the user's recent search queries so they can
+ *  recall them with ↑/↓ inside the search bar. The list is bounded so
+ *  it doesn't grow unbounded across long sessions. Same localStorage
+ *  scope rationale as the toggles. */
+const HISTORY_STORAGE_KEY = "hyperterm-canvas.search.history";
+const HISTORY_CAP = 20;
+
 interface SearchOptions {
   caseSensitive: boolean;
   regex: boolean;
@@ -57,6 +64,47 @@ function saveToggles(opts: SearchOptions): void {
   }
 }
 
+/** P7 S22 — load the persisted query history. Stored as a JSON array
+ *  of strings; most-recent first. Junk entries (non-string, empty)
+ *  are filtered on load so a hand-edited localStorage can't break
+ *  the bar. */
+export function loadSearchHistory(): string[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((s): s is string => typeof s === "string" && s.length > 0)
+      .slice(0, HISTORY_CAP);
+  } catch {
+    return [];
+  }
+}
+
+function saveSearchHistory(history: string[]): void {
+  try {
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+  } catch {
+    /* private mode / quota — silently skip persistence */
+  }
+}
+
+/** P7 S22 — push a query into the recency-ordered history. Duplicates
+ *  bubble to the top (instead of accumulating); empties are skipped;
+ *  the list is capped at HISTORY_CAP. Pure for testability — the
+ *  caller persists the returned array. */
+export function pushSearchHistory(
+  history: readonly string[],
+  query: string,
+): string[] {
+  const trimmed = query.trim();
+  if (!trimmed) return [...history];
+  const deduped = history.filter((q) => q !== trimmed);
+  deduped.unshift(trimmed);
+  return deduped.slice(0, HISTORY_CAP);
+}
+
 /** Imperative search-bar controller. A single instance is created
  *  eagerly by SurfaceManager and reused across show/hide cycles; the
  *  DOM is constructed lazily on first show. */
@@ -70,6 +118,15 @@ export class TerminalSearchBar {
    *  localStorage. Initialised lazily from storage so private-mode
    *  windows still get sensible defaults. */
   private opts: SearchOptions = loadToggles();
+  /** P7 S22 — recent-query history. The bar pushes onto it every
+   *  time the user runs next() / previous() with a non-empty query;
+   *  ↑ / ↓ inside the input walk through it. `historyIndex = -1`
+   *  means "currently typing — not in recall mode". */
+  private history: string[] = loadSearchHistory();
+  private historyIndex = -1;
+  /** Track the in-flight value when the user starts walking history
+   *  so we can restore it if they Arrow-Down past index 0. */
+  private historyPending = "";
 
   constructor(
     private container: HTMLElement,
@@ -116,6 +173,7 @@ export class TerminalSearchBar {
   next(): void {
     const query = this.inputEl?.value;
     if (!query) return;
+    this.recordQuery(query);
     // xterm SearchAddon accepts a second `ISearchOptions` arg with
     // `regex`, `caseSensitive`, `wholeWord`, `decorations`. We wire
     // case + regex from our persisted toggles.
@@ -128,10 +186,65 @@ export class TerminalSearchBar {
   previous(): void {
     const query = this.inputEl?.value;
     if (!query) return;
+    this.recordQuery(query);
     this.hooks.getActiveSearchAddon()?.findPrevious(query, {
       caseSensitive: this.opts.caseSensitive,
       regex: this.opts.regex,
     });
+  }
+
+  /** Test seam — read the recent-query history (most-recent first). */
+  getHistory(): string[] {
+    return [...this.history];
+  }
+
+  /** P7 S22 — record + persist the query. Bubbles duplicates to the
+   *  top and caps the list. Resets the recall cursor so the next ↑
+   *  starts from the newest entry. */
+  private recordQuery(query: string): void {
+    this.history = pushSearchHistory(this.history, query);
+    saveSearchHistory(this.history);
+    this.historyIndex = -1;
+    this.historyPending = "";
+  }
+
+  /** P7 S22 — walk the history when the user presses ↑ / ↓ inside
+   *  the search input. Returns true if a recall happened (so the
+   *  caller can suppress the default cursor-move). */
+  private recallHistory(direction: "up" | "down"): boolean {
+    if (!this.inputEl) return false;
+    if (this.history.length === 0) return false;
+    if (direction === "up") {
+      if (this.historyIndex === -1) {
+        // Entering recall mode: stash whatever the user was typing.
+        this.historyPending = this.inputEl.value;
+        this.historyIndex = 0;
+      } else if (this.historyIndex < this.history.length - 1) {
+        this.historyIndex++;
+      } else {
+        return false; // pinned at oldest entry
+      }
+    } else {
+      if (this.historyIndex === -1) return false; // not in recall mode
+      if (this.historyIndex === 0) {
+        // Stepping back past the newest entry restores the in-flight
+        // value the user was typing when they first pressed ↑.
+        this.historyIndex = -1;
+        this.inputEl.value = this.historyPending;
+        this.inputEl.setSelectionRange(
+          this.inputEl.value.length,
+          this.inputEl.value.length,
+        );
+        return true;
+      }
+      this.historyIndex--;
+    }
+    this.inputEl.value = this.history[this.historyIndex]!;
+    this.inputEl.setSelectionRange(
+      this.inputEl.value.length,
+      this.inputEl.value.length,
+    );
+    return true;
   }
 
   /** Phase 7 — flip a toggle. Persists to localStorage and re-runs
@@ -179,6 +292,8 @@ export class TerminalSearchBar {
     input.type = "text";
     input.placeholder = "Find in terminal\u2026";
     input.setAttribute("aria-label", "Search terminal");
+    // P7 S22 \u2014 surface the recall shortcut so AT users discover it.
+    input.setAttribute("aria-keyshortcuts", "ArrowUp ArrowDown");
 
     // Phase 7 — case + regex toggle buttons. Pressed state mirrors
     // the persisted `opts` and the buttons re-run the active query
@@ -239,10 +354,17 @@ export class TerminalSearchBar {
       } else if (e.key === "Escape") {
         e.preventDefault();
         this.hide();
+      } else if (e.key === "ArrowUp") {
+        // P7 S22 — walk back through recent searches.
+        if (this.recallHistory("up")) e.preventDefault();
+      } else if (e.key === "ArrowDown") {
+        if (this.recallHistory("down")) e.preventDefault();
       }
     });
 
     input.addEventListener("input", () => {
+      // Plain typing exits recall mode — the cursor follows the user.
+      this.historyIndex = -1;
       this.next();
     });
 

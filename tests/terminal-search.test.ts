@@ -56,8 +56,11 @@ beforeEach(() => {
   };
   // Phase 7 — clear persisted toggles between tests so each starts
   // from defaults. The bar reads localStorage at construction time.
+  // P7 S22 — also clear the persisted recall history so earlier
+  // tests' queries don't leak into the recall assertions below.
   try {
     localStorage.removeItem("hyperterm-canvas.search.toggles");
+    localStorage.removeItem("hyperterm-canvas.search.history");
   } catch {
     /* private mode */
   }
@@ -312,5 +315,104 @@ describe("TerminalSearchBar", () => {
       ...container.querySelectorAll<HTMLButtonElement>(".search-bar-toggle"),
     ];
     allToggles[1].click();
+  });
+
+  // ── P7 S22 — persisted recall history ──
+
+  test("pushSearchHistory bubbles duplicates to the top and skips empties", async () => {
+    const { pushSearchHistory } =
+      await import("../src/views/terminal/terminal-search");
+    expect(pushSearchHistory([], "alpha")).toEqual(["alpha"]);
+    expect(pushSearchHistory(["alpha"], "beta")).toEqual(["beta", "alpha"]);
+    // Re-search "alpha" pushes it to the front rather than duplicating.
+    expect(pushSearchHistory(["beta", "alpha"], "alpha")).toEqual([
+      "alpha",
+      "beta",
+    ]);
+    // Empty / whitespace queries are skipped.
+    expect(pushSearchHistory(["alpha"], "")).toEqual(["alpha"]);
+    expect(pushSearchHistory(["alpha"], "   ")).toEqual(["alpha"]);
+  });
+
+  test("pushSearchHistory caps the list at 20 entries", async () => {
+    const { pushSearchHistory } =
+      await import("../src/views/terminal/terminal-search");
+    let h: string[] = [];
+    for (let i = 0; i < 25; i++) h = pushSearchHistory(h, `q${i}`);
+    expect(h.length).toBe(20);
+    expect(h[0]).toBe("q24");
+    expect(h[19]).toBe("q5");
+  });
+
+  test("next() records the query into localStorage history", () => {
+    try {
+      localStorage.removeItem("hyperterm-canvas.search.history");
+    } catch {}
+    bar.show();
+    const input = container.querySelector(
+      ".search-bar-input",
+    ) as HTMLInputElement;
+    input.value = "alpha";
+    bar.next();
+    expect(bar.getHistory()).toEqual(["alpha"]);
+    const raw = localStorage.getItem("hyperterm-canvas.search.history");
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw!)).toEqual(["alpha"]);
+  });
+
+  test("ArrowUp / ArrowDown walks the recall list; ArrowDown past newest restores in-flight value", () => {
+    try {
+      localStorage.removeItem("hyperterm-canvas.search.history");
+    } catch {}
+    bar.show();
+    const input = container.querySelector(
+      ".search-bar-input",
+    ) as HTMLInputElement;
+
+    // Seed history via two searches.
+    input.value = "alpha";
+    bar.next();
+    input.value = "beta";
+    bar.next();
+    expect(bar.getHistory()).toEqual(["beta", "alpha"]);
+
+    // User starts typing a fresh query, then walks history.
+    input.value = "in-flight";
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
+    );
+    expect(input.value).toBe("beta");
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
+    );
+    expect(input.value).toBe("alpha");
+    // ArrowDown back past newest restores the in-flight value.
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    );
+    expect(input.value).toBe("beta");
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    );
+    expect(input.value).toBe("in-flight");
+  });
+
+  test("history persists across bar instances via localStorage", () => {
+    try {
+      localStorage.removeItem("hyperterm-canvas.search.history");
+    } catch {}
+    bar.show();
+    const input = container.querySelector(
+      ".search-bar-input",
+    ) as HTMLInputElement;
+    input.value = "persistent-query";
+    bar.next();
+
+    // Fresh container + bar should read the same history from localStorage.
+    document.body.innerHTML = "";
+    const c2 = document.createElement("div");
+    document.body.appendChild(c2);
+    const bar2 = new TerminalSearchBar(c2, hooks);
+    expect(bar2.getHistory()).toEqual(["persistent-query"]);
   });
 });
