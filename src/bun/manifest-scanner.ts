@@ -15,7 +15,7 @@
 //   pruned inside `resolve` to keep memory bounded across `cd` cycles.
 // - Never throws. Malformed manifests collapse to `null`.
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 export interface ManifestScannerOpts<T> {
@@ -44,15 +44,49 @@ export class ManifestScanner<T> {
   private readonly cache = new Map<string, CacheEntry<T>>();
   private readonly ttlMs: number;
   private readonly home: string;
+  /** Phase 7 — also compare against the realpath form of $HOME so a
+   *  cwd that traversed a symlink / firmlink stops at the right
+   *  boundary. On macOS, `/Users/x` is the canonical path but the
+   *  realpath can be `/System/Volumes/Data/Users/x` (firmlinks); on
+   *  Linux a user's $HOME may be `/home/x` while a tmp build mount
+   *  resolves through `/private/home/x`. Without this guard the
+   *  walk-up runs all the way to `/` (still bounded by MAX_WALK_DEPTH)
+   *  but misses the chance to short-circuit at $HOME — a manifest
+   *  sitting at the user's home root would be incorrectly returned
+   *  for an unrelated cwd. */
+  private readonly homeRealpath: string;
 
   constructor(private readonly opts: ManifestScannerOpts<T>) {
     this.ttlMs = opts.ttlMs ?? 3000;
     this.home = process.env["HOME"] ?? "";
+    // Resolve once at construction. realpathSync throws on a missing
+    // path; fall back to the literal $HOME so the check still
+    // matches the unsymlinked form.
+    let resolved = this.home;
+    if (this.home) {
+      try {
+        resolved = realpathSync(this.home);
+      } catch {
+        /* keep the literal */
+      }
+    }
+    this.homeRealpath = resolved;
   }
 
   /** Walk up from `start` looking for the configured filename. Stops
-   *  at the filesystem root or at `$HOME`. Returns the absolute path,
-   *  or `null`. Exposed for unit tests and CLI diagnostics. */
+   *  at the filesystem root or at `$HOME` (matched against either the
+   *  literal env value or its realpath, so symlinked / firmlinked
+   *  homes don't escape the boundary). Returns the absolute path,
+   *  or `null`. Exposed for unit tests and CLI diagnostics.
+   *
+   *  Phase 7 — at each step we ALSO realpath the candidate dir and
+   *  compare against the realpath'd $HOME. macOS ships `/Users/x`
+   *  as a firmlink for `/System/Volumes/Data/Users/x`; without the
+   *  per-step realpath the boundary check would only fire when the
+   *  raw env value matched the raw walk segment. Deliberately
+   *  realpath'ing per step (not once at the start) keeps output
+   *  paths in their canonical form so callers see the path they
+   *  passed in. */
   findFile(start: string): string | null {
     if (!start || !start.startsWith("/")) return null;
     let dir = start;
@@ -60,6 +94,19 @@ export class ManifestScanner<T> {
       const candidate = join(dir, this.opts.filename);
       if (existsSync(candidate)) return candidate;
       if (dir === "/" || dir === this.home) return null;
+      if (this.homeRealpath && this.homeRealpath !== this.home) {
+        // Check the realpath of `dir` against the realpath'd $HOME.
+        // The compare is cheap when the OS already cached the
+        // resolution (the same dir gets re-resolved across iterations
+        // anyway).
+        let resolved = dir;
+        try {
+          resolved = realpathSync(dir);
+        } catch {
+          /* missing — fall through to the literal comparison */
+        }
+        if (resolved === this.homeRealpath) return null;
+      }
       const parent = dirname(dir);
       if (parent === dir) return null;
       dir = parent;

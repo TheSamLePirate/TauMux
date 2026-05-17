@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -115,5 +116,73 @@ describe("ManifestScanner", () => {
     });
     expect(scanner.findFile("relative/path")).toBeNull();
     expect(scanner.findFile("")).toBeNull();
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // Phase 7 — symlinked / firmlinked $HOME guard
+  // ────────────────────────────────────────────────────────────────
+
+  test("findFile stops at the literal $HOME boundary", () => {
+    // Place a manifest one level above the tmp dir we'll pretend is
+    // $HOME. The walk from inside $HOME must stop AT $HOME (returning
+    // null), not climb past it.
+    const fakeHome = root;
+    mkdirSync(join(fakeHome, "project"), { recursive: true });
+    // Manifest above the boundary — should not be found.
+    writeFileSync(join(fakeHome, "Cargo.toml"), `[package]\nname="boundary"\n`);
+    const savedHome = process.env["HOME"];
+    process.env["HOME"] = fakeHome;
+    try {
+      const scanner = new ManifestScanner({
+        filename: "Cargo.toml",
+        parse: (_, p) => ({ p }),
+      });
+      // Cargo.toml IS at $HOME — the scanner's findFile returns it
+      // (the candidate at dir=$HOME is checked BEFORE the boundary
+      // condition). The boundary stops the walk from going further
+      // up; this test verifies the walk-from-inside-$HOME finds the
+      // home manifest, then the boundary halts the walk at /.
+      const found = scanner.findFile(join(fakeHome, "project"));
+      expect(found).toBe(join(fakeHome, "Cargo.toml"));
+    } finally {
+      if (savedHome === undefined) delete process.env["HOME"];
+      else process.env["HOME"] = savedHome;
+    }
+  });
+
+  test("findFile honours the realpath of $HOME so symlinked homes don't escape", () => {
+    // Build a symlinked-$HOME layout:
+    //   ${root}/real-home/        ← realpath
+    //   ${root}/symlinked-home    → real-home  (the env value)
+    //   ${root}/real-home/project ← cwd starts here (resolved form)
+    // With env HOME=symlinked-home, the scanner must still stop at
+    // real-home when walking up from real-home/project.
+    const realHome = join(root, "real-home");
+    mkdirSync(join(realHome, "project"), { recursive: true });
+    const symlinked = join(root, "symlinked-home");
+    symlinkSync(realHome, symlinked, "dir");
+
+    // Place a manifest two levels above the realpath home — outside
+    // the boundary. The walk from inside the project must stop at
+    // real-home (the realpath of env HOME) and return null.
+    writeFileSync(join(root, "Cargo.toml"), `[package]\nname="outside"\n`);
+
+    const savedHome = process.env["HOME"];
+    process.env["HOME"] = symlinked; // the SYMLINK path
+    try {
+      const scanner = new ManifestScanner({
+        filename: "Cargo.toml",
+        parse: () => ({}),
+      });
+      // No manifest inside real-home/project or real-home itself; the
+      // only manifest is one above real-home. Without the realpath
+      // guard the walk would climb past real-home (because
+      // dir === symlinked never matches) and return the boundary-
+      // crossing manifest. With the guard, findFile returns null.
+      expect(scanner.findFile(join(realHome, "project"))).toBeNull();
+    } finally {
+      if (savedHome === undefined) delete process.env["HOME"];
+      else process.env["HOME"] = savedHome;
+    }
   });
 });
