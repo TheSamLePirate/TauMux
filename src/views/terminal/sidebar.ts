@@ -938,6 +938,14 @@ export class Sidebar {
     // move from there). Without this every card was tabindex="-1" and
     // the list was effectively keyboard-invisible.
     item.setAttribute("tabindex", "-1");
+    // P7 S7 — advertise the keyboard reorder option for AT users.
+    // Screen readers announce roledescription instead of the implicit
+    // role; pairs with the polite `.sidebar-live-region` that reports
+    // the result of an Alt+Up / Alt+Down reorder.
+    item.setAttribute(
+      "aria-roledescription",
+      "workspace — Alt+Up or Alt+Down to reorder",
+    );
     item.draggable = true;
 
     item.addEventListener("click", () => {
@@ -2670,6 +2678,21 @@ export class Sidebar {
         this.searchInputEl.select();
         return;
       }
+      // P7 S7 — Alt+Arrow takes priority over the plain Arrow
+      // highlight-walk, so it must be checked first. Reorders the
+      // highlighted workspace by one slot.
+      if (
+        e.altKey &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+        !(e.target instanceof HTMLInputElement)
+      ) {
+        const ws = this.highlightedWorkspace();
+        if (ws) {
+          e.preventDefault();
+          this.reorderByKeyboard(ws.id, e.key === "ArrowDown" ? 1 : -1);
+        }
+        return;
+      }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         if (
           e.target instanceof HTMLInputElement &&
@@ -2699,6 +2722,66 @@ export class Sidebar {
         }
       }
     });
+  }
+
+  /** P7 S7 — keyboard reorder. Mirrors the mouse drag path: computes
+   *  the new order, persists, dispatches `ht-reorder-workspaces`,
+   *  and announces the move via a polite live region so screen
+   *  readers describe what happened. */
+  private reorderByKeyboard(sourceId: string, dir: 1 | -1): void {
+    const order = this.orderedWorkspaces().map((w) => w.id);
+    const from = order.indexOf(sourceId);
+    if (from === -1) return;
+    const to = from + dir;
+    if (to < 0 || to >= order.length) return;
+    order.splice(from, 1);
+    order.splice(to, 0, sourceId);
+    this.manualOrder = order;
+    saveJson(LS_ORDER, order);
+    window.dispatchEvent(
+      new CustomEvent("ht-reorder-workspaces", {
+        detail: { order: order.slice() },
+      }),
+    );
+    this.announceReorder(sourceId, to, order.length);
+    this.renderWorkspaces();
+    // Re-focus the moved card after the re-render so subsequent
+    // Alt+Arrows continue the move from its new position.
+    const moved = this.listEl.querySelector<HTMLElement>(
+      `[data-workspace-id="${sourceId}"]`,
+    );
+    moved?.focus();
+  }
+
+  /** Politely announce a keyboard reorder so AT users hear the result.
+   *  Uses the existing `.sidebar-live-region` if present; otherwise
+   *  lazily creates one inside the workspace list. */
+  private announceReorder(
+    workspaceId: string,
+    newIndex: number,
+    total: number,
+  ): void {
+    const ws = this.workspaces.find((w) => w.id === workspaceId);
+    const name = ws?.name ?? workspaceId;
+    const msg = `Moved ${name} to position ${newIndex + 1} of ${total}`;
+    let region = this.container.querySelector<HTMLElement>(
+      ".sidebar-live-region",
+    );
+    if (!region) {
+      region = document.createElement("div");
+      region.className = "sidebar-live-region";
+      region.setAttribute("role", "status");
+      region.setAttribute("aria-live", "polite");
+      // Visually hidden but still announced.
+      region.style.position = "absolute";
+      region.style.width = "1px";
+      region.style.height = "1px";
+      region.style.overflow = "hidden";
+      region.style.clip = "rect(0 0 0 0)";
+      region.style.whiteSpace = "nowrap";
+      this.container.appendChild(region);
+    }
+    region.textContent = msg;
   }
 
   private moveHighlight(dir: 1 | -1): void {
