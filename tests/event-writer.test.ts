@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { EventWriter } from "../src/bun/event-writer";
+import { DEFAULT_MAX_IN_FLIGHT, EventWriter } from "../src/bun/event-writer";
 
 describe("EventWriter", () => {
   test("send returns true on success", () => {
@@ -66,6 +66,7 @@ describe("EventWriter", () => {
       inFlight: 0,
       failed: 0,
       peakInFlight: 0,
+      dropped: 0,
     });
   });
 
@@ -101,5 +102,75 @@ describe("EventWriter", () => {
     // First snapshot must NOT have picked up the second send.
     expect(snap.sent).toBe(1);
     expect(writer.getMetrics().sent).toBe(2);
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // P7 S5 — bounded queue + drop policy
+  // ──────────────────────────────────────────────────────────────────
+
+  test("default maxInFlight is exposed and matches the documented constant", () => {
+    const writer = new EventWriter(1);
+    expect(writer.getMaxInFlight()).toBe(DEFAULT_MAX_IN_FLIGHT);
+  });
+
+  test("custom maxInFlight is honoured; non-positive falls back to the default", () => {
+    expect(new EventWriter(1, { maxInFlight: 5 }).getMaxInFlight()).toBe(5);
+    expect(new EventWriter(1, { maxInFlight: 0 }).getMaxInFlight()).toBe(
+      DEFAULT_MAX_IN_FLIGHT,
+    );
+    expect(new EventWriter(1, { maxInFlight: -1 }).getMaxInFlight()).toBe(
+      DEFAULT_MAX_IN_FLIGHT,
+    );
+  });
+
+  test("send rejects when inFlight hits the cap, increments dropped, leaves sent untouched", async () => {
+    // Use a closed fd target so Bun.write Promises don't resolve
+    // immediately on this run; the in-flight gauge stays high enough
+    // to trip the cap. fd 1 (stdout) typically completes very fast on
+    // a TTY so we pick a small cap and burst past it.
+    const cap = 4;
+    const writer = new EventWriter(1, { maxInFlight: cap });
+
+    // Drive a burst larger than the cap. Some may settle very fast,
+    // but we should always observe at least one drop because Bun.write
+    // is async.
+    let sentCount = 0;
+    let dropCount = 0;
+    for (let i = 0; i < cap * 8; i++) {
+      const ok = writer.send({ id: `${i}`, event: "click", x: 0, y: 0 });
+      if (ok) sentCount++;
+      else dropCount++;
+    }
+
+    const m = writer.getMetrics();
+    // Each accepted send incremented `sent`; rejections did not.
+    expect(m.sent).toBe(sentCount);
+    expect(m.dropped).toBe(dropCount);
+    // The drop policy fired at least once.
+    expect(m.dropped).toBeGreaterThan(0);
+    // peakInFlight never crossed the cap.
+    expect(m.peakInFlight).toBeLessThanOrEqual(cap);
+
+    await new Promise((r) => setTimeout(r, 30));
+    expect(writer.getMetrics().inFlight).toBe(0);
+  });
+
+  test("send recovers once inFlight drains below the cap", async () => {
+    const writer = new EventWriter(1, { maxInFlight: 2 });
+    // Burst past the cap to ensure drops happen.
+    for (let i = 0; i < 8; i++) {
+      writer.send({ id: `${i}`, event: "click", x: 0, y: 0 });
+    }
+    const dropsBefore = writer.getMetrics().dropped;
+    expect(dropsBefore).toBeGreaterThan(0);
+
+    // Let the OS drain the queue.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(writer.getMetrics().inFlight).toBe(0);
+
+    // Now a fresh send must succeed; `dropped` stays where it was.
+    const ok = writer.send({ id: "after", event: "click", x: 0, y: 0 });
+    expect(ok).toBe(true);
+    expect(writer.getMetrics().dropped).toBe(dropsBefore);
   });
 });
