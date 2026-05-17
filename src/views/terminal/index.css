@@ -2598,7 +2598,7 @@ body.sidebar-resizing {
 .pane-divider {
   position: absolute;
   z-index: 20;
-  background: rgba(39, 39, 42, 0.9);
+  background: var(--ht-surface-bar-border);
   transition: background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
@@ -2818,11 +2818,11 @@ body.terminal-typing .panel {
   height: 18px;
   display: grid;
   place-items: center;
-  color: rgba(244, 244, 245, 0.42);
+  color: var(--ht-surface-bar-btn-fg);
 }
 
 .panel-close-btn:hover {
-  color: #f87171;
+  color: var(--ht-sem-error);
 }
 
 .panel-content {
@@ -2843,8 +2843,8 @@ body.terminal-typing .panel {
   object-fit: contain;
   filter:
     saturate(1.04)
-    drop-shadow(0 14px 26px rgba(0, 0, 0, 0.34))
-    drop-shadow(0 0 22px rgba(255, 197, 107, 0.08));
+    drop-shadow(0 14px 26px var(--ht-panel-inline-shadow))
+    drop-shadow(0 0 22px var(--ht-notify-amber-soft));
 }
 
 .panel-resize-handle {
@@ -2890,7 +2890,7 @@ body.terminal-typing .panel {
   border-radius: 8px;
   background: var(--tau-panel);
   border: 0.5px solid var(--tau-edge);
-  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 22px 54px var(--ht-context-menu-shadow);
   opacity: 0;
   transform: translateY(4px) scale(0.98);
   pointer-events: none;
@@ -2916,19 +2916,19 @@ body.terminal-typing .panel {
 }
 
 .surface-context-menu-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ht-pm-close-border-hover);
   color: var(--text-strong);
 }
 
 .surface-context-menu-item-danger:hover {
-  background: rgba(248, 113, 113, 0.14);
-  color: #fecaca;
+  background: var(--ht-ask-danger-banner-bg);
+  color: var(--ht-pm-kill-fg-hover);
 }
 
 .surface-context-menu-divider {
   height: 1px;
   margin: 4px 6px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ht-pm-close-border-hover);
 }
 
 .prompt-overlay {

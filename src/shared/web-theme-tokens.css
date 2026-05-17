@@ -310,6 +310,14 @@
   --ht-drop-label-bg: rgba(7, 10, 15, 0.82);
   --ht-drop-target-shadow: rgba(0, 0, 0, 0.48);
 
+  /* P7 S29 — surface context menu shadow + panel content drop-shadow
+   *  amber trace. The context menu sits above panels and needs a
+   *  deeper drop than the panel-inline-shadow (0.34) to read as
+   *  "floating popover". The amber trace is the warm halo behind
+   *  inline images / canvases that signals "this is the highlighted
+   *  panel content". */
+  --ht-context-menu-shadow: rgba(0, 0, 0, 0.5);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
