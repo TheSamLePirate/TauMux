@@ -23,7 +23,12 @@ export interface PaneLeaf {
 }
 
 /** Canonical surface-kind union shared by native, bun, persistence, and CLI. */
-export type SurfaceKind = "terminal" | "browser" | "agent" | "telegram" | "editor";
+export type SurfaceKind =
+  | "terminal"
+  | "browser"
+  | "agent"
+  | "telegram"
+  | "editor";
 
 export type PaneNode = PaneSplit | PaneLeaf;
 
@@ -518,6 +523,18 @@ export interface EditorSaveResult {
   size: number;
   error?: string;
   conflict?: boolean;
+  /** P7 S5 — populated when `conflict === true`. Carries the
+   *  before / after snapshot the UI needs to render a meaningful
+   *  "the file changed on disk" dialog ("1.2 KB → 1.4 KB at
+   *  2026-05-17 14:32:08. Reload / Overwrite / Cancel"). */
+  conflictDetail?: {
+    /** mtime the editor had loaded when the user pressed save. */
+    expectedMtimeMs: number | null;
+    /** mtime of the file on disk right now. */
+    actualMtimeMs: number;
+    /** Size of the file on disk right now. */
+    actualSize: number;
+  };
 }
 
 // webview.messages = what webview RECEIVES from bun
