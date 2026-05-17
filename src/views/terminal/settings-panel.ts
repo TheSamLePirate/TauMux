@@ -771,6 +771,18 @@ export class SettingsPanel {
     this.sectionTitle(c, "Theme");
     this.sectionDesc(c, "Choose a preset or customize individual colors.");
 
+    // ── Chrome theme (data-theme override on top of the OS preference) ──
+    // Phase 7 session 3 — the four-way selector picks which `:root[data-theme="…"]`
+    // block in `src/shared/web-theme-tokens.css` activates. "system" lets the
+    // matchMedia(prefers-color-scheme) listener decide between Graphite Dark
+    // and Graphite Light; the explicit values force one regardless of OS.
+    this.segmentedField(c, "Chrome Theme", s.chromeTheme, "chromeTheme", [
+      { value: "system", label: "System" },
+      { value: "graphite-dark", label: "Dark" },
+      { value: "graphite-light", label: "Light" },
+      { value: "high-contrast", label: "High Contrast" },
+    ]);
+
     // ── Preset cards ──
     const presetsWrap = document.createElement("div");
     presetsWrap.className = "theme-presets";

@@ -101,6 +101,66 @@ describe("SettingsPanel — Restore previous bloom (I9)", () => {
   });
 });
 
+describe("SettingsPanel — Chrome Theme selector (P7 S3)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  test("renders a four-way segmented selector with the right values", async () => {
+    const { SettingsPanel, DEFAULT_SETTINGS } = await loadSettingsPanel();
+    const panel = new SettingsPanel(() => {});
+    panel.show({ ...DEFAULT_SETTINGS, chromeTheme: "system" });
+
+    // Switch to Theme section so renderTheme() runs.
+    const themeNavBtn = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".settings-nav-item"),
+    ).find((b) => b.textContent?.includes("Theme"));
+    themeNavBtn!.click();
+
+    const rows = Array.from(
+      document.querySelectorAll<HTMLElement>(".settings-field"),
+    );
+    const chromeRow = rows.find((r) =>
+      r.textContent?.toLowerCase().includes("chrome theme"),
+    );
+    expect(chromeRow, "Chrome Theme row should exist").toBeDefined();
+
+    const segments =
+      chromeRow!.querySelectorAll<HTMLElement>(".settings-segment");
+    expect(segments.length).toBe(4);
+    const labels = Array.from(segments).map((s) => s.textContent);
+    expect(labels).toEqual(["System", "Dark", "Light", "High Contrast"]);
+    // "system" is the initial value, so the first segment carries .active.
+    expect(segments[0]!.classList.contains("active")).toBe(true);
+  });
+
+  test("clicking a segment emits the chromeTheme partial", async () => {
+    const { SettingsPanel, DEFAULT_SETTINGS } = await loadSettingsPanel();
+    const partials: Record<string, unknown>[] = [];
+    const panel = new SettingsPanel((p) =>
+      partials.push(p as Record<string, unknown>),
+    );
+    panel.show({ ...DEFAULT_SETTINGS, chromeTheme: "system" });
+    const themeNavBtn = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".settings-nav-item"),
+    ).find((b) => b.textContent?.includes("Theme"));
+    themeNavBtn!.click();
+
+    const rows = Array.from(
+      document.querySelectorAll<HTMLElement>(".settings-field"),
+    );
+    const chromeRow = rows.find((r) =>
+      r.textContent?.toLowerCase().includes("chrome theme"),
+    )!;
+    const segments =
+      chromeRow.querySelectorAll<HTMLElement>(".settings-segment");
+    (segments[2]! as HTMLButtonElement).click(); // "Light"
+
+    expect(partials.length).toBe(1);
+    expect(partials[0]).toEqual({ chromeTheme: "graphite-light" });
+  });
+});
+
 describe("SettingsPanel — theme preset feedback (I14)", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
