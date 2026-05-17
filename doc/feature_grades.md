@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.92
+**Version:** 0.3.94
 **Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 21 landed: **Cluster B a11y win** — settings panel number inputs now wire `aria-invalid` + an `aria-live="polite"` announcement when the user types a value that will be silently clamped (fontSize > 32, paneGap < 0, scrollbackLines = 99, etc.). 7 number inputs get accessible feedback. Sighted users see a red `--ht-sem-error-tint` border on the offending input. Cluster H workspace-package card + Rust cargo icon migrated to a new `--ht-package-*` token group (5 tokens) + `--ht-cargo-icon`; bin chip REUSES the S18 `--ht-badge-warn-*` family. audit:theming 842 → 832 (-10 this session). Cumulative P7: 56 lifts across 21 sessions. Remaining P7 long tail: Cluster H literal migration (~832 left, multi-session) + a few Cluster B/D/E/F.10 standalone items. Owned across future sessions of P7.
+Phase 7 polish — session 22 landed: **Cluster D closed** — terminal search now persists recent queries across sessions in localStorage and recalls them via ArrowUp / ArrowDown inside the search bar (capped at 20, duplicates bubble to top, in-flight typing restored on ArrowDown-past-newest). Closes the last open Cluster D backlog item. Cluster H workspace script button states migrated to a new `--ht-script-*` token group (5 tokens for running / error / idle-dot); the :hover state REUSES existing white-overlay tokens (--ht-agent-row-bg-hover + --ht-border-soft). audit:theming 832 → 825 (-7 this session). Cumulative P7: 58 lifts across 22 sessions. Remaining P7 long tail: Cluster H literal migration (~825 left, multi-session) + a few Cluster B/E/F.10 standalone items. Owned across future sessions of P7.
 
 ---
 
@@ -77,9 +77,8 @@ Phase 7 polish — session 21 landed: **Cluster B a11y win** — settings panel 
 
 ### Terminal search
 - **Grade: S**
-- **Evidence:** `terminal-search.ts` — lean controller; `getActiveSearchAddon()` resolves per-focused-terminal; tests cover show/hide/next/prev/clear. Phase 7 (S1) added two-state toggle buttons (Aa / `.*`) bound with `aria-pressed`; `findNext` / `findPrevious` pass `ISearchOptions { caseSensitive, regex }` so xterm's SearchAddon honours the modifiers. Toggles persist via `localStorage` under `hyperterm-canvas.search.toggles` and re-hydrate on next open. Tests in `tests/terminal-search.test.ts` (15 total).
+- **Evidence:** `terminal-search.ts` — lean controller; `getActiveSearchAddon()` resolves per-focused-terminal; tests cover show/hide/next/prev/clear. Phase 7 (S1) added two-state toggle buttons (Aa / `.*`) bound with `aria-pressed`; `findNext` / `findPrevious` pass `ISearchOptions { caseSensitive, regex }` so xterm's SearchAddon honours the modifiers. Toggles persist via `localStorage` under `hyperterm-canvas.search.toggles` and re-hydrate on next open. P7 S22 closed the recall gap: queries persist to `hyperterm-canvas.search.history` (capped at 20, duplicates bubble to top, empties skipped) and ArrowUp / ArrowDown inside the input walks the recall list — ArrowDown past index 0 restores the in-flight typing. The input advertises `aria-keyshortcuts="ArrowUp ArrowDown"` for AT discovery. Pure `pushSearchHistory()` helper exported for tests. Tests in `tests/terminal-search.test.ts` (22 total).
 - **Gaps to AAA:**
-  - Persisted query history across sessions (toggles persisted, query text not).
   - Perf on 100k+ scrollback.
 
 ### Terminal effects (WebGL bloom)
@@ -225,7 +224,7 @@ Phase 7 polish — session 21 landed: **Cluster B a11y win** — settings panel 
 - **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference. Phase 7 (S3) closed the loop with a four-way segmented selector at the top of Settings → Theme that flows through the existing `updateSettings` pipeline.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
-  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S21 walked the long tail by region: notify-glow + notification-overlay (S9), sidebar workspace-card (S10, `--ht-sidebar-*`), surface pane chrome (S11, `--ht-surface-*`), small icon button (S12, `--ht-button-*`), agent panel (S13, `--ht-agent-*`), telegram pane (S14, `--ht-telegram-*`), titlebar toolbar + sidebar inset (S15, `--ht-titlebar-*`), command palette + kbd cheat-sheet (S16, `--ht-palette-*`), ask-user modal + workspace-ask badge (S17, `--ht-ask-*`), process manager chrome + kill-button (S18, `--ht-pm-*`) plus cross-component semantic-badge namespace (`--ht-badge-*`), notification overlay + sidebar item (S19, `--ht-notif-*`) plus surface chips, workspace cwd chip (S20, `--ht-cwd-chip-*`), workspace package card + cargo icon (S21, `--ht-package-*` / `--ht-cargo-icon`; bin chip reuses `--ht-badge-warn-*`). audit:theming count: 1013 → 832 (−181 across S9–S21). Multi-session for the rest.
+  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S22 walked the long tail by region: notify-glow + notification-overlay (S9), sidebar workspace-card (S10, `--ht-sidebar-*`), surface pane chrome (S11, `--ht-surface-*`), small icon button (S12, `--ht-button-*`), agent panel (S13, `--ht-agent-*`), telegram pane (S14, `--ht-telegram-*`), titlebar toolbar + sidebar inset (S15, `--ht-titlebar-*`), command palette + kbd cheat-sheet (S16, `--ht-palette-*`), ask-user modal + workspace-ask badge (S17, `--ht-ask-*`), process manager chrome + kill-button (S18, `--ht-pm-*`) plus cross-component semantic-badge namespace (`--ht-badge-*`), notification overlay + sidebar item (S19, `--ht-notif-*`) plus surface chips, workspace cwd chip (S20, `--ht-cwd-chip-*`), workspace package card + cargo icon (S21, `--ht-package-*` / `--ht-cargo-icon`), workspace script-button states (S22, `--ht-script-*`; :hover reuses existing white-overlay tokens). audit:theming count: 1013 → 825 (−188 across S9–S22). Multi-session for the rest.
 
 ---
 

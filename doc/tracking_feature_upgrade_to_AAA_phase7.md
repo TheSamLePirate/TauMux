@@ -1092,3 +1092,50 @@ Grade distribution after S21: **20 S / 20 A / 6 B / 3 C** (unchanged — setting
 - Cluster F.10: audit remaining ad-hoc handlers; move into `src/bun/rpc-handlers/`.
 - Cluster H literal migration — next chunk: workspace-script-btn state colours, sidebar status grid, tau-status bar deeper migration.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 22 (2026-05-17)
+
+Slice picked: **Cluster D close-out** — terminal search persisted query history with ↑/↓ recall + **Cluster H workspace script-button states**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster D — search history + recall | `a36e5a2` | `src/views/terminal/terminal-search.ts`, `tests/terminal-search.test.ts` | +7 (pushSearchHistory dedupe/cap, next() records into localStorage, ArrowUp/Down recall walk, ArrowDown restores in-flight, persistence across bar instances, `aria-keyshortcuts` exposed for AT discovery) |
+| Cluster H script button states | `41f3220` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-script.test.ts` (new) | +9 (5 new `--ht-script-*` tokens defined; :hover reuses --ht-agent-row-bg-hover + --ht-border-soft) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.92 → 0.3.93 (search history) → 0.3.94 (script tokens).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `terminal-search` | S | S | **Cluster D closed.** Recent queries now persist across sessions in localStorage (`hyperterm-canvas.search.history`, capped at 20, duplicates bubble, empties skipped) and recall via ArrowUp / ArrowDown inside the search bar. The first ArrowUp stashes the user's in-flight typing so ArrowDown past index 0 restores it. The input advertises `aria-keyshortcuts="ArrowUp ArrowDown"` so AT users discover the recall. Pure `pushSearchHistory()` helper exported for unit-testing the dedupe / cap semantics. Closes the last open Cluster D backlog item. |
+| `tau-primitives` | S | S | Cluster H continues — workspace script-button states migrated to `--ht-script-*` (5 tokens for running / error / idle-dot). The :hover state REUSES existing white-overlay tokens (--ht-agent-row-bg-hover + --ht-border-soft) — exact alpha match, same intent. 7 literals migrated. audit:theming: 832 → 825 (−7). |
+
+Grade distribution after S22: **20 S / 20 A / 6 B / 3 C** (unchanged — terminal-search stayed at S; the recall gap closed but didn't cross the boundary).
+
+### Issues encountered
+
+- **Test isolation gap caught + fixed**: the new history tests in `tests/terminal-search.test.ts` initially failed because earlier `next()` tests had pushed queries into localStorage via the new code path. Fixed by extending `beforeEach` to clear the new `hyperterm-canvas.search.history` key alongside the existing toggles cleanup.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+- **No flakes this run** (byte-buffer test passed cleanly).
+
+### Exit criteria (session 22)
+
+| Criterion | Status |
+|---|---|
+| Cluster D close-out — search history + ArrowUp/Down recall | ✅ landed |
+| Cluster H script button states region migrated | ✅ 832 → 825 (−7) |
+| `bun test` green (modulo pre-existing flake) | ✅ 2381 / 0 fails; +16 new tests |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 22)
+
+- Cluster B residuals: settings reset-to-default per field (U10), IME composition guards on settings text inputs, sidebar aria-live on reorder announcement.
+- Cluster E residuals: SurfaceMetadataPoller stale-git skip-tick, more audits (locale/node/shell), health-check `fix()` remediation.
+- Cluster F.10: audit remaining ad-hoc handlers; move into `src/bun/rpc-handlers/`.
+- Cluster H literal migration — next chunk: sidebar status grid, tau-status bar deeper migration, editor pane chrome.
+- Phases 8 (release engineering) + 9 (docs / observability).
