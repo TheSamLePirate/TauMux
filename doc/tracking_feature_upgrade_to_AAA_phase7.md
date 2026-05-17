@@ -817,3 +817,48 @@ Grade distribution after S15: **20 S / 20 A / 6 B / 3 C** (unchanged — both li
 - Fold the remaining ~7 settings fields onto the seam — needs bespoke factories: `nullableTrim()` (for auditsGitUserNameExpected), `themePresetInterlock()` (one validator that takes the full settings record because themePreset gates 6 colour fields), `validatorWrapper()` (for autoContinue which already has its own validator).
 - Cluster H literal migration — next chunk (settings panel section, command palette, process manager, ask-user modal).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 16 (2026-05-17)
+
+Slice picked: **F.6 batch 4 (final simple fields)** + **Cluster H command palette + kbd cheat-sheet region**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| F.6 batch 4 — string/nullableString factories | `821a850` | `src/shared/settings.schema.ts`, `src/shared/settings.ts`, `tests/settings-schema.test.ts` | +5 (string / nullableString factories + delegated terminalBloom / cursorBlink / autoStartWebMirror / shellPath / fontFamily / auditsGitUserNameExpected) |
+| Cluster H palette + kbd cheat-sheet tokens | `fb3f26a` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-palette.test.ts` (new) | +16 (each `--ht-palette-*` token defined; .palette-* + .kbd-* rules use them) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.80 → 0.3.81 (F.6 batch 4) → 0.3.82 (Cluster H palette).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `settings-persistence` | A | A | **F.6 seam coverage now 98%.** Closes the long-standing silent-gap where 5 fields (terminalBloom, cursorBlink, autoStartWebMirror, shellPath, fontFamily) previously flowed through validateSettings via the unmodified `...s` spread with NO guard at all — a non-boolean value could reach downstream code. Added `string()` (pass-through, no trim) + `nullableString()` (null + non-empty + fallback) factories. 6 more fields migrated. Only the theme-preset interlock (themePreset gates 6 colour fields) and autoContinue (nested record with its own helper) remain. |
+| `tau-primitives` | S | S | Cluster H continues — command palette + kbd cheat-sheet (sister overlays) migrated to a new `--ht-palette-*` token group (14 tokens consolidated across both). audit:theming: 944 → 922 (−22). |
+
+Grade distribution after S16: **20 S / 20 A / 6 B / 3 C** (unchanged — both lifts continued seam-extension / migration work).
+
+### Issues encountered
+
+- **Test selector match issue caught + fixed**: the `.palette-item:hover` rule lives in a multi-selector group (`.palette-item:hover, .palette-item.selected { … }`); my `matchRule` helper only matches a selector followed directly by `{`. Worked around with a regex-on-the-whole-file assertion for the migrated background.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+- **1 pre-existing flake**: `byte-buffer fallback`. Same as previous sessions.
+
+### Exit criteria (session 16)
+
+| Criterion | Status |
+|---|---|
+| F.6 batch 4 — string/nullableString factories + 6 migrated fields (98% coverage) | ✅ landed |
+| Cluster H command palette + kbd cheat-sheet region migrated | ✅ 944 → 922 (−22) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2255 / 1 known flake; +21 new tests (5 schema batch 4 + 16 palette tokens) |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 16)
+
+- F.6 seam — close the last two fields. Needs a `derived(fn)` factory shape for the theme-preset interlock (themePreset selection drives accentColor / secondaryColor / foregroundColor / bgBase / ansiColors), and a `validatorWrapper(fn)` shape for autoContinue.
+- Cluster H literal migration — next chunk (settings panel section, process manager, ask-user modal, plan panel fallback strip).
+- Phases 8 (release engineering) + 9 (docs / observability).
