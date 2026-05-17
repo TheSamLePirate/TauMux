@@ -1423,6 +1423,7 @@ export class SettingsPanel {
       const n = Number.parseInt(cdInput.value, 10);
       if (Number.isFinite(n)) patch({ cooldownMs: n });
     });
+    bindClampFeedback(cdInput, 0, 60000, cdRow);
     cdRow.appendChild(cdInput);
 
     // Max consecutive — number
@@ -1442,6 +1443,7 @@ export class SettingsPanel {
       const n = Number.parseInt(maxInput.value, 10);
       if (Number.isFinite(n)) patch({ maxConsecutive: n });
     });
+    bindClampFeedback(maxInput, 1, 50, maxRow);
     maxRow.appendChild(maxInput);
 
     // Model name — text
@@ -1682,6 +1684,7 @@ export class SettingsPanel {
       const n = parseFloat(input.value);
       if (!isNaN(n)) this.emit({ [key]: n });
     });
+    bindClampFeedback(input, opts.min, opts.max, row);
     row.appendChild(input);
   }
 
@@ -2026,3 +2029,73 @@ export function generateAuthToken(): string {
   }
   return hex;
 }
+
+/**
+ * P7 S21 / B.aria-invalid — wire a number `<input>` so it gives an
+ * accessible signal when the user types outside [min, max]. Without
+ * this, validateSettings() silently clamps and the user gets zero
+ * feedback (the typed value just doesn't stick after page refresh).
+ *
+ * Behaviour:
+ *   - On every `input` event, re-evaluate the parsed number.
+ *   - If outside the range, set `aria-invalid="true"` and stamp a
+ *     short message into a sibling `<span aria-live="polite">`.
+ *   - If inside or non-numeric (empty mid-type), clear both signals.
+ *
+ * The `<span>` is appended to the row container so screen readers
+ * pick it up without changing the visual layout (it's display:none
+ * via CSS; the `aria-live` region still works while hidden).
+ */
+export function bindClampFeedback(
+  input: HTMLInputElement,
+  min: number,
+  max: number,
+  row: HTMLElement,
+): void {
+  const msg = document.createElement("span");
+  msg.className = "settings-input-error";
+  msg.setAttribute("aria-live", "polite");
+  msg.setAttribute("role", "status");
+  // Stamp the id back as the input's aria-errormessage so AT can
+  // announce the message when aria-invalid flips on. Generate a
+  // unique id per call so multiple inputs on the same page don't
+  // collide.
+  const id = `settings-clamp-${++clampFeedbackSeq}`;
+  msg.id = id;
+  input.setAttribute("aria-errormessage", id);
+  row.appendChild(msg);
+
+  const update = (): void => {
+    const raw = input.value;
+    if (raw === "") {
+      input.removeAttribute("aria-invalid");
+      msg.textContent = "";
+      return;
+    }
+    const n = parseFloat(raw);
+    if (Number.isNaN(n)) {
+      input.removeAttribute("aria-invalid");
+      msg.textContent = "";
+      return;
+    }
+    if (n < min) {
+      input.setAttribute("aria-invalid", "true");
+      msg.textContent = `Value below minimum (${min}); will be clamped to ${min}.`;
+      return;
+    }
+    if (n > max) {
+      input.setAttribute("aria-invalid", "true");
+      msg.textContent = `Value above maximum (${max}); will be clamped to ${max}.`;
+      return;
+    }
+    input.removeAttribute("aria-invalid");
+    msg.textContent = "";
+  };
+
+  input.addEventListener("input", update);
+  input.addEventListener("change", update);
+  // Run once on bind so a pre-populated out-of-range value is flagged.
+  update();
+}
+
+let clampFeedbackSeq = 0;

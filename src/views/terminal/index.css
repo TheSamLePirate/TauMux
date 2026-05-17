@@ -4428,6 +4428,30 @@ body.terminal-typing .panel {
   text-align: right;
 }
 
+/* P7 S21 / B.aria-invalid — visible cue + screen-reader cue when the
+ * user types outside [min, max]. Without this, validateSettings()
+ * silently clamps and the user sees no feedback.
+ *
+ * The .settings-input-error span is the aria-live region; visually
+ * hidden (clip-path 0) but still announced. The aria-invalid
+ * highlight on the input itself gives a sighted cue. */
+.settings-input[aria-invalid="true"] {
+  border-color: var(--ht-sem-error);
+  background: var(--ht-sem-error-tint);
+}
+
+.settings-input-error {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .settings-input-hex {
   max-width: 90px;
   font-family: 'SF Mono', 'Fira Code', monospace;
