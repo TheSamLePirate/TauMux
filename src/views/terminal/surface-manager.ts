@@ -5,6 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { PanelManager } from "./panel-manager";
 import { PaneLayout, setPaneGap } from "./pane-layout";
 import { Sidebar } from "./sidebar";
+import { WorkspaceCollection } from "./workspace-collection";
 import { createIcon } from "./icons";
 import { applyTauPaneClasses } from "./tau-primitives";
 import type { TauIdentity } from "./tau-tokens";
@@ -172,6 +173,14 @@ export interface Workspace {
 export class SurfaceManager {
   private surfaces = new Map<string, SurfaceView>();
   private workspaces: Workspace[] = [];
+  /** P7 S11 (F.11) — thin facade over `workspaces` that exposes typed
+   *  lookup helpers (findById, findContainingSurface, etc.) so future
+   *  sessions can extract the collection without rewriting every
+   *  consumer. The array itself still lives here until the mutation
+   *  methods migrate. */
+  private workspaceCollection = new WorkspaceCollection({
+    workspaces: this.workspaces,
+  });
   private activeWorkspaceIndex = -1;
   private focusedSurfaceId: string | null = null;
   private dividerEls: HTMLDivElement[] = [];
@@ -257,14 +266,15 @@ export class SurfaceManager {
     });
     this.sidebar = new Sidebar(sidebarContainer, {
       onSelectWorkspace: (id) => {
-        const idx = this.workspaces.findIndex((w) => w.id === id);
+        // P7 S11 (F.11) — typed lookup via the collection facade.
+        const idx = this.workspaceCollection.findIndexById(id);
         if (idx !== -1) this.switchToWorkspace(idx);
       },
       onNewWorkspace: () => {
         htEvents.emit("ht-new-workspace", undefined);
       },
       onCloseWorkspace: (id) => {
-        const ws = this.workspaces.find((w) => w.id === id);
+        const ws = this.workspaceCollection.findById(id);
         if (ws) {
           for (const sid of [...ws.surfaceIds]) {
             htEvents.emit("ht-close-surface", { surfaceId: sid });
@@ -915,7 +925,8 @@ export class SurfaceManager {
   } | null {
     const view = this.surfaces.get(surfaceId);
     if (!view) return null;
-    const ws = this.workspaces.find((w) => w.surfaceIds.has(surfaceId));
+    // P7 S11 (F.11) — typed lookup via the collection facade.
+    const ws = this.workspaceCollection.findContainingSurface(surfaceId);
     return {
       id: surfaceId,
       title: view.title,
@@ -1080,7 +1091,8 @@ export class SurfaceManager {
     title: string,
     workspaceId: string,
   ): void {
-    const idx = this.workspaces.findIndex((w) => w.id === workspaceId);
+    // P7 S11 (F.11) — typed lookup via the collection facade.
+    const idx = this.workspaceCollection.findIndexById(workspaceId);
     if (idx === -1) {
       this.addSurface(surfaceId, title);
       return;
