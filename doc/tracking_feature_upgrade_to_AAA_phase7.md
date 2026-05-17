@@ -1373,3 +1373,46 @@ Grade distribution after S27: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers; move webview dispatch into `src/bun/rpc-handlers/`.
 - Cluster H literal migration — next chunk: workspace status entries / progress / pane chips, plan-panel sidebar widget remaining literals, telegram bridge sub-states.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 28 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — sideband panel container chrome + small cross-component reuses, then panel-interactive amber + drag handle + dragging-state shadow + title text-shadow.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H panel chrome + 3 small reuses | `3f2c6456` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-panel.test.ts` (new) | +10 (5 new --ht-panel-* tokens + reuses for workspace-progress / palette-item-category / surface-details scrim) |
+| Cluster H panel-interactive + drag handle | `543ce5e8` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-panel-interactive.test.ts` (new) | +8 (4 new tokens + amber alphas harmonised onto --ht-notify-amber-* with ≤1% delta; drag handle reuses --ht-agent-row-bg-hover + --ht-package-header-bg-hover insets) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.104 → 0.3.105 (panel chrome) → 0.3.106 (panel-interactive).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — double chunk this session. (1) Sideband panel container chrome migrated to `--ht-panel-*` (5 tokens: border tetra + inline bg + inline shadow), plus three small cross-component REUSES (.workspace-progress bg, .palette-item-category border, .surface-details-overlay scrim). (2) Panel-interactive amber hover + drag handle gradient/bg/border + dragging-state deeper shadow + title text-shadow migrated to 4 new tokens (--ht-panel-interactive-shadow, --ht-panel-drag-shadow-strong, --ht-panel-handle-bg, --ht-notify-amber-wash) + harmonisation of 3 amber alphas onto the existing --ht-notify-amber-* family with ≤1% perceptual delta. ~20 literals migrated across two commits. audit:theming: 767 → 747 (−20). |
+
+Grade distribution after S28: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **matchRule false-positive on `.panel-interactive`**: there are two `.panel-interactive` selectors in the file — the first is a multi-selector transform-only override (`.panel-position-float:hover, .panel-position-overlay:hover, .panel-interactive { transform: translateY(-2px); }`) and the second is the migrated border/shadow rule. matchRule grabs the first; switched to a regex-on-the-whole-file assertion that looks for the migrated declarations specifically.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 28)
+
+| Criterion | Status |
+|---|---|
+| Cluster H panel chrome + reuses | ✅ 767 → 758 (−9) |
+| Cluster H panel-interactive + drag handle | ✅ 758 → 747 (−11) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2450 / 0–2 known flakes; +18 new tests |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 28)
+
+- Cluster F.10: audit remaining ad-hoc handlers; move webview dispatch into `src/bun/rpc-handlers/`. (Deferred again — large refactor; consider a focused first-extraction.)
+- Cluster H literal migration — next chunk: surface-drag-ghost + surface-drop-overlay (color-mix heavy; needs careful tokens), workspace status entries / progress / pane chips, plan-panel sidebar widget remaining literals, telegram bridge sub-states.
+- Phases 8 (release engineering) + 9 (docs / observability).
