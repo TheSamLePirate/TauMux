@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.53
+**Version:** 0.3.56
 **Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 5 landed: EventWriter bounded-queue + drop policy on top of the S4 metrics, caps queued frames to ~1 MB worst case (event-writer A→S); editor save-race UX with structured `conflictDetail` + `force: true` flag + out-of-band-delete detection (editor-pane A→S); per-pane OSC 9;4 progress chip (`▰▰▱▱▱ 40%`, paused / error / indeterminate variants) wired through `SurfaceMetadata.progress` so the chip survives 1 Hz refreshes (pane-chip-rendering stays at S, with new evidence). Cumulative P7: 17 lifts across 5 sessions. Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — deferred as a dedicated session, settings.ts is 1166 LOC / ~396 fields) + literal-to-token migration + browser partition (H.8/H.9) + telegram DB TTL + auto-continue persistence + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.
+Phase 7 polish — session 6 landed: Telegram DB grows a 90-day message TTL prune alongside the existing link prunes (telegram-bridge stays at S, with last named gap closed); auto-continue paused-surfaces now persist across restarts via a v1 JSON snapshot with debounced atomic writes (auto-continue A→S); browser panes get per-surface partition isolation by default (new `browserPartitionMode = 'per-surface'` setting derives `persist:browser-<id>` jars so cookies / localStorage / IndexedDB don't cross-contaminate — H.8 / browser-pane stays at S, with new isolation evidence). Cumulative P7: 20 lifts across 6 sessions. Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — deferred as a dedicated session, settings.ts is 1166 LOC / ~396 fields) + literal-to-token migration + H.9 session cap + manifest-auth + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.
 
 ---
 
@@ -34,8 +34,8 @@ Phase 7 polish — session 5 landed: EventWriter bounded-queue + drop policy on 
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **17** | Best-in-class — 17 features cleared every gap. |
-| A | **22** | Most "production-shaped" subsystems. |
+| S (AAA) | **18** | Best-in-class — 18 features cleared every gap. |
+| A | **21** | Most "production-shaped" subsystems. |
 | B (incl. B+) | **7** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
@@ -249,9 +249,8 @@ Phase 7 polish — session 5 landed: EventWriter bounded-queue + drop policy on 
 
 ### Telegram bridge
 - **Grade: S**
-- **Evidence:** Three-table schema with atomic `kv.poll_offset` resume; per-chat token bucket 1 msg/sec; partial-UNIQUE dedup; inbound allow-list; outbound chatId allow-list (H.6). Phase 4 (S11/H.11) added a `sanitizeParseMode` allow-list at the transport boundary — only `MarkdownV2` survives, everything else (HTML, Markdown v1, typos, attacker payloads) falls back to plain text. TS signatures tightened to `"MarkdownV2"` only.
+- **Evidence:** Three-table schema with atomic `kv.poll_offset` resume; per-chat token bucket 1 msg/sec; partial-UNIQUE dedup; inbound allow-list; outbound chatId allow-list (H.6). Phase 4 (S11/H.11) added a `sanitizeParseMode` allow-list at the transport boundary — only `MarkdownV2` survives, everything else (HTML, Markdown v1, typos, attacker payloads) falls back to plain text. TS signatures tightened to `"MarkdownV2"` only. Phase 7 (S6) added an age-based prune for the main `messages` table: `pruneOldMessages(cutoffMs)` runs at boot alongside the existing link prunes with a 90-day cutoff, so a long-lived install across many quiet chats no longer accumulates hundreds of MB of SQLite. Tests in `tests/telegram-db.test.ts` (+3, 11 total).
 - **Gaps to AAA:**
-  - Message TTL / DB pruning (owned by P7 polish — the SQLite DB grows unbounded with chat history).
 
 ### Pi agent
 - **Grade: A**
@@ -270,7 +269,7 @@ Phase 7 polish — session 5 landed: EventWriter bounded-queue + drop policy on 
 
 ### Browser surface (browser pane)
 - **Grade: S**
-- **Evidence:** `browser-pane.ts` (999 LOC) — OOPIF `<electrobun-webview>`, address bar, nav buttons, console/error capture, `BrowserHistoryStore`, 40+ socket API methods, sandbox + partition. Phase 3 added `tests/browser-pane.test.ts`: runtime coverage of the pure helpers (isUrl, normalizeUrl, buildSearchUrl), plus source-grep invariants on the construction surface (electrobun-webview can't run under happy-dom, so the OOPIF-dependent path is pinned via source). Phase 7 (S4) hardened the RPC navigation surface with `isSplitDirection` / `isNavigableUrl` / `requireSurfaceId` validators: `browser.navigate` rejects a missing url or typoed scheme (`htps://…`), `browser.open_split` rejects an unknown direction (no silent default to `horizontal`), `back/forward/reload` require a non-empty `surface_id`. Tests in `tests/rpc-handler-browser.test.ts` (+7, 31 total).
+- **Evidence:** `browser-pane.ts` (999 LOC) — OOPIF `<electrobun-webview>`, address bar, nav buttons, console/error capture, `BrowserHistoryStore`, 40+ socket API methods, sandbox + partition. Phase 3 added `tests/browser-pane.test.ts`: runtime coverage of the pure helpers (isUrl, normalizeUrl, buildSearchUrl), plus source-grep invariants on the construction surface (electrobun-webview can't run under happy-dom, so the OOPIF-dependent path is pinned via source). Phase 7 (S4) hardened the RPC navigation surface with `isSplitDirection` / `isNavigableUrl` / `requireSurfaceId` validators. Phase 7 (S6 / H.8) added per-surface partition isolation: `AppSettings.browserPartitionMode = "per-surface"` (default) gives every pane its own `persist:browser-<id>` jar so cookies / localStorage / IndexedDB don't cross-contaminate between panes. `BrowserSurfaceManager.createSurfaceWithPartitionMode` computes the partition; the webview now reads `payload.partition` instead of hardcoding `persist:browser-shared`. Tests in `tests/browser-surface-manager.test.ts` + `tests/settings-manager.test.ts` (+7).
 - **Gaps to AAA:**
   - Zoom persistence across restart.
   - `findInPage` exposed to CLI.
@@ -283,10 +282,9 @@ Phase 7 polish — session 5 landed: EventWriter bounded-queue + drop policy on 
   - Mirror persists audit across page reload.
 
 ### Auto-continue engine
-- **Grade: A**
-- **Evidence:** `auto-continue-engine.ts` (509 LOC) — typed `AutoContinueOutcome` discriminated union; per-surface runaway counter + cooldown; audit ring with throw-isolated subscribers; dry-run path; LLM-fail → heuristic fallback. 9 test files.
+- **Grade: S**
+- **Evidence:** `auto-continue-engine.ts` (509 LOC) — typed `AutoContinueOutcome` discriminated union; per-surface runaway counter + cooldown; audit ring with throw-isolated subscribers; dry-run path; LLM-fail → heuristic fallback. 9 test files. Phase 7 (S6) added paused-surfaces persistence: engine grows an optional `onPausedChange` dep + a `hydratePaused` boot hook; new `src/bun/auto-continue-persistence.ts` reads/writes a v1 JSON snapshot at `$HT_CONFIG_DIR/auto-continue-paused.json` with 300 ms-debounced atomic writes. A user pausing a looping agent then restarting τ-mux now keeps the surface paused — silently re-enabling auto-continue across restarts was the long-standing surprise. Tests in `tests/auto-continue-persistence.test.ts` (+6) + `tests/auto-continue-pause.test.ts` (+5).
 - **Gaps to AAA:**
-  - Paused-surfaces list persists in-memory only — lost on restart.
   - Consecutive counter doesn't cleanly cap+warn at `maxConsecutive`.
   - Per-session firing metrics.
 

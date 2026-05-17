@@ -312,3 +312,56 @@ Grade distribution after S5: **17 S / 22 A / 7 B / 3 C** (was 15 S / 24 A / 7 B 
 - Cluster G: H.8 per-surface browser partition, H.9 session cap + manifest-auth.
 - Cluster H: literal-to-token migration (~1013 colour literals).
 - Telegram DB TTL pruning + auto-continue persistence remain in cluster C.
+
+---
+
+## Session 6 (2026-05-17)
+
+Slice picked: **Telegram DB TTL** (C) + **auto-continue persistence** (C) + **per-surface browser partition** (G / H.8). Three concrete lifts closing two cluster-C items and one cluster-G security ask.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Telegram DB TTL prune | `082f189` | `src/bun/telegram-db.ts`, `src/bun/index.ts`, `tests/telegram-db.test.ts` | +3 (drops old + leaves new + multi-chat, no-op empty cutoff, no-op past cutoff) |
+| Auto-continue persistence | `1f34791` | `src/bun/auto-continue-engine.ts`, `src/bun/auto-continue-persistence.ts` (new), `src/bun/index.ts`, `tests/auto-continue-persistence.test.ts` (new), `tests/auto-continue-pause.test.ts` | +6 (persistence: load missing / v1 / unknown / malformed / type filter / debounce + roundtrip) + 5 (engine: hook fires on pause/resume/resetAll, no-op skips, hydrate seeds silently, dedupes) |
+| Per-surface browser partition | `2106f6d` | `src/shared/settings.ts`, `src/shared/types.ts`, `src/bun/browser-surface-manager.ts`, `src/bun/index.ts`, `src/views/terminal/{browser-pane,surface-manager,index}.ts`, `tests/browser-surface-manager.test.ts`, `tests/settings-manager.test.ts` | +3 (shared mode reuses jar, per-surface unique, partition stored) + 4 (default + valid/invalid validator) |
+
+Bumps: `bun run bump:patch` ran before each functional commit.
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `telegram-bridge` | S | S | Already S in P5. P7 S6 closed the last named gap (DB TTL) — `pruneOldMessages(cutoffMs)` runs at boot with a 90-day cutoff alongside the existing link prunes. A year of low-volume "ack" notifications across many chats no longer accumulates hundreds of MB of SQLite. |
+| `auto-continue` | A | **S** | Paused-surfaces set persists across restarts via `$HT_CONFIG_DIR/auto-continue-paused.json` (versioned v1, debounced atomic writes). Engine adds `onPausedChange` dep + `hydratePaused` boot hook so the host wires the persistence without the engine knowing about disk IO. The "user pauses agent → restart silently re-enables it" footgun is closed. |
+| `browser-pane` | S | S | Already S after S4 navigation validation. P7 S6 / H.8 added per-surface partition isolation: `AppSettings.browserPartitionMode = "per-surface"` (default) derives `persist:browser-<id>` per pane, so cookies / localStorage / IndexedDB don't cross-contaminate. Two gmail-account panes can now coexist. |
+
+Grade distribution after S6: **18 S / 21 A / 7 B / 3 C** (was 17 / 22 / 7 / 3).
+
+### Issues encountered
+
+- **`this.settings.browserSearchEngine` doesn't exist on SurfaceManager**: I assumed the manager held the `AppSettings` object, but it doesn't — settings flow through `applySettings()` and aren't retained. Patched the call to pass the literal `"google"` default for now; future refactor should plumb the search engine through properly. Captured in "next slice" below.
+- **`tentativeId` race in my first attempt** at computing the per-surface partition string outside the manager: `BrowserSurfaceManager.surfaceCount` does not equal `++counter` after closes. Fixed by adding `createSurfaceWithPartitionMode(url, mode)` to the manager so it owns both id allocation and partition derivation.
+- **Pre-existing typecheck noise** unchanged: same 2 errors as prior sessions.
+- **`session-history.test.ts`** byte-buffer fallback did not flake in this session's full-suite run (2086 / 0).
+
+### Exit criteria (session 6)
+
+| Criterion | Status |
+|---|---|
+| Telegram message-table prune lands at boot | ✅ |
+| Paused-surfaces survive a restart | ✅ |
+| Per-surface browser partition by default | ✅ |
+| `bun test` green | ✅ 2086 / 0 |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 6)
+
+- F.6 `settings.schema.ts` source-of-truth — still pending as a dedicated session.
+- Cluster F refactors: A6 typed `EventBus`, A7 `VariantContext`, F.11 `WorkspaceCollection`.
+- Cluster G remainder: H.9 session cap + manifest-auth + cross-site origin check.
+- Cluster H: theme-token migration (~1013 colour literals) + sidebar drag-reorder polish.
+- Plumb `browserSearchEngine` through `SurfaceManager` (cleanup from S6 punt).
