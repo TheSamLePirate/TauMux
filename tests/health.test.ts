@@ -118,4 +118,91 @@ describe("HealthRegistry", () => {
     r.set("pty", "degraded", "x");
     expect(calls).toBe(1);
   });
+
+  // ────────────────────────────────────────────────────────────────
+  // Phase 7 — remediation fix()
+  // ────────────────────────────────────────────────────────────────
+
+  test("entries without a fix have no fixLabel in the snapshot", () => {
+    const r = new HealthRegistry();
+    r.set("pty", "ok", "running");
+    const snap = r.snapshot();
+    expect(snap.entries[0].fixLabel).toBeUndefined();
+  });
+
+  test("a fix attached at set() surfaces as fixLabel on the snapshot", () => {
+    const r = new HealthRegistry();
+    r.set("telegram", "degraded", "polling stopped", {
+      label: "Restart polling",
+      action: async () => {},
+    });
+    const snap = r.snapshot();
+    expect(snap.entries[0].fixLabel).toBe("Restart polling");
+  });
+
+  test("runFix(id) invokes the attached action and returns the post-fix snapshot", async () => {
+    const r = new HealthRegistry();
+    let actionCalls = 0;
+    r.set("telegram", "error", "auth failed", {
+      label: "Re-auth",
+      action: async () => {
+        actionCalls++;
+        // Subsystem pushes a fresh state from inside the action.
+        r.set("telegram", "ok", "polling");
+      },
+    });
+    const snap = await r.runFix("telegram");
+    expect(actionCalls).toBe(1);
+    expect(snap.entries[0].severity).toBe("ok");
+    expect(snap.entries[0].fixLabel).toBeUndefined();
+    expect(snap.ok).toBe(true);
+  });
+
+  test("runFix throws when the id doesn't exist", async () => {
+    const r = new HealthRegistry();
+    await expect(r.runFix("nope")).rejects.toThrow(/no entry for id/);
+  });
+
+  test("runFix throws when the entry has no fix attached", async () => {
+    const r = new HealthRegistry();
+    r.set("pty", "degraded", "slow");
+    await expect(r.runFix("pty")).rejects.toThrow(/has no fix attached/);
+  });
+
+  test("set() is still idempotent when fix labels match", () => {
+    const r = new HealthRegistry();
+    let calls = 0;
+    r.subscribe(() => calls++);
+    const fix = { label: "Restart", action: async () => {} };
+    r.set("telegram", "degraded", "x", fix);
+    r.set("telegram", "degraded", "x", { ...fix });
+    expect(calls).toBe(1);
+  });
+
+  test("set() fires a notification when the fix label changes", () => {
+    const r = new HealthRegistry();
+    let calls = 0;
+    r.subscribe(() => calls++);
+    r.set("telegram", "degraded", "x", {
+      label: "Restart",
+      action: async () => {},
+    });
+    r.set("telegram", "degraded", "x", {
+      label: "Re-auth",
+      action: async () => {},
+    });
+    expect(calls).toBe(2);
+  });
+
+  test("action errors propagate so the caller sees them", async () => {
+    const r = new HealthRegistry();
+    r.set("telegram", "error", "x", {
+      label: "Try",
+      action: async () => {
+        throw new Error("backend down");
+      },
+    });
+    await expect(r.runFix("telegram")).rejects.toThrow(/backend down/);
+    expect(r.snapshot().entries[0].severity).toBe("error");
+  });
 });
