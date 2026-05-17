@@ -80,6 +80,10 @@ import {
 import { HealthRegistry } from "./health";
 import { PlanStore } from "./plan-store";
 import { AutoContinueEngine } from "./auto-continue-engine";
+import {
+  createPausedSurfacesPersister,
+  loadPausedSurfaces,
+} from "./auto-continue-persistence";
 import { createAutoContinueHost } from "./auto-continue-host";
 import { createPlanStatusBridge } from "./plan-status-bridge";
 import { AskUserQueue } from "./ask-user-queue";
@@ -2815,6 +2819,13 @@ async function runAndPublishAudits(): Promise<void> {
 // fresh on every dispatch (so a Settings flip applies without a
 // restart) and pushes audit entries on every decision; we
 // rebroadcast the audit ring so the future panel UI can render it.
+// P7 S6 — persist the paused-surfaces set so an explicit user pause
+// survives a restart. Without this, killing a looping agent then
+// restarting τ-mux silently re-enables auto-continue on its surface.
+const autoContinuePausedPath = join(configDir, "auto-continue-paused.json");
+const autoContinuePersister = createPausedSurfacesPersister(
+  autoContinuePausedPath,
+);
 const autoContinue = new AutoContinueEngine({
   getSettings: () => settingsManager.get().autoContinue,
   sendText: (surfaceId, text) => {
@@ -2826,7 +2837,22 @@ const autoContinue = new AutoContinueEngine({
       );
     }
   },
+  onPausedChange: (ids) => autoContinuePersister.persist(ids),
 });
+// Hydrate from disk before any dispatch can fire. `hydratePaused`
+// deliberately does NOT echo through `onPausedChange`, so we don't
+// immediately re-write the file we just read.
+try {
+  const restored = loadPausedSurfaces(autoContinuePausedPath);
+  if (restored.length > 0) {
+    autoContinue.hydratePaused(restored);
+    console.log(
+      `[auto-continue] restored ${restored.length} paused surface(s) from disk`,
+    );
+  }
+} catch (err) {
+  console.warn("[auto-continue] paused-surfaces hydrate failed:", err);
+}
 function visibleAutoContinueAudit(
   audit = autoContinue.getAudit(),
 ): AutoContinueAuditEntry[] {

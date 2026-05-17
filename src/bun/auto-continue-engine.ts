@@ -47,6 +47,11 @@ export interface AutoContinueEngineDeps {
   callModel?: ModelCaller;
   /** Wall-clock injection for hermetic tests. */
   now?: () => number;
+  /** P7 S6 — optional hook fired whenever the paused-surfaces set
+   *  changes (pause / resume / resetAll). The host wires this to a
+   *  debounced disk writer so the user's explicit pauses survive a
+   *  restart. */
+  onPausedChange?: (paused: string[]) => void;
 }
 
 export interface ModelCallerInput {
@@ -94,6 +99,7 @@ export class AutoContinueEngine {
   pause(surfaceId: string, reason = "manual pause via ht/UI"): void {
     if (this.pausedSurfaces.has(surfaceId)) return;
     this.pausedSurfaces.add(surfaceId);
+    this.notifyPausedChange();
     this.pushAudit({
       at: this.now(),
       surfaceId,
@@ -110,6 +116,7 @@ export class AutoContinueEngine {
   resume(surfaceId: string, reason = "manual resume via ht/UI"): void {
     if (!this.pausedSurfaces.has(surfaceId)) return;
     this.pausedSurfaces.delete(surfaceId);
+    this.notifyPausedChange();
     const s = this.state.get(surfaceId);
     if (s) {
       s.consecutive = 0;
@@ -125,6 +132,23 @@ export class AutoContinueEngine {
     });
   }
 
+  /** P7 S6 — hydrate the paused set from a previously-saved snapshot.
+   *  Called once at boot before any dispatch can fire. Does NOT push
+   *  audit entries (the user didn't just press pause) and does NOT
+   *  re-broadcast through `onPausedChange` (caller already has the
+   *  snapshot — would otherwise immediately echo back to disk). */
+  hydratePaused(ids: readonly string[]): void {
+    for (const id of ids) this.pausedSurfaces.add(id);
+  }
+
+  private notifyPausedChange(): void {
+    try {
+      this.deps.onPausedChange?.([...this.pausedSurfaces]);
+    } catch {
+      /* a buggy persister must not break pause/resume */
+    }
+  }
+
   isPaused(surfaceId: string): boolean {
     return this.pausedSurfaces.has(surfaceId);
   }
@@ -136,7 +160,9 @@ export class AutoContinueEngine {
   /** Drop all per-surface counters (e.g. on session reset). */
   resetAll(): void {
     this.state.clear();
+    const hadPaused = this.pausedSurfaces.size > 0;
     this.pausedSurfaces.clear();
+    if (hadPaused) this.notifyPausedChange();
   }
 
   /** Snapshot the audit ring for inspection / RPC export. */

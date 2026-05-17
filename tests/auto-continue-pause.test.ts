@@ -181,4 +181,63 @@ describe("AutoContinueEngine — pause / resume", () => {
     engine.resetAll();
     expect(engine.listPaused()).toEqual([]);
   });
+
+  // ────────────────────────────────────────────────────────────────
+  // P7 S6 — onPausedChange hook + hydratePaused
+  // ────────────────────────────────────────────────────────────────
+
+  test("onPausedChange fires on pause, resume, and resetAll", () => {
+    const calls: string[][] = [];
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings(),
+      onPausedChange: (ids) => calls.push([...ids]),
+    });
+    engine.pause("s1");
+    engine.pause("s2");
+    engine.resume("s1");
+    engine.resetAll();
+    expect(calls).toEqual([["s1"], ["s1", "s2"], ["s2"], []]);
+  });
+
+  test("onPausedChange does NOT fire when pause is a no-op (already paused)", () => {
+    const calls: string[][] = [];
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings(),
+      onPausedChange: (ids) => calls.push([...ids]),
+    });
+    engine.pause("s1");
+    engine.pause("s1"); // no-op
+    expect(calls).toEqual([["s1"]]);
+  });
+
+  test("onPausedChange does NOT fire when resetAll has nothing to clear", () => {
+    const calls: string[][] = [];
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings(),
+      onPausedChange: (ids) => calls.push([...ids]),
+    });
+    engine.resetAll();
+    expect(calls).toEqual([]);
+  });
+
+  test("hydratePaused seeds the set without echoing through onPausedChange", () => {
+    const calls: string[][] = [];
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings(),
+      onPausedChange: (ids) => calls.push([...ids]),
+    });
+    engine.hydratePaused(["s7", "s8"]);
+    expect(engine.listPaused().sort()).toEqual(["s7", "s8"]);
+    // Boot-time restore must not re-write what we just read.
+    expect(calls).toEqual([]);
+  });
+
+  test("hydratePaused does not duplicate ids already in the set", () => {
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings(),
+    });
+    engine.pause("s1");
+    engine.hydratePaused(["s1", "s2"]);
+    expect(engine.listPaused().sort()).toEqual(["s1", "s2"]);
+  });
 });
