@@ -146,7 +146,9 @@ describe("CookieStore", () => {
 
     const result = store.search("goo");
     expect(result).toHaveLength(1);
-    expect(result[0].domain).toBe(".google.com");
+    // Phase 7 — store normalizes domain on insert (lowercase + strip
+    // leading dot) so `.google.com` is stored as `google.com`.
+    expect(result[0].domain).toBe("google.com");
   });
 
   test("search by name", async () => {
@@ -164,6 +166,8 @@ describe("CookieStore", () => {
     store.set(makeCookie({ name: "a", domain: ".x.com" }));
     store.set(makeCookie({ name: "b", domain: ".x.com" }));
 
+    // Phase 7 — delete() normalizes the input domain, so callers can
+    // pass either the raw `.x.com` or the normalized `x.com`.
     expect(store.delete(".x.com", "/", "a")).toBe(true);
     expect(store.getAll()).toHaveLength(1);
     expect(store.getAll()[0].name).toBe("b");
@@ -183,7 +187,8 @@ describe("CookieStore", () => {
     const count = store.deleteForDomain(".example.com");
     expect(count).toBe(2);
     expect(store.getAll()).toHaveLength(1);
-    expect(store.getAll()[0].domain).toBe(".other.com");
+    // Phase 7 — stored domain is normalized.
+    expect(store.getAll()[0].domain).toBe("other.com");
   });
 
   test("clear", async () => {
@@ -281,5 +286,84 @@ describe("CookieStore", () => {
     const rootResult = store.getForUrl("https://example.com/");
     expect(rootResult).toHaveLength(1);
     expect(rootResult[0].name).toBe("root");
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // Phase 7 — URL-host normalization + per-domain cap
+  // ────────────────────────────────────────────────────────────────
+
+  test("set() normalizes the cookie's domain (lowercase + leading-dot strip)", async () => {
+    const { store } = await makeStore();
+    store.set(makeCookie({ name: "a", domain: "EXAMPLE.com" }));
+    store.set(makeCookie({ name: "b", domain: ".Example.COM" }));
+    // Both store at the same key shape because the domain is
+    // normalized. The second call overwrites the first if name+path
+    // also collide; since name differs we get two entries on the
+    // same normalized domain.
+    const all = store.getAll();
+    expect(all.length).toBe(2);
+    for (const e of all) expect(e.domain).toBe("example.com");
+  });
+
+  test("`EXAMPLE.com` and `example.com` collide as the browser does", async () => {
+    const { store } = await makeStore();
+    store.set(makeCookie({ name: "x", domain: "Example.com", value: "first" }));
+    store.set(
+      makeCookie({ name: "x", domain: ".EXAMPLE.com", value: "second" }),
+    );
+    const all = store.getAll();
+    expect(all.length).toBe(1);
+    expect(all[0].value).toBe("second");
+    expect(all[0].domain).toBe("example.com");
+  });
+
+  test("per-domain cap evicts oldest entries inside one bucket", async () => {
+    // The cap is MAX_PER_DOMAIN = 500; we test at 510 to stay below
+    // the global 50k cap so the per-domain cap is what fires.
+    const { store } = await makeStore();
+    for (let i = 0; i < 510; i++) {
+      // Stagger updatedAt by waiting; instead, set updatedAt
+      // explicitly via the entry. (set() overwrites updatedAt to
+      // now, so without a delay all entries share the same instant
+      // and the eviction tie-break is map-iteration order, which
+      // is still LRU-correct for us.)
+      store.set(
+        makeCookie({
+          name: `c${i}`,
+          domain: ".hostile.com",
+          value: String(i),
+        }),
+      );
+    }
+    const all = store.getForDomain("hostile.com");
+    expect(all.length).toBeLessThanOrEqual(500);
+    // Newer entries survive the eviction — c509 should still be there.
+    expect(all.some((c) => c.name === "c509")).toBe(true);
+    // Oldest should be evicted — c0 should NOT survive.
+    expect(all.some((c) => c.name === "c0")).toBe(false);
+  });
+
+  test("per-domain cap does not affect other domains", async () => {
+    const { store } = await makeStore();
+    // Hostile site fills its bucket.
+    for (let i = 0; i < 510; i++) {
+      store.set(makeCookie({ name: `c${i}`, domain: ".hostile.com" }));
+    }
+    // Legitimate site adds a single cookie — must survive.
+    store.set(makeCookie({ name: "session", domain: ".legit.com" }));
+    expect(store.getForDomain("legit.com").length).toBe(1);
+  });
+
+  test("delete() accepts pre-normalize (`.x.com`) and post-normalize (`x.com`)", async () => {
+    const { store } = await makeStore();
+    store.set(makeCookie({ name: "a", domain: ".x.com" }));
+    // Pre-normalize form.
+    expect(store.delete(".x.com", "/", "a")).toBe(true);
+    expect(store.getAll().length).toBe(0);
+
+    store.set(makeCookie({ name: "b", domain: ".y.com" }));
+    // Post-normalize form.
+    expect(store.delete("y.com", "/", "b")).toBe(true);
+    expect(store.getAll().length).toBe(0);
   });
 });

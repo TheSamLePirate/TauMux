@@ -35,6 +35,22 @@ export interface CookieEntry {
 
 const MAX_ENTRIES = 50_000;
 
+/** Phase 7 — per-domain cap so a single hostile site can't dominate
+ *  the global LRU. 500 cookies per normalized domain is generous —
+ *  the worst-case real-world site ships ~30. Domains exceeding the
+ *  cap evict their own oldest entries (LRU within the domain bucket). */
+const MAX_PER_DOMAIN = 500;
+
+/** Phase 7 — normalize a domain string at the entry boundary.
+ *  Lowercases + strips a single leading dot. Cookies set on
+ *  `.example.com` and `example.com` collide in browsers; matching
+ *  that semantics here means a caller can't accidentally create two
+ *  entries for the same site. */
+function normalizeDomain(domain: string): string {
+  const d = domain.startsWith(".") ? domain.slice(1) : domain;
+  return d.toLowerCase();
+}
+
 export class CookieStore {
   private entries = new Map<string, CookieEntry>();
   /** Secondary index: normalized domain → set of cookie keys for O(k) lookups. */
@@ -101,34 +117,75 @@ export class CookieStore {
 
   // ── Public API ──
 
-  /** Add or update a single cookie. */
+  /** Add or update a single cookie. Phase 7: domain is normalized
+   *  on insert (lowercase + leading-dot strip) so `EXAMPLE.com` and
+   *  `example.com` collide as the browser does. Per-domain cap (500)
+   *  evicts the oldest entries in the bucket before adding to keep
+   *  a hostile site from dominating the global 50k cap. */
   set(cookie: CookieEntry): void {
     if (!cookie.name || !cookie.domain) return;
-    const k = this.key(cookie.domain, cookie.path || "/", cookie.name);
-    // Remove old index entry if domain changed
+    const normalized = normalizeDomain(cookie.domain);
+    const k = this.key(normalized, cookie.path || "/", cookie.name);
     const existing = this.entries.get(k);
-    if (existing && existing.domain !== cookie.domain) {
+    if (existing && existing.domain !== normalized) {
       this.removeFromIndex(k, existing.domain);
     }
-    this.entries.set(k, { ...cookie, updatedAt: Date.now() });
-    this.addToIndex(k, cookie.domain);
+    this.entries.set(k, {
+      ...cookie,
+      domain: normalized,
+      updatedAt: Date.now(),
+    });
+    this.addToIndex(k, normalized);
+    this.evictPerDomainIfNeeded(normalized);
     this.evictIfNeeded();
     this.scheduleSave();
   }
 
-  /** Bulk import cookies. Returns count imported. */
+  /** Bulk import cookies. Returns count imported. Same normalization
+   *  + per-domain cap as `set()`. */
   importBulk(cookies: CookieEntry[]): number {
     let count = 0;
+    const touchedDomains = new Set<string>();
     for (const c of cookies) {
       if (!c.name || !c.domain) continue;
-      const k = this.key(c.domain, c.path || "/", c.name);
-      this.entries.set(k, { ...c, updatedAt: Date.now() });
-      this.addToIndex(k, c.domain);
+      const normalized = normalizeDomain(c.domain);
+      const k = this.key(normalized, c.path || "/", c.name);
+      this.entries.set(k, {
+        ...c,
+        domain: normalized,
+        updatedAt: Date.now(),
+      });
+      this.addToIndex(k, normalized);
+      touchedDomains.add(normalized);
       count++;
     }
+    for (const d of touchedDomains) this.evictPerDomainIfNeeded(d);
     this.evictIfNeeded();
     this.scheduleSave();
     return count;
+  }
+
+  /** Phase 7 — enforce the per-domain cap by evicting the oldest
+   *  entries in the bucket. Called after every insert touching the
+   *  bucket. Cheap: bucket sizes are tiny for legitimate sites. */
+  private evictPerDomainIfNeeded(normalized: string): void {
+    const bucket = this.domainIndex.get(normalized);
+    if (!bucket || bucket.size <= MAX_PER_DOMAIN) return;
+    // Sort the bucket's entries by updatedAt asc and evict from the
+    // head until we're at the cap.
+    const candidates: { key: string; updatedAt: number }[] = [];
+    for (const k of bucket) {
+      const e = this.entries.get(k);
+      if (e) candidates.push({ key: k, updatedAt: e.updatedAt });
+    }
+    candidates.sort((a, b) => a.updatedAt - b.updatedAt);
+    const toEvict = candidates.length - MAX_PER_DOMAIN;
+    for (let i = 0; i < toEvict; i++) {
+      const { key } = candidates[i];
+      this.entries.delete(key);
+      bucket.delete(key);
+    }
+    if (bucket.size === 0) this.domainIndex.delete(normalized);
   }
 
   /**
@@ -217,9 +274,12 @@ export class CookieStore {
     return results;
   }
 
-  /** Delete a specific cookie by domain/path/name. */
+  /** Delete a specific cookie by domain/path/name. Phase 7: the
+   *  caller's `domain` is normalized to match the storage key shape,
+   *  so callers can pass either `.example.com` or `example.com`. */
   delete(domain: string, path: string, name: string): boolean {
-    const k = this.key(domain, path, name);
+    const normalized = normalizeDomain(domain);
+    const k = this.key(normalized, path, name);
     const entry = this.entries.get(k);
     if (!entry) return false;
     this.removeFromIndex(k, entry.domain);
@@ -228,11 +288,18 @@ export class CookieStore {
     return true;
   }
 
-  /** Delete all cookies for a domain. Returns count deleted. */
+  /** Delete all cookies for a domain. Returns count deleted. Phase 7:
+   *  the caller's `domain` is normalized; the stored entries are
+   *  already normalized (insert path), so this is a single
+   *  comparison rather than the previous OR-with-raw fallback. */
   deleteForDomain(domain: string): number {
+    const normalized = normalizeDomain(domain);
     let count = 0;
     for (const [k, entry] of this.entries) {
-      if (this.domainMatches(entry.domain, domain) || entry.domain === domain) {
+      if (
+        this.domainMatches(entry.domain, normalized) ||
+        entry.domain === normalized
+      ) {
         this.removeFromIndex(k, entry.domain);
         this.entries.delete(k);
         count++;
