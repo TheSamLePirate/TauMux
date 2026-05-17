@@ -76,6 +76,54 @@ export function numberRangeStrict(
   };
 }
 
+// P7 S15 — enum factory for string-union fields (cursorStyle,
+// packageRunner, layoutVariant, chromeTheme, workspaceCardDensity,
+// browserSearchEngine, browserPartitionMode, webMirrorBind). Anything
+// outside the allowed set falls back to default.
+export function enumStr<T extends string>(
+  def: T,
+  allowed: readonly T[],
+): FieldSchema<T> {
+  const set = new Set<string>(allowed);
+  return {
+    default: def,
+    validate(input) {
+      return typeof input === "string" && set.has(input) ? (input as T) : def;
+    },
+  };
+}
+
+// P7 S15 — string-trim factory. Used by free-text fields that flow
+// into network calls / file paths: webMirrorAuthToken, telegramBotToken,
+// browserHomePage. Coerces null/undefined to "", then trims; non-string
+// input becomes "".
+export function stringTrim(def: string = ""): FieldSchema<string> {
+  return {
+    default: def,
+    validate(input) {
+      if (typeof input === "string") return input.trim();
+      if (input == null) return def;
+      return def;
+    },
+  };
+}
+
+// P7 S15 — string-array factory. Used by statusBarKeys / htStatusKeyOrder
+// / htStatusKeyHidden — filters input to non-empty strings; non-array
+// input falls back to default.
+export function stringArray(def: readonly string[]): FieldSchema<string[]> {
+  const defCopy = [...def];
+  return {
+    default: defCopy,
+    validate(input) {
+      if (!Array.isArray(input)) return [...defCopy];
+      return input.filter(
+        (k): k is string => typeof k === "string" && k.length > 0,
+      );
+    },
+  };
+}
+
 // Migrated subset: simple primitive fields whose validator is either a
 // numeric clamp or a boolean coercion. Strings / enums / array fields
 // stay on the per-clause path in `validateSettings` for now — they'll
@@ -119,6 +167,78 @@ export const SETTINGS_FIELD_SCHEMAS = {
     round: true,
   }),
   legacyBloomIntensity: numberRangeStrict(0, 0, 2),
+
+  // S15 enum batch
+  cursorStyle: enumStr("block" as "block" | "bar" | "underline", [
+    "block",
+    "bar",
+    "underline",
+  ]),
+  packageRunner: enumStr("bun" as "bun" | "npm" | "pnpm" | "yarn", [
+    "bun",
+    "npm",
+    "pnpm",
+    "yarn",
+  ]),
+  layoutVariant: enumStr("bridge" as "bridge" | "cockpit" | "atlas", [
+    "bridge",
+    "cockpit",
+    "atlas",
+  ]),
+  chromeTheme: enumStr(
+    "system" as "system" | "graphite-dark" | "graphite-light" | "high-contrast",
+    ["system", "graphite-dark", "graphite-light", "high-contrast"],
+  ),
+  workspaceCardDensity: enumStr(
+    "comfortable" as "compact" | "comfortable" | "spacious",
+    ["compact", "comfortable", "spacious"],
+  ),
+  browserSearchEngine: enumStr(
+    "google" as "google" | "duckduckgo" | "bing" | "kagi",
+    ["google", "duckduckgo", "bing", "kagi"],
+  ),
+  browserPartitionMode: enumStr("per-surface" as "shared" | "per-surface", [
+    "shared",
+    "per-surface",
+  ]),
+  webMirrorBind: enumStr("0.0.0.0" as "127.0.0.1" | "0.0.0.0", [
+    "127.0.0.1",
+    "0.0.0.0",
+  ]),
+
+  // S15 string-trim batch
+  webMirrorAuthToken: stringTrim(""),
+  telegramBotToken: stringTrim(""),
+  browserHomePage: stringTrim(""),
+
+  // S15 string-array batch. statusBarKeys default mirrors DEFAULT_SETTINGS
+  // (11 keys including procs / ht-all / ports). The prior inline
+  // validator fell back to an 8-key subset; folding through the schema
+  // unifies both paths on the documented fresh-install default — a
+  // corrupt-config user now gets the full set after restart instead of
+  // missing procs / ht-all / ports.
+  statusBarKeys: stringArray([
+    "workspace",
+    "panes",
+    "cpu",
+    "mem",
+    "procs",
+    "fg",
+    "cwd",
+    "branch",
+    "ht-all",
+    "ports",
+    "time",
+  ]),
+  htStatusKeyOrder: stringArray([]),
+  htStatusKeyHidden: stringArray([]),
+
+  // S15 !!-bool batch (coercing, not strict)
+  bloomMigratedToTau: bool(false),
+  browserForceDarkMode: bool(false),
+  browserInterceptTerminalLinks: bool(false),
+  telegramEnabled: bool(false),
+  telegramNotificationsEnabled: bool(false),
 } as const;
 
 export type SchemaFieldName = keyof typeof SETTINGS_FIELD_SCHEMAS;

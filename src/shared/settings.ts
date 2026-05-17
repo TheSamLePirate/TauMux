@@ -847,8 +847,12 @@ export function validateSettings(s: AppSettings): AppSettings {
     webMirrorPort: SETTINGS_FIELD_SCHEMAS.webMirrorPort.validate(
       s.webMirrorPort,
     ),
-    webMirrorBind: s.webMirrorBind === "127.0.0.1" ? "127.0.0.1" : "0.0.0.0",
-    webMirrorAuthToken: (s.webMirrorAuthToken ?? "").trim(),
+    webMirrorBind: SETTINGS_FIELD_SCHEMAS.webMirrorBind.validate(
+      s.webMirrorBind,
+    ),
+    webMirrorAuthToken: SETTINGS_FIELD_SCHEMAS.webMirrorAuthToken.validate(
+      s.webMirrorAuthToken,
+    ),
     paneGap: SETTINGS_FIELD_SCHEMAS.paneGap.validate(s.paneGap),
     sidebarWidth: SETTINGS_FIELD_SCHEMAS.sidebarWidth.validate(s.sidebarWidth),
     notificationSoundEnabled:
@@ -859,24 +863,33 @@ export function validateSettings(s: AppSettings): AppSettings {
       SETTINGS_FIELD_SCHEMAS.notificationSoundVolume.validate(
         s.notificationSoundVolume,
       ),
-    browserSearchEngine:
-      s.browserSearchEngine === "duckduckgo" ||
-      s.browserSearchEngine === "bing" ||
-      s.browserSearchEngine === "kagi"
-        ? s.browserSearchEngine
-        : "google",
-    browserHomePage: (s.browserHomePage ?? "").trim(),
-    browserForceDarkMode: !!s.browserForceDarkMode,
-    browserInterceptTerminalLinks: !!s.browserInterceptTerminalLinks,
-    browserPartitionMode:
-      s.browserPartitionMode === "shared" ||
-      s.browserPartitionMode === "per-surface"
-        ? s.browserPartitionMode
-        : "per-surface",
-    telegramEnabled: !!s.telegramEnabled,
-    telegramBotToken: (s.telegramBotToken ?? "").trim(),
+    browserSearchEngine: SETTINGS_FIELD_SCHEMAS.browserSearchEngine.validate(
+      s.browserSearchEngine,
+    ),
+    browserHomePage: SETTINGS_FIELD_SCHEMAS.browserHomePage.validate(
+      s.browserHomePage,
+    ),
+    browserForceDarkMode: SETTINGS_FIELD_SCHEMAS.browserForceDarkMode.validate(
+      s.browserForceDarkMode,
+    ),
+    browserInterceptTerminalLinks:
+      SETTINGS_FIELD_SCHEMAS.browserInterceptTerminalLinks.validate(
+        s.browserInterceptTerminalLinks,
+      ),
+    browserPartitionMode: SETTINGS_FIELD_SCHEMAS.browserPartitionMode.validate(
+      s.browserPartitionMode,
+    ),
+    telegramEnabled: SETTINGS_FIELD_SCHEMAS.telegramEnabled.validate(
+      s.telegramEnabled,
+    ),
+    telegramBotToken: SETTINGS_FIELD_SCHEMAS.telegramBotToken.validate(
+      s.telegramBotToken,
+    ),
     telegramAllowedUserIds: normalizeAllowedIds(s.telegramAllowedUserIds),
-    telegramNotificationsEnabled: !!s.telegramNotificationsEnabled,
+    telegramNotificationsEnabled:
+      SETTINGS_FIELD_SCHEMAS.telegramNotificationsEnabled.validate(
+        s.telegramNotificationsEnabled,
+      ),
     telegramNotificationButtonsEnabled:
       SETTINGS_FIELD_SCHEMAS.telegramNotificationButtonsEnabled.validate(
         s.telegramNotificationButtonsEnabled,
@@ -885,26 +898,19 @@ export function validateSettings(s: AppSettings): AppSettings {
       SETTINGS_FIELD_SCHEMAS.telegramAskUserEnabled.validate(
         s.telegramAskUserEnabled,
       ),
-    cursorStyle:
-      s.cursorStyle === "bar" || s.cursorStyle === "underline"
-        ? s.cursorStyle
-        : "block",
-    packageRunner:
-      s.packageRunner === "npm" ||
-      s.packageRunner === "pnpm" ||
-      s.packageRunner === "yarn"
-        ? s.packageRunner
-        : "bun",
-    layoutVariant:
-      s.layoutVariant === "cockpit" || s.layoutVariant === "atlas"
-        ? s.layoutVariant
-        : "bridge",
-    statusBarKeys: Array.isArray(s.statusBarKeys)
-      ? (s.statusBarKeys.filter(
-          (k): k is string => typeof k === "string" && k.length > 0,
-        ) as string[])
-      : ["workspace", "panes", "cpu", "mem", "fg", "cwd", "branch", "time"],
-    bloomMigratedToTau: !!s.bloomMigratedToTau,
+    cursorStyle: SETTINGS_FIELD_SCHEMAS.cursorStyle.validate(s.cursorStyle),
+    packageRunner: SETTINGS_FIELD_SCHEMAS.packageRunner.validate(
+      s.packageRunner,
+    ),
+    layoutVariant: SETTINGS_FIELD_SCHEMAS.layoutVariant.validate(
+      s.layoutVariant,
+    ),
+    statusBarKeys: SETTINGS_FIELD_SCHEMAS.statusBarKeys.validate(
+      s.statusBarKeys,
+    ),
+    bloomMigratedToTau: SETTINGS_FIELD_SCHEMAS.bloomMigratedToTau.validate(
+      s.bloomMigratedToTau,
+    ),
     legacyBloomIntensity: SETTINGS_FIELD_SCHEMAS.legacyBloomIntensity.validate(
       s.legacyBloomIntensity,
     ),
@@ -918,13 +924,7 @@ export function validateSettings(s: AppSettings): AppSettings {
             s.auditsGitUserNameExpected.length > 0
           ? s.auditsGitUserNameExpected
           : "olivierveinand",
-    chromeTheme:
-      s.chromeTheme === "graphite-dark" ||
-      s.chromeTheme === "graphite-light" ||
-      s.chromeTheme === "high-contrast" ||
-      s.chromeTheme === "system"
-        ? s.chromeTheme
-        : "system",
+    chromeTheme: SETTINGS_FIELD_SCHEMAS.chromeTheme.validate(s.chromeTheme),
     notificationOverlayEnabled:
       SETTINGS_FIELD_SCHEMAS.notificationOverlayEnabled.validate(
         s.notificationOverlayEnabled,
@@ -933,11 +933,9 @@ export function validateSettings(s: AppSettings): AppSettings {
       SETTINGS_FIELD_SCHEMAS.notificationOverlayMs.validate(
         s.notificationOverlayMs,
       ),
-    workspaceCardDensity:
-      s.workspaceCardDensity === "compact" ||
-      s.workspaceCardDensity === "spacious"
-        ? s.workspaceCardDensity
-        : "comfortable",
+    workspaceCardDensity: SETTINGS_FIELD_SCHEMAS.workspaceCardDensity.validate(
+      s.workspaceCardDensity,
+    ),
     workspaceCardShowMeta:
       SETTINGS_FIELD_SCHEMAS.workspaceCardShowMeta.validate(
         s.workspaceCardShowMeta,
@@ -974,16 +972,12 @@ export function validateSettings(s: AppSettings): AppSettings {
       SETTINGS_FIELD_SCHEMAS.workspaceCardShowProgress.validate(
         s.workspaceCardShowProgress,
       ),
-    htStatusKeyOrder: Array.isArray(s.htStatusKeyOrder)
-      ? (s.htStatusKeyOrder.filter(
-          (k): k is string => typeof k === "string" && k.length > 0,
-        ) as string[])
-      : [],
-    htStatusKeyHidden: Array.isArray(s.htStatusKeyHidden)
-      ? (s.htStatusKeyHidden.filter(
-          (k): k is string => typeof k === "string" && k.length > 0,
-        ) as string[])
-      : [],
+    htStatusKeyOrder: SETTINGS_FIELD_SCHEMAS.htStatusKeyOrder.validate(
+      s.htStatusKeyOrder,
+    ),
+    htStatusKeyHidden: SETTINGS_FIELD_SCHEMAS.htStatusKeyHidden.validate(
+      s.htStatusKeyHidden,
+    ),
     autoContinue: validateAutoContinue(s.autoContinue),
   };
 }

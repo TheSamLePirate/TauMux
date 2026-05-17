@@ -9,8 +9,11 @@ import {
   SETTINGS_FIELD_SCHEMAS,
   bool,
   boolStrict,
+  enumStr,
   numberRange,
   numberRangeStrict,
+  stringArray,
+  stringTrim,
 } from "../src/shared/settings.schema";
 import {
   DEFAULT_SETTINGS,
@@ -214,5 +217,127 @@ describe("validateSettings uses the schema for strict-bool fields (S14)", () => 
     expect(out.notificationOverlayMs).toBe(6000);
     expect(out.workspaceFileExplorerMaxEntries).toBe(200);
     expect(out.legacyBloomIntensity).toBe(0);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// P7 S15 — enum + stringTrim + stringArray batch
+// ──────────────────────────────────────────────────────────────────
+
+describe("FieldSchema factories — enum / stringTrim / stringArray (S15)", () => {
+  test("enumStr returns input when in allowed set, default otherwise", () => {
+    const s = enumStr("a" as "a" | "b" | "c", ["a", "b", "c"]);
+    expect(s.validate("a")).toBe("a");
+    expect(s.validate("b")).toBe("b");
+    expect(s.validate("c")).toBe("c");
+    expect(s.validate("d")).toBe("a");
+    expect(s.validate("")).toBe("a");
+    expect(s.validate(42 as unknown)).toBe("a");
+    expect(s.validate(undefined)).toBe("a");
+  });
+
+  test("stringTrim trims valid strings, defaults non-strings", () => {
+    const s = stringTrim("fallback");
+    expect(s.validate("  hello  ")).toBe("hello");
+    expect(s.validate("")).toBe("");
+    expect(s.validate(undefined)).toBe("fallback");
+    expect(s.validate(null)).toBe("fallback");
+    expect(s.validate(123 as unknown)).toBe("fallback");
+  });
+
+  test("stringArray filters to non-empty strings + defaults non-arrays", () => {
+    const s = stringArray(["a", "b"]);
+    expect(s.validate(["x", "y", "z"])).toEqual(["x", "y", "z"]);
+    expect(s.validate(["x", "", 1 as unknown, "y"])).toEqual(["x", "y"]);
+    expect(s.validate("not-an-array" as unknown)).toEqual(["a", "b"]);
+    expect(s.validate(null)).toEqual(["a", "b"]);
+    // Default should be a fresh array (no shared mutation).
+    const out = s.validate(null) as string[];
+    out.push("mutated");
+    expect(s.validate(null)).toEqual(["a", "b"]);
+  });
+});
+
+describe("validateSettings uses the schema for S15 enum / string / array fields", () => {
+  test("enum fields keep default for unknown values", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      cursorStyle: "spaceship" as never,
+      packageRunner: "rustpkg" as never,
+      layoutVariant: "exotica" as never,
+      chromeTheme: "neon" as never,
+      workspaceCardDensity: "tiny" as never,
+      browserSearchEngine: "bingbong" as never,
+      browserPartitionMode: "ephemeral" as never,
+      webMirrorBind: "10.0.0.1" as never,
+    });
+    expect(out.cursorStyle).toBe("block");
+    expect(out.packageRunner).toBe("bun");
+    expect(out.layoutVariant).toBe("bridge");
+    expect(out.chromeTheme).toBe("system");
+    expect(out.workspaceCardDensity).toBe("comfortable");
+    expect(out.browserSearchEngine).toBe("google");
+    expect(out.browserPartitionMode).toBe("per-surface");
+    expect(out.webMirrorBind).toBe("0.0.0.0");
+  });
+
+  test("enum fields honour valid values", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      cursorStyle: "bar",
+      packageRunner: "pnpm",
+      layoutVariant: "atlas",
+      chromeTheme: "graphite-light",
+      browserPartitionMode: "shared",
+      webMirrorBind: "127.0.0.1",
+    });
+    expect(out.cursorStyle).toBe("bar");
+    expect(out.packageRunner).toBe("pnpm");
+    expect(out.layoutVariant).toBe("atlas");
+    expect(out.chromeTheme).toBe("graphite-light");
+    expect(out.browserPartitionMode).toBe("shared");
+    expect(out.webMirrorBind).toBe("127.0.0.1");
+  });
+
+  test("string-trim fields trim whitespace + handle null/undefined", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      webMirrorAuthToken: "  secret  ",
+      telegramBotToken: " 1234:abc ",
+      browserHomePage: " https://example.com ",
+    });
+    expect(out.webMirrorAuthToken).toBe("secret");
+    expect(out.telegramBotToken).toBe("1234:abc");
+    expect(out.browserHomePage).toBe("https://example.com");
+
+    const out2 = validateSettings({
+      ...DEFAULT_SETTINGS,
+      webMirrorAuthToken: null as unknown as string,
+      telegramBotToken: undefined as unknown as string,
+    });
+    expect(out2.webMirrorAuthToken).toBe("");
+    expect(out2.telegramBotToken).toBe("");
+  });
+
+  test("string-array fields filter junk + fall back to default for non-arrays", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      statusBarKeys: ["custom1", "", 0 as unknown as string, "custom2"],
+      htStatusKeyOrder: "not an array" as unknown as string[],
+      htStatusKeyHidden: ["hidden1"],
+    });
+    expect(out.statusBarKeys).toEqual(["custom1", "custom2"]);
+    expect(out.htStatusKeyOrder).toEqual([]);
+    expect(out.htStatusKeyHidden).toEqual(["hidden1"]);
+  });
+
+  test("!!-bool batch coerces non-boolean input", () => {
+    const out = validateSettings({
+      ...DEFAULT_SETTINGS,
+      telegramEnabled: 1 as unknown as boolean,
+      bloomMigratedToTau: "" as unknown as boolean,
+    });
+    expect(out.telegramEnabled).toBe(true);
+    expect(out.bloomMigratedToTau).toBe(false);
   });
 });
