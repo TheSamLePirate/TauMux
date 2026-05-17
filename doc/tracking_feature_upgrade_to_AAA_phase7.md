@@ -208,3 +208,55 @@ Grade distribution after S3: **13 S / 25 A / 8 B / 3 C** (was 12 S / 25 A / 9 B 
 - Cluster D: editor save-race UX, browser pane navigation-rule validation, OSC per-pane chips.
 - Cluster E remainder: audit auto-rerun, event-writer backpressure.
 - Cluster H: literal-to-token migration (the ~1013 hard-coded colour literals).
+
+---
+
+## Session 4 (2026-05-17)
+
+Slice picked: **browser navigation-rule validation** (D) + **audits auto-rerun on settings change** (E) + **EventWriter backpressure metric** (E). Three concrete lifts spanning Cluster D and Cluster E from the long tail.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Browser navigation-rule validation | `c17de81` | `src/bun/rpc-handlers/browser-page.ts`, `tests/rpc-handler-browser.test.ts` | +7 (missing url, typoed scheme, file:// + about: accept, missing surface_id, unknown direction, valid roundtrip, back/forward/reload require surface_id) |
+| Audits auto-rerun + health refresh | `237c10f` | `src/bun/index.ts`, `tests/audits-auto-rerun.test.ts` (new) | +5 source-grep (helper defined, boot uses it, updateSettings calls it, stale audit:* rows pruned, disabled row cleared) |
+| EventWriter backpressure metric | `8763a36` | `src/bun/event-writer.ts`, `tests/event-writer.test.ts` | +4 (zero start, sent counter + peakInFlight + inFlight settle, close halts counters, getMetrics returns a snapshot) |
+
+Bumps: `bun run bump:patch` ran before each functional commit per CLAUDE.md.
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `browser-pane` | A | **S** | Mirrors the plan-panel `isPlanState` pattern from S1: typos in scripts / agent calls no longer "succeed" silently. `isSplitDirection`, `isNavigableUrl`, `requireSurfaceId` validators enforce per-method input shape. |
+| `audits` | A | **S** | `runAndPublishAudits()` helper replaces the boot-only block; called from `updateSettings` after `rebuildAudits()` so audit flips re-run + refresh health without a restart. Stale `audit:*` rows are pruned on each pass; the legacy "audits disabled" row is cleared when audits repopulate. |
+| `event-writer` | B | **A** | `EventWriterMetrics { sent, inFlight, failed, peakInFlight }` exposed via `getMetrics()`. The `Bun.write` Promise is decorated with `.finally(…)` so `inFlight` tracks true OS completion. A wedged consumer or runaway producer is no longer silent — `peakInFlight` is the decision-aid for sizing a future bounded queue. |
+
+Grade distribution after S4: **15 S / 24 A / 7 B / 3 C** (was 13 S / 25 A / 8 B / 3 C at start of S4).
+
+### Issues encountered
+
+- **`session-history.test.ts` byte-buffer fallback** flaked again during the full-suite run. The test pre-dates the P7 series (`git blame` → `949525c http web ui refactor`) and has been intermittent across S2/S3/S4. Already catalogued; not from session 4 changes.
+- **Pre-existing typecheck noise**: same 2 errors as prior sessions (`src/bun/index.ts:2522` `splitSurface` cast + electrobun internal import path). Unchanged by S4 work.
+
+### Exit criteria (session 4)
+
+| Criterion | Status |
+|---|---|
+| Browser navigation-rule validation surfaces typos | ✅ |
+| Audits re-run + health refresh on settings change | ✅ |
+| EventWriter exposes backpressure counters | ✅ |
+| `bun test` green (modulo the pre-existing flake) | ✅ 2048 / 1 known flake |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 4)
+
+- F.6 `settings.schema.ts` source-of-truth — dedicated session (still pending).
+- Cluster F refactors: A6 typed `EventBus`, A7 `VariantContext`, F.11 `WorkspaceCollection`.
+- Cluster D remainder: editor save-race UX, OSC per-pane chips.
+- Cluster G: H.8 per-surface browser partition, H.9 session cap.
+- Cluster H: literal-to-token migration (the ~1013 colour literals).
+- New from S4: bounded-queue + drop / pause for EventWriter (counters are in place — next step is the actual cap).

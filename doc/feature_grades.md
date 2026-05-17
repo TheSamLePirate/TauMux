@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.47
+**Version:** 0.3.50
 **Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 3 landed: Chrome Theme selector UI in Settings → Theme (closes the chromeTheme infra landed in S2); pane-bar chips gain ARIA labels + `aria-live="polite"` host region so AT users hear cwd / fg command / git state / port chips (pane-chip-rendering A→S); sidebar notifications gain a Copy button + bun-side disk persistence (load+save under $HT_CONFIG_DIR/notifications.json) so restarts keep the history (notifications B→A). Cumulative P7: 4 lifts in S1 (cookie-store, browser-history, manifest-scanner, plan-panel) + 4 lifts in S2 (terminal-search, surface-metadata, health-checks, tau-primitives infra) + 3 lifts in S3 (theme selector UI, pane-chip ARIA, notifications). Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — deferred from S3 as a dedicated session, settings.ts is 1166 LOC / ~396 fields) + literal-to-token migration + browser partition (H.8/H.9) + telegram DB TTL + auto-continue persistence + editor save-race UX + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.
+Phase 7 polish — session 4 landed: browser-pane RPC navigation-rule validation surfaces typos instead of silently swallowing (`browser.navigate` rejects bad urls, `browser.open_split` rejects unknown directions, `back/forward/reload` require surface_id — browser-pane A→S); audits auto-rerun + health refresh when `updateSettings` flips audit-relevant fields, with stale `audit:*` health rows pruned on each pass (audits A→S); EventWriter exposes `getMetrics()` with sent / inFlight / failed / peakInFlight so a wedged sideband consumer becomes observable (event-writer B→A). Cumulative P7: 4 lifts in S1 (cookie-store, browser-history, manifest-scanner, plan-panel) + 4 lifts in S2 (terminal-search, surface-metadata, health-checks, tau-primitives infra) + 3 lifts in S3 (theme selector UI, pane-chip ARIA, notifications) + 3 lifts in S4 (browser-pane, audits, event-writer). Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — deferred as a dedicated session, settings.ts is 1166 LOC / ~396 fields) + literal-to-token migration + browser partition (H.8/H.9) + telegram DB TTL + auto-continue persistence + editor save-race UX + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.
 
 ---
 
@@ -34,9 +34,9 @@ Phase 7 polish — session 3 landed: Chrome Theme selector UI in Settings → Th
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **13** | Best-in-class — 13 features cleared every gap. |
-| A | **25** | Most "production-shaped" subsystems. |
-| B (incl. B+) | **8** | Functional, with named polish / test / lifecycle gaps. |
+| S (AAA) | **15** | Best-in-class — 15 features cleared every gap. |
+| A | **24** | Most "production-shaped" subsystems. |
+| B (incl. B+) | **7** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
 
@@ -110,10 +110,10 @@ Phase 7 polish — session 3 landed: Chrome Theme selector UI in Settings → Th
   - Configurable backoff for slow producers.
 
 ### Event writer / RPC envelope
-- **Grade: B**
-- **Evidence:** `event-writer.ts:12-32` — JSONL serialization via `Bun.write`, error callback. `send()` returns true before writes complete; tests don't verify bytes reach fd5. No buffering or backpressure — a mousemove flood at 60 fps from a buggy panel can overflow.
+- **Grade: A**
+- **Evidence:** `event-writer.ts:12-32` — JSONL serialization via `Bun.write`, error callback. Phase 7 (S4) added an `EventWriterMetrics { sent, inFlight, failed, peakInFlight }` snapshot via `getMetrics()`; the `Bun.write` Promise is decorated with `.finally(…)` so `inFlight` tracks true OS completion. A wedged consumer or runaway producer is now observable rather than silent — `peakInFlight` is the decision-aid for sizing a future bounded queue. Tests in `tests/event-writer.test.ts` (+4, 9 total).
 - **Gaps to AAA:**
-  - Queued writes with backpressure.
+  - Bounded queue with bounded backpressure (counters are in place; a hard cap that drops or pauses on overflow is the next step).
   - Per-channel rate limits.
   - Tests that read back the bytes.
 
@@ -270,10 +270,9 @@ Phase 7 polish — session 3 landed: Chrome Theme selector UI in Settings → Th
   - Plan-compat validation across reboots.
 
 ### Browser surface (browser pane)
-- **Grade: A**
-- **Evidence:** `browser-pane.ts` (999 LOC) — OOPIF `<electrobun-webview>`, address bar, nav buttons, console/error capture, `BrowserHistoryStore`, 40+ socket API methods, sandbox + partition. Phase 3 added `tests/browser-pane.test.ts`: runtime coverage of the pure helpers (isUrl, normalizeUrl, buildSearchUrl), plus source-grep invariants on the construction surface (electrobun-webview can't run under happy-dom, so the OOPIF-dependent path is pinned via source).
+- **Grade: S**
+- **Evidence:** `browser-pane.ts` (999 LOC) — OOPIF `<electrobun-webview>`, address bar, nav buttons, console/error capture, `BrowserHistoryStore`, 40+ socket API methods, sandbox + partition. Phase 3 added `tests/browser-pane.test.ts`: runtime coverage of the pure helpers (isUrl, normalizeUrl, buildSearchUrl), plus source-grep invariants on the construction surface (electrobun-webview can't run under happy-dom, so the OOPIF-dependent path is pinned via source). Phase 7 (S4) hardened the RPC navigation surface with `isSplitDirection` / `isNavigableUrl` / `requireSurfaceId` validators: `browser.navigate` rejects a missing url or typoed scheme (`htps://…`), `browser.open_split` rejects an unknown direction (no silent default to `horizontal`), `back/forward/reload` require a non-empty `surface_id`. Tests in `tests/rpc-handler-browser.test.ts` (+7, 31 total).
 - **Gaps to AAA:**
-  - Navigation-rule validation with diagnostics (owned by P7 polish).
   - Zoom persistence across restart.
   - `findInPage` exposed to CLI.
 
@@ -347,11 +346,10 @@ Phase 7 polish — session 3 landed: Chrome Theme selector UI in Settings → Th
   - Move remaining ad-hoc handlers into the per-domain `rpc-handlers/` directory (F.10 — most landed, audit the stragglers).
 
 ### Audits
-- **Grade: A**
-- **Evidence:** `audits.ts:22-46` — async check + optional fix pattern; 5 s timeouts with explicit `proc.kill` on expiry (`:57-95`, G.10). Five audits: git author/email, clipboard read/write, shell path. Settings-driven.
+- **Grade: S**
+- **Evidence:** `audits.ts:22-46` — async check + optional fix pattern; 5 s timeouts with explicit `proc.kill` on expiry (`:57-95`, G.10). Five audits: git author/email, clipboard read/write, shell path. Settings-driven. Phase 7 (S4) added a `runAndPublishAudits()` helper called both at boot and after `rebuildAudits()` lands inside `updateSettings`: flipping `auditsGitUserNameExpected` (or any future audit-relevant setting) now re-runs + refreshes the health snapshot without a restart. Stale `audit:*` health rows are pruned on each run; the legacy 'audits disabled' row is cleared when the registry repopulates. Tests in `tests/audits-auto-rerun.test.ts` (+5 source-grep) + the existing runtime tests in `tests/audits.test.ts`.
 - **Gaps to AAA:**
   - More audits (locale, node version, shell capabilities).
-  - Auto-rerun on settings change.
   - Remediation UX hookup.
 
 ### Health checks
