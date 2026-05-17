@@ -2449,6 +2449,23 @@ export class Sidebar {
 
     el.appendChild(body);
 
+    // P7 S3 — Copy affordance. Notifications often carry actionable
+    // text (URLs, paths, error messages) the user wants in clipboard.
+    // Sits next to the dismiss button; keeps the click-to-focus body
+    // behaviour intact.
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "notification-copy";
+    copyBtn.title = "Copy notification text";
+    copyBtn.setAttribute("aria-label", "Copy notification text");
+    copyBtn.append(createIcon("copy", "", 10));
+    copyBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const text = n.body ? `${n.title}\n${n.body}` : n.title;
+      void writeNotificationToClipboard(text, copyBtn);
+    });
+    el.appendChild(copyBtn);
+
     const dismissBtn = document.createElement("button");
     dismissBtn.type = "button";
     dismissBtn.className = "notification-dismiss";
@@ -3248,6 +3265,22 @@ function humanRss(kb: number): string {
   if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)}M`;
   const gb = mb / 1024;
   return `${gb < 10 ? gb.toFixed(1) : Math.round(gb)}G`;
+}
+
+/** Copy notification text to clipboard with a brief "Copied" pulse on the
+ *  source button. P7 S3 — promise resolves once the write lands (or fails
+ *  silently); the visual feedback is what tells the user it worked. */
+async function writeNotificationToClipboard(
+  text: string,
+  btn: HTMLButtonElement,
+): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.classList.add("copied");
+    setTimeout(() => btn.classList.remove("copied"), 1100);
+  } catch {
+    /* clipboard API unavailable (older webview, permissions denied) — silent */
+  }
 }
 
 function relativeTime(epochMs: number): string {

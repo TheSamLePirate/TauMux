@@ -29,7 +29,8 @@ import {
   createNotificationStore,
   registerNotification,
 } from "./rpc-handlers/notification";
-import type { Notification } from "./rpc-handlers/types";
+import type { Notification, NotificationStore } from "./rpc-handlers/types";
+import { createDebouncedPersister, loadInto } from "./notification-persistence";
 import { registerAgent } from "./rpc-handlers/agent";
 import { registerBrowserPage } from "./rpc-handlers/browser-page";
 import { registerBrowserCookies } from "./rpc-handlers/browser-cookies";
@@ -104,6 +105,11 @@ export interface RpcHandlerOptions {
    *  register and `ht autocontinue` plus the Settings panel can
    *  drive the engine. Optional in tests. */
   autoContinue?: AutoContinueDeps;
+  /** P7 S3 — when set, the notification store hydrates from this path
+   *  on startup and writes debounced JSON snapshots back to it on every
+   *  create / clear / dismiss. Omitted in tests so they get a fresh
+   *  in-memory store with no IO. */
+  notificationPersistencePath?: string;
 }
 
 export function createRpcHandler(
@@ -134,10 +140,10 @@ export function createRpcHandler(
     browserHistory,
     pendingBrowserEvals,
     cookieStore,
-    notifications: {
-      ...createNotificationStore(),
-      onCreate: options.onNotificationCreate,
-    },
+    notifications: buildNotificationStore(
+      options.onNotificationCreate,
+      options.notificationPersistencePath,
+    ),
     panelRegistry: options.panelRegistry,
     piAgentManager: options.piAgentManager,
     shutdown: options.shutdown,
@@ -206,4 +212,26 @@ export function createRpcHandler(
     if (!handler) throw new Error(`Unknown method: ${method}`);
     return handler(params);
   };
+}
+
+/** P7 S3 — assemble a notification store with the optional persistence
+ *  layer attached. When a path is given the store is hydrated from
+ *  disk at construction time and every mutation triggers a debounced
+ *  write back. When no path is given the store is the same in-memory
+ *  shape callers have always seen, so test fixtures don't accidentally
+ *  start hitting the filesystem. */
+function buildNotificationStore(
+  onCreate: ((n: Notification) => void) | undefined,
+  persistencePath: string | undefined,
+): NotificationStore {
+  const store: NotificationStore = {
+    ...createNotificationStore(),
+    onCreate,
+  };
+  if (persistencePath) {
+    loadInto(persistencePath, store);
+    const { persist } = createDebouncedPersister(persistencePath, store);
+    store.persist = persist;
+  }
+  return store;
 }

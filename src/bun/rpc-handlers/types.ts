@@ -62,6 +62,11 @@ export interface NotificationStore {
    *  engine on every turn-end notification — the existing dispatch
    *  channel goes to the webview, not back to the bun process. */
   onCreate?: (notification: Notification) => void;
+  /** P7 S3 — optional sink for disk persistence. Called after every
+   *  mutation (create / clear / dismiss); implementations debounce
+   *  writes so a burst of notifications coalesces. Swallows its own
+   *  errors so a busted FS can never break the in-memory pipeline. */
+  persist?: () => void;
 }
 
 /** Everything a handler module needs to serve requests. Populated once

@@ -2848,6 +2848,7 @@ const socketHandler = createRpcHandler(
     plans,
     askUser,
     onNotificationCreate: (n) => autoContinueHost.dispatchForNotification(n),
+    notificationPersistencePath: join(configDir, "notifications.json"),
     autoContinue: {
       engine: autoContinue,
       host: autoContinueHost,

@@ -39,6 +39,7 @@ export function registerNotification(
       while (notifications.list.length > MAX_NOTIFICATIONS) {
         notifications.list.shift();
       }
+      notifications.persist?.();
       // Plan #09 commit B — fire the per-process onCreate hook so
       // the auto-continue engine (or any future bun-side observer)
       // sees turn-end notifications without polling. Synchronous
@@ -80,6 +81,7 @@ export function registerNotification(
 
     "notification.clear": () => {
       notifications.list.length = 0;
+      notifications.persist?.();
       dispatch("notification", { notifications: [] });
       return "OK";
     },
@@ -98,6 +100,7 @@ export function registerNotification(
       // dismissed.
       const surfaceId = notifications.list[idx]?.surfaceId ?? null;
       notifications.list.splice(idx, 1);
+      notifications.persist?.();
       // Include the dismissed id so the bun→web bridge can broadcast
       // a `notificationDismiss` envelope without having to diff lists.
       dispatch("notification", {

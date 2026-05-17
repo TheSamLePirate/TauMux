@@ -172,6 +172,63 @@ describe("Sidebar notifications — glow lifecycle", () => {
     ).toBe(false);
   });
 
+  // P7 S3 — copy affordance. Each notification item now carries a
+  // .notification-copy button next to .notification-dismiss; clicking
+  // it writes `${title}\n${body}` to the clipboard via navigator.clipboard
+  // and pulses a .copied class on the button for ~1 s.
+  test("copy button writes the notification text to the clipboard", async () => {
+    const { sidebar, container } = await makeSidebar();
+    sidebar.setNotifications([
+      seed({ id: "n1", title: "Build done", body: "All green" }),
+    ]);
+
+    const written: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: (text: string) => {
+          written.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
+
+    const btn = container.querySelector(
+      ".notification-copy",
+    ) as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+    btn.click();
+
+    // Let the awaited clipboard.writeText resolve.
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(written).toEqual(["Build done\nAll green"]);
+    expect(btn.classList.contains("copied")).toBe(true);
+  });
+
+  test("copy button uses just the title when body is empty", async () => {
+    const { sidebar, container } = await makeSidebar();
+    sidebar.setNotifications([seed({ id: "n2", title: "Just a title" })]);
+
+    const written: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: (text: string) => {
+          written.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
+
+    const btn = container.querySelector(
+      ".notification-copy",
+    ) as HTMLButtonElement;
+    btn.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(written).toEqual(["Just a title"]);
+  });
+
   test("click on body for source-less notification does not dispatch focus", async () => {
     const { sidebar, container } = await makeSidebar();
     sidebar.setNotifications([seed({ id: "n1" })]); // no surface
