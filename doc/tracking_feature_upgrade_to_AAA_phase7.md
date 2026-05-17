@@ -260,3 +260,55 @@ Grade distribution after S4: **15 S / 24 A / 7 B / 3 C** (was 13 S / 25 A / 8 B 
 - Cluster G: H.8 per-surface browser partition, H.9 session cap.
 - Cluster H: literal-to-token migration (the ~1013 colour literals).
 - New from S4: bounded-queue + drop / pause for EventWriter (counters are in place — next step is the actual cap).
+
+---
+
+## Session 5 (2026-05-17)
+
+Slice picked: **EventWriter bounded queue** (follow-up to S4) + **editor save-race UX** (D) + **OSC per-pane progress chips** (D). Three concrete lifts spanning Cluster D plus the S4 follow-up.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| EventWriter bounded queue + drop policy | `727edf4` | `src/bun/event-writer.ts`, `tests/event-writer.test.ts` | +4 (default cap exposed, custom + invalid cap fallback, drop fires past cap, recovery after drain). Pre-existing zero-start test updated for the new `dropped: 0` field. |
+| Editor save-race UX | `f6e5ae3` | `src/bun/editor-files.ts`, `src/shared/types.ts`, `tests/editor-files.test.ts` | +5 (conflictDetail populated, force bypasses conflict, deleted-file conflict, new-file no-conflict, force on deleted re-creates) |
+| OSC per-pane progress chip | `7c5ea3b` | `src/shared/types.ts`, `src/shared/pane-chips.ts`, `src/views/terminal/surface-manager.ts`, `tests/pane-chips.test.ts` | +6 (no chip when null, normal bar + percent + aria, paused ⏸ + class, error literal, indeterm ellipsis, signature differs each tick) |
+
+Bumps: `bun run bump:patch` ran before each functional commit per CLAUDE.md.
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `event-writer` | A | **S** | Closes the gap left at S4. `DEFAULT_MAX_IN_FLIGHT = 1024`; `send()` past the cap returns `false` and bumps a new `dropped` counter instead of stacking pending writes. Caps worst-case queued memory to ~1 MB. Overridable per-instance via `EventWriterOptions.maxInFlight`. |
+| `editor-pane` | A | **S** | Structured `conflictDetail` ({ expectedMtimeMs, actualMtimeMs, actualSize }) replaces the generic error string so the UI can render an actionable conflict dialog. New `force: true` flag bypasses the check for explicit overwrites. Out-of-band deletes (file vanished with non-null expectedMtimeMs) now surface a conflict instead of silently re-creating. |
+| `pane-chip-rendering` | S | S | Already S after S3. P7 S5 added per-pane OSC 9;4 progress chip rendering — `SurfaceMetadata.progress`-driven, four visual states (normal bar+pct, paused ⏸+pct, error, indeterminate), surviving 1 Hz poller refreshes via merge-preserve in `setSurfaceMetadata`. |
+
+Grade distribution after S5: **17 S / 22 A / 7 B / 3 C** (was 15 S / 24 A / 7 B / 3 C at start of S5).
+
+### Issues encountered
+
+- **Control-byte contamination in `src/shared/pane-chips.ts`**: a prior copy-paste left three U+0001 (SOH) bytes inside the `chipsSignature` template literal, blocking my `Edit` tool calls (the literal looked identical visually but bytewise didn't match). Fixed with a one-shot `python3` bytewise strip; then the edit landed cleanly.
+- **Pre-existing typecheck noise** unchanged: same 2 errors as prior sessions.
+- **`session-history.test.ts` byte-buffer fallback** did not flake in this session's full-suite run (2064 / 0). May have been timing-dependent during S4.
+
+### Exit criteria (session 5)
+
+| Criterion | Status |
+|---|---|
+| EventWriter bounded queue caps memory under wedge | ✅ |
+| Editor save-race surfaces structured conflict + force | ✅ |
+| OSC 9;4 per-pane chip renders + survives 1 Hz refresh | ✅ |
+| `bun test` green | ✅ 2064 / 0 |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 5)
+
+- F.6 `settings.schema.ts` source-of-truth — still pending as a dedicated session.
+- Cluster F refactors: A6 typed `EventBus`, A7 `VariantContext`, F.11 `WorkspaceCollection`.
+- Cluster G: H.8 per-surface browser partition, H.9 session cap + manifest-auth.
+- Cluster H: literal-to-token migration (~1013 colour literals).
+- Telegram DB TTL pruning + auto-continue persistence remain in cluster C.

@@ -1,8 +1,8 @@
 {
-  "version": "0.3.50",
+  "version": "0.3.53",
   "generatedAt": "2026-05-17",
   "branch": "main",
-  "headline": "Phase 7 polish — session 4 landed: browser-pane RPC navigation-rule validation surfaces typos instead of silently swallowing (`browser.navigate` rejects bad urls, `browser.open_split` rejects unknown directions, `back/forward/reload` require surface_id — browser-pane A→S); audits auto-rerun + health refresh when `updateSettings` flips audit-relevant fields, with stale `audit:*` health rows pruned on each pass (audits A→S); EventWriter exposes `getMetrics()` with sent / inFlight / failed / peakInFlight so a wedged sideband consumer becomes observable (event-writer B→A). Cumulative P7: 4 lifts in S1 (cookie-store, browser-history, manifest-scanner, plan-panel) + 4 lifts in S2 (terminal-search, surface-metadata, health-checks, tau-primitives infra) + 3 lifts in S3 (theme selector UI, pane-chip ARIA, notifications) + 3 lifts in S4 (browser-pane, audits, event-writer). Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — deferred as a dedicated session, settings.ts is 1166 LOC / ~396 fields) + literal-to-token migration + browser partition (H.8/H.9) + telegram DB TTL + auto-continue persistence + editor save-race UX + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.",
+  "headline": "Phase 7 polish — session 5 landed: EventWriter bounded-queue + drop policy on top of the S4 metrics, caps queued frames to ~1 MB worst case (event-writer A→S); editor save-race UX with structured `conflictDetail` + `force: true` flag + out-of-band-delete detection (editor-pane A→S); per-pane OSC 9;4 progress chip (`▰▰▱▱▱ 40%`, paused / error / indeterminate variants) wired through `SurfaceMetadata.progress` so the chip survives 1 Hz refreshes (pane-chip-rendering stays at S, with new evidence). Cumulative P7: 17 lifts across 5 sessions. Remaining P7 long tail: typed EventBus (A6) + VariantContext (A7) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — deferred as a dedicated session, settings.ts is 1166 LOC / ~396 fields) + literal-to-token migration + browser partition (H.8/H.9) + telegram DB TTL + auto-continue persistence + sidebar drag-reorder polish + …. Owned across multiple future sessions of P7.",
   "clusters": [
     {
       "id": "core-terminal",
@@ -102,10 +102,9 @@
         {
           "id": "event-writer",
           "name": "Event writer / RPC envelope",
-          "grade": "A",
-          "evidence": "`event-writer.ts:12-32` — JSONL serialization via `Bun.write`, error callback. Phase 7 (S4) added an `EventWriterMetrics { sent, inFlight, failed, peakInFlight }` snapshot via `getMetrics()`; the `Bun.write` Promise is decorated with `.finally(…)` so `inFlight` tracks true OS completion. A wedged consumer or runaway producer is now observable rather than silent — `peakInFlight` is the decision-aid for sizing a future bounded queue. Tests in `tests/event-writer.test.ts` (+4, 9 total).",
+          "grade": "S",
+          "evidence": "`event-writer.ts:12-32` — JSONL serialization via `Bun.write`, error callback. Phase 7 (S4) added an `EventWriterMetrics { sent, inFlight, failed, peakInFlight }` snapshot via `getMetrics()`; the `Bun.write` Promise is decorated with `.finally(…)` so `inFlight` tracks true OS completion. Phase 7 (S5) added the bounded-queue counterpart: when `inFlight` reaches `DEFAULT_MAX_IN_FLIGHT` (1024), further `send()` calls return `false` and bump a new `dropped` counter instead of stacking more pending writes (caps queued frames to ~1 MB worst case). The cap is overridable per-instance via `EventWriterOptions.maxInFlight`; `getMaxInFlight()` exposes the active value. Tests in `tests/event-writer.test.ts` (13 total).",
           "gaps": [
-            "Bounded queue with bounded backpressure (counters are in place; a hard cap that drops or pauses on overflow is the next step).",
             "Per-channel rate limits.",
             "Tests that read back the bytes."
           ]
@@ -369,10 +368,9 @@
         {
           "id": "editor-pane",
           "name": "Editor pane (CodeMirror)",
-          "grade": "A",
-          "evidence": "`editor-pane.ts` (526 LOC) — CodeMirror 6 with `defaultKeymap` + history + search, language detection, dirty/path pills, mtime + line-ending tracking. Phase 3 added `tests/editor-pane.test.ts` (14 tests) covering construction, snapshot apply (wrong-surface guard, error state, new-vs-existing), save/reload callbacks with expectedMtimeMs round-trip, apply save result (success + wrong-surface guard), and destroy lifecycle.",
+          "grade": "S",
+          "evidence": "`editor-pane.ts` (526 LOC) — CodeMirror 6 with `defaultKeymap` + history + search, language detection, dirty/path pills, mtime + line-ending tracking. Phase 3 added `tests/editor-pane.test.ts` (14 tests) covering construction, snapshot apply (wrong-surface guard, error state, new-vs-existing), save/reload callbacks with expectedMtimeMs round-trip, apply save result (success + wrong-surface guard), and destroy lifecycle. Phase 7 (S5) added the save-race UX: structured `conflictDetail { expectedMtimeMs, actualMtimeMs, actualSize }` on `EditorSaveResult` so the UI can render an actionable dialog; new `force: true` flag bypasses conflict checks for explicit overwrites; out-of-band deletes (file vanished from disk with a non-null expectedMtimeMs) now surface a structured 'deleted on disk' conflict instead of silently re-creating. Tests in `tests/editor-files.test.ts` (+5, 10 total).",
           "gaps": [
-            "Save-race conflict UX (the impl carries `expectedMtimeMs` through onSave but the host-side handler resolution lives in the editor RPC — owned by P7).",
             "Line-ending convert on save."
           ]
         }
@@ -396,7 +394,7 @@
           "id": "pane-chip-rendering",
           "name": "Pane-bar chip rendering",
           "grade": "S",
-          "evidence": "Extracted to `src/shared/pane-chips.ts:32-94` with signature cache to skip redundant DOM rebuilds; web-mirror parity tested. Phase 2 (F.1) verified the dual-implementation drift is closed — both native (`surface-manager.ts:949`) and mirror (`web-client/main.ts:650, :907`) import from the same shared module. Phase 7 (S3) added A11y coverage: the chip host carries `role=\"status\"` + `aria-live=\"polite\"` so screen readers announce metadata changes politely; every chip carries an `aria-label` spelling out its value — cwd (full path), command (full command, no truncation), port (\"Open port N (proto address, pid X)\"), git (\"branch X, N ahead, N behind, +X lines, -Y lines\" via new `formatGitAria` helper). +6 tests.",
+          "evidence": "Extracted to `src/shared/pane-chips.ts:32-94` with signature cache to skip redundant DOM rebuilds; web-mirror parity tested. Phase 2 (F.1) verified the dual-implementation drift is closed — both native (`surface-manager.ts:949`) and mirror (`web-client/main.ts:650, :907`) import from the same shared module. Phase 7 (S3) added A11y coverage: the chip host carries `role=\"status\"` + `aria-live=\"polite\"` so screen readers announce metadata changes politely; every chip carries an `aria-label` spelling out its value — cwd (full path), command (full command, no truncation), port (\"Open port N (proto address, pid X)\"), git (\"branch X, N ahead, N behind, +X lines, -Y lines\" via `formatGitAria` helper). Phase 7 (S5) added a per-pane OSC 9;4 progress chip: `▰▰▱▱▱ 40%` for normal, `⏸ ▰▰▰▱▱ 60%` for paused, `× error`, `…` for indeterminate, each with the matching aria-label. Wired through `SurfaceMetadata.progress` so the chip survives 1 Hz metadata refreshes. +6 tests (18 total).",
           "gaps": [
             "Unified port-click handler / config (native dispatches `ht-open-external` CustomEvent; mirror routes via `http://${location.hostname}:${port}` which fails on `0.0.0.0` when hostname≠IP).",
             "Tooltip overflow tests."
