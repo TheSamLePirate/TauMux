@@ -907,3 +907,48 @@ Grade distribution after S17: **20 S / 20 A / 6 B / 3 C** (unchanged — both li
 - F.6 — theme-preset interlock factory: themePreset selection drives accentColor / secondaryColor / foregroundColor / bgBase / ansiColors. Needs a `derived(fn)` shape that takes the whole settings record (or at least themePreset).
 - Cluster H literal migration — next chunk (process manager, settings panel section, plan panel fallback strip, notification overlay).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 18 (2026-05-17)
+
+Slice picked: **Cluster H double-chunk** on the process manager (⌘⌥P) — chrome + kill button + cross-component semantic badges. F.6 theme-preset interlock deferred (needs a `derived(fn)` factory shape with a sibling-context signature; a non-trivial design change to defer to a focused session).
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H PM chrome + kill button | `70a56b2` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-pm.test.ts` (new) | +25 (21 `--ht-pm-*` tokens defined; .process-manager-* chrome + kill rules use them) |
+| Cluster H PM port/git badges + cross-component badge namespace | `5446f31` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-badge.test.ts` (new) | +11 (7 `--ht-badge-*` tokens defined; PM badges + git fg + CPU heatmap rewired) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.84 → 0.3.85 (PM chrome) → 0.3.86 (badge namespace).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H **double-chunk** this session — the process manager overlay (⌘⌥P) migrated to `--ht-pm-*` (15 chrome + 6 kill = 21 tokens covering 22 literals) AND a new cross-component `--ht-badge-*` namespace (7 tokens covering the soft-bg/matching-border tints for the success/warn/info badge family). First migration that rewires literals onto existing `--ht-sem-error` / `--ht-sem-success` tokens (PM git-conflicts / git-add / CPU heatmap endpoint). audit:theming: 907 → 875 (−32 across two commits). |
+
+Grade distribution after S18: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **No regressions introduced this session.**
+- **Deliberate scope choice**: PM has 30+ distinct literals split across container chrome (mostly white-overlay tints) and semantic badges. Doing them as two separate commits with two different token namespaces (`--ht-pm-*` for component-specific chrome, `--ht-badge-*` for cross-component reusable semantics) is the right shape — the badge tokens are explicitly designed for future reuse by surface chips and sidebar status pills.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+- **1 pre-existing flake**: `byte-buffer fallback`. Same as previous sessions.
+
+### Exit criteria (session 18)
+
+| Criterion | Status |
+|---|---|
+| Cluster H PM chrome region migrated | ✅ 907 → 885 (−22) |
+| Cluster H PM badge region migrated + cross-component namespace | ✅ 885 → 875 (−10) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2310 / 1 known flake; +36 new tests (25 PM chrome + 11 badge) |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 18)
+
+- F.6 — theme-preset interlock factory (final F.6 holdout).
+- Cluster H literal migration — next chunk: notification overlay (`.notification-*` rules), workspace cwd selector, surface chips region.
+- Phases 8 (release engineering) + 9 (docs / observability).
