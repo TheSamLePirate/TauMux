@@ -170,6 +170,30 @@
   --ht-palette-kbd-keys-bg: rgba(111, 233, 255, 0.08);
   --ht-palette-kbd-keys-border: rgba(111, 233, 255, 0.24);
 
+  /* P7 S17 — ask-user modal + sidebar workspace-ask badge. The
+   *  ask-user modal is the trust-boundary overlay for agent-requested
+   *  user input (delete file, run command, etc.) — its visual weight
+   *  is intentionally heavier than the command palette, with a deeper
+   *  scrim, a near-opaque sheet, and a danger-red banner / button
+   *  family for unsafe operations. The workspace-ask-badge is the
+   *  sidebar's pending-question pill that points to a surface waiting
+   *  for the user — same cyan tint family as the modal's accent. The
+   *  ht-ask prefix sits outside the U2 light/HC override gate. */
+  --ht-ask-scrim-bg: rgba(0, 0, 0, 0.42);
+  --ht-ask-sheet-bg: rgba(0, 0, 0, 0.92);
+  --ht-ask-sheet-border: rgba(111, 233, 255, 0.58);
+  --ht-ask-sheet-shadow: rgba(0, 0, 0, 0.62);
+  --ht-ask-codebox-bg: rgba(10, 10, 13, 0.92);
+  --ht-ask-codebox-border: rgba(39, 39, 42, 0.96);
+  --ht-ask-danger-bg: rgba(239, 68, 68, 0.92);
+  --ht-ask-danger-fg: #18020a;
+  --ht-ask-danger-banner-bg: rgba(239, 68, 68, 0.14);
+  --ht-ask-danger-banner-fg: rgba(252, 165, 165, 0.96);
+  --ht-ask-danger-banner-border: rgba(239, 68, 68, 0.42);
+  --ht-ask-badge-bg: rgba(111, 233, 255, 0.18);
+  --ht-ask-badge-border: rgba(111, 233, 255, 0.42);
+  --ht-ask-badge-fg: rgba(111, 233, 255, 0.96);
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;

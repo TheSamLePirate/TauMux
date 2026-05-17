@@ -3078,7 +3078,7 @@ body.terminal-typing .panel {
   align-items: flex-start;
   justify-content: center;
   padding-top: 96px;
-  background: rgba(0, 0, 0, 0.42);
+  background: var(--ht-ask-scrim-bg);
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
@@ -3094,9 +3094,9 @@ body.terminal-typing .panel {
   gap: 12px;
   padding: 20px;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.92);
-  border: 0.5px solid rgba(111, 233, 255, 0.58);
-  box-shadow: 0 32px 84px rgba(0, 0, 0, 0.62);
+  background: var(--ht-ask-sheet-bg);
+  border: 0.5px solid var(--ht-ask-sheet-border);
+  box-shadow: 0 32px 84px var(--ht-ask-sheet-shadow);
 }
 
 .ask-user-attribution {
@@ -3120,8 +3120,8 @@ body.terminal-typing .panel {
   margin: 0;
   padding: 12px 14px;
   border-radius: 8px;
-  background: rgba(10, 10, 13, 0.92);
-  border: 0.5px solid rgba(39, 39, 42, 0.96);
+  background: var(--ht-ask-codebox-bg);
+  border: 0.5px solid var(--ht-ask-codebox-border);
   color: var(--text-strong);
   font-family: var(--tau-font-mono, "SF Mono", "Fira Code", monospace);
   font-size: 12px;
@@ -3135,9 +3135,9 @@ body.terminal-typing .panel {
 .ask-user-unsafe-banner {
   padding: 8px 12px;
   border-radius: 6px;
-  background: rgba(239, 68, 68, 0.14);
-  color: rgba(252, 165, 165, 0.96);
-  border: 0.5px solid rgba(239, 68, 68, 0.42);
+  background: var(--ht-ask-danger-banner-bg);
+  color: var(--ht-ask-danger-banner-fg);
+  border: 0.5px solid var(--ht-ask-danger-banner-border);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.04em;
@@ -3163,9 +3163,9 @@ body.terminal-typing .panel {
 }
 
 .ask-user-btn-danger {
-  background: rgba(239, 68, 68, 0.92);
-  border-color: rgba(239, 68, 68, 0.92);
-  color: #18020a;
+  background: var(--ht-ask-danger-bg);
+  border-color: var(--ht-ask-danger-bg);
+  color: var(--ht-ask-danger-fg);
   font-weight: 600;
 }
 
@@ -3179,9 +3179,9 @@ body.terminal-typing .panel {
   height: 14px;
   padding: 0 6px;
   border-radius: 7px;
-  background: rgba(111, 233, 255, 0.18);
-  border: 0.5px solid rgba(111, 233, 255, 0.42);
-  color: rgba(111, 233, 255, 0.96);
+  background: var(--ht-ask-badge-bg);
+  border: 0.5px solid var(--ht-ask-badge-border);
+  color: var(--ht-ask-badge-fg);
   font-size: 9.5px;
   font-weight: 600;
   letter-spacing: 0.06em;
