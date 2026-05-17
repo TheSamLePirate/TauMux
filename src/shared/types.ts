@@ -185,6 +185,21 @@ export interface SurfaceMetadata {
   cargoToml: CargoInfo | null;
   /** Wall-clock ms when this snapshot was produced. */
   updatedAt: number;
+  /** P7 S5 — OSC 9;4 (ConEmu-flavoured) per-pane progress indicator.
+   *  When present, the chip row renders a small percentage / state
+   *  badge so users see *per-pane* build / install progress (not just
+   *  the workspace bar). Filled in by the surface-manager OSC 9;4
+   *  handler, not the poller — the poller leaves this field alone. */
+  progress?: SurfaceProgress | null;
+}
+
+/** OSC 9;4 progress snapshot for a single pane. `state` mirrors the
+ *  decoded `Osc94State` from `src/views/terminal/osc-progress.ts`;
+ *  `value` is an integer 0..100 percent, or null when the state
+ *  doesn't carry one (indeterminate / state-without-value). */
+export interface SurfaceProgress {
+  state: "normal" | "error" | "indeterminate" | "paused";
+  value: number | null;
 }
 
 // === Sideband Channel Types ===

@@ -14,7 +14,7 @@
 // We expose the open-handler as an injected dep so each surface
 // keeps its own behaviour without forking the chip renderer.
 
-import type { SurfaceMetadata } from "./types";
+import type { SurfaceMetadata, SurfaceProgress } from "./types";
 
 export type PaneChipsPortHandler = (port: number, event: Event) => void;
 
@@ -79,6 +79,19 @@ export function renderSurfaceChips(
     chip.title = formatGitTooltip(meta.git);
     chip.setAttribute("aria-label", `Git: ${formatGitAria(meta.git)}`);
     fillGitChip(chip, meta.git);
+    host.appendChild(chip);
+  }
+
+  // P7 S5 — per-pane OSC 9;4 progress chip. Renders only when the
+  // pane is actively reporting progress (`progress.state === "remove"`
+  // already cleared the field upstream). The chip shows a compact
+  // bar + percent, or a state token when value is null.
+  if (meta.progress) {
+    const chip = buildChip(
+      `chip-progress chip-progress-${meta.progress.state}`,
+      formatProgress(meta.progress),
+    );
+    chip.setAttribute("aria-label", formatProgressAria(meta.progress));
     host.appendChild(chip);
   }
 
@@ -147,7 +160,35 @@ export function chipsSignature(meta: SurfaceMetadata): string {
       `${meta.git.staged}|${meta.git.unstaged}|${meta.git.untracked}|` +
       `${meta.git.conflicts}|${meta.git.insertions}|${meta.git.deletions}`
     : "";
-  return `${cmd}${meta.cwd ?? ""}${git}${ports}`;
+  // P7 S5 — include progress so the chip re-renders on each OSC tick.
+  const prog = meta.progress
+    ? `${meta.progress.state}:${meta.progress.value ?? ""}`
+    : "";
+  return `${cmd}${meta.cwd ?? ""}${git}${ports}${prog}`;
+}
+
+/** P7 S5 — render the OSC 9;4 progress chip text. Five-block bar +
+ *  percent for `normal`/`paused`; literal "× error" / "…" for the
+ *  marker states. */
+function formatProgress(p: SurfaceProgress): string {
+  if (p.state === "indeterminate") return "…";
+  if (p.state === "error") return "× error";
+  const blocks = 5;
+  const filled = p.value === null ? 0 : Math.round((blocks * p.value) / 100);
+  const bar =
+    "▰".repeat(Math.max(0, Math.min(blocks, filled))) +
+    "▱".repeat(Math.max(0, blocks - filled));
+  const pct = p.value === null ? "" : ` ${p.value}%`;
+  const prefix = p.state === "paused" ? "⏸ " : "";
+  return `${prefix}${bar}${pct}`;
+}
+
+/** Spoken form for screen readers; pairs with the visual chip above. */
+function formatProgressAria(p: SurfaceProgress): string {
+  if (p.state === "indeterminate") return "Progress: working";
+  if (p.state === "error") return "Progress: error";
+  const base = p.state === "paused" ? "Progress paused" : "Progress";
+  return p.value === null ? base : `${base} at ${p.value}%`;
 }
 
 /** Compact cwd for the chip — last 2 path segments are almost always

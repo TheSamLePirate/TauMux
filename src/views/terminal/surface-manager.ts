@@ -15,7 +15,11 @@ function surfaceIdentity(kind: SurfaceKind): TauIdentity {
   return kind === "agent" ? "agent" : "human";
 }
 import { TerminalEffects } from "./terminal-effects";
-import { describeOsc94State, parseOsc94Payload } from "./osc-progress";
+import {
+  describeOsc94State,
+  parseOsc94Payload,
+  type Osc94Update,
+} from "./osc-progress";
 import type {
   PanelEvent,
   PersistedLayout,
@@ -479,7 +483,9 @@ export class SurfaceManager {
 
   addEditorSurface(surfaceId: string, path?: string): void {
     const view = this.createEditorSurfaceView(surfaceId, path);
-    this.addNewWorkspace(surfaceId, "Editor", view, () => this.focusSurface(surfaceId));
+    this.addNewWorkspace(surfaceId, "Editor", view, () =>
+      this.focusSurface(surfaceId),
+    );
   }
 
   addEditorSurfaceAsSplit(
@@ -944,6 +950,13 @@ export class SurfaceManager {
 
   setSurfaceMetadata(surfaceId: string, metadata: SurfaceMetadata): void {
     const prev = this.metadata.get(surfaceId);
+    // P7 S5 — preserve any OSC 9;4 progress we already stashed. The
+    // poller produces a fresh `SurfaceMetadata` every tick and does
+    // not know about progress; without this merge, the per-pane
+    // progress chip would flash off on every 1 Hz refresh.
+    if (prev?.progress != null && metadata.progress == null) {
+      metadata.progress = prev.progress;
+    }
     this.metadata.set(surfaceId, metadata);
     const view = this.surfaces.get(surfaceId);
     if (view) renderSurfaceChips(view.chipsEl, metadata, NATIVE_CHIP_DEPS);
@@ -978,6 +991,24 @@ export class SurfaceManager {
 
   getSurfaceMetadata(surfaceId: string): SurfaceMetadata | null {
     return this.metadata.get(surfaceId) ?? null;
+  }
+
+  /** P7 S5 — mutate the OSC 9;4 progress slot on a surface's metadata
+   *  and re-render its chip row. Called from the per-surface OSC 9;4
+   *  parser handler in `attachTerminal`. The poller never touches this
+   *  field; `setSurfaceMetadata` preserves it across 1 Hz refreshes. */
+  updateSurfaceProgress(surfaceId: string, update: Osc94Update): void {
+    const prev = this.metadata.get(surfaceId);
+    if (!prev) return;
+    const next: SurfaceMetadata = { ...prev };
+    if (update.state === "remove") {
+      next.progress = null;
+    } else {
+      next.progress = { state: update.state, value: update.value };
+    }
+    this.metadata.set(surfaceId, next);
+    const view = this.surfaces.get(surfaceId);
+    if (view) renderSurfaceChips(view.chipsEl, next, NATIVE_CHIP_DEPS);
   }
 
   /** Mark `cwd` as the workspace's "primary" cwd — the sidebar package card
@@ -1549,7 +1580,8 @@ export class SurfaceManager {
             surfaceTypes[sid] = "telegram";
           } else if (view?.surfaceType === "editor") {
             surfaceTypes[sid] = "editor";
-            if (view.editorView?.path) surfaceEditorFiles[sid] = view.editorView.path;
+            if (view.editorView?.path)
+              surfaceEditorFiles[sid] = view.editorView.path;
           } else {
             const cwd = this.metadata.get(sid)?.cwd;
             if (cwd) surfaceCwds[sid] = cwd;
@@ -1574,7 +1606,9 @@ export class SurfaceManager {
           surfaceUrls:
             Object.keys(surfaceUrls).length > 0 ? surfaceUrls : undefined,
           surfaceEditorFiles:
-            Object.keys(surfaceEditorFiles).length > 0 ? surfaceEditorFiles : undefined,
+            Object.keys(surfaceEditorFiles).length > 0
+              ? surfaceEditorFiles
+              : undefined,
           surfaceTypes:
             Object.keys(surfaceTypes).length > 0 ? surfaceTypes : undefined,
         };
@@ -2300,6 +2334,11 @@ export class SurfaceManager {
         if (!this.osc94Enabled) return false;
         const update = parseOsc94Payload(body);
         if (!update) return false; // not a 9;4 message — let other handlers run
+        // P7 S5 — per-pane chip mirror. The workspace-level bar is the
+        // aggregate view; this stashes the same progress on the
+        // surface's metadata so `renderSurfaceChips` paints a small
+        // chip in the pane bar too.
+        this.updateSurfaceProgress(surfaceId, update);
         const wsHit = this.findWorkspaceForSurface(surfaceId);
         if (!wsHit) return true;
         if (update.state === "remove") {
@@ -2350,22 +2389,48 @@ export class SurfaceManager {
     };
   }
 
-  private createEditorSurfaceView(surfaceId: string, path?: string): SurfaceView {
+  private createEditorSurfaceView(
+    surfaceId: string,
+    path?: string,
+  ): SurfaceView {
     const editorView = createEditorPaneView(surfaceId, path, {
       onRead: (sid, filePath, create) => {
-        window.dispatchEvent(new CustomEvent("ht-editor-read-file", { detail: { surfaceId: sid, path: filePath, create } }));
+        window.dispatchEvent(
+          new CustomEvent("ht-editor-read-file", {
+            detail: { surfaceId: sid, path: filePath, create },
+          }),
+        );
       },
       onSave: (sid, filePath, content, expectedMtimeMs) => {
-        window.dispatchEvent(new CustomEvent("ht-editor-save-file", { detail: { surfaceId: sid, path: filePath, content, expectedMtimeMs } }));
+        window.dispatchEvent(
+          new CustomEvent("ht-editor-save-file", {
+            detail: {
+              surfaceId: sid,
+              path: filePath,
+              content,
+              expectedMtimeMs,
+            },
+          }),
+        );
       },
       onReload: (sid, filePath) => {
-        window.dispatchEvent(new CustomEvent("ht-editor-reload-file", { detail: { surfaceId: sid, path: filePath } }));
+        window.dispatchEvent(
+          new CustomEvent("ht-editor-reload-file", {
+            detail: { surfaceId: sid, path: filePath },
+          }),
+        );
       },
       onClose: (sid) => {
-        window.dispatchEvent(new CustomEvent("ht-close-surface", { detail: { surfaceId: sid } }));
+        window.dispatchEvent(
+          new CustomEvent("ht-close-surface", { detail: { surfaceId: sid } }),
+        );
       },
       onSplit: (_sid, direction) => {
-        window.dispatchEvent(new CustomEvent("ht-split-editor", { detail: { path: editorView.path ?? undefined, direction } }));
+        window.dispatchEvent(
+          new CustomEvent("ht-split-editor", {
+            detail: { path: editorView.path ?? undefined, direction },
+          }),
+        );
       },
       onFocus: (sid) => this.focusSurface(sid),
     });
@@ -2642,7 +2707,6 @@ export class SurfaceManager {
     }
   }
 }
-
 
 /**
  * Fit a terminal to its parent container's full width/height — no 14 px

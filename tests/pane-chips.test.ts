@@ -269,4 +269,87 @@ describe("shared pane-chips", () => {
     const chip = host.querySelector(".chip-git")!;
     expect(chip.getAttribute("aria-label")).toBe("Git: branch main, clean");
   });
+
+  // ──────────────────────────────────────────────────────────────────
+  // P7 S5 — OSC 9;4 per-pane progress chip
+  // ──────────────────────────────────────────────────────────────────
+
+  test("no progress chip is rendered when meta.progress is null / undefined", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    renderSurfaceChips(host, meta({ progress: null }), {
+      onPortClick: () => {},
+    });
+    expect(host.querySelector(".chip-progress")).toBeNull();
+  });
+
+  test("normal progress chip renders a five-block bar + percent and aria-label", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    renderSurfaceChips(
+      host,
+      meta({ progress: { state: "normal", value: 40 } }),
+      { onPortClick: () => {} },
+    );
+    const chip = host.querySelector(".chip-progress");
+    expect(chip).not.toBeNull();
+    // 40% of 5 blocks = 2 filled, 3 empty.
+    expect(chip!.textContent).toBe("▰▰▱▱▱ 40%");
+    expect(chip!.classList.contains("chip-progress-normal")).toBe(true);
+    expect(chip!.getAttribute("aria-label")).toBe("Progress at 40%");
+  });
+
+  test("paused chip carries a ⏸ prefix and the paused-state class", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    renderSurfaceChips(
+      host,
+      meta({ progress: { state: "paused", value: 60 } }),
+      { onPortClick: () => {} },
+    );
+    const chip = host.querySelector(".chip-progress")!;
+    expect(chip.textContent).toBe("⏸ ▰▰▰▱▱ 60%");
+    expect(chip.classList.contains("chip-progress-paused")).toBe(true);
+    expect(chip.getAttribute("aria-label")).toBe("Progress paused at 60%");
+  });
+
+  test("error chip renders a literal '× error' regardless of value", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    renderSurfaceChips(
+      host,
+      meta({ progress: { state: "error", value: null } }),
+      { onPortClick: () => {} },
+    );
+    const chip = host.querySelector(".chip-progress")!;
+    expect(chip.textContent).toBe("× error");
+    expect(chip.classList.contains("chip-progress-error")).toBe(true);
+    expect(chip.getAttribute("aria-label")).toBe("Progress: error");
+  });
+
+  test("indeterminate chip renders … and a working aria-label", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    renderSurfaceChips(
+      host,
+      meta({ progress: { state: "indeterminate", value: null } }),
+      { onPortClick: () => {} },
+    );
+    const chip = host.querySelector(".chip-progress")!;
+    expect(chip.textContent).toBe("…");
+    expect(chip.getAttribute("aria-label")).toBe("Progress: working");
+  });
+
+  test("chipsSignature differs when progress changes (cache busts on each OSC tick)", () => {
+    const a = chipsSignature(
+      meta({ progress: { state: "normal", value: 10 } }),
+    );
+    const b = chipsSignature(
+      meta({ progress: { state: "normal", value: 20 } }),
+    );
+    const c = chipsSignature(meta({ progress: null }));
+    expect(a).not.toBe(b);
+    expect(a).not.toBe(c);
+    expect(b).not.toBe(c);
+  });
 });
