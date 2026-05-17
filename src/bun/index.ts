@@ -757,6 +757,9 @@ const bunMessageHandlers = {
       updated.auditsGitUserNameExpected !== previous.auditsGitUserNameExpected
     ) {
       rebuildAudits();
+      // P7 S4 — re-run the rebuilt registry so health + audit.list
+      // reflect the new config without a restart.
+      void runAndPublishAudits();
     }
     rpc.send("settingsChanged", { settings: updated });
   },
@@ -2751,6 +2754,49 @@ function rebuildAudits(): void {
   });
 }
 
+// P7 S4 — re-run audits and refresh the health snapshot. Called once at
+// startup and again after `rebuildAudits()` lands so a Settings change
+// that affects an audit (e.g. flipping `auditsGitUserNameExpected`)
+// updates `ht health` + the future sidebar pill without a restart.
+// Previously rebuildAudits() only swapped the registry — last-results
+// stayed stale until the user manually re-ran them.
+async function runAndPublishAudits(): Promise<void> {
+  try {
+    const results = await runAudits(cachedAudits);
+    lastAuditResults = results;
+    for (const r of results) {
+      if (r.ok) {
+        console.log(`[audit] ${r.id}: ${r.message}`);
+      } else {
+        console.warn(`[audit] ${r.id}: ${r.message}`);
+      }
+      const sev =
+        r.severity === "info"
+          ? "ok"
+          : r.severity === "warn"
+            ? "degraded"
+            : "error";
+      health.set(`audit:${r.id}`, sev, r.message);
+    }
+    // When the registry shrinks (audit removed), the corresponding
+    // health row would otherwise hang around forever with stale data.
+    // Drop any `audit:*` rows whose id isn't in the current result set.
+    const liveIds = new Set(results.map((r) => `audit:${r.id}`));
+    for (const entry of health.snapshot().entries) {
+      if (entry.id.startsWith("audit:") && !liveIds.has(entry.id)) {
+        health.remove(entry.id);
+      }
+    }
+    if (cachedAudits.length === 0) {
+      health.set("audits", "disabled", "No audits configured");
+    } else {
+      health.remove("audits");
+    }
+  } catch (err) {
+    console.warn(`[audit] re-run failed: ${(err as Error).message}`);
+  }
+}
+
 // Plan #09 commit B — auto-continue engine. Wired into the
 // `notification.create` hook so every turn-end notification can
 // produce a continue/wait decision. The engine reads its config
@@ -2877,27 +2923,10 @@ if (socketServer.isBound()) {
 // at warn level when something flags so the log file (Plan #01) shows
 // it even when no UI is consuming yet. Each result also pushes a
 // health row keyed by the audit id so `ht health` surfaces failing
-// canaries alongside the rest of the subsystem state.
-void runAudits(cachedAudits).then((results) => {
-  lastAuditResults = results;
-  for (const r of results) {
-    if (r.ok) {
-      console.log(`[audit] ${r.id}: ${r.message}`);
-    } else {
-      console.warn(`[audit] ${r.id}: ${r.message}`);
-    }
-    const sev =
-      r.severity === "info"
-        ? "ok"
-        : r.severity === "warn"
-          ? "degraded"
-          : "error";
-    health.set(`audit:${r.id}`, sev, r.message);
-  }
-  if (cachedAudits.length === 0) {
-    health.set("audits", "disabled", "No audits configured");
-  }
-});
+// canaries alongside the rest of the subsystem state. P7 S4 — the
+// runAndPublishAudits() helper is also called from updateSettings()
+// so a Settings change rebuilds + re-runs without a restart.
+void runAndPublishAudits();
 
 // Auto-start web mirror server
 function setupWebServerCallbacks(ws: WebServer) {
