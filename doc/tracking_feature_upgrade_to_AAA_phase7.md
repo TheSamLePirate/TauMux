@@ -1139,3 +1139,50 @@ Grade distribution after S22: **20 S / 20 A / 6 B / 3 C** (unchanged — termina
 - Cluster F.10: audit remaining ad-hoc handlers; move into `src/bun/rpc-handlers/`.
 - Cluster H literal migration — next chunk: sidebar status grid, tau-status bar deeper migration, editor pane chrome.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 23 (2026-05-17)
+
+Slice picked: **Cluster B sidebar drag-reorder a11y closure** + **Cluster H titlebar gradient + sidebar header text ladder**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster B — mouse drag-drop announces | `53692f3` | `src/views/terminal/sidebar.ts`, `tests/sidebar-keyboard-reorder.test.ts` | +1 (drag-start → drag-over → drop populates the polite live region with the keyboard-equivalent announcement) |
+| Cluster H titlebar gradient + sidebar header | `2739860` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-sidebar-header.test.ts` (new) | +13 (10 new tokens + cross-component .sidebar-title-count → --ht-button-bg reuse + the second-`.sidebar-empty`-rule grep variant) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.94 → 0.3.95 (drag-announce) → 0.3.96 (sidebar header tokens).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `sidebar` | S | S | **Cluster B drag-reorder a11y closed.** Mouse drag-drop now calls `announceReorder()` just like the keyboard reorder path — both modalities populate the same polite `.sidebar-live-region` so AT users hear "Moved <name> to position N of M" regardless of input. |
+| `tau-primitives` | S | S | Cluster H continues — titlebar 2-stop gradient (`#0d1317` / `#0a0e11`) + sidebar header brightness ladder (5 zinc alphas: 0.42 / 0.48 / 0.66 / 0.68 / 0.98) + footer divider + server-pill hover + Catppuccin online-URL green migrated to 10 new tokens. `.sidebar-title-count` cross-component reuses `--ht-button-bg` (exact 0.055 white-overlay alpha). 12 literals migrated. audit:theming: 825 → 813 (−12). |
+
+Grade distribution after S23: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **Test selector ambiguity caught + fixed**: `.sidebar-empty` appears twice in the stylesheet (a transition-only override at line 652 and the styled block at line 824). `matchRule` finds the first match, which lacks the migrated `color:` line. Pivoted to a whole-file regex assertion for that specific rule.
+- **Comment vs production literal**: the first version of the titlebar gradient test asserted the CSS doesn't contain `#0d1317` — but the literal also appears in the rule's design-rationale comment. Updated the assertion to strip comments before scanning (mirrors how `audit:theming` already works).
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 23)
+
+| Criterion | Status |
+|---|---|
+| Cluster B — mouse drag-reorder announces via aria-live | ✅ landed |
+| Cluster H titlebar + sidebar header region migrated | ✅ 825 → 813 (−12) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2400 / 0–1 known flake; +14 new tests |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 23)
+
+- Cluster B residuals: settings reset-to-default per field (U10), IME composition guards on settings text inputs.
+- Cluster E residuals: SurfaceMetadataPoller stale-git skip-tick, more audits (locale/node/shell), health-check `fix()` remediation.
+- Cluster F.10: audit remaining ad-hoc handlers; move into `src/bun/rpc-handlers/`.
+- Cluster H literal migration — next chunk: surface bar / pane bar deeper, ask-user IME wrap chrome, ansi-color hex literals in theme presets (or skip those — they're intentionally literal).
+- Phases 8 (release engineering) + 9 (docs / observability).
