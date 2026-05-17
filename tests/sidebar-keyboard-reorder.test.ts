@@ -252,4 +252,61 @@ describe("Sidebar — keyboard reorder (P7 S7)", () => {
     expect(region!.textContent ?? "").toContain("Moved ws:1");
     expect(region!.textContent ?? "").toContain("position 2 of 3");
   });
+
+  // ── P7 S23 — mouse drag-drop also announces ──────────────────
+
+  test("mouse drag-drop announces the move through the same live region", async () => {
+    const { sidebar, container } = await makeSidebar();
+    sidebar.setWorkspaces([
+      ws({ id: "ws:1", active: true }),
+      ws({ id: "ws:2" }),
+      ws({ id: "ws:3" }),
+    ]);
+
+    // Simulate dragstart on ws:1.
+    const cards = container.querySelectorAll<HTMLElement>(
+      "[data-workspace-id]",
+    );
+    const source = cards[0]!;
+    const target = cards[2]!;
+
+    // happy-dom supplies a stub DataTransfer; pass undefined-safe.
+    const dt = { effectAllowed: "", setData: () => {}, getData: () => "" };
+    source.dispatchEvent(
+      new DragEvent("dragstart", {
+        bubbles: true,
+        cancelable: true,
+        // @ts-expect-error happy-dom accepts a partial DataTransfer mock
+        dataTransfer: dt,
+      }),
+    );
+
+    // dragover on the target — simulate dropping AFTER ws:3 (positive
+    // pointer offset).
+    const targetRect = target.getBoundingClientRect();
+    target.dispatchEvent(
+      new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+        clientY: targetRect.bottom - 1,
+        // @ts-expect-error see above
+        dataTransfer: dt,
+      }),
+    );
+    target.dispatchEvent(
+      new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        clientY: targetRect.bottom - 1,
+        // @ts-expect-error see above
+        dataTransfer: dt,
+      }),
+    );
+
+    const region = container.querySelector<HTMLElement>(".sidebar-live-region");
+    expect(region).not.toBeNull();
+    expect(region!.textContent ?? "").toContain("Moved ws:1");
+    // ws:1 moved to the end → position 3 of 3.
+    expect(region!.textContent ?? "").toContain("position 3 of 3");
+  });
 });

@@ -2277,6 +2277,10 @@ export class Sidebar {
     // the payload shape and the existing window.addEventListener
     // consumers keep working unchanged.
     htEvents.emit("ht-reorder-workspaces", { order: order.slice() });
+    // P7 S23 — announce the mouse-drag drop via the same polite live
+    // region the keyboard path uses, so AT users hear the result
+    // regardless of input modality.
+    this.announceReorder(sourceId, to, order.length);
     this.renderWorkspaces();
   }
 
