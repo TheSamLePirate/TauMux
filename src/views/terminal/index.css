@@ -1515,9 +1515,9 @@ body.sidebar-resizing {
   font-size: 9px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: #86efac;
-  background: rgba(74, 222, 128, 0.08);
-  border: 0.5px solid rgba(74, 222, 128, 0.2);
+  color: var(--ht-badge-success-fg);
+  background: var(--ht-badge-success-bg);
+  border: 0.5px solid var(--ht-badge-success-border);
 }
 
 .process-manager-git {
@@ -1530,15 +1530,15 @@ body.sidebar-resizing {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--accent-secondary);
-  background: rgba(255, 197, 107, 0.08);
-  border: 0.5px solid rgba(255, 197, 107, 0.22);
+  background: var(--ht-badge-warn-bg);
+  border: 0.5px solid var(--ht-badge-warn-border);
   gap: 5px;
 }
 
 .process-manager-git.dirty {
   color: var(--accent-primary);
-  background: rgba(111, 233, 255, 0.1);
-  border-color: rgba(111, 233, 255, 0.3);
+  background: var(--ht-badge-info-bg);
+  border-color: var(--ht-badge-info-border);
 }
 
 .process-manager-git-branch {
@@ -1553,12 +1553,12 @@ body.sidebar-resizing {
 
 .process-manager-git-conflicts,
 .process-manager-git-del {
-  color: #f87171;
+  color: var(--ht-sem-error);
   font-weight: 600;
 }
 
 .process-manager-git-add {
-  color: #4ade80;
+  color: var(--ht-sem-success);
   font-weight: 600;
 }
 
@@ -1610,7 +1610,7 @@ body.sidebar-resizing {
 
 .process-manager-cpu {
   /* heatmap tint driven by --heat set inline per cell */
-  color: color-mix(in oklab, var(--text-strong), #f87171 calc(var(--heat, 0) * 100%));
+  color: color-mix(in oklab, var(--text-strong), var(--ht-sem-error) calc(var(--heat, 0) * 100%));
 }
 
 .process-manager-mem {

@@ -229,6 +229,22 @@
   --ht-pm-kill-bg-hover: rgba(248, 113, 113, 0.22);
   --ht-pm-kill-border-hover: rgba(248, 113, 113, 0.52);
 
+  /* P7 S18 — cross-component semantic badge tints. The PM port/git
+   *  badges, surface chips, and sidebar status pills all paint the
+   *  same three semantic kinds (success / warn / info) at a soft-bg
+   *  + matching-border depth. Pulling them into a shared --ht-badge-*
+   *  namespace lets one palette swap repaint every badge. Solid
+   *  --ht-sem-success / --ht-sem-error are reused as-is for badge
+   *  foreground text (no need for an alias). The ht-badge prefix
+   *  sits outside the U2 light/HC override gate. */
+  --ht-badge-success-fg: #86efac;
+  --ht-badge-success-bg: rgba(74, 222, 128, 0.08);
+  --ht-badge-success-border: rgba(74, 222, 128, 0.2);
+  --ht-badge-warn-bg: rgba(255, 197, 107, 0.08);
+  --ht-badge-warn-border: rgba(255, 197, 107, 0.22);
+  --ht-badge-info-bg: rgba(111, 233, 255, 0.1);
+  --ht-badge-info-border: rgba(111, 233, 255, 0.3);
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;
