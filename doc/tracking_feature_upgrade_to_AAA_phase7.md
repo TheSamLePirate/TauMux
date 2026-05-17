@@ -771,3 +771,49 @@ Grade distribution after S14: **20 S / 20 A / 6 B / 3 C** (unchanged — both li
 - Fold the remaining ~25 settings fields (enum string unions like cursorStyle / packageRunner / layoutVariant / chromeTheme / workspaceCardDensity / browserSearchEngine / browserPartitionMode; plus array fields like statusBarKeys / htStatusKeyOrder; plus plain-string fields like telegramBotToken / browserHomePage) onto the `FieldSchema` seam — needs an `enumStr<T>()` + `stringTrim()` + `stringArray()` factory family.
 - Cluster H literal migration — next chunk (status bar, agent accent cyan/amber, plan panel).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 15 (2026-05-17)
+
+Slice picked: **F.6 batch 3 (enum + stringTrim + stringArray fields)** + **Cluster H titlebar + sidebar inset region**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| F.6 batch 3 — enum/string/array factories | `0b818ca` | `src/shared/settings.schema.ts`, `src/shared/settings.ts`, `tests/settings-schema.test.ts` | +8 (enumStr / stringTrim / stringArray factories + delegated cursorStyle / packageRunner / layoutVariant / chromeTheme / workspaceCardDensity / browserSearchEngine / browserPartitionMode / webMirrorBind / webMirrorAuthToken / telegramBotToken / browserHomePage / statusBarKeys / htStatusKeyOrder / htStatusKeyHidden + 4 `!!`-bool fields) |
+| Cluster H titlebar tokens | `b6fddde` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-titlebar.test.ts` (new) | +7 (each `--ht-titlebar-*` / `--ht-sidebar-*` new token defined; #titlebar .toolbar-icon-btn + #sidebar rules use them) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.78 → 0.3.79 (F.6 batch 3) → 0.3.80 (Cluster H titlebar).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `settings-persistence` | A | A | F.6 seam extended with `enumStr<T>()` + `stringTrim()` + `stringArray()` factories — full coverage of the common validation patterns. 18 more fields migrated this session (8 enum, 3 string-trim, 3 string-array, 4 `!!`-bool). Cumulative 43 / ~50 fields migrated (86% coverage). Only ~7 special-case fields remain. Also unified the `statusBarKeys` validator fallback with `DEFAULT_SETTINGS` — corrupt-config now gets the full 11-key set instead of an 8-key subset that omitted procs / ht-all / ports. |
+| `tau-primitives` | S | S | Cluster H continues — titlebar toolbar + sidebar inset region migrated to a new `--ht-titlebar-*` token group (3 tokens) + 2 `--ht-sidebar-*` tokens. audit:theming: 949 → 944. |
+
+Grade distribution after S15: **20 S / 20 A / 6 B / 3 C** (unchanged — both lifts continued seam-introduction / migration work).
+
+### Issues encountered
+
+- **One field-shape divergence caught + fixed**: `browserInterceptTerminalLinks` default is `false` in `DEFAULT_SETTINGS` but I initially wrote `bool(true)` in the schema. The schema-defaults-match-DEFAULT_SETTINGS test caught it on first run. Fixed to `bool(false)`.
+- **One inline-default divergence intentionally unified**: `statusBarKeys` previously fell back to an 8-key subset when input was non-array, but `DEFAULT_SETTINGS` provides 11 keys (procs / ht-all / ports added later). Schema now uses the 11-key set for both fresh-install + corrupt-config recovery — a corrupt-config user gets the full status bar after restart.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+- **1 pre-existing flake**: `byte-buffer fallback`. Same as previous sessions.
+
+### Exit criteria (session 15)
+
+| Criterion | Status |
+|---|---|
+| F.6 batch 3 — enum/stringTrim/stringArray factories + 18 migrated fields | ✅ landed |
+| Cluster H titlebar + sidebar inset region migrated | ✅ 949 → 944 (−5) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2230 / 1 known flake; +15 new tests (8 schema batch 3 + 7 titlebar tokens) |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 15)
+
+- Fold the remaining ~7 settings fields onto the seam — needs bespoke factories: `nullableTrim()` (for auditsGitUserNameExpected), `themePresetInterlock()` (one validator that takes the full settings record because themePreset gates 6 colour fields), `validatorWrapper()` (for autoContinue which already has its own validator).
+- Cluster H literal migration — next chunk (settings panel section, command palette, process manager, ask-user modal).
+- Phases 8 (release engineering) + 9 (docs / observability).
