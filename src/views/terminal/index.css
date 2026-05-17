@@ -2134,12 +2134,12 @@ body.sidebar-resizing {
 }
 
 .surface-container.drop-target {
-  border-color: color-mix(in srgb, var(--workspace-accent) 58%, rgba(255, 255, 255, 0.18));
+  border-color: color-mix(in srgb, var(--workspace-accent) 58%, var(--ht-drop-overlay-border-white));
   box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.05),
+    inset 1px 1px 0 var(--ht-pm-card-border),
     0 0 0 1px color-mix(in srgb, var(--workspace-accent) 24%, transparent),
     0 0 22px color-mix(in srgb, var(--workspace-accent) 24%, transparent),
-    0 28px 70px rgba(0, 0, 0, 0.48);
+    0 28px 70px var(--ht-drop-target-shadow);
 }
 
 /* ── Notification glow ── */
@@ -2510,11 +2510,11 @@ body.sidebar-resizing {
   flex-direction: column;
   justify-content: flex-start;
   border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--workspace-accent) 42%, rgba(255, 255, 255, 0.16));
+  border: 1px solid color-mix(in srgb, var(--workspace-accent) 42%, var(--ht-pm-secondary-btn-border-hover));
   background:
-    linear-gradient(180deg, rgba(17, 22, 31, 0.92), rgba(10, 14, 21, 0.88));
+    linear-gradient(180deg, var(--ht-drag-ghost-bg-top), var(--ht-drag-ghost-bg-bottom));
   box-shadow:
-    0 22px 54px rgba(0, 0, 0, 0.34),
+    0 22px 54px var(--ht-panel-inline-shadow),
     0 0 0 1px color-mix(in srgb, var(--workspace-accent) 14%, transparent);
   pointer-events: none;
   z-index: 40;
@@ -2527,9 +2527,9 @@ body.sidebar-resizing {
   justify-content: space-between;
   gap: 12px;
   padding: 0 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--ht-panel-border-soft);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--workspace-accent) 22%, rgba(32, 36, 46, 0.96)), rgba(16, 20, 28, 0.9));
+    linear-gradient(180deg, color-mix(in srgb, var(--workspace-accent) 22%, var(--ht-drag-ghost-header-mix-bg)), var(--ht-drag-ghost-header-bg-bottom));
 }
 
 .surface-drag-ghost-title {
@@ -2545,7 +2545,7 @@ body.sidebar-resizing {
   flex-shrink: 0;
   padding: 3px 8px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--workspace-accent) 18%, rgba(255, 255, 255, 0.03));
+  background: color-mix(in srgb, var(--workspace-accent) 18%, var(--ht-package-header-bg-hover));
   color: color-mix(in srgb, var(--workspace-accent) 24%, var(--text-main));
   font-size: 10px;
   letter-spacing: 0.04em;
@@ -2559,11 +2559,11 @@ body.sidebar-resizing {
   justify-content: flex-start;
   padding: 10px;
   border-radius: 12px;
-  border: 1px dashed color-mix(in srgb, var(--workspace-accent) 62%, rgba(255, 255, 255, 0.18));
-  background: color-mix(in srgb, var(--workspace-accent) 16%, rgba(255, 255, 255, 0.04));
+  border: 1px dashed color-mix(in srgb, var(--workspace-accent) 62%, var(--ht-drop-overlay-border-white));
+  background: color-mix(in srgb, var(--workspace-accent) 16%, var(--ht-agent-row-bg-hover));
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 10%, transparent),
-    0 0 0 1px rgba(255, 255, 255, 0.02);
+    0 0 0 1px var(--ht-sidebar-inset-shadow);
   opacity: 0;
   transform: scale(0.98);
   transition:
@@ -2580,19 +2580,19 @@ body.sidebar-resizing {
 }
 
 .surface-drop-overlay[data-drop-position="swap"] {
-  background: color-mix(in srgb, var(--workspace-accent) 12%, rgba(255, 255, 255, 0.03));
+  background: color-mix(in srgb, var(--workspace-accent) 12%, var(--ht-package-header-bg-hover));
 }
 
 .surface-drop-label {
   padding: 5px 9px;
   border-radius: 6px;
-  background: rgba(7, 10, 15, 0.82);
+  background: var(--ht-drop-label-bg);
   color: var(--text-main);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 8px 18px var(--ht-button-drop-shadow);
 }
 
 .pane-divider {

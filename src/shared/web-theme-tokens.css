@@ -295,6 +295,21 @@
    *  handle's gradient + border. */
   --ht-notify-amber-wash: rgba(255, 197, 107, 0.18);
 
+  /* P7 S29 — surface drag-ghost + drop-overlay region. The ghost is
+   *  the floating mini-preview of a pane being dragged; the drop
+   *  overlay is the cyan-dashed target that lights up under the
+   *  cursor. The bg gradients carry a slightly bluer cast than the
+   *  rest of the chrome (the ghost should read as "in motion", not
+   *  resting). The drop label is the tiny "Drop here" pill that
+   *  sits on top of the overlay. */
+  --ht-drag-ghost-bg-top: rgba(17, 22, 31, 0.92);
+  --ht-drag-ghost-bg-bottom: rgba(10, 14, 21, 0.88);
+  --ht-drag-ghost-header-mix-bg: rgba(32, 36, 46, 0.96);
+  --ht-drag-ghost-header-bg-bottom: rgba(16, 20, 28, 0.9);
+  --ht-drop-overlay-border-white: rgba(255, 255, 255, 0.18);
+  --ht-drop-label-bg: rgba(7, 10, 15, 0.82);
+  --ht-drop-target-shadow: rgba(0, 0, 0, 0.48);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
