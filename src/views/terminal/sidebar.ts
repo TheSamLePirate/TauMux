@@ -1603,11 +1603,10 @@ export class Sidebar {
       chip.title = cwd;
       chip.addEventListener("click", (e) => {
         e.stopPropagation();
-        window.dispatchEvent(
-          new CustomEvent("ht-select-workspace-cwd", {
-            detail: { workspaceId: ws.id, cwd },
-          }),
-        );
+        htEvents.emit("ht-select-workspace-cwd", {
+          workspaceId: ws.id,
+          cwd,
+        });
       });
       row.appendChild(chip);
     }
@@ -2067,11 +2066,10 @@ export class Sidebar {
       this.renderWorkspaces();
       return;
     }
-    window.dispatchEvent(
-      new CustomEvent("ht-rename-workspace", {
-        detail: { workspaceId: id, name: trimmed },
-      }),
-    );
+    htEvents.emit("ht-rename-workspace", {
+      workspaceId: id,
+      name: trimmed,
+    });
     const ws = this.workspaces.find((w) => w.id === id);
     if (ws) ws.name = trimmed;
     this.renderWorkspaces();
@@ -2088,11 +2086,10 @@ export class Sidebar {
     if (this.pinnedIds.has(id)) this.pinnedIds.delete(id);
     else this.pinnedIds.add(id);
     saveJson(LS_PINS, [...this.pinnedIds]);
-    window.dispatchEvent(
-      new CustomEvent("ht-pin-workspace", {
-        detail: { workspaceId: id, pinned: this.pinnedIds.has(id) },
-      }),
-    );
+    htEvents.emit("ht-pin-workspace", {
+      workspaceId: id,
+      pinned: this.pinnedIds.has(id),
+    });
     this.renderWorkspaces();
   }
 

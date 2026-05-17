@@ -2062,18 +2062,14 @@ export class SurfaceManager {
         );
       },
       onSetModel: (aid, provider, modelId) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-agent-set-model", {
-            detail: { agentId: aid, provider, modelId },
-          }),
-        );
+        htEvents.emit("ht-agent-set-model", {
+          agentId: aid,
+          provider,
+          modelId,
+        });
       },
       onSetThinking: (aid, level) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-agent-set-thinking", {
-            detail: { agentId: aid, level },
-          }),
-        );
+        htEvents.emit("ht-agent-set-thinking", { agentId: aid, level });
       },
       onNewSession: (aid) => {
         window.dispatchEvent(
@@ -2405,11 +2401,10 @@ export class SurfaceManager {
         htEvents.emit("ht-close-surface", { surfaceId: sid });
       },
       onSplit: (_sid, direction) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-split-editor", {
-            detail: { path: editorView.path ?? undefined, direction },
-          }),
-        );
+        htEvents.emit("ht-split-editor", {
+          path: editorView.path ?? undefined,
+          direction,
+        });
       },
       onFocus: (sid) => this.focusSurface(sid),
     });
@@ -2439,21 +2434,13 @@ export class SurfaceManager {
   private createTelegramSurfaceView(surfaceId: string): SurfaceView {
     const telegramView = createTelegramPaneView(surfaceId, {
       onSend: (chatId, text) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-telegram-send", {
-            detail: { chatId, text },
-          }),
-        );
+        htEvents.emit("ht-telegram-send", { chatId, text });
       },
       onRequestHistory: (chatId, before) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-telegram-request-history", {
-            detail: { chatId, before },
-          }),
-        );
+        htEvents.emit("ht-telegram-request-history", { chatId, before });
       },
       onRequestState: () => {
-        window.dispatchEvent(new CustomEvent("ht-telegram-request-state"));
+        htEvents.emit("ht-telegram-request-state", undefined);
       },
       onClose: (sid) => {
         htEvents.emit("ht-close-surface", { surfaceId: sid });

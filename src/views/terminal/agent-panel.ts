@@ -40,6 +40,7 @@ import {
   THINKING_LEVELS,
 } from "./agent-panel-model";
 import { handleAgentResponse } from "./agent-panel-response";
+import { htEvents } from "../../shared/event-bus";
 import {
   dismissDialog,
   type ExtensionDialog,
@@ -1498,15 +1499,11 @@ function renderDropdowns(view: AgentPaneView): void {
           item.addEventListener("click", () => {
             s.showModelSelector = false;
             renderDropdowns(view);
-            window.dispatchEvent(
-              new CustomEvent("ht-agent-set-model", {
-                detail: {
-                  agentId: view.agentId,
-                  provider: m.provider,
-                  modelId: m.id,
-                },
-              }),
-            );
+            htEvents.emit("ht-agent-set-model", {
+              agentId: view.agentId,
+              provider: m.provider,
+              modelId: m.id,
+            });
           });
           modelSelectorEl.appendChild(item);
         }
@@ -1533,11 +1530,10 @@ function renderDropdowns(view: AgentPaneView): void {
       item.addEventListener("click", () => {
         s.showThinkingSelector = false;
         renderDropdowns(view);
-        window.dispatchEvent(
-          new CustomEvent("ht-agent-set-thinking", {
-            detail: { agentId: view.agentId, level: lvl },
-          }),
-        );
+        htEvents.emit("ht-agent-set-thinking", {
+          agentId: view.agentId,
+          level: lvl,
+        });
       });
       thinkingSelectorEl.appendChild(item);
     }

@@ -167,6 +167,69 @@ export interface FocusNotificationSourcePayload {
   surfaceId: string;
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// P7 S10 — A6 batch 3 payloads.
+// ─────────────────────────────────────────────────────────────────────
+
+/** Agent toolbar — model picker selection. `provider` selects the
+ *  backend, `modelId` is the provider-specific identifier. */
+export interface AgentSetModelPayload {
+  agentId: string;
+  provider: string;
+  modelId: string;
+}
+
+/** Agent toolbar — thinking-level picker selection. The level is a
+ *  free-form string the agent host interprets (e.g. "low", "med",
+ *  "high"). */
+export interface AgentSetThinkingPayload {
+  agentId: string;
+  level: string;
+}
+
+/** Telegram pane — outbound send request. */
+export interface TelegramSendPayload {
+  chatId: string;
+  text: string;
+}
+
+/** Telegram pane — history request for backwards-pagination on scroll
+ *  up. `before` is the inclusive upper-bound id; omitted means "the
+ *  latest page". */
+export interface TelegramRequestHistoryPayload {
+  chatId: string;
+  before?: number;
+}
+
+/** Telegram pane — async re-sync of the state snapshot. Void payload. */
+export type TelegramRequestStatePayload = void;
+
+/** Split a new editor pane. `path` is optional — when omitted the new
+ *  pane opens a blank buffer. */
+export interface SplitEditorPayload {
+  path?: string;
+  direction: "horizontal" | "vertical";
+}
+
+/** Sidebar cwd-chip click → tell the host this cwd is the workspace's
+ *  primary directory. Re-runs the package.json / cargo card resolve. */
+export interface SelectWorkspaceCwdPayload {
+  workspaceId: string;
+  cwd: string;
+}
+
+/** Workspace rename committed via the sidebar inline editor. */
+export interface RenameWorkspacePayload {
+  workspaceId: string;
+  name: string;
+}
+
+/** Workspace pin toggle from the sidebar context menu / keyboard. */
+export interface PinWorkspacePayload {
+  workspaceId: string;
+  pinned: boolean;
+}
+
 export interface HtEventMap extends Record<string, unknown> {
   "ht-reorder-workspaces": ReorderWorkspacesPayload;
   "ht-surface-focused": SurfaceFocusedPayload;
@@ -182,6 +245,16 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-sidebar-toggle": SidebarTogglePayload;
   "ht-sidebar-resize-commit": SidebarResizeCommitPayload;
   "ht-focus-notification-source": FocusNotificationSourcePayload;
+  // P7 S10 — A6 batch 3 channels.
+  "ht-agent-set-model": AgentSetModelPayload;
+  "ht-agent-set-thinking": AgentSetThinkingPayload;
+  "ht-telegram-send": TelegramSendPayload;
+  "ht-telegram-request-history": TelegramRequestHistoryPayload;
+  "ht-telegram-request-state": TelegramRequestStatePayload;
+  "ht-split-editor": SplitEditorPayload;
+  "ht-select-workspace-cwd": SelectWorkspaceCwdPayload;
+  "ht-rename-workspace": RenameWorkspacePayload;
+  "ht-pin-workspace": PinWorkspacePayload;
 }
 
 /** Singleton bus that dispatches on `window`. Importers can grab this
