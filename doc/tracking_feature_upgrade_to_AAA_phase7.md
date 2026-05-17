@@ -629,3 +629,54 @@ Grade distribution after S11: **20 S / 20 A / 6 B / 3 C** (unchanged from S10; l
 - F.11 mutation API extraction (push / splice / switchTo onto the collection).
 - Cluster H literal migration — next chunk (agent panel, telegram pane, status bar).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+---
+
+## Session 12 (2026-05-17)
+
+Slice picked: **A6 batch 5 (final)** + **F.11 mutation API** + **Cluster H button region**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| A6 batch 5 — 13 final channels | `f86f921` | `src/shared/event-bus.ts`, `src/views/terminal/surface-manager.ts` | existing 85 EventBus + sidebar suites stay green |
+| F.11 mutation API | `5f9ebc8` | `src/views/terminal/workspace-collection.ts`, `src/views/terminal/surface-manager.ts`, `tests/workspace-collection.test.ts` | +7 (push/removeAt/removeById/replaceAll/clear) |
+| Cluster H button tokens | `478b547` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-button.test.ts` (new) | +9 (each token defined, .sidebar-new-btn + :hover use them) |
+| Typecheck fix-up | `0edb70f` | `src/shared/event-bus.ts` | (eval-result + image-attachment shapes) |
+
+Bumps: `bun run bump:patch` ran before each functional commit.
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `app-variants` | S | S | **A6 migration complete** — final 13 channels (`ht-browser-*` × 7, `ht-agent-{prompt,abort,new-session,compact,get-models,get-state}`) migrated. Native producer count: **0** of the original 51. F.11 mutation API also lands (push, removeAt, removeById, replaceAll, clear); every SurfaceManager mutation site now routes through the collection. |
+| `tau-primitives` | S | S | Cluster H continues — small icon button region migrated to a new `--ht-button-*` token group (7 tokens). audit:theming: 978 → 971. |
+
+Grade distribution after S12: **20 S / 20 A / 6 B / 3 C** (unchanged from S11 — S12 finished long-running foundations without crossing a grade boundary on any individual feature).
+
+### Issues encountered
+
+- **Typecheck regression caught by the full pass**: the A6 batch 5 migration introduced two payload-type mismatches (`BrowserEvalResultPayload.result` was `string` but the producer ships `string | undefined`; `AgentPromptPayload.images` was `string[]` but the producer ships `ImageAttachment[]`). Reconciled by loosening the eval-result + importing the real `ImageAttachment` type via inline `import("...")`.
+- **Array-reference preservation under F.11 mutation**: SurfaceManager's `this.workspaces = []` in `layout-restore` would have orphaned the collection's source ref. Migrated to `workspaceCollection.clear()` which empties in place; tests pin the array-ref-stability invariant.
+- **Pre-existing typecheck noise** unchanged after fix-up: 2 errors.
+- **1 pre-existing flake**: `byte-buffer fallback`. Same as previous sessions.
+
+### Exit criteria (session 12)
+
+| Criterion | Status |
+|---|---|
+| A6 batch 5 closes the migration | ✅ 0 native producers remain |
+| F.11 mutation API + all SurfaceManager mutation sites | ✅ 4 sites migrated |
+| Cluster H button region migrated | ✅ 978 → 971 (−7) |
+| `bun test` green (modulo pre-existing flake) | ✅ 2186 / 1 known flake |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 12)
+
+- F.6 `settings.schema.ts` source-of-truth — still pending as a dedicated session.
+- Cluster H literal migration — next chunk (agent panel, telegram pane, status bar).
+- Phases 8 (release engineering) + 9 (docs / observability).

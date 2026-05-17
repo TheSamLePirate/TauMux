@@ -265,8 +265,8 @@
   <h1>From baseline to AAA — every change, by phase</h1>
   <p class="subtitle">
     A 10-phase plan-of-plans that lifted τ-mux from a mostly-A codebase
-    with named gaps into a release-shape product. Eleven sessions of
-    Phase 7 polish carried the final 35 lifts on top of seven earlier
+    with named gaps into a release-shape product. Twelve sessions of
+    Phase 7 polish carried the final 38 lifts on top of seven earlier
     landed phases. This document catalogues every functional change.
   </p>
   <div class="meta">
@@ -411,10 +411,10 @@
   <li><span class="sha">f971b63</span> <strong>tests/regressions/ catalogue</strong> + <code>catalogue.test.ts</code> gate.</li>
 </ul>
 
-<h2 id="phase-7"><span class="phase-tag">PHASE 7</span>Per-feature polish sweep — 11 sessions, 35 lifts</h2>
+<h2 id="phase-7"><span class="phase-tag">PHASE 7</span>Per-feature polish sweep — 12 sessions, 38 lifts</h2>
 <p class="phase-blurb">
   The biggest single phase: a polish sweep walking the per-feature
-  grades and closing the named gaps in each. Split across eleven
+  grades and closing the named gaps in each. Split across twelve
   sessions because the long tail spans clusters B / C / D / E / F / G / H.
 </p>
 
@@ -616,6 +616,24 @@
   </div>
 </div>
 
+<h3 id="p7s12">Session 12 — A6 complete + F.11 mutation API + Cluster H buttons</h3>
+<div class="card">
+  <div class="lifts">
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">A6 EventBus migration complete</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">f86f921</span></div>
+      <p class="lift-body">A6 batch 5 migrates the final <strong>13 channels</strong> — every browser-pane internal (navigated, title-changed, eval-result, console-log, error, dom-ready, zoom) and every agent callback (prompt, abort, new-session, compact, get-models, get-state). <strong>Native producer count: 0 of the original 51 (100% migrated across S8 + S9 + S10 + S11 + S12).</strong></p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">F.11 mutation API</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">5f9ebc8</span></div>
+      <p class="lift-body">Extends WorkspaceCollection with the mutation half: <code>push</code>, <code>removeAt</code>, <code>removeById</code>, <code>replaceAll</code>, <code>clear</code>. Every SurfaceManager mutation site (4 places: create / layout-restore reset + append / removeWorkspace) routes through the collection. <code>replaceAll</code> + <code>clear</code> mutate in place so the underlying array reference stays stable — pinned by a regression test.</p>
+    </div>
+    <div class="lift">
+      <div class="lift-head"><span class="lift-name">tau-primitives (button tokens)</span><span class="lift-arrow">→</span><span class="lift-grade"><span class="grade-s">S</span> → <span class="grade-s">S</span></span><span class="sha">478b547</span></div>
+      <p class="lift-body">Cluster H continues. Small icon button region migrated to a new <code>--ht-button-*</code> token group (7 tokens: fg / fg-hover / bg / border / inset-highlight / drop-shadow / bg-hover-fallback). The .sidebar-new-btn + :hover rules now reference named tokens instead of 7 raw rgba literals. <code>audit:theming</code>: <strong>978 → 971</strong>.</p>
+    </div>
+  </div>
+</div>
+
 <h2 id="remaining">Remaining long tail (deferred from P7)</h2>
 <p class="phase-blurb">
   These items were explicitly captured for future P7 sessions. None are
@@ -728,6 +746,9 @@
     <tr><td>P7 S11</td><td><span class="sha">ca11020</span></td><td>EventBus A6 batch 4 — 16 channels / 16 sites migrated</td></tr>
     <tr><td>P7 S11</td><td><span class="sha">fe49afd</span></td><td>WorkspaceCollection seam (F.11 — typed reads over Workspace[])</td></tr>
     <tr><td>P7 S11</td><td><span class="sha">b032c62</span></td><td>theme-token cluster H surface pane chrome (audit 981→978)</td></tr>
+    <tr><td>P7 S12</td><td><span class="sha">f86f921</span></td><td>EventBus A6 batch 5 (final) — 13 channels migrated, A6 complete</td></tr>
+    <tr><td>P7 S12</td><td><span class="sha">5f9ebc8</span></td><td>WorkspaceCollection mutation API (push / removeAt / removeById / replaceAll / clear)</td></tr>
+    <tr><td>P7 S12</td><td><span class="sha">478b547</span></td><td>theme-token cluster H small icon button (audit 978→971)</td></tr>
   </tbody>
 </table>
 

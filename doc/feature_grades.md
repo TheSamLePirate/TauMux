@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.72
+**Version:** 0.3.75
 **Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 11 landed: A6 batch 4 (16 more EventBus channels, 16 producer call sites — native producers 29 → 13); F.11 typed WorkspaceCollection seam over the Workspace[] array + 4 SurfaceManager call-site migrations as proof; Cluster H surface pane chrome migrated to a new `--ht-surface-*` token group (audit:theming 981 → 978). Cumulative P7: 35 lifts across 11 sessions. Remaining P7 long tail: 13 channel migrations on `htEvents` (mostly browser-pane internals) + F.11 mutation API + settings.schema.ts (F.6 — still a dedicated session) + 978 colour literals (Cluster H — multi-session). Owned across future sessions of P7.
+Phase 7 polish — session 12 landed: A6 batch 5 (final 13 channels, A6 complete — native producer count 0); F.11 WorkspaceCollection mutation API (push / removeAt / removeById / replaceAll / clear) + every SurfaceManager mutation site migrated; Cluster H small icon button region migrated to a new `--ht-button-*` token group (audit:theming 978 → 971). Cumulative P7: 38 lifts across 12 sessions. **A6 migration complete** (51 → 0 native producers, 100%). Remaining P7 long tail: settings.schema.ts (F.6 — still a dedicated session) + ~971 colour literals (Cluster H — multi-session). Owned across future sessions of P7.
 
 ---
 
@@ -217,10 +217,8 @@ Phase 7 polish — session 11 landed: A6 batch 4 (16 more EventBus channels, 16 
 
 ### App variants (Atlas / Cockpit / Bridge)
 - **Grade: S**
-- **Evidence:** Cockpit (296 LOC) cleanly mounts/unmounts rail + HUDs on enter/exit. Atlas (596 LOC) renders SVG workspace graph. Both restore sidebar on exit. Phase 7 (S8 → S11) walked the Cluster F refactor: typed `EventBus<HtEventMap>` seam landed in S8, plus batch 2 (8 channels), batch 3 (9 channels), batch 4 (16 channels). 38 channels migrated; native producer count 51 → 13 (75% migrated). A7 typed `VariantContext` (S9) replaces the `__tau*` window globals with a typed singleton; 0 raw window casts remain in the variants. F.11 typed WorkspaceCollection (S11) wraps the workspace array with read helpers (findById, findIndexById, findByName, findContainingSurface, hasSurface, map) — 4 SurfaceManager call sites migrated as proof. Phase 7 (S10) closes the lifecycle gap with `tests/variants-lifecycle.test.ts` (+9).
+- **Evidence:** Cockpit (296 LOC) cleanly mounts/unmounts rail + HUDs on enter/exit. Atlas (596 LOC) renders SVG workspace graph. Both restore sidebar on exit. Phase 7 (S8 → S12) walked the Cluster F refactor end-to-end: typed `EventBus<HtEventMap>` seam landed in S8; batches 2 (8), 3 (9), 4 (16), 5 (13) migrated **all 51 native producers** through S12 (100%). A7 typed `VariantContext` (S9) replaces the `__tau*` window globals — 0 raw window casts remain in the variants. F.11 typed WorkspaceCollection (S11 + S12) wraps the workspace array with both a read API (findById, findIndexById, findByName, findContainingSurface, hasSurface, map) AND a mutation API (push, removeAt, removeById, replaceAll, clear) — every SurfaceManager mutation now flows through the collection. Phase 7 (S10) closes the lifecycle gap with `tests/variants-lifecycle.test.ts` (+9).
 - **Gaps to AAA:**
-  - Migrate the remaining 13 channels onto `htEvents` (mostly browser-pane internals; back-compat is in place).
-  - F.11 mutation API extraction (read seam landed; push/splice/switchTo still on SurfaceManager).
   - Documented Bridge variant spec.
 
 ### Tau primitives / icons / tokens
@@ -228,7 +226,7 @@ Phase 7 polish — session 11 landed: A6 batch 4 (16 more EventBus channels, 16 
 - **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference. Phase 7 (S3) closed the loop with a four-way segmented selector at the top of Settings → Theme that flows through the existing `updateSettings` pipeline.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
-  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9 started with notify-glow + notification-overlay; S10 added the sidebar workspace-card region (`--ht-sidebar-*` group); S11 added the surface pane chrome region (`--ht-surface-*` group: border / inset-highlight / shadow). audit:theming count: 1013 → 978 (−35 across S9–S11). Multi-session for the rest.
+  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9 started with notify-glow + notification-overlay; S10 added the sidebar workspace-card region (`--ht-sidebar-*`); S11 added the surface pane chrome region (`--ht-surface-*`); S12 added the small icon button region (`--ht-button-*`). audit:theming count: 1013 → 971 (−42 across S9–S12). Multi-session for the rest.
 
 ---
 
