@@ -318,6 +318,20 @@
    *  panel content". */
   --ht-context-menu-shadow: rgba(0, 0, 0, 0.5);
 
+  /* P7 S30 — prompt dialog chrome. Lighter scrim than the ask-user
+   *  modal (0.35 vs 0.42) because the prompt is a passive name-this-
+   *  thing dialog, not a trust-boundary check. The focus glow on the
+   *  input picks up the cyan accent; the invalid state flashes a red
+   *  border + a faint red box-shadow. The primary "Confirm" button
+   *  uses a near-solid cyan with a near-black text colour so the call-
+   *  to-action reads at a glance. */
+  --ht-prompt-scrim-bg: rgba(0, 0, 0, 0.35);
+  --ht-prompt-focus-glow: rgba(111, 233, 255, 0.16);
+  --ht-prompt-invalid-border: rgba(239, 68, 68, 0.7);
+  --ht-prompt-invalid-shadow: rgba(239, 68, 68, 0.22);
+  --ht-prompt-primary-bg: rgba(111, 233, 255, 0.94);
+  --ht-prompt-primary-fg: #09090b;
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg

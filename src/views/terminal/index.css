@@ -2939,7 +2939,7 @@ body.terminal-typing .panel {
   align-items: flex-start;
   justify-content: center;
   padding-top: 104px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--ht-prompt-scrim-bg);
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
@@ -2955,11 +2955,9 @@ body.terminal-typing .panel {
   gap: 14px;
   padding: 20px;
   border-radius: 12px;
-  background:
-    rgba(0, 0, 0, 0.9);
-  border: 0.5px solid rgba(111, 233, 255, 0.58);
-  box-shadow:
-    0 32px 84px rgba(0, 0, 0, 0.6);
+  background: var(--ht-ask-sheet-bg);
+  border: 0.5px solid var(--ht-ask-sheet-border);
+  box-shadow: 0 32px 84px var(--ht-palette-shadow);
 }
 
 .prompt-title {
@@ -2980,8 +2978,8 @@ body.terminal-typing .panel {
   width: 100%;
   min-height: 42px;
   padding: 0 14px;
-  border: 0.5px solid rgba(39, 39, 42, 0.96);
-  background: rgba(10, 10, 13, 0.92);
+  border: 0.5px solid var(--ht-ask-codebox-border);
+  background: var(--ht-ask-codebox-bg);
   color: var(--text-strong);
   font-size: 14px;
   outline: none;
@@ -2989,8 +2987,8 @@ body.terminal-typing .panel {
 }
 
 .prompt-input:focus {
-  border-color: rgba(111, 233, 255, 0.58);
-  box-shadow: 0 0 0 1px rgba(111, 233, 255, 0.16);
+  border-color: var(--ht-ask-sheet-border);
+  box-shadow: 0 0 0 1px var(--ht-prompt-focus-glow);
 }
 
 /* Browser pane load-failure overlay. The `browser-pane-errored` class is
@@ -3021,8 +3019,8 @@ body.terminal-typing .panel {
    * sees the action was refused rather than the dialog silently
    * ignoring their Enter. */
   animation: prompt-input-shake 260ms ease-out;
-  border-color: rgba(239, 68, 68, 0.7) !important;
-  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.22) !important;
+  border-color: var(--ht-prompt-invalid-border) !important;
+  box-shadow: 0 0 0 1px var(--ht-prompt-invalid-shadow) !important;
 }
 @keyframes prompt-input-shake {
   0%,
@@ -3056,13 +3054,13 @@ body.terminal-typing .panel {
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  border: 0.5px solid rgba(39, 39, 42, 0.96);
+  border: 0.5px solid var(--ht-ask-codebox-border);
 }
 
 .prompt-btn-primary {
-  background: rgba(111, 233, 255, 0.94);
-  border-color: rgba(111, 233, 255, 0.94);
-  color: #09090b;
+  background: var(--ht-prompt-primary-bg);
+  border-color: var(--ht-prompt-primary-bg);
+  color: var(--ht-prompt-primary-fg);
 }
 
 .prompt-btn-secondary {
