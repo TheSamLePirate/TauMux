@@ -72,6 +72,7 @@ import {
 import { wireMessage as wireTelegramMessage } from "./rpc-handlers/telegram";
 import { setupLogging } from "./logger";
 import {
+  applyFix,
   defaultAudits,
   runAudits,
   type Audit,
@@ -2087,10 +2088,21 @@ async function applyTelegramSettings(): Promise<void> {
           health.set("telegram", "degraded", "Starting up");
           break;
         case "conflict":
+          // P7 S26 — attach a one-click restart so the user can recover
+          // from the 409 (another consumer ate the long-poll) without
+          // diving into settings. stop() is idempotent + the next
+          // `onStatusChange` write will rewrite the health entry.
           health.set(
             "telegram",
             "degraded",
             "Conflict — another consumer is using getUpdates",
+            {
+              label: "Restart poller",
+              action: async () => {
+                await telegramService?.stop();
+                telegramService?.start();
+              },
+            },
           );
           break;
         case "error":
@@ -2098,6 +2110,13 @@ async function applyTelegramSettings(): Promise<void> {
             "telegram",
             "error",
             status.error ?? "Telegram service error",
+            {
+              label: "Restart poller",
+              action: async () => {
+                await telegramService?.stop();
+                telegramService?.start();
+              },
+            },
           );
           break;
         case "disabled":
@@ -2810,7 +2829,32 @@ async function runAndPublishAudits(): Promise<void> {
           : r.severity === "warn"
             ? "degraded"
             : "error";
-      health.set(`audit:${r.id}`, sev, r.message);
+      // P7 S26 — bridge audit fixes into the health registry so the
+      // `health.fix` RPC + sidebar pill can invoke them like any other
+      // health remediation. `applyFix` re-runs the audit's `check()`
+      // after the action lands; we then push the post-fix result back
+      // to health so the entry transitions to its new severity in the
+      // same tick.
+      const fix =
+        r.fix && !r.ok
+          ? {
+              label: r.fix.label,
+              action: async () => {
+                const post = await applyFix(r, cachedAudits);
+                lastAuditResults = lastAuditResults.map((prev) =>
+                  prev.id === post.id ? post : prev,
+                );
+                const postSev =
+                  post.severity === "info"
+                    ? "ok"
+                    : post.severity === "warn"
+                      ? "degraded"
+                      : "error";
+                health.set(`audit:${post.id}`, postSev, post.message);
+              },
+            }
+          : undefined;
+      health.set(`audit:${r.id}`, sev, r.message, fix);
     }
     // When the registry shrinks (audit removed), the corresponding
     // health row would otherwise hang around forever with stale data.
