@@ -289,6 +289,21 @@
   --ht-package-type-border: rgba(111, 233, 255, 0.2);
   --ht-cargo-icon: #f38020;
 
+  /* P7 S22 — workspace script-button states. The script button has
+   *  three visual states: idle (transparent border on --tau-panel),
+   *  running (faint green bg + matching border, dot pulses), error
+   *  (faint red bg + matching border). The state tints are at a
+   *  fainter depth (0.05 bg, 0.16 / 0.2 border) than the badge
+   *  family (0.08 / 0.2 / 0.22) — they paint a *row*, not a chip,
+   *  so they need less weight. The dot bg covers the idle "not-yet-
+   *  fired" state before .running / .error class lands. The ht-
+   *  script prefix sits outside the U2 light/HC override gate. */
+  --ht-script-running-bg: rgba(74, 222, 128, 0.05);
+  --ht-script-running-border: rgba(74, 222, 128, 0.16);
+  --ht-script-error-bg: rgba(248, 113, 113, 0.05);
+  --ht-script-error-border: rgba(248, 113, 113, 0.2);
+  --ht-script-dot-bg: rgba(255, 255, 255, 0.18);
+
   /* P7 S19 — notification overlay + sidebar notification item.
    *  The .tau-notif-overlay-* stack (top-right toasts) uses a slightly
    *  bluer dark surface than the rest of the chrome, with a noticeable
