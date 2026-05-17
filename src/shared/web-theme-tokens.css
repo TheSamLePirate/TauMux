@@ -88,6 +88,19 @@
   --ht-surface-inset-highlight: rgba(255, 255, 255, 0.03);
   --ht-surface-shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
 
+  /* P7 S12 — small icon button tints (sidebar-new-btn, sidebar-section
+   *  -clear, etc — the macOS-HIG-style 26 px icon buttons). Same
+   *  intent family as ht-sidebar-* / ht-surface-* — visually subtle
+   *  on dark. The ht-button prefix sits outside the U2 light/HC
+   *  override gate. */
+  --ht-button-fg: rgba(243, 246, 253, 0.82);
+  --ht-button-fg-hover: rgba(255, 255, 255, 0.98);
+  --ht-button-bg: rgba(255, 255, 255, 0.055);
+  --ht-button-border: rgba(255, 255, 255, 0.08);
+  --ht-button-inset-highlight: rgba(255, 255, 255, 0.04);
+  --ht-button-drop-shadow: rgba(0, 0, 0, 0.18);
+  --ht-button-bg-hover-fallback: rgba(255, 255, 255, 0.07);
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;
