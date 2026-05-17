@@ -2171,6 +2171,10 @@ export class Sidebar {
 
   // ── Drag-and-drop reorder ──────────────────────────────────────────
   private dragState: { id: string; over: string | null } | null = null;
+  /** P7 S8 — listener that cancels an in-progress mouse drag when the
+   *  user presses Escape. Wired on `dragstart`, removed on `dragend`
+   *  so we don't leak handlers when no drag is active. */
+  private dragEscapeHandler: ((e: KeyboardEvent) => void) | null = null;
 
   private wireDragAndDrop(item: HTMLElement, id: string): void {
     item.addEventListener("dragstart", (e) => {
@@ -2182,15 +2186,24 @@ export class Sidebar {
       } catch {
         /* noop */
       }
+      // P7 S8 — install a one-shot Escape listener while the drag is
+      // live. Escape clears `dragState` so any subsequent drop event
+      // bails out of `reorder()`; the visual indicators get cleared
+      // immediately for instant feedback.
+      this.dragEscapeHandler = (ke: KeyboardEvent) => {
+        if (ke.key !== "Escape") return;
+        this.cancelMouseDrag();
+      };
+      document.addEventListener("keydown", this.dragEscapeHandler);
     });
     item.addEventListener("dragend", () => {
       item.classList.remove("dragging");
-      for (const el of this.listEl.querySelectorAll(
-        ".drop-before, .drop-after",
-      )) {
-        el.classList.remove("drop-before", "drop-after");
-      }
+      this.clearDropIndicators();
       this.dragState = null;
+      if (this.dragEscapeHandler) {
+        document.removeEventListener("keydown", this.dragEscapeHandler);
+        this.dragEscapeHandler = null;
+      }
     });
     item.addEventListener("dragover", (e) => {
       if (!this.dragState) return;
@@ -2199,11 +2212,28 @@ export class Sidebar {
       if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
       const rect = item.getBoundingClientRect();
       const before = e.clientY < rect.top + rect.height / 2;
+      // P7 S8 — clear stale indicators on *other* cards before
+      // marking this one. Without this, a fast diagonal sweep across
+      // multiple cards can leave a trail of lit indicators.
+      for (const el of this.listEl.querySelectorAll(
+        ".drop-before, .drop-after",
+      )) {
+        if (el !== item) el.classList.remove("drop-before", "drop-after");
+      }
       item.classList.toggle("drop-before", before);
       item.classList.toggle("drop-after", !before);
     });
-    item.addEventListener("dragleave", () => {
-      item.classList.remove("drop-before", "drop-after");
+    item.addEventListener("dragleave", (e) => {
+      // P7 S8 — only clear when truly leaving the card rect. The naive
+      // dragleave fires when the pointer crosses *into a child element*
+      // (a chip, the title span) which would otherwise blink the
+      // indicator off mid-hover.
+      const rect = item.getBoundingClientRect();
+      const x = (e as DragEvent).clientX;
+      const y = (e as DragEvent).clientY;
+      if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+        item.classList.remove("drop-before", "drop-after");
+      }
     });
     item.addEventListener("drop", (e) => {
       if (!this.dragState) return;
@@ -2213,6 +2243,33 @@ export class Sidebar {
       const before = e.clientY < rect.top + rect.height / 2;
       this.reorder(this.dragState.id, id, before ? "before" : "after");
     });
+  }
+
+  /** P7 S8 — abandon an in-progress mouse drag without committing the
+   *  reorder. Called by the Escape handler installed in `dragstart`.
+   *  Idempotent (safe to call when no drag is in flight). */
+  private cancelMouseDrag(): void {
+    if (!this.dragState) return;
+    this.dragState = null;
+    this.clearDropIndicators();
+    for (const el of this.listEl.querySelectorAll(".dragging")) {
+      el.classList.remove("dragging");
+    }
+    if (this.dragEscapeHandler) {
+      document.removeEventListener("keydown", this.dragEscapeHandler);
+      this.dragEscapeHandler = null;
+    }
+  }
+
+  /** P7 S8 — strip the drop-before / drop-after indicator classes off
+   *  every card. Pulled into a helper because both `dragend` and
+   *  `cancelMouseDrag` need it. */
+  private clearDropIndicators(): void {
+    for (const el of this.listEl.querySelectorAll(
+      ".drop-before, .drop-after",
+    )) {
+      el.classList.remove("drop-before", "drop-after");
+    }
   }
 
   private reorder(
