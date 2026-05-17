@@ -1043,3 +1043,52 @@ Grade distribution after S20: **20 S / 20 A / 6 B / 3 C** (unchanged — F.6 clo
 - F.6 is fully closed — no more settings-schema work needed.
 - Cluster H literal migration — next chunk: workspace-package card + workspace-manifest-cargo icon, sidebar status grid, tau-status bar deeper migration.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 21 (2026-05-17)
+
+Slice picked: **Cluster B a11y win** — number-input `aria-invalid` feedback for the settings panel + **Cluster H workspace-package card + Rust cargo icon**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster B — aria-invalid on clamped number inputs | `1bc1a50` | `src/views/terminal/settings-panel.ts`, `src/views/terminal/index.css`, `tests/settings-clamp-feedback.test.ts` (new) | +6 (happy-dom drives the new `bindClampFeedback()` helper through below-min / above-max / return-to-range / empty / multi-binding / pre-populated cases) |
+| Cluster H workspace package + cargo icon | `9a4320c` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-package.test.ts` (new) | +10 (6 new tokens defined; .workspace-package + type chip + cargo icon use them; bin chip REUSES --ht-badge-warn-*) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.90 → 0.3.91 (aria-invalid) → 0.3.92 (package tokens).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `settings-panel` | A | A | **Cluster B U9 closed.** Adds `bindClampFeedback()` helper that wires `aria-invalid` + `aria-live="polite"` + `aria-errormessage` on every number input the user can drive into a silent-clamp scenario. 7 inputs covered (5 via the `numberField` helper — scrollback / fontSize / webMirrorPort / paneGap / sidebarWidth — plus the two inline autoContinue inputs for cooldownMs and maxConsecutive). Sighted users see a red `--ht-sem-error-tint` border; screen readers announce "Value below minimum (100); will be clamped to 100." Closes a long-standing U9 gap. |
+| `tau-primitives` | S | S | Cluster H continues — workspace package card + Rust cargo icon migrated to `--ht-package-*` (5 tokens) + `--ht-cargo-icon`. The bin chip REUSES the S18 `--ht-badge-warn-*` family with exact alpha match (0.08 bg + 0.22 border). Fourth component sharing cross-component tokens (after PM badges S18, surface chips S19, cwd chip S20). audit:theming: 842 → 832 (−10). |
+
+Grade distribution after S21: **20 S / 20 A / 6 B / 3 C** (unchanged — settings-panel stayed at A; the gap-list moved one item from open to closed but didn't cross the boundary).
+
+### Issues encountered
+
+- **No regressions introduced this session.**
+- **Design note**: the original numberField helper used `parseFloat` + `isNaN` for emit; the bindClampFeedback helper mirrors that pattern but also handles the empty-string mid-type case (no aria-invalid, no message). The aria-errormessage id is unique per call so multiple inputs on the same page can co-exist without colliding.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+- **1 pre-existing flake**: `byte-buffer fallback`. Same as previous sessions.
+
+### Exit criteria (session 21)
+
+| Criterion | Status |
+|---|---|
+| Cluster B U9 — aria-invalid on clamped number inputs | ✅ landed (7 inputs covered) |
+| Cluster H workspace package card region migrated | ✅ 842 → 832 (−10) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2370 / 1 known flake; +16 new tests |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 21)
+
+- Cluster B residuals: settings reset-to-default per field (U10), IME composition guards on settings text inputs, sidebar aria-live on reorder.
+- Cluster D residuals: terminal search regex/case toggles + persisted history, editor pane split keyboard shortcut, browser zoom persistence.
+- Cluster E residuals: SurfaceMetadataPoller stale-git skip-tick, more audits (locale/node/shell), health-check `fix()` remediation.
+- Cluster F.10: audit remaining ad-hoc handlers; move into `src/bun/rpc-handlers/`.
+- Cluster H literal migration — next chunk: workspace-script-btn state colours, sidebar status grid, tau-status bar deeper migration.
+- Phases 8 (release engineering) + 9 (docs / observability).

@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.90
+**Version:** 0.3.92
 **Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 20 landed: **F.6 closed at 100% (56 / 56 fields)** — the final 6 theme-related fields (themePreset + accentColor + secondaryColor + foregroundColor + bgBase + ansiColors) migrated through THEME_PRESET_SCHEMA / colour string() schemas / ANSI_COLORS_SCHEMA via the wrapped() factory; closes a silent-gap class where the colour fields previously slipped through validateSettings unguarded. Cluster H workspace cwd chip migrated to `--ht-cwd-chip-*` (6 tokens; active state REUSES --ht-badge-info-bg). audit:theming 849 → 842 (-7 this session). Cumulative P7: 54 lifts across 20 sessions. **F.6 seam complete.** Remaining P7 long tail: Cluster H literal migration (~842 left, multi-session). Owned across future sessions of P7.
+Phase 7 polish — session 21 landed: **Cluster B a11y win** — settings panel number inputs now wire `aria-invalid` + an `aria-live="polite"` announcement when the user types a value that will be silently clamped (fontSize > 32, paneGap < 0, scrollbackLines = 99, etc.). 7 number inputs get accessible feedback. Sighted users see a red `--ht-sem-error-tint` border on the offending input. Cluster H workspace-package card + Rust cargo icon migrated to a new `--ht-package-*` token group (5 tokens) + `--ht-cargo-icon`; bin chip REUSES the S18 `--ht-badge-warn-*` family. audit:theming 842 → 832 (-10 this session). Cumulative P7: 56 lifts across 21 sessions. Remaining P7 long tail: Cluster H literal migration (~832 left, multi-session) + a few Cluster B/D/E/F.10 standalone items. Owned across future sessions of P7.
 
 ---
 
@@ -187,9 +187,8 @@ Phase 7 polish — session 20 landed: **F.6 closed at 100% (56 / 56 fields)** �
 
 ### Settings panel
 - **Grade: A**
-- **Evidence:** `settings-panel.ts` (1891 LOC), 10 sections; theme + bloom-migration tests. Phase 1 wired ModalHost (role=dialog + aria-modal + aria-labelledby + focus trap + focus restore + scrim/Escape close). Tests in `tests/settings-panel-a11y.test.ts`.
+- **Evidence:** `settings-panel.ts` (1891 LOC), 10 sections; theme + bloom-migration tests. Phase 1 wired ModalHost (role=dialog + aria-modal + aria-labelledby + focus trap + focus restore + scrim/Escape close). Tests in `tests/settings-panel-a11y.test.ts`. P7 S21 added `bindClampFeedback()` — 7 number inputs (scrollback, fontSize, webMirrorPort, paneGap, sidebarWidth, autoContinue cooldownMs / maxConsecutive) now wire `aria-invalid` + an `aria-live="polite"` announcement when the user types a value that validateSettings will silently clamp. Sighted users see a red `--ht-sem-error-tint` border. Tests in `tests/settings-clamp-feedback.test.ts` via happy-dom.
 - **Gaps to AAA:**
-  - Number-input validation feedback + `aria-invalid` (U9).
   - Reset-to-default per field + show default alongside current (U10).
   - IME composition guards on text inputs (partial — palette/ask-user covered; settings inputs still uncovered).
   - Broader unit coverage for the 1891 LOC (renderers per section).
@@ -226,7 +225,7 @@ Phase 7 polish — session 20 landed: **F.6 closed at 100% (56 / 56 fields)** �
 - **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference. Phase 7 (S3) closed the loop with a four-way segmented selector at the top of Settings → Theme that flows through the existing `updateSettings` pipeline.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
-  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S20 walked the long tail by region: notify-glow + notification-overlay (S9), sidebar workspace-card (S10, `--ht-sidebar-*`), surface pane chrome (S11, `--ht-surface-*`), small icon button (S12, `--ht-button-*`), agent panel (S13, `--ht-agent-*`), telegram pane (S14, `--ht-telegram-*`), titlebar toolbar + sidebar inset (S15, `--ht-titlebar-*`), command palette + kbd cheat-sheet (S16, `--ht-palette-*`), ask-user modal + workspace-ask badge (S17, `--ht-ask-*`), process manager chrome + kill-button (S18, `--ht-pm-*`) plus cross-component semantic-badge namespace (`--ht-badge-*`), notification overlay + sidebar item (S19, `--ht-notif-*`) plus surface chips (first cross-component reuse of `--ht-badge-*`), workspace cwd chip (S20, `--ht-cwd-chip-*` with another `--ht-badge-info-bg` reuse). audit:theming count: 1013 → 842 (−171 across S9–S20). Multi-session for the rest.
+  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S21 walked the long tail by region: notify-glow + notification-overlay (S9), sidebar workspace-card (S10, `--ht-sidebar-*`), surface pane chrome (S11, `--ht-surface-*`), small icon button (S12, `--ht-button-*`), agent panel (S13, `--ht-agent-*`), telegram pane (S14, `--ht-telegram-*`), titlebar toolbar + sidebar inset (S15, `--ht-titlebar-*`), command palette + kbd cheat-sheet (S16, `--ht-palette-*`), ask-user modal + workspace-ask badge (S17, `--ht-ask-*`), process manager chrome + kill-button (S18, `--ht-pm-*`) plus cross-component semantic-badge namespace (`--ht-badge-*`), notification overlay + sidebar item (S19, `--ht-notif-*`) plus surface chips, workspace cwd chip (S20, `--ht-cwd-chip-*`), workspace package card + cargo icon (S21, `--ht-package-*` / `--ht-cargo-icon`; bin chip reuses `--ht-badge-warn-*`). audit:theming count: 1013 → 832 (−181 across S9–S21). Multi-session for the rest.
 
 ---
 
