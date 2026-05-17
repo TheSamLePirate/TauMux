@@ -144,6 +144,7 @@
   --ht-sem-success: #16a34a;
   --ht-sem-warning: #d97706;
   --ht-sem-error: #dc2626;
+  --ht-sem-error-tint: rgba(220, 38, 38, 0.08);
   --ht-sem-info: #7c3aed;
 
   --ht-shadow-sheet: 0 18px 42px rgba(0, 0, 0, 0.12);
@@ -185,6 +186,7 @@
     --ht-sem-success: #16a34a;
     --ht-sem-warning: #d97706;
     --ht-sem-error: #dc2626;
+    --ht-sem-error-tint: rgba(220, 38, 38, 0.08);
     --ht-sem-info: #7c3aed;
 
     --ht-shadow-sheet: 0 18px 42px rgba(0, 0, 0, 0.12);
@@ -233,6 +235,7 @@
   --ht-sem-success: #00ff00;
   --ht-sem-warning: #ffff00;
   --ht-sem-error: #ff5555;
+  --ht-sem-error-tint: rgba(255, 85, 85, 0.2);
   --ht-sem-info: #00ffff;
 
   --ht-shadow-sheet: 0 0 0 2px #ffffff;
