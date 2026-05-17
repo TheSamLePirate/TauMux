@@ -245,6 +245,24 @@
   --ht-badge-info-bg: rgba(111, 233, 255, 0.1);
   --ht-badge-info-border: rgba(111, 233, 255, 0.3);
 
+  /* P7 S19 — notification overlay + sidebar notification item.
+   *  The .tau-notif-overlay-* stack (top-right toasts) uses a slightly
+   *  bluer dark surface than the rest of the chrome, with a noticeable
+   *  shadow and a small overflow chip. The sidebar .notification-item
+   *  (history list) shares the same family — a near-black card with a
+   *  zinc-tinted border and a 1px white inset highlight on top. The
+   *  ht-notif prefix sits outside the U2 light/HC override gate; the
+   *  -bg-mix tokens are designed to live inside color-mix() — they
+   *  carry the pre-mix fallback colour. */
+  --ht-notif-card-bg-mix: rgba(20, 24, 30, 0.92);
+  --ht-notif-card-bg-hover-mix: rgba(28, 32, 38, 0.95);
+  --ht-notif-card-shadow: rgba(0, 0, 0, 0.45);
+  --ht-notif-close-bg-hover: rgba(255, 255, 255, 0.08);
+  --ht-notif-overflow-bg: rgba(20, 24, 30, 0.85);
+  --ht-notif-sidebar-border: rgba(39, 39, 42, 0.84);
+  --ht-notif-sidebar-bg: rgba(12, 12, 16, 0.76);
+  --ht-notif-sidebar-inset: rgba(255, 255, 255, 0.03);
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;

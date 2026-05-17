@@ -3553,9 +3553,9 @@ body.terminal-typing .panel {
 .notification-item,
 .log-item {
   padding: 10px 12px;
-  border: 1px solid rgba(39, 39, 42, 0.84);
-  background: rgba(12, 12, 16, 0.76);
-  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--ht-notif-sidebar-border);
+  background: var(--ht-notif-sidebar-bg);
+  box-shadow: inset 1px 1px 0 var(--ht-notif-sidebar-inset);
 }
 
 .notification-item {
@@ -11230,7 +11230,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 .tau-notif-overlay-card {
   pointer-events: auto;
   position: relative;
-  background: color-mix(in srgb, var(--window-primary) 8%, rgba(20, 24, 30, 0.92));
+  background: color-mix(in srgb, var(--window-primary) 8%, var(--ht-notif-card-bg-mix));
   border: 1px solid color-mix(in srgb, var(--window-primary) 22%, var(--window-border));
   border-radius: 10px;
   padding: 10px 12px 12px;
@@ -11238,7 +11238,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   color: var(--tau-text, #d6d8dc);
   cursor: pointer;
   box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.45),
+    0 4px 12px var(--ht-notif-card-shadow),
     0 0 0 1px color-mix(in srgb, var(--window-primary) 14%, transparent);
   /* Slide-in from the right + fade. Honours
    * `prefers-reduced-motion` below. */
@@ -11246,7 +11246,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   overflow: hidden;
 }
 .tau-notif-overlay-card:hover {
-  background: color-mix(in srgb, var(--window-primary) 12%, rgba(28, 32, 38, 0.95));
+  background: color-mix(in srgb, var(--window-primary) 12%, var(--ht-notif-card-bg-hover-mix));
 }
 
 .tau-notif-overlay-title-row {
@@ -11294,7 +11294,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
     color var(--transition-fast);
 }
 .tau-notif-overlay-close:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ht-notif-close-bg-hover);
   color: var(--tau-text);
 }
 
@@ -11319,7 +11319,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   pointer-events: auto;
   align-self: flex-end;
   border: 1px solid var(--window-border);
-  background: rgba(20, 24, 30, 0.85);
+  background: var(--ht-notif-overflow-bg);
   color: var(--tau-text-mute);
   font-family: var(--tau-font-mono);
   font-size: 11px;
@@ -11332,7 +11332,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
     color var(--transition-fast);
 }
 .tau-notif-overlay-overflow:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ht-notif-close-bg-hover);
   color: var(--tau-text);
 }
 
