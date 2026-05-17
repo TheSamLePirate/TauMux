@@ -282,6 +282,18 @@
   --ht-panel-border-dark: rgba(39, 39, 42, 0.96);
   --ht-panel-inline-bg: rgba(12, 12, 16, 0.88);
   --ht-panel-inline-shadow: rgba(0, 0, 0, 0.34);
+  /* P7 S28 — panel-interactive + drag-handle extras. The panel-
+   *  interactive state (when the panel is hovered or actively being
+   *  dragged) lifts off with a deeper drop shadow; the dragging /
+   *  resizing state goes even deeper. The drag handle on top has its
+   *  own near-black bg that the amber gradient washes over. */
+  --ht-panel-interactive-shadow: rgba(0, 0, 0, 0.58);
+  --ht-panel-drag-shadow-strong: rgba(0, 0, 0, 0.82);
+  --ht-panel-handle-bg: rgba(10, 10, 13, 0.42);
+  /* P7 S28 — amber wash alpha (0.18) between --ht-notify-amber-flash
+   *  (0.15) and --ht-notify-amber-tint (0.45). Used by the panel drag
+   *  handle's gradient + border. */
+  --ht-notify-amber-wash: rgba(255, 197, 107, 0.18);
 
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the

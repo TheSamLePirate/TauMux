@@ -2740,9 +2740,9 @@ body.sidebar-resizing {
 }
 
 .panel-interactive {
-  border-right-color: rgba(255, 197, 107, 0.46);
-  border-bottom-color: rgba(255, 197, 107, 0.36);
-  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.58);
+  border-right-color: var(--ht-notify-amber-tint);
+  border-bottom-color: var(--ht-notify-amber);
+  box-shadow: 0 28px 60px var(--ht-panel-interactive-shadow);
 }
 
 .panel-interactive::after,
@@ -2755,7 +2755,7 @@ body.sidebar-resizing {
 .panel.panel-dragging,
 .panel.panel-resizing {
   transform: translateY(-3px) scale(1.01);
-  box-shadow: 0 38px 90px rgba(0, 0, 0, 0.82);
+  box-shadow: 0 38px 90px var(--ht-panel-drag-shadow-strong);
 }
 
 .panel.panel-dragging::after,
@@ -2778,12 +2778,12 @@ body.terminal-typing .panel {
   gap: 10px;
   padding: 0 12px;
   background:
-    linear-gradient(180deg, rgba(255, 197, 107, 0.18), transparent 100%),
-    rgba(10, 10, 13, 0.42);
-  border-bottom: 0.5px solid rgba(255, 197, 107, 0.18);
+    linear-gradient(180deg, var(--ht-notify-amber-wash), transparent 100%),
+    var(--ht-panel-handle-bg);
+  border-bottom: 0.5px solid var(--ht-notify-amber-wash);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 1px 0 rgba(255, 255, 255, 0.03);
+    inset 0 1px 0 var(--ht-agent-row-bg-hover),
+    0 1px 0 var(--ht-package-header-bg-hover);
   cursor: grab;
   color: var(--text-dim);
   user-select: none;
@@ -2805,8 +2805,8 @@ body.terminal-typing .panel {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   text-shadow:
-    0 0 12px rgba(255, 197, 107, 0.14),
-    0 0 20px rgba(255, 255, 255, 0.04);
+    0 0 12px var(--ht-notify-amber-flash),
+    0 0 20px var(--ht-agent-row-bg-hover);
 }
 
 .panel-drag-handle:active {
