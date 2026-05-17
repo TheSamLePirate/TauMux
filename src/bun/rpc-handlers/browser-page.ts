@@ -1,5 +1,61 @@
 import type { Handler, HandlerDeps } from "./types";
 
+/** P7 S4 — navigation-rule validation. The browser-page handlers used to
+ *  silently swallow missing / mis-shaped params (no `surface_id`,
+ *  unknown `direction`, malformed `url`) and either return `"OK"` or
+ *  coerce the input — that means a typo in a script silently does the
+ *  wrong thing. These helpers surface the typo as an error so the CLI /
+ *  agent caller knows the call didn't land. */
+
+/** Valid open-split directions. Anything else is a typo, not "default
+ *  to horizontal". Mirrors the plan-panel `isPlanState` pattern from
+ *  P7 session 1. */
+const SPLIT_DIRECTION_VALUES = ["horizontal", "vertical", "down"] as const;
+type SplitDirection = (typeof SPLIT_DIRECTION_VALUES)[number];
+
+export function isSplitDirection(v: unknown): v is SplitDirection {
+  return (
+    typeof v === "string" &&
+    (SPLIT_DIRECTION_VALUES as readonly string[]).includes(v)
+  );
+}
+
+/** Validate `url` looks like a navigable URL — `http(s)://…` or
+ *  `file://…` or an `about:…` / `data:…` / `chrome-extension://…`
+ *  scheme. We don't try to be a full URL parser; the goal is to reject
+ *  obvious typos (`"htps://"`, `""`, an integer that fell through the
+ *  param schema) without rejecting otherwise-fine inputs the webview
+ *  will happily render. */
+const ALLOWED_URL_PREFIXES = [
+  "http://",
+  "https://",
+  "file://",
+  "about:",
+  "data:",
+  "chrome-extension://",
+];
+
+export function isNavigableUrl(v: unknown): v is string {
+  if (typeof v !== "string" || v.length === 0) return false;
+  for (const p of ALLOWED_URL_PREFIXES) {
+    if (v.startsWith(p)) return true;
+  }
+  return false;
+}
+
+/** Extract + validate a non-empty surface_id from a params bag. Throws
+ *  on missing / blank input so a typo in a script surfaces instead of
+ *  silently dispatching to nothing. */
+function requireSurfaceId(params: Record<string, unknown>): string {
+  const id =
+    (params["surface_id"] as string | undefined) ??
+    (params["surface"] as string | undefined);
+  if (typeof id !== "string" || id.length === 0) {
+    throw new Error("surface_id required");
+  }
+  return id;
+}
+
 /** browser.* handlers that touch the page / surface lifecycle:
  *  open, navigate, reload, eval, find, history, devtools, snapshot,
  *  scripts/styles, console & errors, identify, close. */
@@ -24,9 +80,19 @@ export function registerBrowserPage(
     },
 
     "browser.open_split": (params) => {
-      const dir = params["direction"] as string;
+      // P7 S4 — reject unknown directions instead of silently
+      // defaulting to horizontal. `down` is preserved as an alias for
+      // `vertical` so existing scripts keep working.
+      const rawDir = params["direction"];
+      if (rawDir !== undefined && !isSplitDirection(rawDir)) {
+        throw new Error(
+          `browser.open_split: direction must be one of ${SPLIT_DIRECTION_VALUES.join(
+            " | ",
+          )} (got "${String(rawDir)}")`,
+        );
+      }
       const direction =
-        dir === "down" || dir === "vertical" ? "vertical" : "horizontal";
+        rawDir === "down" || rawDir === "vertical" ? "vertical" : "horizontal";
       dispatch("splitBrowserSurface", {
         direction,
         url: params["url"] ?? undefined,
@@ -35,33 +101,36 @@ export function registerBrowserPage(
     },
 
     "browser.navigate": (params) => {
-      const id =
-        (params["surface_id"] as string) ?? (params["surface"] as string);
-      const url = params["url"] as string;
-      if (id && url) {
-        dispatch("browser.navigateTo", { surfaceId: id, url });
+      // P7 S4 — both inputs are required. Previously a missing url
+      // returned "OK" with no navigation; that swallowed the bug.
+      const id = requireSurfaceId(params);
+      const url = params["url"];
+      if (!isNavigableUrl(url)) {
+        throw new Error(
+          `browser.navigate: url must start with one of ${ALLOWED_URL_PREFIXES.join(
+            " | ",
+          )} (got "${String(url)}")`,
+        );
       }
+      dispatch("browser.navigateTo", { surfaceId: id, url });
       return "OK";
     },
 
     "browser.back": (params) => {
-      const id =
-        (params["surface_id"] as string) ?? (params["surface"] as string);
-      if (id) dispatch("browser.goBack", { surfaceId: id });
+      const id = requireSurfaceId(params);
+      dispatch("browser.goBack", { surfaceId: id });
       return "OK";
     },
 
     "browser.forward": (params) => {
-      const id =
-        (params["surface_id"] as string) ?? (params["surface"] as string);
-      if (id) dispatch("browser.goForward", { surfaceId: id });
+      const id = requireSurfaceId(params);
+      dispatch("browser.goForward", { surfaceId: id });
       return "OK";
     },
 
     "browser.reload": (params) => {
-      const id =
-        (params["surface_id"] as string) ?? (params["surface"] as string);
-      if (id) dispatch("browser.reload", { surfaceId: id });
+      const id = requireSurfaceId(params);
+      dispatch("browser.reload", { surfaceId: id });
       return "OK";
     },
 

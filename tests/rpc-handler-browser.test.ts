@@ -40,7 +40,14 @@ function setup() {
     pendingEvals,
   );
 
-  return { handler, browserSurfaces, browserHistory, dispatched, state, pendingEvals };
+  return {
+    handler,
+    browserSurfaces,
+    browserHistory,
+    dispatched,
+    state,
+    pendingEvals,
+  };
 }
 
 describe("RPC handler browser methods", () => {
@@ -59,7 +66,10 @@ describe("RPC handler browser methods", () => {
 
   test("browser.open_split dispatches splitBrowserSurface", () => {
     const { handler, dispatched } = setup();
-    handler("browser.open_split", { url: "https://example.com", direction: "down" });
+    handler("browser.open_split", {
+      url: "https://example.com",
+      direction: "down",
+    });
     expect(dispatched).toHaveLength(1);
     expect(dispatched[0].action).toBe("splitBrowserSurface");
     expect(dispatched[0].payload.direction).toBe("vertical");
@@ -67,7 +77,10 @@ describe("RPC handler browser methods", () => {
 
   test("browser.navigate dispatches browser.navigateTo", () => {
     const { handler, dispatched } = setup();
-    handler("browser.navigate", { surface_id: "browser:1", url: "https://a.com" });
+    handler("browser.navigate", {
+      surface_id: "browser:1",
+      url: "https://a.com",
+    });
     expect(dispatched[0].action).toBe("browser.navigateTo");
   });
 
@@ -105,27 +118,41 @@ describe("RPC handler browser methods", () => {
 
   test("browser.fill dispatches evalJs with fill script", () => {
     const { handler, dispatched } = setup();
-    handler("browser.fill", { surface_id: "browser:1", selector: "#email", text: "test@test.com" });
+    handler("browser.fill", {
+      surface_id: "browser:1",
+      selector: "#email",
+      text: "test@test.com",
+    });
     expect(dispatched[0].action).toBe("browser.evalJs");
     expect(dispatched[0].payload.script).toContain("test@test.com");
   });
 
   test("browser.type dispatches evalJs with type script", () => {
     const { handler, dispatched } = setup();
-    handler("browser.type", { surface_id: "browser:1", selector: "#input", text: "hello" });
+    handler("browser.type", {
+      surface_id: "browser:1",
+      selector: "#input",
+      text: "hello",
+    });
     expect(dispatched[0].action).toBe("browser.evalJs");
     expect(dispatched[0].payload.script).toContain("hello");
   });
 
   test("browser.addscript dispatches evalJs", () => {
     const { handler, dispatched } = setup();
-    handler("browser.addscript", { surface_id: "browser:1", script: "console.log('hi')" });
+    handler("browser.addscript", {
+      surface_id: "browser:1",
+      script: "console.log('hi')",
+    });
     expect(dispatched[0].action).toBe("browser.evalJs");
   });
 
   test("browser.addstyle dispatches evalJs with style injection", () => {
     const { handler, dispatched } = setup();
-    handler("browser.addstyle", { surface_id: "browser:1", css: "body { color: red }" });
+    handler("browser.addstyle", {
+      surface_id: "browser:1",
+      css: "body { color: red }",
+    });
     expect(dispatched[0].action).toBe("browser.evalJs");
     expect(dispatched[0].payload.script).toContain("style");
   });
@@ -133,8 +160,16 @@ describe("RPC handler browser methods", () => {
   test("browser.console_list returns captured logs", () => {
     const { handler, browserSurfaces } = setup();
     const id = browserSurfaces.createSurface();
-    browserSurfaces.addConsoleLog(id, { level: "log", args: ["hello"], timestamp: 1000 });
-    browserSurfaces.addConsoleLog(id, { level: "error", args: ["oops"], timestamp: 2000 });
+    browserSurfaces.addConsoleLog(id, {
+      level: "log",
+      args: ["hello"],
+      timestamp: 1000,
+    });
+    browserSurfaces.addConsoleLog(id, {
+      level: "error",
+      args: ["oops"],
+      timestamp: 2000,
+    });
     const result = handler("browser.console_list", { surface_id: id }) as any[];
     expect(result).toHaveLength(2);
     expect(result[0].level).toBe("log");
@@ -144,7 +179,11 @@ describe("RPC handler browser methods", () => {
   test("browser.console_clear removes all logs", () => {
     const { handler, browserSurfaces } = setup();
     const id = browserSurfaces.createSurface();
-    browserSurfaces.addConsoleLog(id, { level: "log", args: ["hello"], timestamp: 1000 });
+    browserSurfaces.addConsoleLog(id, {
+      level: "log",
+      args: ["hello"],
+      timestamp: 1000,
+    });
     handler("browser.console_clear", { surface_id: id });
     const result = handler("browser.console_list", { surface_id: id }) as any[];
     expect(result).toHaveLength(0);
@@ -206,7 +245,10 @@ describe("RPC handler browser methods", () => {
   test("browser.get rejects unknown getter", async () => {
     const { handler } = setup();
     try {
-      await handler("browser.get", { surface_id: "browser:1", what: "nonexistent" });
+      await handler("browser.get", {
+        surface_id: "browser:1",
+        what: "nonexistent",
+      });
       expect(false).toBe(true); // should not reach
     } catch (e: any) {
       expect(e.message).toContain("Unknown getter");
@@ -220,6 +262,80 @@ describe("RPC handler browser methods", () => {
       expect(false).toBe(true);
     } catch (e: any) {
       expect(e.message).toContain("required");
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // P7 S4 — navigation-rule validation
+  // ──────────────────────────────────────────────────────────────────
+
+  test("browser.navigate rejects a missing url instead of silently swallowing", () => {
+    const { handler, dispatched } = setup();
+    expect(() =>
+      handler("browser.navigate", { surface_id: "browser:1" }),
+    ).toThrow(/url must start with/);
+    expect(dispatched).toHaveLength(0);
+  });
+
+  test("browser.navigate rejects a typoed scheme like htps://", () => {
+    const { handler, dispatched } = setup();
+    expect(() =>
+      handler("browser.navigate", {
+        surface_id: "browser:1",
+        url: "htps://oops.com",
+      }),
+    ).toThrow(/url must start with/);
+    expect(dispatched).toHaveLength(0);
+  });
+
+  test("browser.navigate accepts file:// and about: schemes", () => {
+    const { handler, dispatched } = setup();
+    handler("browser.navigate", {
+      surface_id: "browser:1",
+      url: "file:///tmp/page.html",
+    });
+    handler("browser.navigate", {
+      surface_id: "browser:1",
+      url: "about:blank",
+    });
+    expect(dispatched).toHaveLength(2);
+  });
+
+  test("browser.navigate rejects a missing surface_id", () => {
+    const { handler } = setup();
+    expect(() =>
+      handler("browser.navigate", { url: "https://ok.com" }),
+    ).toThrow(/surface_id required/);
+  });
+
+  test("browser.open_split rejects an unknown direction (no silent default)", () => {
+    const { handler, dispatched } = setup();
+    expect(() =>
+      handler("browser.open_split", { direction: "diagonal" }),
+    ).toThrow(/direction must be one of/);
+    expect(dispatched).toHaveLength(0);
+  });
+
+  test("browser.open_split accepts down / vertical / horizontal", () => {
+    const { handler, dispatched } = setup();
+    handler("browser.open_split", { direction: "down" });
+    handler("browser.open_split", { direction: "vertical" });
+    handler("browser.open_split", { direction: "horizontal" });
+    expect(dispatched.map((d) => d.payload.direction)).toEqual([
+      "vertical",
+      "vertical",
+      "horizontal",
+    ]);
+  });
+
+  test("browser.back / forward / reload require a surface_id", () => {
+    const { handler } = setup();
+    for (const method of [
+      "browser.back",
+      "browser.forward",
+      "browser.reload",
+    ]) {
+      expect(() => handler(method, {})).toThrow(/surface_id required/);
     }
   });
 });
