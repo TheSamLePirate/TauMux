@@ -975,6 +975,11 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
         url: string;
         splitFrom?: string;
         direction?: "horizontal" | "vertical";
+        /** P7 S6 (H.8) — partition string the webview should set on
+         *  the `<electrobun-webview>` element. Optional so older bun
+         *  builds without H.8 still construct a working pane (the
+         *  webview falls back to `persist:browser-shared`). */
+        partition?: string;
       };
       /** Bun asks webview to close a browser surface (e.g. from socket API). */
       browserSurfaceClosed: { surfaceId: string };

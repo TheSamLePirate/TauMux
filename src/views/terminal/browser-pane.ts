@@ -247,6 +247,13 @@ export function createBrowserPaneView(
   initialUrl: string,
   callbacks: BrowserPaneCallbacks,
   searchEngine: string = "google",
+  /** P7 S6 (H.8) — partition string for the `<electrobun-webview>`
+   *  element. Omitted ⇒ legacy shared jar so older callers keep
+   *  working. Pass `persist:browser-<surfaceId>` for per-surface
+   *  cookie isolation; the host (`SurfaceManager.addBrowserSurface`)
+   *  threads the value through from the bun `browserSurfaceCreated`
+   *  payload. */
+  partition: string = "persist:browser-shared",
 ): BrowserPaneView {
   // Container
   const container = document.createElement("div");
@@ -385,7 +392,10 @@ export function createBrowserPaneView(
     "electrobun-webview",
   ) as unknown as WebviewTagElement;
   webviewEl.setAttribute("src", initialUrl || "about:blank");
-  webviewEl.setAttribute("partition", "persist:browser-shared");
+  // P7 S6 (H.8) — partition string is now per-call. When the host
+  // passes a `persist:browser-<id>` value, this pane has its own
+  // cookie jar / localStorage / IndexedDB separate from other panes.
+  webviewEl.setAttribute("partition", partition);
   webviewEl.setAttribute("preload", CONSOLE_CAPTURE_PRELOAD);
   // Note: we don't set sandbox since we need preload's __electrobunSendToHost
   // for console capture and title reporting.

@@ -41,6 +41,11 @@ export class BrowserSurfaceManager {
 
   createSurface(url?: string, partition?: string): string {
     const id = `browser:${++this.counter}`;
+    // P7 S6 (H.8) — explicit `partition` wins; otherwise fall back to
+    // the legacy shared jar. Callers wanting per-surface isolation
+    // pass a literal like `persist:browser-<id>` derived AFTER they
+    // know the id (use `createSurfaceWithPartitionMode` for the common
+    // case so the host doesn't have to mirror the counter).
     this.surfaces.set(id, {
       id,
       url: url || "about:blank",
@@ -52,6 +57,33 @@ export class BrowserSurfaceManager {
     });
     console.log(`[browser] created ${id} → ${url || "about:blank"}`);
     return id;
+  }
+
+  /** P7 S6 (H.8) — create + assign a partition string in one step
+   *  based on the partition mode. Returns the new surface id. The
+   *  partition (legacy `persist:browser-shared` for `shared`, a
+   *  per-surface `persist:browser-<id>` for `per-surface`) is stored
+   *  on the surface and can be read back via `getSurface(id).partition`. */
+  createSurfaceWithPartitionMode(
+    url: string | undefined,
+    mode: "shared" | "per-surface",
+  ): { id: string; partition: string } {
+    const id = `browser:${++this.counter}`;
+    const partition =
+      mode === "shared" ? "persist:browser-shared" : `persist:browser-${id}`;
+    this.surfaces.set(id, {
+      id,
+      url: url || "about:blank",
+      title: "New Tab",
+      zoom: 1.0,
+      partition,
+      consoleLogs: [],
+      errors: [],
+    });
+    console.log(
+      `[browser] created ${id} → ${url || "about:blank"} (partition: ${partition})`,
+    );
+    return { id, partition };
   }
 
   /** Update state after the webview reports a navigation. */

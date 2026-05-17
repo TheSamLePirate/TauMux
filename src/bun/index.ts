@@ -1472,13 +1472,25 @@ function splitSurface(
 function createBrowserWorkspaceSurface(url?: string): void {
   const resolvedUrl =
     url || settingsManager.get().browserHomePage || "about:blank";
-  const surfaceId = browserSurfaces.createSurface(resolvedUrl);
+  // P7 S6 (H.8) — the surface manager picks the partition based on
+  // the user's `browserPartitionMode` setting so each pane has its
+  // own cookie jar by default.
+  const { id: surfaceId, partition } =
+    browserSurfaces.createSurfaceWithPartitionMode(
+      resolvedUrl,
+      settingsManager.get().browserPartitionMode,
+    );
   app.focusedSurfaceId = surfaceId;
-  rpc.send("browserSurfaceCreated", { surfaceId, url: resolvedUrl });
+  rpc.send("browserSurfaceCreated", {
+    surfaceId,
+    url: resolvedUrl,
+    partition,
+  });
   app.webServer?.broadcast({
     type: "browserSurfaceCreated",
     surfaceId,
     url: resolvedUrl,
+    partition,
   });
 }
 
@@ -1489,18 +1501,24 @@ function splitBrowserSurface(
   const resolvedUrl =
     url || settingsManager.get().browserHomePage || "about:blank";
   const splitFrom = app.focusedSurfaceId;
-  const surfaceId = browserSurfaces.createSurface(resolvedUrl);
+  const { id: surfaceId, partition } =
+    browserSurfaces.createSurfaceWithPartitionMode(
+      resolvedUrl,
+      settingsManager.get().browserPartitionMode,
+    );
   app.focusedSurfaceId = surfaceId;
   rpc.send("browserSurfaceCreated", {
     surfaceId,
     url: resolvedUrl,
     splitFrom: splitFrom ?? undefined,
     direction,
+    partition,
   });
   app.webServer?.broadcast({
     type: "browserSurfaceCreated",
     surfaceId,
     url: resolvedUrl,
+    partition,
   });
 }
 

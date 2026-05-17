@@ -171,6 +171,14 @@ export interface AppSettings {
   browserForceDarkMode: boolean;
   /** Open terminal URL clicks in the built-in browser instead of externally. */
   browserInterceptTerminalLinks: boolean;
+  /** P7 S6 (H.8) — partition isolation strategy for new browser panes.
+   *  `shared` (legacy) uses a single `persist:browser-shared` partition
+   *  so every pane sees the same cookies / localStorage. `per-surface`
+   *  derives `persist:browser-<surfaceId>` so each pane has its own
+   *  cookie jar — sessions don't cross-contaminate between panes.
+   *  Defaults to `per-surface` for new installs; existing surfaces keep
+   *  whatever partition string they were created with. */
+  browserPartitionMode: "shared" | "per-surface";
 
   // Telegram
   /** Master switch — when off the long-poll loop is not started even if a
@@ -753,6 +761,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   browserHomePage: "",
   browserForceDarkMode: false,
   browserInterceptTerminalLinks: false,
+  browserPartitionMode: "per-surface",
 
   telegramEnabled: false,
   telegramBotToken: "",
@@ -839,6 +848,11 @@ export function validateSettings(s: AppSettings): AppSettings {
     browserHomePage: (s.browserHomePage ?? "").trim(),
     browserForceDarkMode: !!s.browserForceDarkMode,
     browserInterceptTerminalLinks: !!s.browserInterceptTerminalLinks,
+    browserPartitionMode:
+      s.browserPartitionMode === "shared" ||
+      s.browserPartitionMode === "per-surface"
+        ? s.browserPartitionMode
+        : "per-surface",
     telegramEnabled: !!s.telegramEnabled,
     telegramBotToken: (s.telegramBotToken ?? "").trim(),
     telegramAllowedUserIds: normalizeAllowedIds(s.telegramAllowedUserIds),

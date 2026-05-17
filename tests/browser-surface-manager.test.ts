@@ -49,7 +49,9 @@ describe("BrowserSurfaceManager", () => {
     const mgr = new BrowserSurfaceManager();
     const id = mgr.createSurface();
     let closedId = "";
-    mgr.onSurfaceClosed = (sid) => { closedId = sid; };
+    mgr.onSurfaceClosed = (sid) => {
+      closedId = sid;
+    };
     expect(mgr.surfaceCount).toBe(1);
     mgr.closeSurface(id);
     expect(mgr.surfaceCount).toBe(0);
@@ -60,7 +62,9 @@ describe("BrowserSurfaceManager", () => {
   test("closeSurface is a no-op for unknown id", () => {
     const mgr = new BrowserSurfaceManager();
     let called = false;
-    mgr.onSurfaceClosed = () => { called = true; };
+    mgr.onSurfaceClosed = () => {
+      called = true;
+    };
     mgr.closeSurface("nonexistent");
     expect(called).toBe(false);
   });
@@ -98,5 +102,42 @@ describe("BrowserSurfaceManager", () => {
     const mgr = new BrowserSurfaceManager();
     const id = mgr.createSurface("https://a.com", "persist:custom");
     expect(mgr.getSurface(id)!.partition).toBe("persist:custom");
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // P7 S6 (H.8) — per-surface partition mode
+  // ──────────────────────────────────────────────────────────────────
+
+  test("createSurfaceWithPartitionMode 'shared' reuses the legacy jar across panes", () => {
+    const mgr = new BrowserSurfaceManager();
+    const a = mgr.createSurfaceWithPartitionMode("https://a.com", "shared");
+    const b = mgr.createSurfaceWithPartitionMode("https://b.com", "shared");
+    expect(a.partition).toBe("persist:browser-shared");
+    expect(b.partition).toBe("persist:browser-shared");
+  });
+
+  test("createSurfaceWithPartitionMode 'per-surface' gives each pane a unique jar", () => {
+    const mgr = new BrowserSurfaceManager();
+    const a = mgr.createSurfaceWithPartitionMode(
+      "https://a.com",
+      "per-surface",
+    );
+    const b = mgr.createSurfaceWithPartitionMode(
+      "https://b.com",
+      "per-surface",
+    );
+    expect(a.partition).toBe(`persist:browser-${a.id}`);
+    expect(b.partition).toBe(`persist:browser-${b.id}`);
+    expect(a.partition).not.toBe(b.partition);
+  });
+
+  test("createSurfaceWithPartitionMode stores the partition on the surface record", () => {
+    const mgr = new BrowserSurfaceManager();
+    const { id, partition } = mgr.createSurfaceWithPartitionMode(
+      "https://x.com",
+      "per-surface",
+    );
+    expect(mgr.getSurface(id)!.partition).toBe(partition);
+    expect(mgr.getSurface(id)!.url).toBe("https://x.com");
   });
 });

@@ -117,3 +117,33 @@ describe("notification sound settings", () => {
     expect(validateSettings(tooQuiet).notificationSoundEnabled).toBe(false);
   });
 });
+
+describe("browserPartitionMode (P7 S6 / H.8)", () => {
+  test("default is 'per-surface' (isolated cookies per pane)", () => {
+    expect(DEFAULT_SETTINGS.browserPartitionMode).toBe("per-surface");
+  });
+
+  test("validateSettings preserves a valid 'shared' choice", () => {
+    const s: AppSettings = {
+      ...DEFAULT_SETTINGS,
+      browserPartitionMode: "shared",
+    };
+    expect(validateSettings(s).browserPartitionMode).toBe("shared");
+  });
+
+  test("validateSettings preserves a valid 'per-surface' choice", () => {
+    const s: AppSettings = {
+      ...DEFAULT_SETTINGS,
+      browserPartitionMode: "per-surface",
+    };
+    expect(validateSettings(s).browserPartitionMode).toBe("per-surface");
+  });
+
+  test("validateSettings narrows an unknown value to the safer 'per-surface' default", () => {
+    const s: AppSettings = {
+      ...DEFAULT_SETTINGS,
+      browserPartitionMode: "bogus" as unknown as "shared",
+    };
+    expect(validateSettings(s).browserPartitionMode).toBe("per-surface");
+  });
+});

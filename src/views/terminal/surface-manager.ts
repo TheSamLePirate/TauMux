@@ -403,8 +403,8 @@ export class SurfaceManager {
   }
 
   /** Add a browser surface as a new workspace. */
-  addBrowserSurface(surfaceId: string, url: string): void {
-    const view = this.createBrowserSurfaceView(surfaceId, url);
+  addBrowserSurface(surfaceId: string, url: string, partition?: string): void {
+    const view = this.createBrowserSurfaceView(surfaceId, url, partition);
     this.addNewWorkspace(surfaceId, "Browser", view, () =>
       this.focusSurface(surfaceId),
     );
@@ -416,8 +416,9 @@ export class SurfaceManager {
     url: string,
     splitFrom: string,
     direction: "horizontal" | "vertical",
+    partition?: string,
   ): void {
-    const view = this.createBrowserSurfaceView(surfaceId, url);
+    const view = this.createBrowserSurfaceView(surfaceId, url, partition);
     this.addSurfaceAsSplitImpl(surfaceId, view, splitFrom, direction);
   }
 
@@ -1949,81 +1950,88 @@ export class SurfaceManager {
   private createBrowserSurfaceView(
     surfaceId: string,
     url: string,
+    partition?: string,
   ): SurfaceView {
-    const browserView = createBrowserPaneView(surfaceId, url, {
-      onNavigated: (sid, navUrl, navTitle) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-browser-navigated", {
-            detail: { surfaceId: sid, url: navUrl, title: navTitle },
-          }),
-        );
+    const browserView = createBrowserPaneView(
+      surfaceId,
+      url,
+      {
+        onNavigated: (sid, navUrl, navTitle) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-browser-navigated", {
+              detail: { surfaceId: sid, url: navUrl, title: navTitle },
+            }),
+          );
+        },
+        onTitleChanged: (sid, newTitle) => {
+          const view = this.surfaces.get(sid);
+          if (view) {
+            view.title = newTitle;
+            view.titleEl.textContent = newTitle;
+          }
+          window.dispatchEvent(
+            new CustomEvent("ht-browser-title-changed", {
+              detail: { surfaceId: sid, title: newTitle },
+            }),
+          );
+          this.updateSidebar();
+        },
+        onNewWindow: (sid, newUrl) => {
+          // Open links from the page in the same browser pane
+          const view = this.surfaces.get(sid);
+          if (view?.browserView) {
+            browserPaneNavigateTo(view.browserView, newUrl);
+          }
+        },
+        onFocus: (sid) => {
+          this.focusSurface(sid);
+        },
+        onClose: (sid) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-close-surface", {
+              detail: { surfaceId: sid },
+            }),
+          );
+        },
+        onSplit: (sid, direction) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-split", {
+              detail: { surfaceId: sid, direction },
+            }),
+          );
+        },
+        onEvalResult: (sid, reqId, result, error) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-browser-eval-result", {
+              detail: { surfaceId: sid, reqId, result, error },
+            }),
+          );
+        },
+        onConsoleLog: (sid, level, args, timestamp) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-browser-console-log", {
+              detail: { surfaceId: sid, level, args, timestamp },
+            }),
+          );
+        },
+        onError: (sid, message, filename, lineno, timestamp) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-browser-error", {
+              detail: { surfaceId: sid, message, filename, lineno, timestamp },
+            }),
+          );
+        },
+        onDomReady: (sid, domUrl) => {
+          window.dispatchEvent(
+            new CustomEvent("ht-browser-dom-ready", {
+              detail: { surfaceId: sid, url: domUrl },
+            }),
+          );
+        },
       },
-      onTitleChanged: (sid, newTitle) => {
-        const view = this.surfaces.get(sid);
-        if (view) {
-          view.title = newTitle;
-          view.titleEl.textContent = newTitle;
-        }
-        window.dispatchEvent(
-          new CustomEvent("ht-browser-title-changed", {
-            detail: { surfaceId: sid, title: newTitle },
-          }),
-        );
-        this.updateSidebar();
-      },
-      onNewWindow: (sid, newUrl) => {
-        // Open links from the page in the same browser pane
-        const view = this.surfaces.get(sid);
-        if (view?.browserView) {
-          browserPaneNavigateTo(view.browserView, newUrl);
-        }
-      },
-      onFocus: (sid) => {
-        this.focusSurface(sid);
-      },
-      onClose: (sid) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-close-surface", {
-            detail: { surfaceId: sid },
-          }),
-        );
-      },
-      onSplit: (sid, direction) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-split", {
-            detail: { surfaceId: sid, direction },
-          }),
-        );
-      },
-      onEvalResult: (sid, reqId, result, error) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-browser-eval-result", {
-            detail: { surfaceId: sid, reqId, result, error },
-          }),
-        );
-      },
-      onConsoleLog: (sid, level, args, timestamp) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-browser-console-log", {
-            detail: { surfaceId: sid, level, args, timestamp },
-          }),
-        );
-      },
-      onError: (sid, message, filename, lineno, timestamp) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-browser-error", {
-            detail: { surfaceId: sid, message, filename, lineno, timestamp },
-          }),
-        );
-      },
-      onDomReady: (sid, domUrl) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-browser-dom-ready", {
-            detail: { surfaceId: sid, url: domUrl },
-          }),
-        );
-      },
-    });
+      "google",
+      partition,
+    );
 
     this.terminalContainer.appendChild(browserView.container);
 

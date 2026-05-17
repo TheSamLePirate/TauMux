@@ -139,9 +139,14 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
             payload.url,
             payload.splitFrom,
             payload.direction,
+            payload.partition,
           );
         } else {
-          surfaceManager.addBrowserSurface(payload.surfaceId, payload.url);
+          surfaceManager.addBrowserSurface(
+            payload.surfaceId,
+            payload.url,
+            payload.partition,
+          );
         }
       },
       browserSurfaceClosed: (payload) => {
