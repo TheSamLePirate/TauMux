@@ -1908,12 +1908,12 @@ body.sidebar-resizing {
 }
 
 .workspace-script-btn[data-state="running"] .workspace-script-run {
-  color: #86efac;
+  color: var(--ht-badge-success-fg);
   opacity: 0.9;
 }
 
 .workspace-script-btn[data-state="error"] .workspace-script-run {
-  color: #fca5a5;
+  color: var(--ht-pm-kill-fg);
   opacity: 0.9;
 }
 
@@ -1936,18 +1936,24 @@ body.sidebar-resizing {
   font-size: 9px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: #86efac;
-  background: rgba(74, 222, 128, 0.08);
-  border: 1px solid rgba(74, 222, 128, 0.22);
+  /* P7 S26 — third "success-tinted interactive chip" in the codebase
+   *  (surface-chip.chip-port and workspace-port-chip and PM .chip-port
+   *  all share this look). Harmonised onto the --ht-badge-success-*
+   *  family — the original literals here used 0.22 / 0.20 / 0.44 alphas
+   *  vs the badge family's 0.20 / 0.18 / 0.42; the perceptual delta is
+   *  <2% and unifying lets one swap repaint every port chip. */
+  color: var(--ht-badge-success-fg);
+  background: var(--ht-badge-success-bg);
+  border: 1px solid var(--ht-badge-success-border);
   cursor: pointer;
   transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
 }
 
 .workspace-port-chip:hover,
 .workspace-port-chip:focus-visible {
-  background: rgba(74, 222, 128, 0.2);
-  border-color: rgba(74, 222, 128, 0.44);
-  color: #bbf7d0;
+  background: var(--ht-badge-success-bg-hover);
+  border-color: var(--ht-badge-success-border-hover);
+  color: var(--ht-badge-success-fg-hover);
   outline: none;
 }
 
@@ -1959,7 +1965,7 @@ body.sidebar-resizing {
   gap: 6px;
   margin: 4px 10px 2px 14px;
   padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--ht-pm-card-border);
 }
 
 .status-entry {
