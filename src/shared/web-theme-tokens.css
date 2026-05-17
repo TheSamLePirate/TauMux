@@ -101,6 +101,20 @@
   --ht-button-drop-shadow: rgba(0, 0, 0, 0.18);
   --ht-button-bg-hover-fallback: rgba(255, 255, 255, 0.07);
 
+  /* P7 S13 — agent panel hover/active row tints. The agent surface has
+   *  its own small ladder of neutral white-on-dark tints for toolbar
+   *  buttons, dropdown items, dialog options and the message scroller.
+   *  Same intent family as ht-sidebar-* / ht-button-* — visually subtle
+   *  on dark. The ht-agent prefix sits outside the U2 light/HC
+   *  override gate because the agent surface is always rendered on
+   *  the dark pane-card background. */
+  --ht-agent-row-bg-hover: rgba(255, 255, 255, 0.04);
+  --ht-agent-row-bg-hover-strong: rgba(255, 255, 255, 0.05);
+  --ht-agent-row-bg-hover-card: rgba(255, 255, 255, 0.06);
+  --ht-agent-row-bg-hover-bold: rgba(255, 255, 255, 0.08);
+  --ht-agent-scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --ht-agent-scrollbar-thumb-hover: rgba(255, 255, 255, 0.14);
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;
