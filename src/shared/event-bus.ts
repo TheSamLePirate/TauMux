@@ -327,6 +327,86 @@ export interface RunScriptPayload {
   command?: string;
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// P7 S12 — A6 batch 5 payloads (browser-pane internals + agent
+// callbacks). These channels close the migration: 0 raw producers
+// remain in the native code after this batch.
+// ─────────────────────────────────────────────────────────────────────
+
+/** Browser pane navigation event — fired after the webview commits a
+ *  navigation. `title` may be empty if the page hasn't reported one
+ *  yet; consumers should keep the prior title until a separate
+ *  `ht-browser-title-changed` arrives. */
+export interface BrowserNavigatedPayload {
+  surfaceId: string;
+  url: string;
+  title: string;
+}
+
+/** Browser pane title change. Fired independently of navigation so
+ *  pages that update `document.title` after load (SPA route
+ *  changes) still flow through. */
+export interface BrowserTitleChangedPayload {
+  surfaceId: string;
+  title: string;
+}
+
+/** Browser pane evalJs response. `result` is JSON-stringified by the
+ *  webview side; `error` is the message string when the eval threw. */
+export interface BrowserEvalResultPayload {
+  surfaceId: string;
+  reqId: string;
+  result: string;
+  error?: string;
+}
+
+/** Browser pane console capture from the OOPIF preload. */
+export interface BrowserConsoleLogPayload {
+  surfaceId: string;
+  level: string;
+  args: string[];
+  timestamp: number;
+}
+
+/** Browser pane uncaught error from the OOPIF preload. */
+export interface BrowserErrorPayload {
+  surfaceId: string;
+  message: string;
+  filename?: string;
+  lineno?: number;
+  timestamp: number;
+}
+
+/** Browser pane DOMContentLoaded — used as the "page is interactive"
+ *  cue for the host's eval queue + the snapshot RPC. */
+export interface BrowserDomReadyPayload {
+  surfaceId: string;
+  url: string;
+}
+
+/** Browser pane zoom change. Fired by SurfaceManager.setBrowserZoom
+ *  so the bun side can persist the value across restarts. */
+export interface BrowserZoomPayload {
+  surfaceId: string;
+  zoom: number;
+}
+
+/** Agent pane prompt submission. `message` is the user text; `images`
+ *  is the optional ordered list of base64-encoded image attachments. */
+export interface AgentPromptPayload {
+  agentId: string;
+  message: string;
+  images?: string[];
+}
+
+/** Agent pane shared shape for the four no-payload agent commands —
+ *  abort, new-session, compact, get-models, get-state. All carry
+ *  just the targeted agentId so the host knows which subprocess to
+ *  signal. */
+export interface AgentCommandPayload {
+  agentId: string;
+}
+
 export interface HtEventMap extends Record<string, unknown> {
   "ht-reorder-workspaces": ReorderWorkspacesPayload;
   "ht-surface-focused": SurfaceFocusedPayload;
@@ -369,6 +449,20 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-open-surface-context-menu": OpenSurfaceContextMenuPayload;
   "ht-open-process-manager": OpenProcessManagerPayload;
   "ht-run-script": RunScriptPayload;
+  // P7 S12 — A6 batch 5 (final) channels.
+  "ht-browser-navigated": BrowserNavigatedPayload;
+  "ht-browser-title-changed": BrowserTitleChangedPayload;
+  "ht-browser-eval-result": BrowserEvalResultPayload;
+  "ht-browser-console-log": BrowserConsoleLogPayload;
+  "ht-browser-error": BrowserErrorPayload;
+  "ht-browser-dom-ready": BrowserDomReadyPayload;
+  "ht-browser-zoom": BrowserZoomPayload;
+  "ht-agent-prompt": AgentPromptPayload;
+  "ht-agent-abort": AgentCommandPayload;
+  "ht-agent-new-session": AgentCommandPayload;
+  "ht-agent-compact": AgentCommandPayload;
+  "ht-agent-get-models": AgentCommandPayload;
+  "ht-agent-get-state": AgentCommandPayload;
 }
 
 /** Singleton bus that dispatches on `window`. Importers can grab this

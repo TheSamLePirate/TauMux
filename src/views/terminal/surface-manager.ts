@@ -1329,11 +1329,7 @@ export class SurfaceManager {
     zoom: number,
   ): void {
     view.zoom = zoom;
-    window.dispatchEvent(
-      new CustomEvent("ht-browser-zoom", {
-        detail: { surfaceId, zoom },
-      }),
-    );
+    htEvents.emit("ht-browser-zoom", { surfaceId, zoom });
   }
 
   browserNavigateTo(surfaceId: string | null, url: string): void {
@@ -1962,11 +1958,11 @@ export class SurfaceManager {
       url,
       {
         onNavigated: (sid, navUrl, navTitle) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-browser-navigated", {
-              detail: { surfaceId: sid, url: navUrl, title: navTitle },
-            }),
-          );
+          htEvents.emit("ht-browser-navigated", {
+            surfaceId: sid,
+            url: navUrl,
+            title: navTitle,
+          });
         },
         onTitleChanged: (sid, newTitle) => {
           const view = this.surfaces.get(sid);
@@ -1974,11 +1970,10 @@ export class SurfaceManager {
             view.title = newTitle;
             view.titleEl.textContent = newTitle;
           }
-          window.dispatchEvent(
-            new CustomEvent("ht-browser-title-changed", {
-              detail: { surfaceId: sid, title: newTitle },
-            }),
-          );
+          htEvents.emit("ht-browser-title-changed", {
+            surfaceId: sid,
+            title: newTitle,
+          });
           this.updateSidebar();
         },
         onNewWindow: (sid, newUrl) => {
@@ -1998,32 +1993,35 @@ export class SurfaceManager {
           htEvents.emit("ht-split", { surfaceId: sid, direction });
         },
         onEvalResult: (sid, reqId, result, error) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-browser-eval-result", {
-              detail: { surfaceId: sid, reqId, result, error },
-            }),
-          );
+          htEvents.emit("ht-browser-eval-result", {
+            surfaceId: sid,
+            reqId,
+            result,
+            error,
+          });
         },
         onConsoleLog: (sid, level, args, timestamp) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-browser-console-log", {
-              detail: { surfaceId: sid, level, args, timestamp },
-            }),
-          );
+          htEvents.emit("ht-browser-console-log", {
+            surfaceId: sid,
+            level,
+            args,
+            timestamp,
+          });
         },
         onError: (sid, message, filename, lineno, timestamp) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-browser-error", {
-              detail: { surfaceId: sid, message, filename, lineno, timestamp },
-            }),
-          );
+          htEvents.emit("ht-browser-error", {
+            surfaceId: sid,
+            message,
+            filename,
+            lineno,
+            timestamp,
+          });
         },
         onDomReady: (sid, domUrl) => {
-          window.dispatchEvent(
-            new CustomEvent("ht-browser-dom-ready", {
-              detail: { surfaceId: sid, url: domUrl },
-            }),
-          );
+          htEvents.emit("ht-browser-dom-ready", {
+            surfaceId: sid,
+            url: domUrl,
+          });
         },
       },
       this.browserSearchEngine,
@@ -2058,16 +2056,10 @@ export class SurfaceManager {
   ): SurfaceView {
     const agentView = createAgentPaneView(surfaceId, agentId, {
       onSendPrompt: (aid, message, images) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-agent-prompt", {
-            detail: { agentId: aid, message, images },
-          }),
-        );
+        htEvents.emit("ht-agent-prompt", { agentId: aid, message, images });
       },
       onAbort: (aid) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-agent-abort", { detail: { agentId: aid } }),
-        );
+        htEvents.emit("ht-agent-abort", { agentId: aid });
       },
       onSetModel: (aid, provider, modelId) => {
         htEvents.emit("ht-agent-set-model", {
@@ -2080,14 +2072,10 @@ export class SurfaceManager {
         htEvents.emit("ht-agent-set-thinking", { agentId: aid, level });
       },
       onNewSession: (aid) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-agent-new-session", { detail: { agentId: aid } }),
-        );
+        htEvents.emit("ht-agent-new-session", { agentId: aid });
       },
       onCompact: (aid) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-agent-compact", { detail: { agentId: aid } }),
-        );
+        htEvents.emit("ht-agent-compact", { agentId: aid });
       },
       onClose: (sid) => {
         htEvents.emit("ht-close-surface", { surfaceId: sid });
@@ -2099,14 +2087,10 @@ export class SurfaceManager {
         this.focusSurface(sid);
       },
       onGetModels: (aid) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-agent-get-models", { detail: { agentId: aid } }),
-        );
+        htEvents.emit("ht-agent-get-models", { agentId: aid });
       },
       onGetState: (aid) => {
-        window.dispatchEvent(
-          new CustomEvent("ht-agent-get-state", { detail: { agentId: aid } }),
-        );
+        htEvents.emit("ht-agent-get-state", { agentId: aid });
       },
     });
 
