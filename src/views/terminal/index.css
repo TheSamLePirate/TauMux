@@ -1668,8 +1668,8 @@ body.sidebar-resizing {
   font-size: 9px;
   font-family: var(--font-mono, monospace);
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--ht-cwd-chip-bg);
+  border: 1px solid var(--ht-cwd-chip-border);
   cursor: pointer;
   max-width: 140px;
   overflow: hidden;
@@ -1679,16 +1679,16 @@ body.sidebar-resizing {
 }
 
 .workspace-cwd-chip:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ht-cwd-chip-bg-hover);
   color: var(--text-strong);
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: var(--ht-cwd-chip-border-hover);
 }
 
 .workspace-cwd-chip.active {
   color: var(--accent-primary);
-  background: rgba(111, 233, 255, 0.1);
-  border-color: rgba(111, 233, 255, 0.32);
-  box-shadow: 0 0 0 1px rgba(111, 233, 255, 0.14) inset;
+  background: var(--ht-badge-info-bg);
+  border-color: var(--ht-cwd-chip-active-border);
+  box-shadow: 0 0 0 1px var(--ht-cwd-chip-active-glow) inset;
 }
 
 /* ── Workspace package.json card ── */

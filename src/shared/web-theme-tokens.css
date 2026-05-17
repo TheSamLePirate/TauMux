@@ -262,6 +262,18 @@
   --ht-chip-bg: rgba(255, 255, 255, 0.05);
   --ht-chip-border: rgba(255, 255, 255, 0.04);
 
+  /* P7 S20 — workspace cwd chip (sidebar mixed-cwd selector). Distinct
+   *  from .surface-chip (different bg/border depths). The active state
+   *  uses the info family + a faint inset cyan glow for the
+   *  "currently focused" cue. The ht-cwd-chip prefix sits outside the
+   *  U2 light/HC override gate. */
+  --ht-cwd-chip-bg: rgba(255, 255, 255, 0.03);
+  --ht-cwd-chip-border: rgba(255, 255, 255, 0.05);
+  --ht-cwd-chip-bg-hover: rgba(255, 255, 255, 0.06);
+  --ht-cwd-chip-border-hover: rgba(255, 255, 255, 0.1);
+  --ht-cwd-chip-active-border: rgba(111, 233, 255, 0.32);
+  --ht-cwd-chip-active-glow: rgba(111, 233, 255, 0.14);
+
   /* P7 S19 — notification overlay + sidebar notification item.
    *  The .tau-notif-overlay-* stack (top-right toasts) uses a slightly
    *  bluer dark surface than the rest of the chrome, with a noticeable
