@@ -352,11 +352,12 @@ export interface BrowserTitleChangedPayload {
 }
 
 /** Browser pane evalJs response. `result` is JSON-stringified by the
- *  webview side; `error` is the message string when the eval threw. */
+ *  webview side (undefined when the eval threw or returned nothing);
+ *  `error` is the message string when the eval threw. */
 export interface BrowserEvalResultPayload {
   surfaceId: string;
   reqId: string;
-  result: string;
+  result: string | undefined;
   error?: string;
 }
 
@@ -392,11 +393,13 @@ export interface BrowserZoomPayload {
 }
 
 /** Agent pane prompt submission. `message` is the user text; `images`
- *  is the optional ordered list of base64-encoded image attachments. */
+ *  is the optional ordered list of image attachments — typed as the
+ *  `ImageAttachment` shape from the agent-panel module so the host
+ *  doesn't have to reshape them. */
 export interface AgentPromptPayload {
   agentId: string;
   message: string;
-  images?: string[];
+  images?: import("../views/terminal/agent-panel-utils").ImageAttachment[];
 }
 
 /** Agent pane shared shape for the four no-payload agent commands —
