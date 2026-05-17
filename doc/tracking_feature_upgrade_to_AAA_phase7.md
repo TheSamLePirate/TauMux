@@ -524,3 +524,56 @@ Grade distribution after S9: **19 S / 21 A / 6 B / 3 C** (was 19 / 20 / 7 / 3 at
 - F.11 `WorkspaceCollection` extraction from `SurfaceManager`.
 - Cluster H literal migration — continue chunk-by-chunk (sidebar, panes, surface bar).
 - Variant mount/unmount lifecycle tests (the last gap for `app-variants` → S).
+
+---
+
+## Session 10 (2026-05-17)
+
+Slice picked: **A6 EventBus batch 3** + **variant mount/unmount lifecycle tests** (closes the last `app-variants` gap) + **Cluster H sidebar token migration**.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| A6 batch 3 — 11 channel migrations | `99a81d7` | `src/shared/event-bus.ts`, `src/views/terminal/{agent-panel,surface-manager,sidebar}.ts` | existing EventBus + sidebar suites stay green |
+| Variant mount/unmount tests | `bb8577d` | `tests/variants-lifecycle.test.ts` (new) | +9 (Cockpit enter/exit/idempotent/clean, Atlas enter/exit/idempotent + chrome elements, Cockpit → Atlas handoff) |
+| Cluster H sidebar workspace-card migration | `5a97c45` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-sidebar.test.ts` (new) | +13 (every new token defined, resting/hover/active states use tokens, raw rgba shapes rejected) |
+| U2 invariant fix-up (comment regex misfire) | `6eeab93` | `src/shared/web-theme-tokens.css` | (existing U2 test re-greens) |
+
+Bumps: `bun run bump:patch` ran before each functional commit.
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `app-variants` | A | **S** | Closes the last named gap with `tests/variants-lifecycle.test.ts` (+9 cases). The A6 batch 3 migration also lands 9 more channels (`ht-agent-set-model` × 2, `ht-agent-set-thinking` × 2, `ht-telegram-{send,request-history,request-state}`, `ht-split-editor`, `ht-select-workspace-cwd`, `ht-rename-workspace`, `ht-pin-workspace` — 11 call sites). Native producers: 40 → 29. |
+| `tau-primitives` | S | S | Cluster H continues — sidebar workspace-card region migrated to a new `--ht-sidebar-*` token group (row-bg, hover, stripe, border, inset, shadow). audit:theming: 993 → 981. |
+
+Grade distribution after S10: **20 S / 20 A / 6 B / 3 C** (was 19 / 21 / 6 / 3 at S9 close).
+
+### Issues encountered
+
+- **U2 invariant regex confused by a comment-formatted prefix list**: my new sidebar-tokens comment listed `--ht-bg-/--ht-text-/...` as example group prefixes; the U2 test's `--ht-[a-z0-9-]+` regex greedily matched those as fake token names, then flagged "missing graphite-light / high-contrast overrides" for them. Fixed with `6eeab93` by rewriting the comment in plain English.
+- **Atlas test fixture missing #terminal-container**: my initial Atlas tests failed because `mountTabRail()` looks up `#terminal-container` and my fixture only seeded `#sidebar` + `#tau-status-bar`. Added the missing element; both Atlas tests green.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+- **1 pre-existing flake**: integration `snapshot gets dropped` (timing-sensitive on PTY). Not caused by S10 changes.
+
+### Exit criteria (session 10)
+
+| Criterion | Status |
+|---|---|
+| A6 batch 3 migrates ≥ 9 channels | ✅ 9 channels / 11 sites |
+| Variant lifecycle tests close the gap | ✅ +9 cases, all green |
+| Cluster H sidebar region migrated | ✅ 993 → 981 (−12) |
+| `bun test` green (modulo pre-existing flakes) | ✅ 2155 / 1 known flake |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 10)
+
+- F.6 `settings.schema.ts` source-of-truth — still pending as a dedicated session.
+- A6 batch 4 — continue migrating the remaining 29 channels onto `htEvents`.
+- F.11 `WorkspaceCollection` extraction from `SurfaceManager`.
+- Cluster H literal migration — next chunk (pane bar, surface chrome, agent panel).
+- Phases 8 (release engineering) + 9 (docs / observability) when P7 long tail is exhausted.

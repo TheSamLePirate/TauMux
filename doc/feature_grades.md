@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.66
+**Version:** 0.3.69
 **Generated:** 2026-05-17
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 9 landed: A6 continuation — 8 more EventBus channels migrated to htEvents (11 producer call sites, 51 → 40 raw window.dispatchEvent producers); A7 typed VariantContext seam replaces the 3 __tau* window globals (22 implicit refs → 7 typed accessor calls; back-compat shim kept for the design-review harness — app-variants B→A); theme-token migration kick-off — notify-glow + notification overlay block now token-driven (`--ht-notify-amber-*`, `--ht-notify-cyan-*`, `--ht-sem-error-tint`); audit:theming count 1013 → 993. Cumulative P7: 29 lifts across 9 sessions. Remaining P7 long tail: ~40 channel migrations on `htEvents` (incremental) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — still a dedicated session) + 993 colour literals (Cluster H — multi-session). Owned across future sessions of P7.
+Phase 7 polish — session 10 landed: A6 batch 3 (9 more EventBus channels, 11 producer call sites — native producers 40 → 29); variant mount/unmount lifecycle tests (+9) close the last named gap for app-variants → S; cluster-H sidebar workspace-card region migrated to `--ht-sidebar-*` token group (audit:theming 993 → 981). Cumulative P7: 32 lifts across 10 sessions. Remaining P7 long tail: 29 channel migrations on `htEvents` (incremental) + WorkspaceCollection (F.11) + settings.schema.ts (F.6 — still a dedicated session) + 981 colour literals (Cluster H — multi-session). Owned across future sessions of P7.
 
 ---
 
@@ -34,8 +34,8 @@ Phase 7 polish — session 9 landed: A6 continuation — 8 more EventBus channel
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **19** | Best-in-class — 19 features cleared every gap. |
-| A | **21** | Most "production-shaped" subsystems. |
+| S (AAA) | **20** | Best-in-class — 20 features cleared every gap. |
+| A | **20** | Most "production-shaped" subsystems. |
 | B (incl. B+) | **6** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **3** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
@@ -216,11 +216,10 @@ Phase 7 polish — session 9 landed: A6 continuation — 8 more EventBus channel
   - Per-variant icons.
 
 ### App variants (Atlas / Cockpit / Bridge)
-- **Grade: A**
-- **Evidence:** Cockpit (296 LOC) cleanly mounts/unmounts rail + HUDs on enter/exit. Atlas (596 LOC) renders SVG workspace graph. Both restore sidebar on exit. Phase 7 (S8 / A6) introduced a typed `EventBus<HtEventMap>` seam in `src/shared/event-bus.ts` with 5 channels migrated. Phase 7 (S9) extended the migration with 8 more channels (ht-close-surface, ht-split, ht-show-surface-info, ht-open-external, ht-statuses-changed, ht-sidebar-toggle, ht-sidebar-resize-commit, ht-focus-notification-source — 11 producer call sites total) and added the A7 typed `VariantContext`: `src/views/terminal/variants/variant-context.ts` exposes typed get/set for surface-manager / focused-id / notify-workspaces. 22 implicit `__tau*` window-global references collapsed to 7 typed accessor calls; 0 raw window casts remain in the variants. Back-compat window shim kept for the design-review harness. Tests in `tests/event-bus.test.ts` + `tests/variant-context.test.ts` (+6).
+- **Grade: S**
+- **Evidence:** Cockpit (296 LOC) cleanly mounts/unmounts rail + HUDs on enter/exit. Atlas (596 LOC) renders SVG workspace graph. Both restore sidebar on exit. Phase 7 (S8 → S10) walked the Cluster F refactor: typed `EventBus<HtEventMap>` seam landed in S8, batch 2 (8 channels) in S9, batch 3 (9 channels) in S10. 22 channels migrated; native producer count 51 → 29. A7 typed `VariantContext` (S9) replaces the `__tau*` window globals with a typed singleton; 0 raw window casts remain in the variants. Phase 7 (S10) closes the last named gap with `tests/variants-lifecycle.test.ts` (+9): enter sets data-tau-variant + mounts the variant chrome, exit removes both, enter is idempotent, Cockpit → Atlas handoff leaves only Atlas chrome.
 - **Gaps to AAA:**
-  - Migrate the remaining ~40 channels onto `htEvents` (back-compat is in place; multi-session).
-  - Mount/unmount lifecycle tests.
+  - Migrate the remaining 29 channels onto `htEvents` (back-compat is in place; multi-session).
   - Documented Bridge variant spec.
 
 ### Tau primitives / icons / tokens
@@ -228,7 +227,7 @@ Phase 7 polish — session 9 landed: A6 continuation — 8 more EventBus channel
 - **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference. Phase 7 (S3) closed the loop with a four-way segmented selector at the top of Settings → Theme that flows through the existing `updateSettings` pipeline.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
-  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9 started the migration: notify-glow + notification-overlay block now token-driven (`--ht-notify-amber-*`, `--ht-notify-cyan-*`, `--ht-sem-error-tint`). audit:theming count: 1013 → 993 (−20). Pattern established; multi-session for the long tail.
+  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9 started with notify-glow + notification-overlay; S10 continued with the sidebar workspace-card region (new `--ht-sidebar-*` token group: row-bg / hover / stripe / border / inset / shadow). audit:theming count: 1013 → 981 (−32 across S9 + S10). Multi-session for the rest.
 
 ---
 
