@@ -1978,3 +1978,46 @@ Grade distribution after S41: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: pi-agent dropdown + welcome + messages + streaming bar (continuing in the 7430+ range), plus the 7892-8233 region (likely panel internals).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 42 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — pi-agent welcome + messages then think/code/tool-call panel (continues directly where S41 left off in the 7450-7800 range).
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H pi-agent welcome + messages | `4cfbdfca` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-pi-agent-welcome-msg.test.ts` (new) | +16 (5 new --ht-agent-msg-* / image-thumb-bg tokens; heavy reuse of S41 tb-model-hover-border for the welcome glyph drop-shadow + cursor box-shadow, palette-divider family for cyan tints) |
+| Cluster H pi-agent think/code/tool-call | `2d506563` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-pi-agent-tc.test.ts` (new) | +26 (10 new --ht-agent-* tokens for the tool-call state palette + code blocks + think blocks + context-meter + footer + widget; --ht-badge-success-bg now serves as both badge bg AND tool-call rest border — exact reuse) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.132 → 0.3.133 (welcome+msg) → 0.3.134 (think/code/tc).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — **third single-session drop record in a row: −53 literals** (S40 −44, S41 −47, S42 −53). The pi-agent panel is now fully migrated end-to-end: welcome, message bubbles (user gradient / assistant flat / system amber-tint), code blocks (deep-black 0.5 hold), inline code (cyan tints), think blocks (amber 0.035 fill + 0.25 border-left), tool-call panel (rest green + run cyan + err red + ok states), inline tool results, action buttons, bash prompt, context meter, footer, widgets. The --ht-agent-* family now totals 23 tokens covering the entire panel. The diff/icon/inline color triple unify on --ht-sem-success / --ht-sem-error — proving cross-panel semantic colours scale. Cumulative S9–S42: 1013 → 329 (−684). |
+
+Grade distribution after S42: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **No new issues.** PostToolUse formatter touched the new chunk-2 test file after Write; acknowledged without rewrite.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+
+### Exit criteria (session 42)
+
+| Criterion | Status |
+|---|---|
+| Cluster H pi-agent welcome + messages migrated | ✅ 382 → 358 (−24) |
+| Cluster H pi-agent think/code/tool-call migrated | ✅ 358 → 329 (−29) |
+| `bun test` green (modulo pre-existing flake) | ✅ +42 new tests; full theme-token suite 574 / 574 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 42)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: pi-agent slash command menu + dropdown + streaming bar (still in the 7430+ range — completes the panel), then the 7892-8233 dense block (likely modal internals or v2 surfaces).
+- Phases 8 (release engineering) + 9 (docs / observability).
