@@ -3719,19 +3719,19 @@ body.terminal-typing .panel {
   gap: 7px;
   padding: 5px 9px;
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 0.5px solid rgba(255, 255, 255, 0.06);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.04);
+  background: var(--ht-chip-bg);
+  border: 0.5px solid var(--ht-panel-border-soft);
+  box-shadow: inset 0 0.5px 0 var(--ht-agent-row-bg-hover);
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
 .sidebar-search:focus-within {
   border-color: color-mix(in srgb, var(--accent-primary) 48%, transparent);
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--ht-button-bg-hover-fallback);
 }
 
 .sidebar-search-icon {
-  color: rgba(229, 231, 237, 0.48);
+  color: var(--ht-sidebar-text-mute);
   flex-shrink: 0;
 }
 
@@ -3744,13 +3744,13 @@ body.terminal-typing .panel {
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ht-sidebar-search-input-fg);
   caret-color: var(--accent-primary);
   padding: 0;
 }
 
 .sidebar-search-input::placeholder {
-  color: rgba(229, 231, 237, 0.38);
+  color: var(--ht-sidebar-text-dim);
   font-weight: 450;
 }
 
@@ -3765,9 +3765,9 @@ body.terminal-typing .panel {
   align-self: flex-start;
   padding: 2px;
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 0.5px solid rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.03);
+  background: var(--ht-agent-row-bg-hover);
+  border: 0.5px solid var(--ht-pm-card-border);
+  box-shadow: inset 0 0.5px 0 var(--ht-package-header-bg-hover);
   gap: 1px;
 }
 
@@ -3781,7 +3781,7 @@ body.terminal-typing .panel {
   font-size: 11px;
   font-weight: 560;
   letter-spacing: 0.005em;
-  color: rgba(229, 231, 237, 0.56);
+  color: var(--ht-sidebar-section-count-fg);
   cursor: pointer;
   transition:
     background var(--transition-fast),
@@ -3790,20 +3790,20 @@ body.terminal-typing .panel {
 }
 
 .sidebar-filter-btn:hover {
-  color: rgba(229, 231, 237, 0.82);
+  color: var(--ht-sidebar-filter-btn-hover-fg);
 }
 
 .sidebar-filter-btn[aria-selected="true"] {
-  color: rgba(255, 255, 255, 0.96);
+  color: var(--ht-button-fg-hover);
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.1),
-    rgba(255, 255, 255, 0.06)
+    var(--ht-sidebar-filter-selected-bg-top),
+    var(--ht-panel-border-soft)
   );
   box-shadow:
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.12),
-    0 1px 2px rgba(0, 0, 0, 0.28),
-    0 0 0 0.5px rgba(255, 255, 255, 0.06);
+    inset 0 0.5px 0 var(--ht-panel-border-light),
+    0 1px 2px var(--ht-sidebar-filter-selected-shadow),
+    0 0 0 0.5px var(--ht-panel-border-soft);
 }
 
 /* Inline divider used to label Pinned / All groups inside the list. */
@@ -3816,14 +3816,14 @@ body.terminal-typing .panel {
   font-weight: 580;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(229, 231, 237, 0.4);
+  color: var(--ht-sidebar-text-dim);
 }
 
 .sidebar-inline-divider::after {
   content: "";
   flex: 1;
   height: 0.5px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ht-panel-border-soft);
 }
 
 /* Drag handle on each workspace card. */

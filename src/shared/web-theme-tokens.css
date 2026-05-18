@@ -356,6 +356,17 @@
   --ht-log-error-fg: #fb7185;
   --ht-log-progress-fg: #d8b4fe;
 
+  /* P7 S32 — sidebar search input + filter segment. The search input
+   *  is a near-white text (0.92) above all other sidebar text alphas
+   *  in brightness — meant to read like terminal input, not chrome.
+   *  The filter segment's selected state gets its own gradient stops
+   *  + black-on-glass drop shadow; rest uses the same alphas as the
+   *  section-text family. */
+  --ht-sidebar-search-input-fg: rgba(255, 255, 255, 0.92);
+  --ht-sidebar-filter-btn-hover-fg: rgba(229, 231, 237, 0.82);
+  --ht-sidebar-filter-selected-bg-top: rgba(255, 255, 255, 0.1);
+  --ht-sidebar-filter-selected-shadow: rgba(0, 0, 0, 0.28);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
