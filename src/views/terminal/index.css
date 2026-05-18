@@ -5424,25 +5424,25 @@ body::before, body::after { content: none; }
 .process-manager-git,
 .workspace-package-bin-chip {
   color: color-mix(in srgb, var(--accent-secondary) 70%, white);
-  background: color-mix(in srgb, var(--accent-secondary) 10%, rgba(255, 255, 255, 0.03));
-  border-color: color-mix(in srgb, var(--accent-secondary) 20%, rgba(255, 255, 255, 0.06));
+  background: color-mix(in srgb, var(--accent-secondary) 10%, var(--ht-package-header-bg-hover));
+  border-color: color-mix(in srgb, var(--accent-secondary) 20%, var(--ht-agent-row-bg-hover-card));
 }
 
 .surface-chip.chip-port,
 .workspace-port-chip,
 .process-manager-port {
-  color: #9ed3ab;
-  background: rgba(120, 194, 122, 0.12);
-  border-color: rgba(120, 194, 122, 0.18);
+  color: var(--ht-vnext-port-fg);
+  background: var(--ht-vnext-port-bg);
+  border-color: var(--ht-vnext-port-border);
 }
 
 .surface-chip.chip-port:hover,
 .surface-chip.chip-port:focus-visible,
 .workspace-port-chip:hover,
 .workspace-port-chip:focus-visible {
-  background: rgba(120, 194, 122, 0.18);
-  border-color: rgba(120, 194, 122, 0.28);
-  color: #cbeed0;
+  background: var(--ht-vnext-port-border);
+  border-color: var(--ht-vnext-port-border-hover);
+  color: var(--ht-vnext-port-fg-hover);
 }
 
 .surface-bar-actions {
@@ -5476,9 +5476,9 @@ body::before, body::after { content: none; }
 .surface-details-close:hover,
 .settings-close-btn:hover,
 .search-bar-close:hover {
-  color: #ff9b8f;
-  background: rgba(255, 123, 114, 0.12);
-  border-color: rgba(255, 123, 114, 0.18);
+  color: var(--ht-vnext-close-hover-fg);
+  background: var(--ht-vnext-close-hover-bg);
+  border-color: var(--ht-vnext-close-hover-border);
 }
 
 .surface-terminal {

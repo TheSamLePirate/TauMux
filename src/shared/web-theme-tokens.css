@@ -494,6 +494,25 @@
   --ht-vnext-text-soft: rgba(232, 238, 248, 0.74);
   --ht-vnext-text-soft-2: rgba(232, 238, 248, 0.68);
 
+  /* P7 S38 chunk 2 — vNext port-chip green palette + close-btn
+   *  peach-red hover palette. Both are status-coloured affordances
+   *  in the surface bar / context cluster. Port green (#9ed3ab /
+   *  #cbeed0 + 120/194/122 tints) is a softer mossy variant of
+   *  the badge-success #86efac / #4ade80 family — the bar version
+   *  is dimmer because the chip is hover-only "informational"
+   *  rather than the badge's prominent "running" state. Close-btn
+   *  peach-red (#ff9b8f + 255/123/114) is a warmer variant of
+   *  --ht-sem-error (#f87171) for the destructive hover affordance —
+   *  the chrominance shift signals "close, not error". */
+  --ht-vnext-port-fg: #9ed3ab;
+  --ht-vnext-port-fg-hover: #cbeed0;
+  --ht-vnext-port-bg: rgba(120, 194, 122, 0.12);
+  --ht-vnext-port-border: rgba(120, 194, 122, 0.18);
+  --ht-vnext-port-border-hover: rgba(120, 194, 122, 0.28);
+  --ht-vnext-close-hover-fg: #ff9b8f;
+  --ht-vnext-close-hover-bg: rgba(255, 123, 114, 0.12);
+  --ht-vnext-close-hover-border: rgba(255, 123, 114, 0.18);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
