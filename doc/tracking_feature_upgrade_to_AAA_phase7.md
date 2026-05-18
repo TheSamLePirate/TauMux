@@ -1504,3 +1504,46 @@ Grade distribution after S30: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: workspace meta-row / surfaces / surfaces-more, telegram bridge sub-states, kbd-cheatsheet body (more dead-fallback strips), settings panel inputs.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 31 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — sidebar section header brightness ladder + log-item state stamps.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H sidebar section header | `dc622a75` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-sidebar-section.test.ts` (new) | +8 (3 new --ht-sidebar-section-* tokens + heavy cross-component reuse covering header / toggle / caret / count / badge / clear states) |
+| Cluster H log-item state stamps | `9da407f1` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-log-item.test.ts` (new) | +2 (3 new --ht-log-* tokens; .success reuses --ht-badge-success-fg) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.110 → 0.3.111 (sidebar section) → 0.3.112 (log-item).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — double chunk. (1) Sidebar section header migrated to 3 new --ht-sidebar-section-* tokens covering the 0.56/0.58/0.9 zinc text ladder between dim (0.42) and soft (0.68), plus 9 cross-component reuses including ≤3% perceptual harmonisations onto existing --ht-sidebar-text-dim / -mute. (2) log-item state stamps migrated to 3 new --ht-log-warning-fg / -error-fg / -progress-fg tokens for the Catppuccin-style warning / error / progress colours; .success reuses --ht-badge-success-fg (exact #86efac match). ~17 literals migrated across two commits. audit:theming: 699 → 682 (−17). |
+
+Grade distribution after S31: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **Multi-selector .sidebar-section-header**: there are THREE `.sidebar-section-header` rules in index.css — two are multi-selector layout-only blocks (line 939, line 943), the third (line ~3450) is the styled block I migrated. matchRule helper grabs the first; switched to a regex-on-the-whole-file assertion for the standalone selector with the migrated color line.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 31)
+
+| Criterion | Status |
+|---|---|
+| Cluster H sidebar section header migrated | ✅ 699 → 686 (−13) |
+| Cluster H log-item state stamps migrated | ✅ 686 → 682 (−4) |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2510 / 0–2 known flakes; +10 new tests |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 31)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: sidebar search input + filter segment (zinc-tinted near the section family), workspace card metric rows, telegram bridge sub-states.
+- Phases 8 (release engineering) + 9 (docs / observability).
