@@ -74,3 +74,76 @@ infra):
   short-term retention.
 - Structured log-level filter — would need a logger API change;
   current code is fire-and-forget.
+
+## P9 follow-up (2026-05-18) — three B-grade gap closures
+
+After the headline P9 push, ran a sweep through remaining B-graded
+gaps that don't need live-env Playwright infra:
+
+### Workspaces — recover from truncated layout.json (`f41f2484`)
+
+New `src/shared/layout-persistence.ts` module:
+- `validatePersistedLayout(raw): raw is PersistedLayout` walks the
+  full shape (activeWorkspaceIndex integer in [-1, len], boolean
+  sidebarVisible, non-empty workspaces array, each workspace's
+  required + optional record fields, every PaneNode subtree).
+- `parsePersistedLayout(json): PersistedLayout | null` combines
+  JSON.parse + validate; returns null on any failure.
+
+`loadLayout` in `src/bun/index.ts` now calls `parsePersistedLayout`.
+Crash-truncated layout.json (fsync interrupted, disk full, partial
+backup restore) boots to a clean slate rather than throwing
+downstream in `collectLeafIds` / `remapPaneNode`.
+
+26 tests in `tests/layout-persistence.test.ts` cover happy paths
+(minimal + nested split + activeWorkspaceIndex=-1 sentinel +
+optional records), parse failures (garbage, truncated mid-string,
+empty, whitespace, null, top-level array), and shape mismatches
+(missing/wrong-type fields, out-of-range index, NaN ratio, single-
+child split, leaf without surfaceId, unknown surfaceType, one valid
++ one malformed workspace rejected together).
+
+### Panel-registry — max-panels cap (`b4e2e084`)
+
+`PanelRegistry` ctor takes an optional `maxPanelsPerSurface`
+(default 256, exported as `DEFAULT_MAX_PANELS_PER_SURFACE`). When a
+NEW id arrives and the per-surface map is at the cap, the OLDEST
+entry (smallest createdAt) is evicted before insertion. Updates to
+existing ids never trip the cap. Cap clamped to >= 1 so a bogus 0
+/ negative arg degrades gracefully.
+
+13 tests in `tests/panel-registry.test.ts` cover happy paths
+(create / update / clear / flush / per-surface isolation /
+clearSurface) and the cap (oldest-eviction with ms-spaced
+createdAt, update-doesn't-evict, clear-of-evicted-noop, per-
+surface independence, cap=1, non-positive arg clamp).
+
+### Sidebar file explorer — symlink-cycle protection (`7ac6ce8e`)
+
+`src/shared/types.ts` `SidebarFileExplorerEntry` gains two optional
+fields:
+- `linkTarget: string | null` — resolved realpath of a symlink (null
+  for dangling links).
+- `cycle: true` — set when the link's realpath equals the listed
+  directory or any ancestor.
+
+`listSidebarFileExplorerDirectory` resolves every symlink entry via
+`realpathSync` (wrapped in try/catch for dangling links) and flags
+cycles via the new `isAncestorOrSelf(candidate, root)` helper. The
+helper correctly anchors on the path separator so `/foo` is NOT
+mistakenly treated as an ancestor of `/foobar`.
+
+9 new tests in `tests/sidebar-file-explorer.test.ts` cover happy-
+path linkTarget, self-loop, grandparent-ancestor, sibling negative,
+dangling, and the isAncestorOrSelf unit cases.
+
+### Summary
+
+- 3 commits (f41f2484, b4e2e084, 7ac6ce8e) on top of P9 first push
+- 48 new tests in 3 new/extended test files
+- Three B-graded gaps lose a concrete bullet each (workspaces stays
+  B until concurrent-mutation tests land; panel-registry stays B
+  until the authoritative-model rework; sidebar-file-explorer stays
+  B until the mirror protocol arrives)
+- typecheck unchanged (2 pre-existing errors only)
+- versions 0.3.146 → 0.3.148

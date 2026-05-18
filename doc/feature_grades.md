@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.145
+**Version:** 0.3.148
 **Generated:** 2026-05-18
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-**Phase 9 first push landed.** Logging lifted A → S (size-based rotation alongside daily, HT_LOG_MAX_BYTES env override, prune-numbered-chunks). Deferred P8 CI coverage gate wired in (.github/workflows/ci.yml gains a parallel coverage-gate job running `bun run test:coverage` then `report:coverage:check` on macOS-14). CHANGELOG.md populated via the P8 `--changelog` tooling on 312 commits since v0.2.30 — first-class release-notes file for the project. 8 new tests (ci-coverage-gate + logger size-rotation). Phase 7 closed (audit:theming clean), P8 headline done (release-tooling + tau-focus-audit), P9 first push done. Remaining stretch items need live-env Playwright infra.
+**P9 follow-up: three B-grade gaps closed.** Workspaces — strict `parsePersistedLayout` validator (new shared module) wired into `loadLayout`; truncated layout.json now boots to a clean slate (26 tests). Panel-registry — per-surface 256-panel cap with oldest-eviction; runaway scripts no longer leak the registry (13 tests). Sidebar file explorer — symlink entries expose `linkTarget` (realpath) + `cycle: true` flag when the link resolves to the listed dir or any ancestor; new `isAncestorOrSelf` helper handles the /foo vs /foobar prefix trap (9 tests). All three features stay graded B (other named gaps remain) but each loses a concrete bullet. Phase 7 closed (audit:theming clean), P8 headline done (release-tooling + tau-focus-audit), P9 first push done (CI coverage gate + logging A→S + CHANGELOG.md). 48 new tests across the three lifts. Remaining stretch items need live-env Playwright infra.
 
 ---
 
@@ -90,10 +90,9 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ### Workspaces
 - **Grade: B**
-- **Evidence:** `SurfaceManager` lines 173-1509 — `activeWorkspaceIndex`, `switchToWorkspace()`, `focusWorkspaceByIndex/ById`; persistence via `PersistedLayout` in `layout.json`. Race risk when `switchToWorkspace` interleaves with a `removeSurface` that deletes the active workspace.
+- **Evidence:** `SurfaceManager` lines 173-1509 — `activeWorkspaceIndex`, `switchToWorkspace()`, `focusWorkspaceByIndex/ById`; persistence via `PersistedLayout` in `layout.json`. Race risk when `switchToWorkspace` interleaves with a `removeSurface` that deletes the active workspace. **P9 follow-up landed**: `src/shared/layout-persistence.ts` adds a strict shape validator (`validatePersistedLayout` + `parsePersistedLayout`) wired into `loadLayout`. Truncated layout.json (fsync interrupted, disk full, partial backup restore) now boots to a clean slate instead of crashing downstream in `collectLeafIds` / `remapPaneNode`. 26 tests cover happy paths + every parse-failure mode + every shape-mismatch mode.
 - **Gaps to AAA:**
   - Invariant tests for concurrent mutations.
-  - Recovery from truncated `layout.json`.
   - Drag-reorder coverage.
 
 ---
@@ -133,10 +132,9 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ### Panel registry
 - **Grade: B**
-- **Evidence:** `panel-registry.ts` — per-surface `Map<surfaceId, Map<id, PanelDescriptor>>`; create/update/clear via `handleMeta` (lines 33-64); RPC `list()` for e2e. Acknowledged not authoritative; webview is. No max-panels cap; no resync if Bun-side parser crashes.
+- **Evidence:** `panel-registry.ts` — per-surface `Map<surfaceId, Map<id, PanelDescriptor>>`; create/update/clear via `handleMeta`; RPC `list()` for e2e. Acknowledged not authoritative; webview is. **P9 follow-up landed**: per-surface cap (default 256, configurable via ctor arg, exported as `DEFAULT_MAX_PANELS_PER_SURFACE`). When a NEW id arrives and the per-surface map is already at the cap, the OLDEST entry (smallest createdAt) is evicted before insertion. Updates to existing ids don't trip the cap. Cap clamped to >= 1 so a bogus 0 / negative arg degrades gracefully. 13 tests cover happy paths + cap semantics (oldest-eviction with ms-spaced createdAt, update-doesn't-evict, clear-of-evicted-noop, per-surface independence, cap=1, non-positive arg clamp).
 - **Gaps to AAA:**
   - Authoritative model with versioning + resync protocol.
-  - Max-panels cap.
   - `update` should support position-mode transitions.
 
 ### OSC progress (OSC 9;4)
@@ -165,10 +163,9 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ### Sidebar CWD file explorer
 - **Grade: B**
-- **Evidence:** `sidebar-file-explorer.ts` (113 LOC) — lazy load, 1000-entry cap, dotfile filter, defaults collapsed. Native-only — no mirror protocol yet.
+- **Evidence:** `sidebar-file-explorer.ts` — lazy load, 1000-entry cap, dotfile filter, defaults collapsed. Native-only — no mirror protocol yet. **P9 follow-up landed**: symlink entries now expose `linkTarget: string | null` (resolved realpath, or null for dangling links). When the realpath matches the listed directory or any ancestor, `cycle: true` is set on the entry so the webview can refuse navigation with a clear message instead of letting the user walk into a loop. New `isAncestorOrSelf(candidate, root)` helper exported for reuse — correctly anchors on path separators (`/foo` is NOT an ancestor of `/foobar`). 9 new tests cover happy-path linkTarget, self-loop, grandparent-ancestor, sibling negative, dangling, and the isAncestorOrSelf unit cases.
 - **Gaps to AAA:**
   - Mirror parity (HTTP/WS protocol).
-  - Symlink-cycle protection.
   - UI feedback when truncation cap hit.
 
 ### Process Manager overlay (⌘⌥P)
