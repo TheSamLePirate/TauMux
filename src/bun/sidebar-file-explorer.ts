@@ -1,5 +1,5 @@
-import { lstatSync, readdirSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { lstatSync, readdirSync, realpathSync } from "node:fs";
+import { basename, resolve, sep } from "node:path";
 import type {
   SidebarFileExplorerEntry,
   SidebarFileExplorerListing,
@@ -32,6 +32,18 @@ function entryRank(kind: SidebarFileExplorerEntry["kind"]): number {
   return 3;
 }
 
+/** P9 — true if `candidate` is the same as `root` OR an ancestor of
+ *  it on the resolved filesystem. Used to flag symlinks that would
+ *  send the user back up the tree. Compares fully-resolved paths so a
+ *  symlink chain still gets caught. */
+export function isAncestorOrSelf(candidate: string, root: string): boolean {
+  if (candidate === root) return true;
+  // Make sure we don't match `/foo` against `/foobar` by anchoring on
+  // the path separator.
+  const candWithSep = candidate.endsWith(sep) ? candidate : candidate + sep;
+  return root.startsWith(candWithSep);
+}
+
 function toEntry(parent: string, name: string): SidebarFileExplorerEntry {
   const path = resolve(parent, name);
   try {
@@ -43,6 +55,23 @@ function toEntry(parent: string, name: string): SidebarFileExplorerEntry {
         : st.isFile()
           ? "file"
           : "other";
+    let linkTarget: string | null | undefined;
+    let cycle: boolean | undefined;
+    if (kind === "symlink") {
+      // P9 — resolve the link to its realpath so consumers can show
+      // "→ /real/target" and refuse to navigate into a cycle.
+      try {
+        linkTarget = realpathSync(path);
+      } catch {
+        // Dangling symlink — target doesn't exist. linkTarget = null
+        // tells the webview to show a broken-link affordance instead
+        // of trying to navigate.
+        linkTarget = null;
+      }
+      if (linkTarget !== null && isAncestorOrSelf(linkTarget, parent)) {
+        cycle = true;
+      }
+    }
     return {
       name,
       path,
@@ -50,6 +79,8 @@ function toEntry(parent: string, name: string): SidebarFileExplorerEntry {
       hidden: name.startsWith("."),
       size: st.isFile() ? st.size : undefined,
       mtimeMs: st.mtimeMs,
+      ...(linkTarget !== undefined ? { linkTarget } : {}),
+      ...(cycle ? { cycle: true } : {}),
     };
   } catch (err) {
     return {
@@ -66,7 +97,10 @@ export function listSidebarFileExplorerDirectory(
   request: SidebarFileExplorerRequest,
 ): SidebarFileExplorerListing {
   const root = resolve(request.path || ".");
-  const maxEntries = Math.max(20, Math.min(1000, Math.round(request.maxEntries)));
+  const maxEntries = Math.max(
+    20,
+    Math.min(1000, Math.round(request.maxEntries)),
+  );
   try {
     const st = lstatSync(root);
     if (!st.isDirectory()) {

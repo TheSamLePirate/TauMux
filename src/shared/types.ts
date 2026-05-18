@@ -500,6 +500,15 @@ export interface SidebarFileExplorerEntry {
   hidden: boolean;
   truncated?: boolean;
   error?: string;
+  /** For `kind: "symlink"` entries: the resolved real path of the
+   *  link target, or null if the link is dangling / unreadable. P9 —
+   *  consumers can render "→ /real/target" hints and detect cycles
+   *  before navigating. */
+  linkTarget?: string | null;
+  /** True when this symlink resolves to the listed directory itself
+   *  or one of its ancestors (a cycle). P9 — surfaces this in the
+   *  payload so the webview can refuse navigation gracefully. */
+  cycle?: boolean;
 }
 
 export interface SidebarFileExplorerListing {
