@@ -4520,9 +4520,9 @@ body.terminal-typing .panel {
   height: 14px;
   border-radius: 50%;
   background: var(--accent-primary);
-  border: 2px solid rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--ht-range-thumb-border);
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 4px var(--ht-range-thumb-shadow);
 }
 
 .settings-range::-webkit-slider-thumb:hover {
@@ -5995,7 +5995,7 @@ body::after {
 #titlebar {
   gap: 12px;
   padding: 0 20px 0 84px;
-  background: rgba(24, 26, 33, 0.98);
+  background: var(--ht-window-chrome-titlebar-bg);
   box-shadow: inset 0 -1px 0 var(--window-border);
 }
 
@@ -6019,7 +6019,7 @@ body::after {
 
 .titlebar-info-primary {
   color: color-mix(in srgb, var(--window-primary) 72%, white);
-  background: color-mix(in srgb, var(--window-primary) 8%, rgba(255, 255, 255, 0.025));
+  background: color-mix(in srgb, var(--window-primary) 8%, var(--ht-sidebar-row-bg-stripe));
   border-color: color-mix(in srgb, var(--window-primary) 16%, var(--window-border));
 }
 
@@ -6045,7 +6045,7 @@ body::after {
 #sidebar {
   padding: 12px 12px 16px;
   gap: 12px;
-  background: rgba(24, 26, 33, 0.99);
+  background: var(--ht-window-chrome-sidebar-bg);
   border-right-color: var(--window-border);
 }
 
@@ -6059,7 +6059,7 @@ body::after {
 
 .sidebar-subtitle {
   font-size: 11px;
-  color: rgba(245, 247, 251, 0.48);
+  color: var(--ht-sidebar-subtitle-fg);
 }
 
 .sidebar-new-btn,
@@ -6631,7 +6631,7 @@ body::after {
 }
 
 .surface-terminal {
-  background: rgb(24, 26, 33);
+  background: var(--ht-terminal-bg);
 }
 
 .pane-divider {
@@ -6647,7 +6647,7 @@ body::after {
 .settings-overlay,
 .palette-overlay,
 .prompt-overlay {
-  background: rgba(0, 0, 0, 0.42);
+  background: var(--ht-ask-scrim-bg);
 }
 
 .process-manager-header,
@@ -6709,7 +6709,7 @@ body::before {
   border: var(--window-frame-width) solid var(--t3-window-frame);
   border-radius: var(--window-corner-radius);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 1px 0 var(--ht-window-frame-inset-highlight),
     0 0 0 1px var(--ht-sidebar-filter-selected-bg-top);
   z-index: 10001;
 }
@@ -7026,7 +7026,7 @@ body::after {
 .settings-overlay,
 .palette-overlay,
 .prompt-overlay {
-  background: rgba(0, 0, 0, 0.42);
+  background: var(--ht-ask-scrim-bg);
 }
 
 .process-manager-header,
@@ -7071,7 +7071,7 @@ body::after {
 .settings-segment.active,
 .prompt-btn-primary {
   background: color-mix(in srgb, var(--accent-primary) 88%, white);
-  color: #101010;
+  color: var(--ht-window-overlay-solid);
 }
 
 .palette-item {
@@ -7375,7 +7375,7 @@ body::after {
 .agent-dropdown {
   max-height: 280px; overflow-y: auto; padding: 4px;
   border-bottom: 0.5px solid var(--ht-agent-row-bg-hover);
-  background: rgba(6,6,10,0.92);
+  background: var(--ht-agent-dd-bg);
   animation: agent-dd-in 0.15s ease;
   scrollbar-width: thin; scrollbar-color: var(--ht-agent-row-bg-hover-card) transparent;
 }
@@ -7413,7 +7413,7 @@ body::after {
 }
 .agent-dd-item:hover { background: var(--ht-agent-row-bg-hover-card); }
 .agent-dd-item-active {
-  color: var(--accent-primary); background: rgba(111, 233, 255,0.07);
+  color: var(--accent-primary); background: var(--ht-agent-dd-item-active-bg);
   box-shadow: inset 2px 0 0 var(--accent-primary);
 }
 .agent-dd-item-model { align-items: flex-start; }
@@ -8012,7 +8012,7 @@ body::after {
 .agent-send-btn {
   display: flex; align-items: center; justify-content: center;
   width: 36px; height: 36px; border: none; border-radius: 10px;
-  background: linear-gradient(135deg, var(--accent-primary), rgba(111, 233, 255,0.85));
+  background: linear-gradient(135deg, var(--accent-primary), var(--ht-contrast-border-cyan-strong));
   color: var(--ht-on-accent-fg); cursor: pointer; flex-shrink: 0;
   transition: all 0.15s ease;
 
@@ -8023,11 +8023,11 @@ body::after {
 }
 .agent-send-btn:active { transform: translateY(0); }
 .agent-send-stop {
-  background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff;
-  box-shadow: 0 2px 12px rgba(239,68,68,0.25);
+  background: linear-gradient(135deg, var(--ht-agent-send-stop-bg-start), var(--ht-agent-send-stop-bg-end)); color: var(--ht-agent-send-stop-fg);
+  box-shadow: 0 2px 12px var(--ht-prompt-invalid-shadow);
 }
 .agent-send-stop:hover {
-  box-shadow: 0 4px 20px rgba(239,68,68,0.35);
+  box-shadow: 0 4px 20px var(--ht-agent-send-stop-shadow-hover);
 }
 
 /* ── Chips ── */
@@ -8485,7 +8485,7 @@ body::after {
   gap: 6px;
   padding: 8px 10px 4px;
   border-top: 0.5px solid var(--sb-hairline);
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--ht-sidebar-v2-global-stats-bg);
 }
 
 #sidebar.sidebar-v2 .sidebar-group-rule:first-child {
@@ -8547,7 +8547,7 @@ body::after {
       180deg,
       color-mix(in srgb, var(--workspace-accent) 18%, transparent) 0,
       color-mix(in srgb, var(--workspace-accent) 6%, transparent) 40%,
-      rgba(255, 255, 255, 0.015)
+      var(--ht-pm-card-bg)
     );
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--workspace-accent) 24%, transparent),
@@ -8651,7 +8651,7 @@ body::after {
   flex: 1;
   min-width: 0;
   padding: 1px 4px;
-  background: rgba(0, 0, 0, 0.24);
+  background: var(--ht-workspace-rename-input-bg);
   border: 0.5px solid var(--workspace-accent);
   color: var(--sb-ink);
   font: inherit;
@@ -8719,7 +8719,7 @@ body::after {
 #sidebar.sidebar-v2 .workspace-close:hover {
   opacity: 1 !important;
   color: var(--ht-pm-kill-fg);
-  background: rgba(248, 113, 113, 0.14);
+  background: var(--ht-sidebar-v2-dismiss-hover-bg);
 }
 
 /* ── Meta row: fg command + port chips inline ────────────────────── */
@@ -8763,8 +8763,8 @@ body::after {
   padding: 0 4px;
   border: none !important;
   border-left: 0.5px solid color-mix(in srgb, var(--workspace-accent) 40%, transparent) !important;
-  background: color-mix(in srgb, var(--workspace-accent) 14%, rgba(0, 0, 0, 0.2));
-  color: color-mix(in srgb, var(--workspace-accent) 20%, #cafce1);
+  background: color-mix(in srgb, var(--workspace-accent) 14%, var(--ht-workspace-dot-shadow));
+  color: color-mix(in srgb, var(--workspace-accent) 20%, var(--ht-workspace-port-chip-fg-base));
   font-size: 9px;
   font-weight: 600;
   font-family: var(--font-mono, monospace);
@@ -8774,8 +8774,8 @@ body::after {
 }
 
 #sidebar.sidebar-v2 .workspace-port-chip:hover {
-  background: color-mix(in srgb, var(--workspace-accent) 32%, rgba(0, 0, 0, 0.2));
-  color: #ffffff;
+  background: color-mix(in srgb, var(--workspace-accent) 32%, var(--ht-workspace-dot-shadow));
+  color: var(--ht-workspace-port-chip-fg-hover);
 }
 
 #sidebar.sidebar-v2 .workspace-port-more {
@@ -8800,7 +8800,7 @@ body::after {
   flex: 1;
   min-width: 0;
   height: 10px;
-  background: rgba(0, 0, 0, 0.36);
+  background: var(--ht-workspace-cpu-bar-bg);
   border: none;
   border-left: 0.5px solid var(--sb-hairline);
   border-right: 0.5px solid var(--sb-hairline);
@@ -8827,7 +8827,7 @@ body::after {
   background: var(--workspace-accent);
   opacity: 0.56;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 1px 0 var(--ht-workspace-cpu-bar-fill-inset),
     0 0 6px 0 color-mix(in srgb, var(--workspace-accent) 40%, transparent);
   transition: transform 220ms ease-out;
 }
@@ -8853,8 +8853,8 @@ body::after {
   font-size: 8.5px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+  color: var(--ht-sidebar-search-input-fg);
+  text-shadow: 0 0 3px var(--ht-workspace-cpu-bar-label-shadow);
   letter-spacing: 0;
   opacity: 0;
   transition: opacity 120ms;
@@ -9351,7 +9351,7 @@ body::after {
   position: relative;
   margin-top: 3px;
   height: 4px;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--ht-workspace-progress-bg);
   border-top: 0.5px solid var(--sb-hairline);
   border-bottom: 0.5px solid var(--sb-hairline);
 }
@@ -9397,7 +9397,7 @@ body::after {
   margin: 0;
   border: none;
   border-top: 0.5px solid var(--sb-hairline);
-  background: rgba(0, 0, 0, 0.14);
+  background: var(--ht-sidebar-v2-search-hold);
 }
 
 #sidebar.sidebar-v2 .workspace-package:first-child {
@@ -9421,7 +9421,7 @@ body::after {
 
 #sidebar.sidebar-v2 .workspace-package-header:hover {
   color: var(--sb-ink);
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--ht-package-header-bg-hover);
 }
 
 #sidebar.sidebar-v2 .workspace-package.expanded .workspace-package-header {
@@ -9640,7 +9640,7 @@ body::after {
 #sidebar.sidebar-v2 .sidebar-notifications,
 #sidebar.sidebar-v2 .sidebar-logs {
   border-top: 0.5px solid var(--sb-hairline);
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--ht-sidebar-section-bg);
 }
 
 #sidebar.sidebar-v2 .sidebar-notifications.closed .sidebar-section-list,
@@ -9702,7 +9702,7 @@ body::after {
   height: 14px;
   padding: 0 4px;
   background: var(--accent-primary);
-  color: #000;
+  color: var(--ht-on-accent-fg);
   font-size: 9px;
   font-weight: 700;
   align-items: center;
@@ -9729,7 +9729,7 @@ body::after {
 
 #sidebar.sidebar-v2 .sidebar-section-clear:hover {
   color: var(--ht-pm-kill-fg);
-  background: rgba(248, 113, 113, 0.14);
+  background: var(--ht-sidebar-v2-dismiss-hover-bg);
 }
 
 #sidebar.sidebar-v2 .sidebar-section-list {
@@ -10084,7 +10084,7 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
 }
 .tau-pane.is-focused > .tau-pane-header > .tau-identity-dot.tau-identity-agent,
 .tau-pane.tau-pane-agent.is-focused .tau-identity-dot.tau-identity-agent {
-  box-shadow: 0 0 8px rgba(255, 197, 107, 0.55);
+  box-shadow: 0 0 8px var(--ht-tau-agent-dot-glow);
 }
 
 @keyframes tauPulse {
@@ -10184,14 +10184,14 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
 }
 .tau-pane.tau-pane-mixed.is-focused::after {
   border-color: var(--tau-text);
-  box-shadow: inset 0 0 12px rgba(214, 226, 232, 0.18);
+  box-shadow: inset 0 0 12px var(--ht-tau-mixed-inset-shadow);
 }
 /* Legacy outer-glow variants (kept only so subsequent CSS in this
  * file can be over-ridden cleanly; do not target them). */
 .tau-pane.tau-pane-mixed.is-focused-legacy {
   box-shadow:
     0 0 0 0.5px var(--tau-text),
-    0 0 20px rgba(214, 226, 232, 0.18);
+    0 0 20px var(--ht-tau-mixed-inset-shadow);
 }
 
 /* Retrofit: when `.tau-pane` is applied to `.surface-container`, the
@@ -10331,7 +10331,7 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
 }
 .tau-badge-branch,
 .tau-branch-chip {
-  background: rgba(111, 233, 255, 0.08);
+  background: var(--ht-palette-kbd-keys-bg);
   border-color: var(--tau-cyan-dim);
   color: var(--tau-cyan);
 }
@@ -10341,8 +10341,8 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
   color: var(--tau-text-dim);
 }
 .tau-badge-status {
-  background: rgba(255, 197, 107, 0.08);
-  border-color: rgba(255, 197, 107, 0.35);
+  background: var(--ht-badge-warn-bg);
+  border-color: var(--ht-notify-amber);
   color: var(--tau-agent);
 }
 
@@ -10376,15 +10376,15 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
 }
 .tau-meter-ok .tau-meter-fill {
   background: var(--tau-ok);
-  box-shadow: 0 0 6px rgba(140, 233, 154, 0.4);
+  box-shadow: 0 0 6px var(--ht-tau-meter-ok-glow);
 }
 .tau-meter-warn .tau-meter-fill {
   background: var(--tau-warn);
-  box-shadow: 0 0 6px rgba(255, 197, 107, 0.4);
+  box-shadow: 0 0 6px var(--ht-tau-meter-warn-glow);
 }
 .tau-meter-err .tau-meter-fill {
   background: var(--tau-err);
-  box-shadow: 0 0 6px rgba(255, 138, 138, 0.4);
+  box-shadow: 0 0 6px var(--ht-tau-meter-err-glow);
 }
 .tau-meter-value {
   font-variant-numeric: tabular-nums;

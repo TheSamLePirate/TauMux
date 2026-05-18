@@ -795,6 +795,89 @@
   --ht-notif-sidebar-bg: rgba(12, 12, 16, 0.76);
   --ht-notif-sidebar-inset: rgba(255, 255, 255, 0.03);
 
+  /* P7 Cluster H — settings-range slider thumb. The thumb sits on
+   *  --accent-primary; the border + ambient shadow are both 0.3 black
+   *  so they read on any accent variant. */
+  --ht-range-thumb-border: rgba(0, 0, 0, 0.3);
+  --ht-range-thumb-shadow: rgba(0, 0, 0, 0.3);
+
+  /* P7 Cluster H — window chrome solid surfaces. The titlebar /
+   *  sidebar / terminal share the (24, 26, 33) brand-near-black; alpha
+   *  varies by surface (titlebar 0.98, sidebar 0.99, terminal opaque).
+   *  Distinct from --ht-window-{titlebar,sidebar}-bg which use the
+   *  slightly cooler (23, 26, 33) and softer alphas. */
+  --ht-window-chrome-titlebar-bg: rgba(24, 26, 33, 0.98);
+  --ht-window-chrome-sidebar-bg: rgba(24, 26, 33, 0.99);
+  --ht-terminal-bg: rgb(24, 26, 33);
+
+  /* P7 Cluster H — sidebar subtitle text. Lighter than --sb-ink-faint
+   *  and uses the (245, 247, 251) zinc-white family. */
+  --ht-sidebar-subtitle-fg: rgba(245, 247, 251, 0.48);
+
+  /* P7 Cluster H — window frame inset highlight. Paints the 1px top
+   *  bevel on body::before; brighter than --ht-sidebar-inset-strong. */
+  --ht-window-frame-inset-highlight: rgba(255, 255, 255, 0.22);
+
+  /* P7 Cluster H — agent dropdown chrome. The dropdown overlay paints
+   *  a near-black background with a soft cyan tint on the active item.
+   *  --ht-agent-dd-bg is darker than --ht-agent-msg-bg variants. */
+  --ht-agent-dd-bg: rgba(6, 6, 10, 0.92);
+  --ht-agent-dd-item-active-bg: rgba(111, 233, 255, 0.07);
+
+  /* P7 Cluster H — agent send-stop (destructive) button gradient.
+   *  Distinct from --ht-ask-danger-bg (0.92 alpha) because this button
+   *  is fully opaque red over an opaque pane. The shadow alphas match
+   *  --ht-prompt-invalid-shadow (0.22) and a deeper hover state. */
+  --ht-agent-send-stop-bg-start: #ef4444;
+  --ht-agent-send-stop-bg-end: #dc2626;
+  --ht-agent-send-stop-fg: #fff;
+  --ht-agent-send-stop-shadow-hover: rgba(239, 68, 68, 0.35);
+
+  /* P7 Cluster H — workspace rename inline-input background. Slightly
+   *  deeper than --ht-sidebar-v2-search-hold (0.14) so the editing
+   *  state reads against the focus ring. */
+  --ht-workspace-rename-input-bg: rgba(0, 0, 0, 0.24);
+
+  /* P7 Cluster H — workspace port-chip text on hover. The default
+   *  text color is mixed against #cafce1 (mint green); the hover
+   *  resolves to pure white. */
+  --ht-workspace-port-chip-fg-base: #cafce1;
+  --ht-workspace-port-chip-fg-hover: #ffffff;
+
+  /* P7 Cluster H — workspace cpu-bar chrome. The bar is a deep black
+   *  trough (0.36) with a bright inset highlight (0.15) on the fill;
+   *  the label sits on top with a heavy text-shadow (0.7) so it stays
+   *  legible across the colored fill range. */
+  --ht-workspace-cpu-bar-bg: rgba(0, 0, 0, 0.36);
+  --ht-workspace-cpu-bar-fill-inset: rgba(255, 255, 255, 0.15);
+  --ht-workspace-cpu-bar-label-shadow: rgba(0, 0, 0, 0.7);
+
+  /* P7 Cluster H — workspace progress bar trough. Distinct from
+   *  --ht-workspace-cpu-bar-bg (0.36) — the progress strip is shallower
+   *  so the colored fill dominates. */
+  --ht-workspace-progress-bg: rgba(0, 0, 0, 0.3);
+
+  /* P7 Cluster H — sidebar notifications/logs section bg. Slightly
+   *  deeper than --ht-telegram-toolbar-bg (same 0.18) but kept as its
+   *  own token so the sidebar section background can drift without
+   *  pulling the telegram pane along. */
+  --ht-sidebar-section-bg: rgba(0, 0, 0, 0.18);
+
+  /* P7 Cluster H — agent identity dot focus glow. The amber pulse on
+   *  the agent pane's identity dot; brighter than --ht-notify-amber. */
+  --ht-tau-agent-dot-glow: rgba(255, 197, 107, 0.55);
+
+  /* P7 Cluster H — tau-pane mixed (human + agent) focus accent. The
+   *  inset shadow + outer glow on a mixed pane both reuse this token. */
+  --ht-tau-mixed-inset-shadow: rgba(214, 226, 232, 0.18);
+
+  /* P7 Cluster H — tau-meter fill glows (ok / warn / err). Each meter
+   *  state paints a 6px outer glow at 0.4 alpha keyed to its semantic
+   *  channel; distinct from --ht-sem-* (which paint the solid fill). */
+  --ht-tau-meter-ok-glow: rgba(140, 233, 154, 0.4);
+  --ht-tau-meter-warn-glow: rgba(255, 197, 107, 0.4);
+  --ht-tau-meter-err-glow: rgba(255, 138, 138, 0.4);
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;
