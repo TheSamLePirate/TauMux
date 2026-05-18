@@ -1891,3 +1891,47 @@ Grade distribution after S39: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: the 4967-5233 region (Phase-6 v2 base styles before the vNext refresh), sidebar v2 workspace cards (8766-8881), the 7107-7861 + 7892-8233 dense blocks.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 40 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — vNext 2026-refresh top-half (titlebar + sidebar header) then bottom-half (workspace-item card + sub-chrome). Continues directly where S39 left off but works the 4960-5234 sub-region instead of 5270-5691.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H vNext titlebar/sidebar header | `d6f1be06` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-vnext-titlebar-sidebar.test.ts` (new) | +12 (1 new --ht-vnext-sidebar-bg for the 0.78 translucent hold — deliberately different from S36 --ht-window-sidebar-bg's 0.98 opaque hold; ~23 literals migrated, heavy reuse of vnext-text-* + white-alpha vocab) |
+| Cluster H vNext workspace-item card | `84ef25a1` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-vnext-workspace.test.ts` (new) | +12 (3 new --ht-vnext-* tokens: workspace-shadow + workspace-shadow-active for rest/active depth, text-name for the 0.82 zinc kept distinct from sidebar-filter-btn-hover-fg's cooler tint; ~22 reuses; theme-token suite milestone — 500 tests) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.128 → 0.3.129 (vNext titlebar) → 0.3.130 (vNext workspace).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — **new single-session drop record**: −44 literals (beats S39's −41). The vNext 2026-refresh chrome is now fully migrated end-to-end (titlebar caption / info / toolbar-icon-strip + btn, sidebar shell / title / subtitle / new-btn, workspace-item rest/hover/active + name + sub-chrome). 4 new --ht-vnext-* tokens fill genuine gaps in the family: the translucent sidebar hold, two-tier card shadows (deliberate alpha separation), and the workspace-name tint (kept distinct from the v1 sidebar's filter-btn-hover-fg so a future vNext palette swap repaints workspace names correctly). Cumulative S9–S40: 1013 → 429 (−584). The full theme-token test suite now ships 500 tests. |
+
+Grade distribution after S40: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **First-occurrence matchRule pitfalls** continue to bite — `.workspace-item` and `.workspace-cwd-chip` both have an early multi-selector layout-only rule that matchRule finds before the styled-block rule. Fixed by regex-matching the file body for the standalone rule's start (`\n.<selector> {...}` without a comma after the selector).
+- **Cross-tint reuse decision** for the 0.82 zinc workspace-name: rejected reusing the v1 sidebar's filter-btn-hover-fg (same alpha, RGB delta of ~3/7/11 units towards cooler blue). Created --ht-vnext-text-name instead so the vNext family stays internally consistent.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+
+### Exit criteria (session 40)
+
+| Criterion | Status |
+|---|---|
+| Cluster H vNext titlebar/sidebar header migrated | ✅ 473 → 451 (−22) |
+| Cluster H vNext workspace-item card migrated | ✅ 451 → 429 (−22) |
+| `bun test` green (modulo pre-existing flake) | ✅ +24 new tests; full theme-token suite 500 / 500 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 40)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: the workspace-package + workspace-script + sidebar-section in the same 5236-5269 sub-region (small), then the bigger 7107-7861 + 7892-8233 dense blocks (likely v2 sidebar variants).
+- Phases 8 (release engineering) + 9 (docs / observability).
