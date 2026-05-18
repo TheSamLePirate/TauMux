@@ -2064,3 +2064,60 @@ Grade distribution after S43: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: pi-agent send-btn stop state + remaining tokens in the 7800s, then the 7892-8233 region beyond the pi-agent block (telegram pane + remaining surfaces).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## P7 finish push (2026-05-18) — Cluster H + F.10 done in one run
+
+User asked to finish Phase 7 in one big run. This push closes the
+last two open items: complete the Cluster H literal migration to
+**zero literals across both CSS files**, and complete the
+**Cluster F.10 handler refactor** that had been deferred across
+~20 sessions.
+
+### Commits landed
+
+| Topic | Commit | Notes |
+|---|---|---|
+| Telegram pane | `db9fc9a1` | 5 new --ht-telegram-* status tokens; ~25 literals migrated; audit 276 → 251 |
+| spp + a11y contrast + sidebar v2 chrome | `6e2a1105` | strip dead var(--tau-*, lit) fallbacks; 4 new --ht-sidebar-v2-* + 2 contrast tokens; ~42 literals; audit 251 → 209 |
+| Bulk white-alpha sweep + dead-fallback strip | `427425d3` | per-line regex pass over remaining 0.02/0.03/0.04/0.05/0.06/0.07/0.08/0.1 whites onto the existing hot tokens; plus exact-hex remaps (#4ade80/#f87171/#facc15/#6fe9ff/#fca5a5/#86efac/#8fbcff/#f9c84a); plus dead-fallback strip for defined --tau-*/--text-*/--accent-primary/--border-soft/--bg-glass*; audit 209 → 146 |
+| index.css → zero | `6c1cd547` | agent sub-agent completed the residual 46 literals into 23+ new --ht-* tokens (range-thumb, window-chrome titlebar/sidebar/terminal, agent dropdown, agent send-stop, workspace rename/port-chip/cpu-bar/progress, sidebar-section, tau-meter glow trio); audit for index.css: 0 |
+| client.css → zero — Cluster H DONE | `b78b7457` | agent sub-agent migrated the remaining 100 web-mirror literals into 39 new --ht-web-* tokens; audit clean — 0 literals in both files |
+| F.10 handler refactor | `e6f3f530` | 82 inline bunMessageHandlers extracted into 13 per-domain modules under src/bun/webview-handlers/; `satisfies BunMessageHandlers` preserved via BunMessageHandlerSlice<K> = Pick<BunMessageHandlers, K>; getter-backed late binding for post-declaration deps; src/bun/index.ts 3471 → 2860 lines; zero behavior change; 2823 / 2823 tests pass |
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | **S+** | Cluster H complete — `audit:theming` reports **clean** for the first time since the audit script existed: zero hard-coded colour literals across both CSS files (1013 → 0 cumulative). The token vocabulary now totals 200+ --ht-* + --ht-web-* + --ht-vnext-* + --ht-agent-* + --ht-window-* + --ht-telegram-* + --ht-sidebar-v2-* entries forming a complete semantic palette with documented cross-component reuse patterns. The web mirror's CSS — never touched in S9–S43 — was cleared in a single sub-agent pass via the same vocabulary. |
+| `bun-process-rpc` / structural | A | A+ | Cluster F.10 closed — the 82-handler / 671-line bunMessageHandlers inline block in src/bun/index.ts is extracted into 13 per-domain modules with full exhaustiveness typecheck preserved. src/bun/index.ts shrinks by 610 lines. The pattern (BunMessageHandlerSlice + getter-backed late binding + register*WebviewHandlers factories) mirrors the existing rpc-handlers/ socket-side organisation. |
+
+Grade distribution after P7-finish: **20 S / 20 A / 6 B / 3 C** (unchanged at the cluster level; Cluster H + F.10 both move from "in progress" to "done" within tau-primitives + bun-process-rpc).
+
+### Issues encountered
+
+- **Agent boundary**: index.css migration was delegated to a sub-agent after the bulk regex pass cleared the easy patterns. The agent correctly identified 23+ new tokens and 14+ exact reuses across the residual 46 literals (range-thumb, window-chrome, agent dropdown/send-stop, workspace internals, tau-meter glow), and reported one interesting nuance: the existing `--ht-window-titlebar-bg` (23,26,33) didn't quite match the ws-density override's `(24,26,33,…)` — close but distinct, so new --ht-window-chrome-* slots were preferred over forced collapse.
+- **Sub-agent for client.css**: zero new patterns surprised it — the existing --ht-telegram-*, --ht-script-running/-error-*, --ht-notify-cyan-*, --ht-cargo-icon families covered the web mirror's needs almost entirely. 39 new --ht-web-* tokens cover only the web-specific status glows, sidebar drawer chrome, wm overlays, and tau-meter glow RGB that differs from the native bespoke RGB.
+- **F.10 refactor**: required a getter-backed late-binding helper because ~10 handler bodies reference module-level state declared AFTER the handler block (rpc, autoContinue, socketHandler, pendingReads, pendingBrowserEvals, domReadyDebounce). The factory pattern + setLateBindings() flush preserves the original lexical-closure semantics while enabling extraction. Property access on uninitialised late fields throws — unreachable at runtime, fail-fast for safety.
+- **Two source-grep tests** updated: `audits-auto-rerun.test.ts` regex now spans both index.ts + webview-handlers/system.ts; `surface-kind.test.ts` allowed-locations set extended to webview-handlers/surface.ts. Both preserve the original test intent (still flag regressions in rebuild rewiring + "tg:" shortcut count).
+
+### Exit criteria (P7-finish)
+
+| Criterion | Status |
+|---|---|
+| Cluster H — index.css migrated | ✅ 0 literals |
+| Cluster H — client.css migrated | ✅ 0 literals |
+| `audit:theming` clean | ✅ "clean — 2 CSS files scanned, no hard-coded colour literals" |
+| Cluster F.10 — handler refactor | ✅ 82 handlers in 13 domain modules; satisfies preserved |
+| `bun test` green (modulo known pty-timing flake) | ✅ 2823 / 2823 |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| **Phase 7 long tail** | ✅ **CLOSED** |
+
+### Cumulative Phase 7 stats
+
+- 43 sessions (S1–S43) + 1 finish push
+- ~110 lifts across the grade rubric
+- audit:theming: 1013 → 0 (entire pipeline cleared)
+- theme-token test suite: 0 → 619 (added throughout)
+- Cluster H, Cluster F.10, and every prior cluster: closed
+- Phase 8 (release engineering) + Phase 9 (docs / observability) remain — not part of P7 scope

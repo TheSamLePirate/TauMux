@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.136
+**Version:** 0.3.142
 **Generated:** 2026-05-18
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 43 landed: Cluster H **double-chunk** — pi-agent slash menu + confirm dialog + dialog tree-role colours (6 new --ht-agent-* tokens) and pi-agent input bar + attachment chips + status chip family (6 new --ht-agent-* tokens). **Matches S42's -53 record** for fourth consecutive session at the dropdown floor. --ht-agent-* family now totals 35 tokens covering the entire pi-agent panel; --ht-agent-code-bg gets reused as a 0.5-black drop-shadow token; --ht-agent-badge-extension-bg gets reused 3-ways. audit:theming 329 → 276 this session. Cumulative P7: 100 lifts across 43 sessions. Remaining P7 long tail: Cluster H literal migration (~276 left, multi-session) + Cluster F.10. Owned across future sessions of P7.
+**Phase 7 COMPLETE.** P7-finish push closed the last two open items in one big run: Cluster H (theme-token literal migration, ~1013 → 0 cumulative — `audit:theming` reports clean for the first time across both src/views/terminal/index.css AND src/web-client/client.css) and Cluster F.10 (the deferred bunMessageHandlers refactor — 82 inline handlers extracted into 13 per-domain modules under src/bun/webview-handlers/ with `satisfies BunMessageHandlers` exhaustiveness preserved via BunMessageHandlerSlice<K> + getter-backed late binding; src/bun/index.ts 3471 → 2860 lines; zero behavior change; 2823/2823 tests pass). Total Phase 7 lifts: ~110 across 43 sessions + 1 finish push. Theme-token test suite grew from 0 → 619. Cluster H + F.10 + every prior cluster now closed. Phase 8 (release engineering) + Phase 9 (docs / observability) remain — out of P7 scope.
 
 ---
 
@@ -223,7 +223,7 @@ Phase 7 polish — session 43 landed: Cluster H **double-chunk** — pi-agent sl
 - **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference. Phase 7 (S3) closed the loop with a four-way segmented selector at the top of Settings → Theme that flows through the existing `updateSettings` pipeline.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
-  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S43 walked the long tail by region (most recent stops): browser pane + pi-agent toolbar/badges/stats (S41, -47), pi-agent welcome + messages + think + code + tool-call (S42, -53), pi-agent slash + dialog + input bar + chips (S43, -53 matching S42). The --ht-agent-* family is now 35 tokens spanning the entire pi-agent panel end-to-end; --ht-agent-code-bg pulls double duty as a 0.5-black drop-shadow token, --ht-agent-badge-extension-bg gets reused 3-ways across chip-queue and slash-badge-extension. audit:theming count: 1013 → 276 (−737 across S9–S43). Theme-token test suite now at 611 tests. Multi-session for the rest.
+  - **CLOSED.** Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S43 walked the long tail by region; the P7-finish push closed the residual 276 in one run via the same vocabulary (bulk regex passes on common alpha patterns, dead-fallback strip, sub-agents for the last 146 in index.css + the entire untouched 100 in client.css). audit:theming now reports **clean — 0 hard-coded colour literals across both CSS files**. Total cumulative migration: 1013 → 0. The --ht-* / --ht-vnext-* / --ht-agent-* / --ht-window-* / --ht-telegram-* / --ht-sidebar-v2-* / --ht-web-* / --ht-contrast-* families total 200+ tokens forming a complete semantic palette with documented cross-component reuse patterns.
 
 ---
 
@@ -331,7 +331,7 @@ Phase 7 polish — session 43 landed: Cluster H **double-chunk** — pi-agent sl
 - **Evidence:** 21 handler files under `src/bun/rpc-handlers/`; `rpc-handler.ts` aggregates via `createRpcHandler`; `METHOD_SCHEMAS` validated pre-dispatch; `satisfies BunMessageHandlers` gates the socket/RPC side. Phase 2 (A1) typed the parallel `dispatch(action, payload)` in `index.ts` via a `WebviewActionEnvelope` discriminated union + `ActionPayloadByAction` lookup; every branch now has a typed payload shape. Tests in `tests/webview-actions-types.test.ts`.
 - **Gaps to AAA:**
   - End-to-end JSON-RPC shape test (deferred to P3 — assert every method declared in `TauMuxRPC` has a corresponding handler registered).
-  - Move remaining ad-hoc handlers into the per-domain `rpc-handlers/` directory (F.10 — most landed, audit the stragglers).
+  - **CLOSED.** F.10 — the 82-method / 671-line bunMessageHandlers inline block in src/bun/index.ts is extracted into 13 per-domain modules under src/bun/webview-handlers/ (clipboard, viewport, surface, reply, workspace, notification, system, browser, agent, telegram, editor, ask-user + types/aggregator). `satisfies BunMessageHandlers` exhaustiveness preserved via BunMessageHandlerSlice<K> = Pick<BunMessageHandlers, K>; missing handlers still fail compile. Late-binding handled via getter-backed context + setLateBindings() flush. src/bun/index.ts shrinks 3471 → 2860 lines. Zero behavior change. 2823/2823 tests pass.
 
 ### Audits
 - **Grade: S**
