@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.126
+**Version:** 0.3.128
 **Generated:** 2026-05-18
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 38 landed: Cluster H **double-chunk** — vNext surface chrome (5 new --ht-vnext-surface-*/text-soft tokens for the card shell + missing 0.74/0.68 brightness tiers) and vNext status palettes (8 new --ht-vnext-port-* + --ht-vnext-close-hover-* tokens; port green stays separate from --ht-badge-success because it's hover-info, close peach stays separate from --ht-sem-error because the chrominance signals destructive, not error). audit:theming 543 → 514 (-29 this session). Cumulative P7: 90 lifts across 38 sessions. Remaining P7 long tail: Cluster H literal migration (~514 left, multi-session) + Cluster F.10. Owned across future sessions of P7.
+Phase 7 polish — session 39 landed: Cluster H **double-chunk** — vNext 2026-refresh override block now fully migrated. Chunk 1 sidebar/notif/server-row pure-reuse pass (zero new tokens, 11 literals); chunk 2 settings panel chrome + theme-card + sheet shell (7 new --ht-vnext-text-mid/-elevated/-settings-body-bg/-range-thumb-border/-segment-active-fg/-sheet-bg/-modal-overlay-bg tokens, ~30 literals). **Broke the 500-literal barrier** — audit:theming 514 → 473 (-41, biggest single-session drop in the long tail). Cumulative P7: 92 lifts across 39 sessions. Remaining P7 long tail: Cluster H literal migration (~473 left, multi-session) + Cluster F.10. Owned across future sessions of P7.
 
 ---
 
@@ -223,7 +223,7 @@ Phase 7 polish — session 38 landed: Cluster H **double-chunk** — vNext surfa
 - **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference. Phase 7 (S3) closed the loop with a four-way segmented selector at the top of Settings → Theme that flows through the existing `updateSettings` pipeline.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
-  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S38 walked the long tail by region (most recent stops): t3 window override pure-reuse + window-shell base colours (S36), vNext palette/prompt/search + PM/surface-details overrides (S37; 5 new --ht-vnext-text-* tokens for the cooler post-Phase-6 zinc scale), vNext surface chrome + port/close status palettes (S38; 13 new --ht-vnext-surface-* / -port-* / -close-hover-* tokens — the surface-card shell coexists with the S36 window outer-frame, port green stays distinct from badge-success because it's hover-info, close peach stays distinct from sem-error because chrominance signals destructive vs error). audit:theming count: 1013 → 514 (−499 across S9–S38). Multi-session for the rest.
+  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S39 walked the long tail by region (most recent stops): vNext palette/prompt/search + PM/surface-details overrides (S37), vNext surface chrome + port/close status palettes (S38), vNext 2026-refresh sidebar/notif/server pure-reuse + settings/card/sheet shell (S39, broke the 500-literal barrier with a -41 single-session drop; brought the cumulative --ht-vnext-* family to 18 tokens covering text scale, surface chrome, status palettes, sheet shell, and panel chrome). audit:theming count: 1013 → 473 (−540 across S9–S39). Multi-session for the rest.
 
 ---
 

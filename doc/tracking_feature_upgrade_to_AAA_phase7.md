@@ -1848,3 +1848,46 @@ Grade distribution after S38: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: theme-card / theme-preset cluster (~5275–5689 — the 70-literal block we haven't entered yet), sidebar-section-clear / notification-item / sidebar-server-row second-pass overrides (5278–5326), sidebar v2 workspace cards.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 39 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — finish the vNext 2026-refresh override block. Chunk 1: small sidebar/notif/server-row sub-region as a pure-reuse pass. Chunk 2: the bulk panel chrome + theme-card + sheet shell (the 30-literal cluster between pane-divider and theme-card.active).
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H vNext sidebar/notif/server pure-reuse | `e273bd92` | `src/views/terminal/index.css`, `tests/theme-tokens-vnext-sidebar.test.ts` (new) | +6 (zero new tokens — 11 literals migrated via S37 vnext-text-* + existing white-alpha vocabulary; includes a 0.92 → 0.94 emph and 0.035 → 0.03 package-header-bg-hover harmonisation) |
+| Cluster H vNext settings/card/sheet | `5fa38e98` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-vnext-settings-card.test.ts` (new) | +23 (7 new --ht-vnext-* tokens for text-mid + text-elevated + settings-body-bg + range-thumb-border + segment-active-fg + sheet-bg + modal-overlay-bg; ~22 reuses; ~30 literals migrated) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.126 → 0.3.127 (vNext sidebar) → 0.3.128 (vNext settings).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — this session **broke the 500-literal barrier**, dropping audit:theming from 514 to 473 (−41, biggest single-session drop in the long tail). Chunk 1 was a pure-reuse demo (11 literals → 0 new tokens) showing the vnext-text-* family installed in S37 now covers entire override sub-regions. Chunk 2 introduced 7 more vNext tokens that fill the remaining holes in the brightness ladder (text-mid 0.52, text-elevated 0.64), the faintest body bg tier (0.01 white), the dark hold for accent thumbs, and the post-Phase-6 sheet/overlay shell — kept deliberately separate from the S36 --ht-window-* family because the cascades and RGB shifts differ. Cumulative S9–S39: 1013 → 473 (−540). |
+
+Grade distribution after S39: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **#titlebar { occurrence enumeration** mis-counted on first attempt: a plain `indexOf("#titlebar {", off)` matched indented `@media (max-width: 920px) {   #titlebar { ... }` nested rules. Fixed by anchoring on `\n#titlebar {` (newline immediately before, no whitespace) so only line-start rules count. Filed as a reusable pattern for future vNext-block tests.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+
+### Exit criteria (session 39)
+
+| Criterion | Status |
+|---|---|
+| Cluster H vNext sidebar/notif/server migrated | ✅ 514 → 503 (−11) |
+| Cluster H vNext settings/card/sheet migrated | ✅ 503 → 473 (−30) |
+| `bun test` green (modulo pre-existing flake) | ✅ +29 new tests; full theme-token suite 476 / 476 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 39)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: the 4967-5233 region (Phase-6 v2 base styles before the vNext refresh), sidebar v2 workspace cards (8766-8881), the 7107-7861 + 7892-8233 dense blocks.
+- Phases 8 (release engineering) + 9 (docs / observability).
