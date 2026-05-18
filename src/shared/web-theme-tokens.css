@@ -878,6 +878,85 @@
   --ht-tau-meter-warn-glow: rgba(255, 197, 107, 0.4);
   --ht-tau-meter-err-glow: rgba(255, 138, 138, 0.4);
 
+  /* P7 Cluster H — web mirror (src/web-client/client.css) chrome.
+   *  The browser bundle carries its own per-surface palette that sits
+   *  on top of the shared graphite tokens. Tints below are the
+   *  literals that didn't match an existing token within the 3pp
+   *  harmonisation threshold. The ht-web prefix sits outside the U2
+   *  light/HC override gate — the web mirror is intentionally always
+   *  dark across current themes (full-screen mirror metaphor). */
+  /* status-dot glow rings (titlebar connection indicator). */
+  --ht-web-status-error-glow: rgba(248, 113, 113, 0.12);
+  --ht-web-status-success-glow: rgba(74, 222, 128, 0.14);
+  --ht-web-status-warning-glow: rgba(245, 158, 11, 0.16);
+  /* surface-bar top sheen gradient (white-on-dark 0.03 → transparent). */
+  --ht-web-surface-bar-grad-top: rgba(255, 255, 255, 0.03);
+  --ht-web-surface-bar-grad-bot: rgba(255, 255, 255, 0);
+  /* notify-pulse keyframe (amber 0-alpha bookend on accent). */
+  --ht-web-notify-pulse-amber-transparent: rgba(234, 179, 8, 0);
+  /* chip-* border tints — slightly heavier than the badge-info/warn
+   *  family (0.22 → 0.28-0.32) for the web mirror's chip ladder. */
+  --ht-web-chip-command-border: rgba(234, 179, 8, 0.28);
+  --ht-web-chip-git-border: rgba(161, 161, 170, 0.32);
+  --ht-web-chip-git-dirty-border: rgba(234, 179, 8, 0.3);
+  /* chip-port resting/hover borders (0.26 / 0.42) — denser than
+   *  --ht-badge-success-border (0.2) by 6pp, kept distinct. */
+  --ht-web-chip-port-border: rgba(74, 222, 128, 0.26);
+  /* web-panel default container bg (slightly bluer than ht-panel-inline-bg). */
+  --ht-web-panel-bg: rgba(12, 13, 17, 0.92);
+  /* web-panel resize-grip handle (white 0.5). */
+  --ht-web-panel-resize-grip: rgba(255, 255, 255, 0.5);
+  /* sidebar-resize-handle accent + glow (Catppuccin blue #89b4fa). */
+  --ht-web-sidebar-resize-handle-glow: rgba(137, 180, 250, 0.35);
+  /* sb-notif hover bg (lighter than --ht-pm-secondary-btn-bg-hover). */
+  --ht-web-sb-notif-hover-bg: rgba(255, 255, 255, 0.035);
+  /* sb-notification-glow keyframe — purple pulse (distinct from the
+   *  amber/cyan notify-glow used on the native pane bar). */
+  --ht-web-sb-notif-purple: rgba(168, 85, 247, 0.35);
+  --ht-web-sb-notif-purple-strong: rgba(168, 85, 247, 0.85);
+  --ht-web-sb-notif-purple-transparent: rgba(168, 85, 247, 0);
+  /* wm-procmgr / wm-settings overlay scrim + card shadow. */
+  --ht-web-wm-overlay-bg: rgba(0, 0, 0, 0.55);
+  --ht-web-wm-card-shadow: rgba(0, 0, 0, 0.45);
+  --ht-web-wm-close-border-hover: rgba(248, 113, 113, 0.3);
+  /* wm-flag-shell indigo border. */
+  --ht-web-wm-flag-shell-border: rgba(99, 102, 241, 0.3);
+  /* wm-settings-pill status-border ladder (0.4 alpha for all three). */
+  --ht-web-wm-pill-success-border: rgba(74, 222, 128, 0.4);
+  --ht-web-wm-pill-warn-border: rgba(245, 158, 11, 0.4);
+  --ht-web-wm-pill-err-border: rgba(248, 113, 113, 0.4);
+  /* wm-kbd-toolbar bg (slight blue cast — between notif-card and surface). */
+  --ht-web-wm-kbd-toolbar-bg: rgba(20, 24, 30, 0.96);
+  /* sidebar-scrim (drawer mode dimmer). */
+  --ht-web-sidebar-scrim-bg: rgba(0, 0, 0, 0.4);
+  /* sidebar drawer drop shadow (denser than --ht-shadow-card). */
+  --ht-web-sidebar-drawer-shadow: rgba(0, 0, 0, 0.4);
+  /* telegram chat select / chips text (Catppuccin text #cdd6f4). */
+  --ht-web-telegram-chat-fg: #cdd6f4;
+  /* telegram empty-state text (Catppuccin text + 0.5 alpha). */
+  --ht-web-telegram-empty-fg: rgba(205, 214, 244, 0.5);
+  /* telegram status pill foregrounds (amber + green + red text). */
+  --ht-web-telegram-status-starting-fg: #facc15;
+  --ht-web-telegram-status-polling-fg: #4ade80;
+  --ht-web-telegram-status-error-fg: #f87171;
+  /* telegram pill backgrounds (amber 0.1 + green 0.1). */
+  --ht-web-telegram-status-starting-bg: rgba(234, 179, 8, 0.1);
+  --ht-web-telegram-status-polling-bg: rgba(74, 222, 128, 0.1);
+  /* telegram composer focus border (Catppuccin rosewater #f5e0dc). */
+  --ht-web-telegram-composer-focus-border: #f5e0dc;
+  /* telegram send button text colour (pure white). */
+  --ht-web-telegram-send-fg: #fff;
+  /* telegram failed-badge fg (matches --ht-sem-error solid). */
+  --ht-web-telegram-fail-badge-fg: #f87171;
+  /* tau-meter outer-glow (web mirror uses the sem-* family RGB, not
+   *  the native tau-meter-* family's bespoke greens/yellows/reds). */
+  --ht-web-tau-meter-ok-glow: rgba(74, 222, 128, 0.4);
+  --ht-web-tau-meter-warn-glow: rgba(245, 158, 11, 0.4);
+  --ht-web-tau-meter-err-glow: rgba(248, 113, 113, 0.4);
+  /* workspace-package card bg (a fainter neutral hold than
+   *  --ht-package-bg's 0.02 — same value, dedicated for the web
+   *  mirror so a divergence won't pull the native card along). */
+
   /* Shape system — 8 / 10 / 12 / 18 per the design guidelines */
   --ht-radius-chip: 999px;
   --ht-radius-control: 8px;
