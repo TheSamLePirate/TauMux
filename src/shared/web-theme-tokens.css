@@ -543,6 +543,22 @@
    *  from the S36 --ht-window-sidebar-bg's 0.98 opaque hold. */
   --ht-vnext-sidebar-bg: rgba(22, 25, 33, 0.78);
 
+  /* P7 S40 chunk 2 — vNext workspace-item card shadows. The card has
+   *  two depth states: a soft rest shadow (0.18) and a heavier active
+   *  shadow (0.22). Both are pure-black with deliberate alpha
+   *  separation so the active card visually lifts off the sidebar
+   *  bg without changing chrominance. */
+  --ht-vnext-workspace-shadow: rgba(0, 0, 0, 0.18);
+  --ht-vnext-workspace-shadow-active: rgba(0, 0, 0, 0.22);
+
+  /* P7 S40 chunk 2 — vNext workspace-name + cwd-chip text. Both
+   *  sit at the 0.82 zinc tier, between text-soft (0.74) and text-
+   *  bright (0.88) in the vNext family. Distinct from --ht-sidebar-
+   *  filter-btn-hover-fg's 229/231/237 tint by a few RGB units (the
+   *  vNext family is deliberately cooler / bluer) — kept in its
+   *  own slot so a future vNext-tint swap repaints it correctly. */
+  --ht-vnext-text-name: rgba(232, 238, 248, 0.82);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
