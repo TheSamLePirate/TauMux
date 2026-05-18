@@ -9833,8 +9833,8 @@ body::after {
 
 #sidebar.sidebar-v2 .notification-dismiss:hover {
   opacity: 1;
-  color: #fca5a5;
-  background: rgba(248, 113, 113, 0.14);
+  color: var(--ht-pm-kill-fg);
+  background: var(--ht-sidebar-v2-dismiss-hover-bg);
 }
 
 /* ── Logs ────────────────────────────────────────────────────────── */
@@ -9856,19 +9856,19 @@ body::after {
 }
 
 #sidebar.sidebar-v2 .log-item.error {
-  border-left-color: #f87171;
-  background: rgba(248, 113, 113, 0.06);
+  border-left-color: var(--ht-sem-error);
+  background: var(--ht-sem-error-tint);
   color: var(--sb-ink);
 }
 
 #sidebar.sidebar-v2 .log-item.warning {
-  border-left-color: #f9c84a;
-  background: rgba(249, 200, 74, 0.04);
+  border-left-color: var(--ht-sidebar-v2-log-warning-fg);
+  background: var(--ht-sidebar-v2-log-warning-tint);
   color: var(--sb-ink-dim);
 }
 
 #sidebar.sidebar-v2 .log-item.info {
-  border-left-color: #8fbcff;
+  border-left-color: var(--ht-sidebar-v2-log-info-fg);
 }
 
 #sidebar.sidebar-v2 .log-item .log-level {
@@ -9879,9 +9879,9 @@ body::after {
   min-width: 28px;
 }
 
-#sidebar.sidebar-v2 .log-item.error .log-level { color: #fca5a5; }
-#sidebar.sidebar-v2 .log-item.warning .log-level { color: #f9c84a; }
-#sidebar.sidebar-v2 .log-item.info .log-level { color: #8fbcff; }
+#sidebar.sidebar-v2 .log-item.error .log-level { color: var(--ht-pm-kill-fg); }
+#sidebar.sidebar-v2 .log-item.warning .log-level { color: var(--ht-sidebar-v2-log-warning-fg); }
+#sidebar.sidebar-v2 .log-item.info .log-level { color: var(--ht-sidebar-v2-log-info-fg); }
 
 #sidebar.sidebar-v2 .log-item .log-source {
   font-size: 9px;

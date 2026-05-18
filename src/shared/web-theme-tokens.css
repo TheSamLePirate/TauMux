@@ -381,6 +381,21 @@
   --ht-workspace-metric-mem-fg: rgba(229, 231, 237, 0.62);
   --ht-workspace-section-header-fg: rgba(229, 231, 237, 0.54);
 
+  /* P7 S33 chunk 2 — sidebar v2 log-item state colours + the
+   *  notification-dismiss hover tint. The v2 log row uses a denser
+   *  amber (#f9c84a) than --ht-log-warning-fg (#facc15) and an
+   *  azure-leaning info (#8fbcff) that isn't covered by the v1
+   *  sidebar palette, so they get their own --ht-sidebar-v2-* slot.
+   *  Error border reuses --ht-sem-error (#f87171 exact), error bg
+   *  reuses --ht-sem-error-tint (0.08 vs the 0.06 literal — 2pp
+   *  delta, within the harmonisation threshold). The dismiss hover
+   *  bg (0.14 alpha) sits between --ht-pm-kill-bg (0.08) and
+   *  --ht-pm-kill-bg-hover (0.22) — its own slot. */
+  --ht-sidebar-v2-log-warning-fg: #f9c84a;
+  --ht-sidebar-v2-log-warning-tint: rgba(249, 200, 74, 0.04);
+  --ht-sidebar-v2-log-info-fg: #8fbcff;
+  --ht-sidebar-v2-dismiss-hover-bg: rgba(248, 113, 113, 0.14);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
