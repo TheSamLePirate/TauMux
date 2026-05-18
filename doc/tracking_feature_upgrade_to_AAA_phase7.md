@@ -1459,3 +1459,48 @@ Grade distribution after S29: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: workspace meta-row / surfaces / surfaces-more, status entries, sidebar plan panel literals, telegram bridge sub-states.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 30 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — prompt dialog chrome + browser pane error overlay + kbd dead-fallback cleanup. **First time audit:theming drops below 700.**
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H prompt dialog chrome | `2f012bcc` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-prompt.test.ts` (new) | +11 (6 new --ht-prompt-* tokens + heavy reuse of --ht-ask-* / --ht-palette-*) |
+| Cluster H browser error + kbd cleanup | `f01c28a8` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-browser-error.test.ts` (new) | +4 (2 new --ht-browser-error-* tokens + dead-fallback cleanup on kbd-* var(--fg)/var(--fg-dim) → var(--text-strong)/var(--text-dim)) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.108 → 0.3.109 (prompt) → 0.3.110 (browser-error).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — double chunk. (1) Prompt dialog migrated to 6 new --ht-prompt-* tokens + heavy reuse of the existing --ht-ask-* sheet/input chrome family + --ht-palette-shadow. The prompt is functionally a sister of the ask-user modal but with a lighter scrim (0.35 vs 0.42) for the passive name-this-thing UX. (2) Browser pane load-error overlay migrated to 2 new --ht-browser-error-* tokens (distinct eggplant + soft-red palette, not part of the ask-user danger family). (3) **Dead-fallback cleanup** on the kbd-cheatsheet: 5 inline `var(--fg, #e6f4f7)` / `var(--fg-dim, #9aa)` fallbacks were dead code — the --fg / --fg-dim vars are NEVER defined anywhere in the codebase, so those rules were rendering with the inline hex fallback. Flipped to var(--text-strong) / var(--text-dim) which ARE defined — slight visual delta traded for theming consistency. audit:theming: 720 → 699 (−21). **First time below 700.** |
+
+Grade distribution after S30: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **Multi-selector `.prompt-btn` shadowing**: the file has TWO `.prompt-btn` rules — the first is part of a shared multi-selector reset (.workspace-close, .surface-bar-btn, .sidebar-section-clear, .prompt-btn) with no border declaration. The second is the prompt-specific one with the border I migrated. matchRule grabs the first; switched to a regex assertion that looks for the standalone selector.
+- **Dead var fallbacks**: stripping `var(--fg, #hex)` to `var(--fg)` would silently break those rules because --fg is never defined. Realised on grep, swapped to `var(--text-strong)` etc.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+
+### Exit criteria (session 30)
+
+| Criterion | Status |
+|---|---|
+| Cluster H prompt dialog migrated | ✅ 720 → 706 (−14) |
+| Cluster H browser error + kbd cleanup | ✅ 706 → 699 (−7) |
+| audit:theming below 700 | ✅ **first time** |
+| `bun test` green (modulo pre-existing flake) | ✅ ~2495 / 0 non-pipeline failures; +15 new tests |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 30)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: workspace meta-row / surfaces / surfaces-more, telegram bridge sub-states, kbd-cheatsheet body (more dead-fallback strips), settings panel inputs.
+- Phases 8 (release engineering) + 9 (docs / observability).
