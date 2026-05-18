@@ -158,6 +158,26 @@
   --ht-sidebar-v2-ink-faint: rgba(232, 238, 248, 0.32);
   --ht-sidebar-v2-search-hold: rgba(0, 0, 0, 0.14);
 
+  /* P7-finish — workspace rename input white (slightly above
+   *  --ht-sidebar-text-strong's 0.98 because the input sits on a
+   *  darker bg). */
+  --ht-rename-input-fg: rgba(255, 255, 255, 0.98);
+
+  /* P7-finish — settings panel base shell. The settings panel sits
+   *  one elevation tier above the agent dialog (0.92 vs 0.98) and
+   *  has its own darker hold deliberately so the modal feels heavier
+   *  than the agent confirm. The overlay dimmer at 0.45 sits between
+   *  the agent dialog's 0.6 and the vNext modal's 0.4. */
+  --ht-settings-panel-bg: rgba(12, 12, 16, 0.92);
+  --ht-settings-overlay-bg: rgba(0, 0, 0, 0.45);
+
+  /* P7-finish — window-theme solid surface colours (ws-density
+   *  intermediate override block at lines ~6135+). These are opaque
+   *  hex so the desktop never bleeds through. */
+  --ht-window-surface-solid: #1b1d24;
+  --ht-window-surface-bar-solid: #20232b;
+  --ht-window-overlay-solid: #101010;
+
   /* P7 S15 — titlebar toolbar icon button tints. The #titlebar .toolbar
    *  -icon-btn rule carries its own resting tone and a cyan + white
    *  double drop-shadow on :hover for the icon glow. Same intent
