@@ -1805,3 +1805,46 @@ Grade distribution after S37: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: theme-card cluster (~lines 5275–5689, 70 literals), settings color-grid + theme-preset cards, sidebar v2 workspace cards (port-chip + cpu-bar + metric-cpu, color-mix nested).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 38 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — vNext surface chrome (container / bar / chip) shell first, then the vNext status-colour palettes (port-chip green + close-btn peach-red hover).
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H vNext surface-container/bar/chip | `db27049e` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-vnext-surface.test.ts` (new) | +13 (5 new --ht-vnext-* tokens for surface-bg + surface-shadow + surface-bar-bg + text-soft + text-soft-2; ~17 literals migrated; heavy reuse of S37 vnext-text-* family + the white-alpha vocabulary) |
+| Cluster H vNext port-chip + close-btn hover palette | `f6d079c1` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-vnext-port-close.test.ts` (new) | +13 (8 new --ht-vnext-* status-colour tokens covering port chip mossy green palette + close-btn peach-red hover palette — two distinct status affordances kept distinct from the badge-success / sem-error families because the chip is hover-info and the close-btn is destructive) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.124 → 0.3.125 (vNext surface) → 0.3.126 (vNext port/close).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — double chunk introducing 13 new --ht-vnext-* tokens (5 surface chrome + 8 status colours). The vNext surface card now has its own --ht-vnext-surface-* shell tokens that coexist with S36's --ht-window-* outer frame (card-inside-frame). The port-chip mossy green palette stays separate from the --ht-badge-success #86efac family because the chip is hover-info rather than prominent running-state — and the close-btn peach-red palette stays separate from --ht-sem-error because the chrominance shift signals "close, not error". ~29 literals migrated. audit:theming: 543 → 514 (−29). |
+
+Grade distribution after S38: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **Surface-container occurrence count**: the file has 6 `.surface-container {` rules across the cascade. The S38 chunk 1 test initially anchored to "last .surface-container { before the t3 #titlebar" — but that returned a later (line ~6134) intermediate override block, not the vNext one at 5343. Fixed by enumerating all `.surface-container {` indices and scoping `[match[1], match[2])` to bracket exactly the vNext occurrence.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+
+### Exit criteria (session 38)
+
+| Criterion | Status |
+|---|---|
+| Cluster H vNext surface chrome migrated | ✅ 543 → 526 (−17) |
+| Cluster H vNext port-chip + close-btn migrated | ✅ 526 → 514 (−12) |
+| `bun test` green (modulo pre-existing flake) | ✅ +26 new tests; full theme-token suite 447 / 447 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 38)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: theme-card / theme-preset cluster (~5275–5689 — the 70-literal block we haven't entered yet), sidebar-section-clear / notification-item / sidebar-server-row second-pass overrides (5278–5326), sidebar v2 workspace cards.
+- Phases 8 (release engineering) + 9 (docs / observability).
