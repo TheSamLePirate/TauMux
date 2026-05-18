@@ -89,6 +89,7 @@ import {
   type AskUserAttribution,
 } from "./ask-user-telegram";
 import { parseAllowedTelegramIds, pickWebSettings } from "../shared/settings";
+import { parsePersistedLayout } from "../shared/layout-persistence";
 import { readEditorFile, resolveEditorPath } from "./editor-files";
 import {
   buildBunMessageHandlers,
@@ -2556,11 +2557,12 @@ function loadLayout(): PersistedLayout | null {
   try {
     if (!existsSync(layoutFile)) return null;
     const raw = readFileSync(layoutFile, "utf-8");
-    const parsed = JSON.parse(raw) as PersistedLayout;
-    if (!Array.isArray(parsed.workspaces) || parsed.workspaces.length === 0) {
-      return null;
-    }
-    return parsed;
+    // P9 — parsePersistedLayout walks the full shape (workspaces, each
+    // PaneNode subtree, string-record fields, activeWorkspaceIndex
+    // bounds) and returns null on any mismatch. Crash-truncated
+    // layout.json now boots to a clean slate rather than throwing
+    // downstream in collectLeafIds / remapPaneNode.
+    return parsePersistedLayout(raw);
   } catch {
     return null;
   }
