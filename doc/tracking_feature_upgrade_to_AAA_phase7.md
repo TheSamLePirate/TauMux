@@ -1719,3 +1719,46 @@ Grade distribution after S35: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: sidebar v2 workspace cards (port-chip + cpu-bar + metric-cpu, color-mix nested but now we have the technique), settings color-grid + theme-preset cards, telegram bridge sub-states.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 36 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — t3 window-theme override block: a pure-reuse pass on the bulk of the override rules, then a small new-token chunk for the window-shell base colours.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H t3 window override pure-reuse | `d8884bd6` | `src/views/terminal/index.css`, `tests/theme-tokens-t3-window-reuse.test.ts` (new) | +12 (zero new tokens; 13 literals collapse onto chip-bg / agent-row-bg-hover / package-bg / package-header-bg-hover / sidebar-row-bg-stripe / button-bg-hover-fallback / panel-border-soft; 6 color-mix nested literals tokenised via the S35 technique) |
+| Cluster H window-shell base colours | `8496785c` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-window-shell.test.ts` (new) | +12 (6 new --ht-window-* tokens for titlebar / sidebar / surface / surface-bar / modal-overlay / toast — high-alpha dark-grey holds grouped under one namespace for single-point palette swap) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.120 → 0.3.121 (t3 reuse) → 0.3.122 (window-shell).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — double chunk. (1) The t3code window override block (the second-pass selectors that paint every sidebar / surface / panel / table when the "window" theme is active) gets a *pure-reuse* migration: 13 literals collapse onto seven existing white-alpha tokens with zero new entries — the strongest reuse demonstration so far across a single block. The S35 color-mix nested technique scales: 6 inner-alpha references now live behind var(). (2) The high-alpha window-shell backgrounds (titlebar / sidebar / surface / surface-bar / modal-overlay / toast) get their own --ht-window-* namespace so a future palette swap repaints the shell from one place. ~19 literals migrated across two commits. audit:theming: 587 → 568 (−19). |
+
+Grade distribution after S36: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **First-occurrence matchRule pitfall**: the t3 override block uses many selectors that already exist earlier in the file (e.g. `.workspace-item:hover`, `.surface-chip`, multi-selector panel-header rules). The matchRule helper grabs the first occurrence — fixed by slicing the CSS to the t3 block via a marker string (`Final alignment: exact t3code-style dark shell`) and scoping all assertions to that substring.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+
+### Exit criteria (session 36)
+
+| Criterion | Status |
+|---|---|
+| Cluster H t3 window override pure-reuse migrated | ✅ 587 → 574 (−13) |
+| Cluster H window-shell base colours migrated | ✅ 574 → 568 (−6) |
+| `bun test` green (modulo pre-existing flake) | ✅ +24 new tests; full theme-token suite 399 / 399 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 36)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: sidebar v2 workspace cards (port-chip + cpu-bar + metric-cpu, color-mix nested), settings color-grid + theme-preset cards, telegram bridge sub-states.
+- Phases 8 (release engineering) + 9 (docs / observability).
