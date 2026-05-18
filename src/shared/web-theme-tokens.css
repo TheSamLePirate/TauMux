@@ -605,6 +605,21 @@
   --ht-agent-tc-body-bg: rgba(0, 0, 0, 0.35);
   --ht-agent-footer-bg: rgba(0, 0, 0, 0.15);
 
+  /* P7 S43 chunk 1 — pi-agent slash command menu + confirm dialog
+   *  + dialog tree-role colours. The slash menu and dialog have
+   *  their own deeper black holds (0.96 / 0.98 / 0.6 overlay) and
+   *  three new fg colours: indigo (#818cf8 reused via --ht-agent-
+   *  badge-scope-fg) for extension badges, light blue (#93c5fd) for
+   *  the assistant tree-role role, orange (#f97316) for the
+   *  compaction tree-role. The indigo BG variant (0.12) is unique
+   *  to the extension badge — no existing match. */
+  --ht-agent-slash-menu-bg: rgba(8, 8, 14, 0.96);
+  --ht-agent-dialog-overlay-bg: rgba(0, 0, 0, 0.6);
+  --ht-agent-dialog-bg: rgba(16, 16, 22, 0.98);
+  --ht-agent-badge-extension-bg: rgba(99, 102, 241, 0.12);
+  --ht-agent-tree-role-assistant-fg: #93c5fd;
+  --ht-agent-tree-role-compaction-fg: #f97316;
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
