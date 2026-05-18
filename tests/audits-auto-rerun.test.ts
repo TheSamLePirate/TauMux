@@ -15,6 +15,19 @@ const indexSrc = readFileSync(
   "utf8",
 );
 
+// P7 S32 — the webview-message handlers (including `updateSettings`)
+// moved out of `src/bun/index.ts` into per-domain modules under
+// `src/bun/webview-handlers/`. Concatenate the system slice with
+// index.ts so the existing source-grep keeps catching a future drop
+// of the rebuild + re-run wiring.
+const updateSettingsSrc =
+  indexSrc +
+  "\n" +
+  readFileSync(
+    join(import.meta.dir, "..", "src", "bun", "webview-handlers", "system.ts"),
+    "utf8",
+  );
+
 describe("audits auto-rerun (P7 S4)", () => {
   test("runAndPublishAudits() helper is defined and replaces the boot-only block", () => {
     expect(indexSrc).toContain("async function runAndPublishAudits()");
@@ -30,9 +43,11 @@ describe("audits auto-rerun (P7 S4)", () => {
 
   test("updateSettings handler invokes runAndPublishAudits() after rebuildAudits()", () => {
     // Match the relevant updateSettings branch and assert it both
-    // rebuilds the registry AND re-runs.
-    const updateSettingsBlock = indexSrc.match(
-      /updateSettings:[\s\S]+?\n  \},/,
+    // rebuilds the registry AND re-runs. The handler now lives in
+    // `webview-handlers/system.ts`; we grep against the union of
+    // index.ts + that file so the assertion still holds.
+    const updateSettingsBlock = updateSettingsSrc.match(
+      /updateSettings:[\s\S]+?\n {2,4}\},/,
     );
     expect(updateSettingsBlock).not.toBeNull();
     const block = updateSettingsBlock![0];

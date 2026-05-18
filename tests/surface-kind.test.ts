@@ -50,14 +50,20 @@ describe("[A3+A17] SurfaceKind canonical union", () => {
 
   it("the `tg:` substring shortcut on the bun side is bounded", () => {
     // The fix removed most of the `id.startsWith("tg:")` surface-kind
-    // detection paths. Two legitimate residuals live in
-    // `src/bun/index.ts`, both in surfaceId-prefix routing paths where
-    // the kind has no per-id manager to query: telegram surfaces have
-    // no PTY/browser/agent process to own them, and `editor:` surfaces
-    // (added in the codemirror-editor-pane work) follow the same
-    // pattern. Both checks live alongside an `editor:` check in the
-    // same conditional — they're not independent regressions, they're
-    // the two non-PTY surface kinds that route by prefix.
+    // detection paths. Two legitimate residuals live on the bun side,
+    // both in surfaceId-prefix routing paths where the kind has no
+    // per-id manager to query: telegram surfaces have no PTY / browser
+    // / agent process to own them, and `editor:` surfaces (added in
+    // the codemirror-editor-pane work) follow the same pattern. Both
+    // checks live alongside an `editor:` check in the same
+    // conditional — they're not independent regressions, they're the
+    // two non-PTY surface kinds that route by prefix.
+    //
+    // Allowed residual locations:
+    //   - `src/bun/index.ts` (the original routing spot, retained for
+    //     legacy code paths)
+    //   - `src/bun/webview-handlers/surface.ts` (P7 S32 extraction —
+    //     the `closeSurface` webview handler now lives here)
     //
     // A residual usage in `src/web-client/store.ts` is the mirror's
     // own per-id check for store tagging (different concern, not
@@ -79,10 +85,13 @@ describe("[A3+A17] SurfaceKind canonical union", () => {
       }
     }
     expect(total).toBeLessThanOrEqual(2);
+    const allowed = new Set([
+      join(ROOT, "bun", "index.ts"),
+      join(ROOT, "bun", "webview-handlers", "surface.ts"),
+    ]);
     if (total > 0) {
-      // All residuals must live in index.ts (the routing spot).
       for (const [path] of fileCounts) {
-        expect(path).toBe(join(ROOT, "bun", "index.ts"));
+        expect(allowed.has(path)).toBe(true);
       }
     }
   });

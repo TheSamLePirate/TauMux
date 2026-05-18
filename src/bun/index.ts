@@ -38,12 +38,6 @@ import { SessionManager } from "./session-manager";
 import { BrowserSurfaceManager } from "./browser-surface-manager";
 import { BrowserHistoryStore } from "./browser-history";
 import { CookieStore } from "./cookie-store";
-import {
-  parseJsonCookies,
-  parseNetscapeCookies,
-  exportAsJson,
-  exportAsNetscape,
-} from "./cookie-parsers";
 import { SocketServer } from "./socket-server";
 import { PanelRegistry } from "./panel-registry";
 import { NativeStdoutCoalescer } from "./native-stdout-coalescer";
@@ -52,9 +46,7 @@ import { WebServer } from "./web-server";
 import { createRpcHandler } from "./rpc-handler";
 import {
   buildApplicationMenu,
-  buildContextMenu,
   ELECTROBUN_DOCS_URL,
-  formatWindowTitle,
   MENU_ACTIONS,
   TAU_MUX_DOCS_URL,
 } from "./native-menus";
@@ -97,12 +89,12 @@ import {
   type AskUserAttribution,
 } from "./ask-user-telegram";
 import { parseAllowedTelegramIds, pickWebSettings } from "../shared/settings";
-import { listSidebarFileExplorerDirectory } from "./sidebar-file-explorer";
+import { readEditorFile, resolveEditorPath } from "./editor-files";
 import {
-  readEditorFile,
-  resolveEditorPath,
-  saveEditorFile,
-} from "./editor-files";
+  buildBunMessageHandlers,
+  createWebviewHandlerContext,
+  type BunMessageHandlers,
+} from "./webview-handlers";
 
 // `HT_CONFIG_DIR` override: e2e tests relocate the socket, settings, layout,
 // browser history, and cookies under a per-worker throwaway dir. Default path
@@ -522,693 +514,71 @@ function readPiSessionTree(
 
 // Define RPC handlers.
 //
-// `bunMessageHandlers` is extracted into a typed const with a `satisfies`
-// clause so that adding a new method to `TauMuxRPC["bun"]["messages"]`
-// without a matching handler here becomes a compile-time error.
-// (Electrobun's native `handlers.messages` type treats each key as
-// optional, which is why we need this belt-and-braces assertion.)
+// `bunMessageHandlers` lives in `src/bun/webview-handlers/`, split into
+// per-domain modules that each declare the exact subset of keys they
+// own. `buildBunMessageHandlers` merges them through a single object
+// spread guarded by `satisfies BunMessageHandlers`, so adding a new
+// message to `TauMuxRPC["bun"]["messages"]` without a matching handler
+// is still a compile-time error.
 //
-// The handlers close over `rpc`, which is declared below; that is
-// safe because handler bodies only execute after rpc is fully
-// initialized.
-type BunMessageHandlers = {
-  [K in keyof TauMuxRPC["bun"]["messages"]]: TauMuxRPC["bun"]["messages"][K] extends void
-    ? () => void | Promise<void>
-    : (payload: TauMuxRPC["bun"]["messages"][K]) => void | Promise<void>;
-};
+// Several names referenced by the handlers (`rpc`, `autoContinue`,
+// `mainWindow`, `socketHandler`, the pending-reply maps, …) are
+// declared further down this file. We satisfy that ordering by
+// building the context with `createWebviewHandlerContext`, wiring the
+// handlers immediately, and calling `setLateBindings` once the
+// late-bound consts exist (after `socketHandler` is constructed).
+//
+// (Imports live at the top of the file alongside the rest.)
 
-const bunMessageHandlers = {
-  clipboardWrite: (payload) => {
-    try {
-      Utils.clipboardWriteText(payload.text);
-    } catch {
-      // Fallback to pbcopy when the FFI path isn't available
-      // (rare — but keep it for resilience). G.10 / L13: race against
-      // a 2 s timeout so a hung pbcopy doesn't leak the subprocess.
-      const proc = Bun.spawn(["pbcopy"], { stdin: "pipe" });
-      proc.stdin.write(payload.text);
-      proc.stdin.end();
-      const timer = setTimeout(() => {
-        try {
-          proc.kill();
-        } catch {
-          /* already done */
-        }
-      }, 2000);
-      proc.exited
-        .then(() => clearTimeout(timer))
-        .catch(() => {
-          clearTimeout(timer);
-        });
-    }
-  },
-  clipboardPaste: (payload) => {
-    app.focusedSurfaceId = payload.surfaceId;
-    void handlePaste();
-  },
-  writeStdin: (payload) => {
-    autoContinue.notifyHumanInput(payload.surfaceId);
-    sessions.writeStdin(payload.surfaceId, payload.data);
-  },
-  viewportSize: (payload) => {
-    app.webServer?.setNativeViewport(payload.width, payload.height);
-  },
-  resize: (payload) => {
-    if (!app.initialResizeReceived) {
-      app.initialResizeReceived = true;
-      // Send settings now that the webview is ready
-      rpc.send("restoreSettings", { settings: settingsManager.get() });
-      // Static runtime paths for the Settings → Advanced panel. Sent
-      // once; the panel caches them. logPath is null when the file tee
-      // failed to open (read-only home, full disk, etc).
-      rpc.send("restoreDiagnostics", {
-        logPath: loggerHandle.currentPath,
-        socketPath,
-        configDir,
-      });
-      // Tier 2: flip the webview's test-mode flag before any test fixture
-      // tries to exercise a `__test.*` RPC. Under the dual-fact gate this
-      // is a no-op for production.
-      if (HT_TEST_MODE) {
-        rpc.send("enableTestMode", { enabled: true });
-      }
-      // Re-send the web-mirror status — the boot-time send at module
-      // load happens before the webview has registered RPC handlers,
-      // so the sidebar dot was stuck on "Offline" (its CSS default)
-      // even when auto-start had brought the server up.
-      sendWebServerStatus();
-      if (!tryRestoreLayout(payload.cols, payload.rows)) {
-        createWorkspaceSurface(payload.cols, payload.rows);
-      }
-    } else {
-      sessions.resize(payload.surfaceId, payload.cols, payload.rows);
-      app.webServer?.broadcast({
-        type: "resize",
-        surfaceId: payload.surfaceId,
-        cols: payload.cols,
-        rows: payload.rows,
-      });
-    }
-  },
-  createSurface: (payload) => {
-    createWorkspaceSurface(80, 24, payload.cwd);
-  },
-  splitSurface: (payload) => {
-    splitSurface(payload.direction, undefined, payload.cwd);
-  },
-  closeSurface: (payload) => {
-    // Pending cookie-injection debounce is now cleared in the
-    // `browserSurfaces.onSurfaceClosed` callback, which catches every
-    // browser-close path (RPC, menu, accessory). Non-browser surfaces
-    // never appear in `domReadyDebounce`, so no cleanup needed here.
-    if (piAgentManager.isAgentSurface(payload.surfaceId)) {
-      piAgentManager.removeAgent(payload.surfaceId);
-      sendWebviewAction("agentSurfaceClosed", {
-        surfaceId: payload.surfaceId,
-      });
-    } else if (browserSurfaces.isBrowserSurface(payload.surfaceId)) {
-      browserSurfaces.closeSurface(payload.surfaceId);
-    } else if (
-      payload.surfaceId.startsWith("tg:") ||
-      payload.surfaceId.startsWith("editor:")
-    ) {
-      // Non-PTY panes have no bun-side resource; echo the close back so
-      // the webview layout removes the pane.
-      rpc.send("surfaceClosed", { surfaceId: payload.surfaceId });
-      app.webServer?.broadcast({
-        type: "surfaceClosed",
-        surfaceId: payload.surfaceId,
-      });
-    } else {
-      sessions.closeSurface(payload.surfaceId);
-    }
-  },
-  focusSurface: (payload) => {
-    app.focusedSurfaceId = payload.surfaceId;
-    app.webServer?.broadcast({
-      type: "focusChanged",
-      surfaceId: payload.surfaceId,
-    });
-  },
-  renameSurface: (payload) => {
-    dispatch("renameSurface", {
-      surfaceId: payload.surfaceId,
-      title: payload.title,
-    });
-  },
-  panelEvent: (payload) => {
-    sessions.sendEvent(payload.surfaceId, payload);
-    // Broadcast panel position/size changes to web clients
-    if (payload.event === "dragend") {
-      app.webServer?.broadcast({
-        type: "panelEvent",
-        surfaceId: payload.surfaceId,
-        id: payload.id,
-        event: payload.event,
-        x: payload.x,
-        y: payload.y,
-      });
-    } else if (payload.event === "resize") {
-      app.webServer?.broadcast({
-        type: "panelEvent",
-        surfaceId: payload.surfaceId,
-        id: payload.id,
-        event: payload.event,
-        width: payload.width,
-        height: payload.height,
-      });
-    } else if (payload.event === "close") {
-      app.webServer?.broadcast({
-        type: "panelEvent",
-        surfaceId: payload.surfaceId,
-        id: payload.id,
-        event: payload.event,
-      });
-    }
-  },
-  readScreenResponse: (payload) => {
-    // Legacy single-purpose reply channel for surface.read_text round-trips.
-    // The newer generic webview→bun reply path is `webviewResponse` below
-    // (used by Tier 2 `__test.*` and any future read-style RPC). See
-    // doc/system-rpc-socket.md § "Read-style replies (readScreen vs
-    // webviewResponse)" for why both exist.
-    const resolve = pendingReads.get(payload.reqId);
-    if (resolve) {
-      pendingReads.delete(payload.reqId);
-      resolve(payload.content);
-    }
-  },
-  webviewResponse: (payload) => {
-    // Generic webview → bun reply used by Tier 2 `__test.*` round-trips and
-    // any future read-style RPC. Shape: `{ reqId, result }` where result is
-    // opaque JSON. `readScreenResponse` stays separate for back-compat.
-    const resolve = pendingReads.get(payload.reqId);
-    if (resolve) {
-      pendingReads.delete(payload.reqId);
-      resolve(payload.result);
-    }
-  },
-  workspaceStateSync: (payload) => {
-    app.workspaceState = payload.workspaces;
-    app.activeWorkspaceId = payload.activeWorkspaceId;
-    const activeWorkspace =
-      payload.workspaces.find((ws) => ws.id === payload.activeWorkspaceId) ??
-      null;
-    mainWindow.setTitle(formatWindowTitle(activeWorkspace?.name ?? null));
-    app.webServer?.broadcast({
-      type: "layoutChanged",
-      workspaces: payload.workspaces.map((ws) => ({
-        id: ws.id,
-        name: ws.name,
-        color: ws.color,
-        surfaceIds: ws.surfaceIds,
-        focusedSurfaceId: ws.focusedSurfaceId,
-        layout: ws.layout,
-        surfaceTitles: ws.surfaceTitles,
-      })),
-      activeWorkspaceId: payload.activeWorkspaceId,
-      focusedSurfaceId: app.focusedSurfaceId,
-    });
-    scheduleLayoutSave();
-  },
-  sidebarToggle: (payload) => {
-    app.sidebarVisible = payload.visible;
-    app.webServer?.broadcast({
-      type: "sidebarState",
-      visible: payload.visible,
-    });
-  },
-  sidebarFileExplorerList: (payload) => {
-    const listing = listSidebarFileExplorerDirectory(payload);
-    rpc.send("sidebarFileExplorerListing", listing);
-  },
-  clearNotifications: () => {
-    socketHandler("notification.clear", {});
-  },
-  dismissNotification: (payload) => {
-    socketHandler("notification.dismiss", { id: payload.id });
-  },
-  showContextMenu: (payload) => {
-    ContextMenu.showContextMenu(buildContextMenu(payload));
-  },
-  toggleWebServer: () => {
-    toggleWebServer();
-  },
-  updateSettings: (payload) => {
-    const previous = settingsManager.get();
-    const updated = settingsManager.update(payload.settings);
-    if (updated.shellPath !== previous.shellPath) {
-      sessions.setShell(updated.shellPath);
-    }
-    if (updated.webMirrorPort !== previous.webMirrorPort) {
-      applyWebMirrorPort(updated.webMirrorPort);
-    }
-    if (
-      updated.telegramEnabled !== previous.telegramEnabled ||
-      updated.telegramBotToken !== previous.telegramBotToken ||
-      updated.telegramAllowedUserIds !== previous.telegramAllowedUserIds
-    ) {
-      void applyTelegramSettings();
-    }
-    if (
-      updated.auditsGitUserNameExpected !== previous.auditsGitUserNameExpected
-    ) {
-      rebuildAudits();
-      // P7 S4 — re-run the rebuilt registry so health + audit.list
-      // reflect the new config without a restart.
-      void runAndPublishAudits();
-    }
-    rpc.send("settingsChanged", { settings: updated });
-  },
-  openExternal: (payload) => {
-    // Only pass through http(s) and localhost-ish URLs from the webview;
-    // protects against accidentally opening file:// or javascript: URLs
-    // from hostile script output reaching the chip render path.
-    const url = payload.url;
-    if (!/^https?:\/\//i.test(url)) return;
-    try {
-      Utils.openExternal(url);
-    } catch (err) {
-      console.error("[openExternal] failed:", err);
-    }
-  },
-  revealLogFile: () => {
-    revealLogFile();
-  },
-  windowVisibility: (payload) => {
-    // Slow down metadata polling while the window is hidden — still
-    // useful (ht CLI + web mirror clients may be live) but not critical.
-    metadataPoller.setPollRate(payload.visible ? 1000 : 3000);
-  },
-  killPid: (payload) => {
-    const pid = Number(payload.pid);
-    if (!Number.isFinite(pid) || pid <= 0) return;
-    const raw = payload.signal || "SIGTERM";
-    const signal = (
-      raw.startsWith("SIG") ? raw : `SIG${raw}`
-    ) as NodeJS.Signals;
-    try {
-      process.kill(pid, signal);
-    } catch (err) {
-      console.error(`[killPid ${pid} ${signal}]`, err);
-    }
-  },
-  runScript: (payload) => {
-    const { workspaceId, cwd, command, scriptKey } = payload;
-    if (!workspaceId || !cwd || !command || !scriptKey) return;
-    const surfaceId = sessions.createSurface(80, 24, cwd);
-    const title = sessions.getSurface(surfaceId)?.title ?? "shell";
-    rpc.send("surfaceCreated", {
-      surfaceId,
-      title,
-      launchFor: { workspaceId, scriptKey },
-    });
-    broadcastSurfaceCreated(surfaceId, title);
-    // Small delay so the login shell's prompt is ready before we feed
-    // the script command. zsh emits ~150ms of async init (completion
-    // cache, etc.) on a fresh pty; 600 ms is a safe upper bound.
-    setTimeout(() => {
-      sessions.writeStdin(surfaceId, command + "\n");
-    }, 600);
-  },
-  toggleMaximize: () => {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
-    } else {
-      mainWindow.maximize();
-    }
-  },
+const {
+  ctx: webviewHandlerContext,
+  setLateBindings: setWebviewHandlerLateBindings,
+} = createWebviewHandlerContext({
+  app,
+  sessions,
+  settingsManager,
+  piAgentManager,
+  browserSurfaces,
+  browserHistory,
+  cookieStore,
+  metadataPoller,
+  telegramDb,
+  askUser,
+  configDir,
+  loggerHandle,
+  htTestMode: HT_TEST_MODE,
+  broadcastSurfaceCreated,
+  sendWebviewAction,
+  sendWebServerStatus,
+  toggleWebServer,
+  handlePaste,
+  tryRestoreLayout,
+  createWorkspaceSurface,
+  splitSurface,
+  createBrowserWorkspaceSurface,
+  splitBrowserSurface,
+  createAgentWorkspaceSurface,
+  splitAgentSurface,
+  createTelegramWorkspaceSurface,
+  splitTelegramSurface,
+  createEditorWorkspaceSurface,
+  splitEditorSurface,
+  sendTelegramAndBroadcast,
+  sendTelegramStateToWebview,
+  scheduleLayoutSave,
+  listPiSessions,
+  readPiSessionTree,
+  applyWebMirrorPort,
+  applyTelegramSettings,
+  rebuildAudits,
+  runAndPublishAudits,
+  revealLogFile,
+  dispatch,
+});
 
-  // ── Browser surface lifecycle ──
-  createBrowserSurface: (payload) => {
-    createBrowserWorkspaceSurface(payload.url);
-  },
-  splitBrowserSurface: (payload) => {
-    splitBrowserSurface(payload.direction, payload.url);
-  },
-  browserNavigated: async (payload) => {
-    browserSurfaces.updateNavigation(
-      payload.surfaceId,
-      payload.url,
-      payload.title,
-    );
-    await browserHistory.ready;
-    browserHistory.record(payload.url, payload.title);
-    app.webServer?.broadcast({
-      type: "browserNavigated",
-      surfaceId: payload.surfaceId,
-      url: payload.url,
-      title: payload.title,
-    });
-  },
-  browserTitleChanged: (payload) => {
-    browserSurfaces.setTitle(payload.surfaceId, payload.title);
-  },
-  browserSetZoom: (payload) => {
-    browserSurfaces.setZoom(payload.surfaceId, payload.zoom);
-  },
-  browserConsoleLog: (payload) => {
-    browserSurfaces.addConsoleLog(payload.surfaceId, {
-      level: payload.level,
-      args: payload.args,
-      timestamp: payload.timestamp,
-    });
-  },
-  browserError: (payload) => {
-    browserSurfaces.addError(payload.surfaceId, {
-      message: payload.message,
-      filename: payload.filename,
-      lineno: payload.lineno,
-      timestamp: payload.timestamp,
-    });
-  },
-  browserEvalResult: (payload) => {
-    const resolve = pendingBrowserEvals.get(payload.reqId);
-    if (resolve) {
-      pendingBrowserEvals.delete(payload.reqId);
-      resolve(
-        payload.error ? `Error: ${payload.error}` : (payload.result ?? ""),
-      );
-    }
-  },
-  browserDomReady: (payload) => {
-    const { surfaceId, url } = payload;
-    // Debounce: coalesce rapid navigations (redirects, SPA routing)
-    const existing = domReadyDebounce.get(surfaceId);
-    if (existing) clearTimeout(existing);
-    domReadyDebounce.set(
-      surfaceId,
-      setTimeout(async () => {
-        domReadyDebounce.delete(surfaceId);
-        await cookieStore.ready;
-        const cookies = cookieStore.getForUrl(url);
-        if (cookies.length > 0) {
-          rpc.send("browserInjectCookies", {
-            surfaceId,
-            cookies: cookies.map((c) => ({
-              name: c.name,
-              value: c.value,
-              path: c.path,
-              expires: c.expires,
-              secure: c.secure,
-              sameSite: c.sameSite,
-            })),
-          });
-        }
-      }, 50),
-    );
-  },
-  browserCookieAction: (payload) => {
-    const { action, data, format } = payload;
-    if (action === "import" && data) {
-      const cookies =
-        format === "netscape"
-          ? parseNetscapeCookies(data)
-          : parseJsonCookies(data);
-      const count = cookieStore.importBulk(cookies);
-      rpc.send("cookieActionResult", {
-        action: "import",
-        message: `Imported ${count} cookies`,
-      });
-    } else if (action === "export") {
-      const all = cookieStore.exportAll();
-      const out =
-        format === "netscape" ? exportAsNetscape(all) : exportAsJson(all);
-      rpc.send("cookieExportResult", {
-        data: out,
-        format: format || "json",
-      });
-    } else if (action === "clear") {
-      cookieStore.clear();
-      rpc.send("cookieActionResult", {
-        action: "clear",
-        message: "All cookies cleared",
-      });
-    }
-  },
-
-  // ── Agent surface lifecycle ──
-  createAgentSurface: (payload) => {
-    createAgentWorkspaceSurface(payload);
-  },
-  splitAgentSurface: (payload) => {
-    splitAgentSurface(payload.direction, payload);
-  },
-
-  // ── Telegram (webview → bun) ──
-  createTelegramSurface: () => {
-    createTelegramWorkspaceSurface();
-  },
-  splitTelegramSurface: (payload) => {
-    splitTelegramSurface(payload.direction);
-  },
-
-  // ── Editor surface lifecycle ──
-  createEditorSurface: (payload) => {
-    createEditorWorkspaceSurface(payload.path, payload.cwd, payload.create);
-  },
-  splitEditorSurface: (payload) => {
-    splitEditorSurface(
-      payload.direction,
-      payload.path,
-      payload.cwd,
-      payload.create,
-    );
-  },
-  editorReadFile: (payload) => {
-    rpc.send("editorFileSnapshot", readEditorFile(payload));
-  },
-  editorSaveFile: (payload) => {
-    rpc.send("editorSaveResult", saveEditorFile(payload));
-  },
-  editorReloadFile: (payload) => {
-    rpc.send("editorFileSnapshot", readEditorFile(payload));
-  },
-
-  telegramSend: (payload) => {
-    if (!payload.chatId || !payload.text) return;
-    void sendTelegramAndBroadcast(payload.chatId, payload.text);
-  },
-  telegramRequestHistory: (payload) => {
-    const limit = payload.limit ?? 50;
-    const before = payload.before;
-    const rows = telegramDb.getHistory(payload.chatId, limit, before);
-    const messages = rows.map(wireTelegramMessage);
-    rpc.send("telegramHistory", {
-      chatId: payload.chatId,
-      messages,
-      isLatest: !before,
-    });
-  },
-  telegramRequestState: () => {
-    sendTelegramStateToWebview();
-  },
-
-  agentPrompt: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({
-        type: "prompt",
-        message: payload.message,
-        ...(payload.images?.length ? { images: payload.images } : {}),
-      });
-  },
-  agentAbort: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "abort" });
-  },
-  agentSetModel: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({
-        type: "set_model",
-        provider: payload.provider,
-        modelId: payload.modelId,
-      });
-  },
-  agentSetThinking: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({
-        type: "set_thinking_level",
-        level: payload.level,
-      });
-  },
-  agentNewSession: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "new_session" });
-  },
-  agentCompact: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "compact" });
-  },
-  agentGetModels: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "get_available_models" });
-  },
-  agentGetState: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "get_state" });
-  },
-  agentExtensionUIResponse: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.respondToExtensionUI(payload.id, payload.response);
-  },
-  agentSteer: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({
-        type: "steer",
-        message: payload.message,
-        ...(payload.images?.length ? { images: payload.images } : {}),
-      });
-  },
-  agentFollowUp: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({
-        type: "follow_up",
-        message: payload.message,
-        ...(payload.images?.length ? { images: payload.images } : {}),
-      });
-  },
-  agentBash: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({
-        type: "bash",
-        command: payload.command,
-        ...(payload.timeout != null ? { timeout: payload.timeout } : {}),
-      });
-  },
-  agentAbortBash: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.abortBash();
-  },
-  agentCycleModel: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "cycle_model" });
-  },
-  agentCycleThinking: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "cycle_thinking_level" });
-  },
-  agentGetCommands: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "get_commands" });
-  },
-  agentGetSessionStats: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "get_session_stats" });
-  },
-  agentGetMessages: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "get_messages" });
-  },
-  agentListSessions: (payload) => {
-    sendWebviewAction("agentEvent", {
-      agentId: payload.agentId,
-      event: {
-        type: "response",
-        command: "list_sessions",
-        success: true,
-        data: { sessions: listPiSessions() },
-      },
-    });
-  },
-  agentGetSessionTree: (payload) => {
-    sendWebviewAction("agentEvent", {
-      agentId: payload.agentId,
-      event: {
-        type: "response",
-        command: "get_session_tree",
-        success: true,
-        data: {
-          tree: readPiSessionTree(payload.sessionPath),
-        },
-      },
-    });
-  },
-  agentGetForkMessages: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "get_fork_messages" });
-  },
-  agentGetLastAssistantText: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "get_last_assistant_text" });
-  },
-  agentSetSteeringMode: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({ type: "set_steering_mode", mode: payload.mode });
-  },
-  agentSetFollowUpMode: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({ type: "set_follow_up_mode", mode: payload.mode });
-  },
-  agentSetAutoCompaction: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({
-        type: "set_auto_compaction",
-        enabled: payload.enabled,
-      });
-  },
-  agentSetAutoRetry: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({
-        type: "set_auto_retry",
-        enabled: payload.enabled,
-      });
-  },
-  agentAbortRetry: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.abortRetry();
-  },
-  agentSetSessionName: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({ type: "set_session_name", name: payload.name });
-  },
-  agentSwitchSession: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({
-        type: "switch_session",
-        sessionPath: payload.sessionPath,
-      });
-  },
-  agentFork: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent) agent.sendNoWait({ type: "fork", entryId: payload.entryId });
-  },
-  agentExportHtml: (payload) => {
-    const agent = piAgentManager.getAgent(payload.agentId);
-    if (agent)
-      agent.sendNoWait({
-        type: "export_html",
-        ...(payload.outputPath ? { outputPath: payload.outputPath } : {}),
-      });
-  },
-  // Plan #10 commit C — webview modal answers / cancels go straight
-  // to the same queue the socket-RPC handlers drive. Idempotent on
-  // unknown ids; the resolved subscriber handles fan-out (Telegram
-  // edit-in-place + webview push) so we don't pre-empt here.
-  askUserAnswer: (payload) => {
-    askUser.answer(payload.request_id, payload.value);
-  },
-  askUserCancel: (payload) => {
-    askUser.cancel(payload.request_id, payload.reason);
-  },
-  askUserRequestSnapshot: () => {
-    rpc.send("askUserEvent", {
-      kind: "snapshot",
-      pending: askUser.pending_list(),
-    });
-  },
-} satisfies BunMessageHandlers;
+const bunMessageHandlers: BunMessageHandlers = buildBunMessageHandlers(
+  webviewHandlerContext,
+);
 
 const rpc = BrowserView.defineRPC<TauMuxRPC>({
   handlers: { messages: bunMessageHandlers },
@@ -3002,6 +2372,25 @@ const socketHandler = createRpcHandler(
     },
   },
 );
+
+// All late-bound dependencies referenced by the webview handlers now
+// exist; flush them into the context so the registered handlers can
+// resolve `ctx.autoContinue`, `ctx.rpc`, `ctx.socketHandler` and the
+// pending-reply maps. Safe to run at any synchronous point after this
+// — no handler can fire before the Electrobun message pump dispatches
+// the first webview event (the initial `resize`), which is always
+// async with respect to module init.
+setWebviewHandlerLateBindings({
+  autoContinue,
+  rpc,
+  mainWindow,
+  socketPath,
+  socketHandler,
+  pendingReads,
+  pendingBrowserEvals,
+  domReadyDebounce,
+});
+
 const socketServer = new SocketServer(socketPath, socketHandler);
 await socketServer.start();
 // Health: socket lifecycle. SocketServer no longer overwrites a live peer
