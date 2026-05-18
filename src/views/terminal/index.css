@@ -9900,7 +9900,7 @@ body::after {
   margin-top: 0 !important;
   padding: 0 !important;
   border-top: 0.5px solid var(--sb-hairline);
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--ht-sidebar-filter-selected-shadow);
 }
 
 #sidebar.sidebar-v2 .sidebar-server-row {
@@ -9927,7 +9927,7 @@ body::after {
 }
 
 #sidebar.sidebar-v2 .sidebar-server-pill:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--ht-agent-row-bg-hover);
 }
 
 #sidebar.sidebar-v2 .sidebar-server-dot {
@@ -9938,8 +9938,8 @@ body::after {
 }
 
 #sidebar.sidebar-v2 .sidebar-server-dot.online {
-  background: #86efac;
-  box-shadow: 0 0 5px rgba(134, 239, 172, 0.55);
+  background: var(--ht-badge-success-fg);
+  box-shadow: 0 0 5px var(--ht-sidebar-v2-server-online-glow);
 }
 
 #sidebar.sidebar-v2 .sidebar-server-dot.offline {
@@ -9948,19 +9948,19 @@ body::after {
 }
 
 #sidebar.sidebar-v2 .sidebar-server-dot.starting {
-  background: #f9c84a;
-  box-shadow: 0 0 5px rgba(249, 200, 74, 0.48);
+  background: var(--ht-sidebar-v2-log-warning-fg);
+  box-shadow: 0 0 5px var(--ht-sidebar-v2-server-starting-glow);
   animation: sb-server-dot-pulse 1.2s ease-in-out infinite;
 }
 
 #sidebar.sidebar-v2 .sidebar-server-dot.error {
-  background: #fca5a5;
-  box-shadow: 0 0 5px rgba(252, 165, 165, 0.5);
+  background: var(--ht-pm-kill-fg);
+  box-shadow: 0 0 5px var(--ht-sidebar-v2-server-error-glow);
 }
 
 #sidebar.sidebar-v2 .sidebar-server-dot.conflict {
-  background: #fab387;
-  box-shadow: 0 0 5px rgba(250, 179, 135, 0.5);
+  background: var(--ht-sidebar-v2-server-conflict-fg);
+  box-shadow: 0 0 5px var(--ht-sidebar-v2-server-conflict-glow);
   animation: sb-server-dot-pulse 2s ease-in-out infinite;
 }
 
