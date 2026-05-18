@@ -7276,7 +7276,7 @@ body::after {
 
 .agent-body {
   flex: 1; display: flex; flex-direction: column; overflow: hidden;
-  background: linear-gradient(180deg, rgba(10,10,14,0.95) 0%, rgba(8,8,12,0.98) 100%);
+  background: linear-gradient(180deg, var(--ht-agent-body-bg-top) 0%, var(--ht-agent-body-bg-bottom) 100%);
   position: relative;
 }
 
@@ -7284,8 +7284,8 @@ body::after {
 .agent-toolbar {
   display: flex; align-items: center; gap: 4px;
   padding: 5px 10px; flex-shrink: 0;
-  border-bottom: 0.5px solid rgba(255,255,255,0.04);
-  background: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 100%);
+  border-bottom: 0.5px solid var(--ht-agent-row-bg-hover);
+  background: linear-gradient(180deg, var(--ht-sidebar-row-bg-stripe) 0%, transparent 100%);
 }
 
 .agent-session-name {
@@ -7299,14 +7299,14 @@ body::after {
 
 .agent-tb-btn {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 9px; border: 0.5px solid rgba(255,255,255,0.06); border-radius: 6px;
-  background: rgba(255,255,255,0.02); color: var(--text-muted);
+  padding: 3px 9px; border: 0.5px solid var(--ht-agent-row-bg-hover-card); border-radius: 6px;
+  background: var(--ht-package-bg); color: var(--text-muted);
   font: 500 10.5px/1 inherit; cursor: pointer; white-space: nowrap;
   transition: all 0.15s ease;
 }
 .agent-tb-btn:hover {
-  background: rgba(255,255,255,0.06); color: var(--text-strong);
-  border-color: rgba(255,255,255,0.1);
+  background: var(--ht-agent-row-bg-hover-card); color: var(--text-strong);
+  border-color: var(--ht-sidebar-filter-selected-bg-top);
   transform: translateY(-0.5px);
 }
 .agent-tb-btn:active { transform: translateY(0); }
@@ -7315,14 +7315,14 @@ body::after {
   width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
   box-shadow: 0 0 4px currentColor;
 }
-.agent-tb-dot-model { background: var(--accent-primary); box-shadow: 0 0 6px rgba(111, 233, 255,0.4); }
+.agent-tb-dot-model { background: var(--accent-primary); box-shadow: 0 0 6px var(--ht-agent-dot-glow); }
 .agent-tb-chevron { font-size: 8px; opacity: 0.4; margin-left: 2px; }
 
-.agent-tb-model { border-color: rgba(111, 233, 255,0.12); }
-.agent-tb-model:hover { border-color: rgba(111, 233, 255,0.3);  }
+.agent-tb-model { border-color: var(--ht-palette-divider-soft); }
+.agent-tb-model:hover { border-color: var(--ht-agent-tb-model-hover-border);  }
 
-.agent-tb-thinking { border-color: rgba(255, 197, 107,0.12); }
-.agent-tb-thinking:hover { border-color: rgba(255, 197, 107,0.3);  }
+.agent-tb-thinking { border-color: var(--ht-notify-amber-soft); }
+.agent-tb-thinking:hover { border-color: var(--ht-agent-tb-thinking-hover-border);  }
 
 .agent-tb-action {
   color: var(--text-dim); font-size: 10px; border-color: transparent;
@@ -7337,8 +7337,8 @@ body::after {
   gap: 6px;
   flex-wrap: wrap;
   padding: 6px 10px 5px;
-  border-bottom: 0.5px solid rgba(255,255,255,0.03);
-  background: rgba(255,255,255,0.015);
+  border-bottom: 0.5px solid var(--ht-package-header-bg-hover);
+  background: var(--ht-pm-card-bg);
 }
 .agent-model-badge {
   display: inline-flex;
@@ -7346,24 +7346,24 @@ body::after {
   gap: 4px;
   padding: 2px 7px;
   border-radius: 12px;
-  border: 0.5px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.025);
+  border: 0.5px solid var(--ht-panel-border-soft);
+  background: var(--ht-sidebar-row-bg-stripe);
   color: var(--text-dim);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.agent-model-badge-provider { color: var(--accent-primary); border-color: rgba(111, 233, 255,0.18); }
-.agent-model-badge-cost { color: #4ade80; }
-.agent-model-badge-scope { color: #818cf8; }
+.agent-model-badge-provider { color: var(--accent-primary); border-color: var(--ht-palette-divider); }
+.agent-model-badge-cost { color: var(--ht-sem-success); }
+.agent-model-badge-scope { color: var(--ht-agent-badge-scope-fg); }
 
 /* ── Session stats ── */
 .agent-stats {
   display: flex; flex-wrap: wrap; gap: 2px 12px;
   padding: 6px 12px; flex-shrink: 0;
-  border-bottom: 0.5px solid rgba(255,255,255,0.03);
-  background: rgba(0,0,0,0.2);
+  border-bottom: 0.5px solid var(--ht-package-header-bg-hover);
+  background: var(--ht-agent-stats-bg);
   animation: agent-dd-in 0.15s ease;
 }
 .agent-stats-hidden { display: none; }
@@ -7421,10 +7421,10 @@ body::after {
 .agent-dd-model-name { font-weight: 600; color: var(--text-strong); }
 .agent-dd-model-meta { display: flex; flex-wrap: wrap; gap: 4px; }
 .agent-model-scope {
-  border: none; background: var(--tau-panel); color: rgba(255,255,255,0.25);
+  border: none; background: var(--tau-panel); color: var(--ht-agent-model-scope-fg);
   cursor: pointer; padding: 2px 4px 0 0; font-size: 12px; line-height: 1;
 }
-.agent-model-scope-on { color: #818cf8; }
+.agent-model-scope-on { color: var(--ht-agent-badge-scope-fg); }
 
 /* ── Streaming indicator bar ── */
 .agent-streaming-bar {
