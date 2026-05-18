@@ -8185,16 +8185,16 @@ body::after {
  * ══════════════════════════════════════════════════════════════════════ */
 
 #sidebar.sidebar-v2 {
-  --sb-ink: rgba(243, 246, 253, 0.96);
-  --sb-ink-dim: rgba(232, 238, 248, 0.74);
-  --sb-ink-soft: rgba(232, 238, 248, 0.54);
-  --sb-ink-faint: rgba(232, 238, 248, 0.32);
-  --sb-bg: rgba(18, 20, 26, 0.78);
-  --sb-bg-strong: rgba(12, 14, 20, 0.9);
-  --sb-row-bg: rgba(255, 255, 255, 0.016);
-  --sb-row-hover: rgba(255, 255, 255, 0.04);
-  --sb-hairline: rgba(255, 255, 255, 0.06);
-  --sb-hairline-strong: rgba(255, 255, 255, 0.1);
+  --sb-ink: var(--ht-sidebar-text-strong);
+  --sb-ink-dim: var(--ht-vnext-text-soft);
+  --sb-ink-soft: var(--ht-vnext-text-mid);
+  --sb-ink-faint: var(--ht-sidebar-v2-ink-faint);
+  --sb-bg: var(--ht-sidebar-v2-bg);
+  --sb-bg-strong: var(--ht-sidebar-v2-bg-strong);
+  --sb-row-bg: var(--ht-sidebar-row-bg-stripe-soft);
+  --sb-row-hover: var(--ht-agent-row-bg-hover);
+  --sb-hairline: var(--ht-agent-row-bg-hover-card);
+  --sb-hairline-strong: var(--ht-sidebar-filter-selected-bg-top);
   --sb-pad-x: 0;
   --sb-row-h: 22px;
   padding: 0 !important;
@@ -8202,7 +8202,7 @@ body::after {
   background:
     var(--sb-bg) !important;
   border-right: 0.5px solid var(--sb-hairline) !important;
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.02) !important;
+  box-shadow: inset -1px 0 0 var(--ht-package-bg) !important;
 }
 
 /* Zero border-radius across the whole sidebar surface. Uses ultra-
@@ -8230,7 +8230,7 @@ body::after {
   gap: 8px;
   padding: 9px 10px 8px;
   border-bottom: 0.5px solid var(--sb-hairline);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+  background: linear-gradient(180deg, var(--ht-package-bg), transparent);
 }
 
 #sidebar.sidebar-v2 .sidebar-header-copy {
@@ -8268,7 +8268,7 @@ body::after {
   padding: 0 5px;
   height: 14px;
   line-height: 14px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ht-agent-row-bg-hover-card);
   color: var(--sb-ink-soft);
   font-size: 9.5px;
   font-weight: 600;
@@ -8308,7 +8308,7 @@ body::after {
 #sidebar.sidebar-v2 .sidebar-new-btn:hover,
 #sidebar.sidebar-v2 .sidebar-icon-btn:hover {
   color: var(--sb-ink);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ht-agent-row-bg-hover-card);
   border-color: var(--sb-hairline-strong);
 }
 
@@ -8334,7 +8334,7 @@ body::after {
   gap: 6px;
   padding: 5px 10px;
   border-bottom: 0.5px solid var(--sb-hairline);
-  background: rgba(0, 0, 0, 0.14);
+  background: var(--ht-sidebar-v2-search-hold);
 }
 
 #sidebar.sidebar-v2 .sidebar-search-icon {
@@ -11927,7 +11927,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--tau-text-mute, rgba(255, 255, 255, 0.55));
+  color: var(--tau-text-mute);
   padding: 2px 4px 0;
 }
 .spp-section-subtitle {
@@ -11935,12 +11935,12 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--tau-text-mute, rgba(255, 255, 255, 0.45));
+  color: var(--tau-text-mute);
   padding: 8px 4px 4px;
 }
 .spp-empty {
   font-size: 11px;
-  color: var(--tau-text-mute, rgba(255, 255, 255, 0.4));
+  color: var(--tau-text-mute);
   padding: 6px 8px;
   font-style: italic;
 }
@@ -11954,8 +11954,8 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   padding: 8px 10px;
   text-align: left;
   border-radius: 8px;
-  border: 1px solid var(--tau-border-soft, rgba(255, 255, 255, 0.08));
-  background: var(--tau-bg-card, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--ht-panel-border-soft);
+  background: var(--ht-package-header-bg-hover);
   color: inherit;
   cursor: pointer;
   font: inherit;
@@ -11964,8 +11964,8 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
     border-color 120ms ease;
 }
 .spp-card:hover {
-  background: var(--tau-bg-card-raised, rgba(255, 255, 255, 0.06));
-  border-color: var(--tau-cyan, #66c0f4);
+  background: var(--ht-agent-row-bg-hover-card);
+  border-color: var(--tau-cyan);
 }
 .spp-card-header {
   display: flex;
@@ -11974,7 +11974,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   font-size: 11px;
 }
 .spp-card-ws {
-  color: var(--tau-text-strong, #ecedef);
+  color: var(--text-strong);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -11982,13 +11982,13 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   max-width: 60%;
 }
 .spp-card-agent {
-  color: var(--tau-cyan, #66c0f4);
-  font-family: var(--tau-font-mono, ui-monospace, monospace);
+  color: var(--tau-cyan);
+  font-family: var(--tau-font-mono);
   font-size: 10px;
 }
 .spp-card-summary {
   margin-left: auto;
-  color: var(--tau-text-mute, rgba(255, 255, 255, 0.55));
+  color: var(--tau-text-mute);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -12011,26 +12011,26 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   font-size: 10px;
 }
 .spp-step-id {
-  color: var(--tau-text-mute, rgba(255, 255, 255, 0.55));
-  font-family: var(--tau-font-mono, ui-monospace, monospace);
+  color: var(--tau-text-mute);
+  font-family: var(--tau-font-mono);
   font-size: 10px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .spp-step-title {
-  color: var(--tau-text-strong, #ecedef);
+  color: var(--text-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.spp-step-done .spp-step-icon { color: var(--tau-ok, #4ade80); }
-.spp-step-done .spp-step-title { color: var(--tau-text-mute, rgba(255, 255, 255, 0.55)); text-decoration: line-through; }
-.spp-step-active .spp-step-icon { color: var(--tau-cyan, #66c0f4); }
-.spp-step-active .spp-step-title { color: var(--tau-text-strong, #ecedef); font-weight: 500; }
-.spp-step-waiting .spp-step-icon { color: var(--tau-text-mute, rgba(255, 255, 255, 0.4)); }
-.spp-step-err .spp-step-icon { color: var(--tau-err, #f87171); }
-.spp-step-err .spp-step-title { color: var(--tau-err, #f87171); }
+.spp-step-done .spp-step-icon { color: var(--tau-ok); }
+.spp-step-done .spp-step-title { color: var(--tau-text-mute); text-decoration: line-through; }
+.spp-step-active .spp-step-icon { color: var(--tau-cyan); }
+.spp-step-active .spp-step-title { color: var(--text-strong); font-weight: 500; }
+.spp-step-waiting .spp-step-icon { color: var(--tau-text-mute); }
+.spp-step-err .spp-step-icon { color: var(--tau-err); }
+.spp-step-err .spp-step-title { color: var(--tau-err); }
 
 /* Audit log */
 .spp-audit {
@@ -12048,8 +12048,8 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   align-items: baseline;
   font-size: 10px;
   padding: 2px 4px;
-  font-family: var(--tau-font-mono, ui-monospace, monospace);
-  color: var(--tau-text-mute, rgba(255, 255, 255, 0.6));
+  font-family: var(--tau-font-mono);
+  color: var(--tau-text-mute);
 }
 .spp-audit-outcome {
   text-transform: uppercase;
@@ -12057,14 +12057,14 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   font-weight: 600;
   font-size: 9px;
 }
-.spp-audit-fired .spp-audit-outcome { color: var(--tau-ok, #4ade80); }
-.spp-audit-dryrun .spp-audit-outcome { color: var(--tau-cyan, #66c0f4); }
-.spp-audit-skipped .spp-audit-outcome { color: var(--tau-text-mute, rgba(255, 255, 255, 0.45)); }
+.spp-audit-fired .spp-audit-outcome { color: var(--tau-ok); }
+.spp-audit-dryrun .spp-audit-outcome { color: var(--tau-cyan); }
+.spp-audit-skipped .spp-audit-outcome { color: var(--tau-text-mute); }
 .spp-audit-engine {
-  color: var(--tau-text-mute, rgba(255, 255, 255, 0.4));
+  color: var(--tau-text-mute);
 }
 .spp-audit-reason {
-  color: var(--tau-text-strong, #ecedef);
+  color: var(--text-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -12089,8 +12089,8 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   /* Strengthen borders that are otherwise nearly invisible on dark
    * backgrounds — pane borders, sidebar dividers, chip outlines. */
   :root {
-    --tau-border: rgba(111, 233, 255, 0.55);
-    --tau-border-strong: rgba(111, 233, 255, 0.85);
+    --tau-border: var(--ht-contrast-border-cyan);
+    --tau-border-strong: var(--ht-contrast-border-cyan-strong);
   }
   .pane-border,
   .surface-chip,
@@ -12100,11 +12100,11 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   .process-manager,
   .ask-user-modal {
     border-width: 1px;
-    border-color: rgba(111, 233, 255, 0.85);
+    border-color: var(--ht-contrast-border-cyan-strong);
   }
   /* Increase focus-ring contrast — default outlines are too subtle. */
   *:focus-visible {
-    outline: 2px solid #6fe9ff;
+    outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
   }
 }
