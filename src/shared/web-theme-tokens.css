@@ -573,6 +573,20 @@
   --ht-agent-stats-bg: rgba(0, 0, 0, 0.2);
   --ht-agent-model-scope-fg: rgba(255, 255, 255, 0.25);
 
+  /* P7 S42 chunk 1 — pi-agent welcome + messages. The user-message
+   *  bubble uses a two-stop cyan gradient (kept as discrete tokens
+   *  so the bubble can rotate independently from chat assistant
+   *  bubbles). The system-message amber-tint bg is intentionally
+   *  softer than --ht-notify-amber-soft because it's a flat fill
+   *  rather than a notification badge. msg-time fg (0.15 white) is
+   *  the dimmest text tier in the panel. image-thumb-bg (0.25 black)
+   *  is the canvas hold behind transparent images. */
+  --ht-agent-msg-time-fg: rgba(255, 255, 255, 0.15);
+  --ht-agent-msg-user-grad-top: rgba(111, 233, 255, 0.1);
+  --ht-agent-msg-user-grad-bot: rgba(111, 233, 255, 0.06);
+  --ht-agent-msg-system-bg: rgba(255, 197, 107, 0.05);
+  --ht-agent-image-thumb-bg: rgba(0, 0, 0, 0.25);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
