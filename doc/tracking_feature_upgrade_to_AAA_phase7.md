@@ -1762,3 +1762,46 @@ Grade distribution after S36: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: sidebar v2 workspace cards (port-chip + cpu-bar + metric-cpu, color-mix nested), settings color-grid + theme-preset cards, telegram bridge sub-states.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 37 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — vNext (post-Phase-6 redesign) UI overrides. Chunk 1 covers palette / prompt / search; chunk 2 extends the same vNext text scale into process-manager / surface-details.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H vNext palette/prompt/search overrides | `9ad40323` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-vnext-overrides.test.ts` (new) | +14 (3 new --ht-vnext-text-* tokens for the cooler 232/238/248 + 243/246/253 zinc scale; 18 literals migrated; reuses --ht-chip-bg, --ht-panel-border-soft, --ht-agent-row-bg-hover[-card], --ht-package-bg) |
+| Cluster H vNext PM / surface-details overrides | `0b021fec` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-vnext-pm.test.ts` (new) | +8 (2 new --ht-vnext-text-* tokens for section-h + emph; 10 literals migrated; reuses --ht-agent-row-bg-hover[-card] + --ht-package-header-bg-hover) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.122 → 0.3.123 (vNext palette) → 0.3.124 (vNext PM).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — double chunk introducing the --ht-vnext-text-* family. The post-Phase-6 redesign uses a deliberately cooler zinc tint (232,238,248) + (243,246,253) than the v1 sidebar's (229,231,237), and the override block scatters that scale across palette descriptions / prompt messages / kbd-caps / PM section headers / workspace names. 5 new vNext-text tokens cover the full brightness ladder (mute 0.48 → muted 0.58 → bright 0.88 → section-h 0.46 → emph 0.94) with 2pp internal harmonisations folding 0.56 + 0.9 into adjacent tiers. ~28 literals migrated across the two chunks. audit:theming: 568 → 543 (−25). |
+
+Grade distribution after S37: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **vNext block bounds**: the file has 3 occurrences of `.palette-input-row {` (base, vNext, t3 override). The first test attempt scoped the slice to `[lastIndexOf("palette-input-row {", t3FinalMark), t3FinalMark)` — but t3FinalMark sits *after* the `#titlebar {` t3-override row, so the slice swallowed the t3 block too. Fixed by chaining anchors: `t3FinalMark → lastIndexOf("#titlebar {")` gives the t3 block start, then `lastIndexOf("palette-input-row {")` from there gives the vNext block start. Same anchor pattern as the S36 t3 reuse test, reused.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+
+### Exit criteria (session 37)
+
+| Criterion | Status |
+|---|---|
+| Cluster H vNext palette/prompt/search migrated | ✅ 568 → 553 (−15) |
+| Cluster H vNext PM/surface-details migrated | ✅ 553 → 543 (−10) |
+| `bun test` green (modulo pre-existing flake) | ✅ +22 new tests; full theme-token suite 421 / 421 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 37)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: theme-card cluster (~lines 5275–5689, 70 literals), settings color-grid + theme-preset cards, sidebar v2 workspace cards (port-chip + cpu-bar + metric-cpu, color-mix nested).
+- Phases 8 (release engineering) + 9 (docs / observability).
