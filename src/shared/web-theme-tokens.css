@@ -587,6 +587,24 @@
   --ht-agent-msg-system-bg: rgba(255, 197, 107, 0.05);
   --ht-agent-image-thumb-bg: rgba(0, 0, 0, 0.25);
 
+  /* P7 S42 chunk 2 — pi-agent think + tool-call + code + context-
+   *  meter + footer + widget palette. The agent-tc state colours
+   *  follow a fixed alpha ladder (bg 0.025, border 0.08 → green
+   *  reuses --ht-badge-success-bg exact, red + cyan get their own
+   *  slots). The code block sits behind a deep 0.5 black hold; the
+   *  tool-call body uses a slightly lighter 0.35 hold; the footer
+   *  hold is the lightest of the three at 0.15. */
+  --ht-agent-code-bg: rgba(0, 0, 0, 0.5);
+  --ht-agent-ic-border: rgba(111, 233, 255, 0.06);
+  --ht-agent-think-bg: rgba(255, 197, 107, 0.035);
+  --ht-agent-think-border-left: rgba(255, 197, 107, 0.25);
+  --ht-agent-tc-bg: rgba(74, 222, 128, 0.02);
+  --ht-agent-tc-run-bg: rgba(111, 233, 255, 0.025);
+  --ht-agent-tc-err-border: rgba(248, 113, 113, 0.15);
+  --ht-agent-tc-err-bg: rgba(248, 113, 113, 0.025);
+  --ht-agent-tc-body-bg: rgba(0, 0, 0, 0.35);
+  --ht-agent-footer-bg: rgba(0, 0, 0, 0.15);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg

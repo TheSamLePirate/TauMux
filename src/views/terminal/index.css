@@ -7586,20 +7586,20 @@ body::after {
 .agent-code-lang {
   position: absolute; top: 0; right: 0;
   padding: 2px 8px; border-radius: 0 6px 0 4px;
-  background: rgba(255,255,255,0.06);
+  background: var(--ht-agent-row-bg-hover-card);
   font-size: 9px; font-weight: 600; color: var(--text-dim);
   text-transform: uppercase; letter-spacing: 0.05em;
 }
 .agent-code {
   margin: 0; padding: 10px 12px; border-radius: 8px;
-  background: rgba(0,0,0,0.5); border: 0.5px solid rgba(255,255,255,0.04);
+  background: var(--ht-agent-code-bg); border: 0.5px solid var(--ht-agent-row-bg-hover);
   font: 11.5px/1.55 'JetBrainsMono Nerd Font Mono','JetBrains Mono','SF Mono',monospace;
   overflow-x: auto; color: var(--text-main); white-space: pre;
 }
 .agent-code code { font: inherit; }
 .agent-ic {
   padding: 1px 5px; border-radius: 4px;
-  background: rgba(111, 233, 255,0.08); border: 0.5px solid rgba(111, 233, 255,0.06);
+  background: var(--ht-notify-cyan-soft); border: 0.5px solid var(--ht-agent-ic-border);
   font: 0.9em/1 'JetBrainsMono Nerd Font Mono','JetBrains Mono','SF Mono',monospace;
   color: var(--accent-primary);
 }
@@ -7613,9 +7613,9 @@ body::after {
 /* Thinking blocks */
 .agent-think {
   padding: 7px 11px; border-radius: 8px; max-width: 95%;
-  background: rgba(255, 197, 107,0.035); border: 0.5px solid rgba(255, 197, 107,0.08);
+  background: var(--ht-agent-think-bg); border: 0.5px solid var(--ht-notify-amber-soft);
   animation: agent-msg-in 0.2s ease;
-  border-left: 1px solid rgba(255, 197, 107,0.25);
+  border-left: 1px solid var(--ht-agent-think-border-left);
 }
 .agent-think-hdr {
   font-size: 9.5px; font-weight: 600; color: var(--accent-secondary);
@@ -7642,17 +7642,17 @@ body::after {
 /* ── Tool calls (live) ── */
 .agent-tc {
   padding: 6px 11px; border-radius: 8px; font-size: 11.5px;
-  max-width: 95%; border: 0.5px solid rgba(74,222,128,0.08);
-  background: rgba(74,222,128,0.02);
+  max-width: 95%; border: 0.5px solid var(--ht-badge-success-bg);
+  background: var(--ht-agent-tc-bg);
   animation: agent-msg-in 0.2s ease;
   transition: border-color 0.25s, background 0.25s, box-shadow 0.25s;
 }
 .agent-tc-run {
-  border-color: rgba(111, 233, 255,0.15); background: rgba(111, 233, 255,0.025);
-  
+  border-color: var(--ht-palette-divider-soft); background: var(--ht-agent-tc-run-bg);
+
 }
 .agent-tc-err {
-  border-color: rgba(248,113,113,0.15); background: rgba(248,113,113,0.025);
+  border-color: var(--ht-agent-tc-err-border); background: var(--ht-agent-tc-err-bg);
 }
 
 .agent-tc-hdr {
@@ -7664,8 +7664,8 @@ body::after {
 .agent-tc-run .agent-tc-icon {
   color: var(--accent-primary); animation: agent-spin 0.8s linear infinite;
 }
-.agent-tc-err .agent-tc-icon { color: #f87171; }
-.agent-tc-ok .agent-tc-icon { color: #4ade80; }
+.agent-tc-err .agent-tc-icon { color: var(--ht-sem-error); }
+.agent-tc-ok .agent-tc-icon { color: var(--ht-sem-success); }
 @keyframes agent-spin { to { transform: rotate(360deg); } }
 
 .agent-tc-name { font-weight: 600; color: var(--text-strong); font-size: 11px; }
@@ -7687,7 +7687,7 @@ body::after {
 
 .agent-tc-body {
   margin-top: 4px; padding: 6px 8px; border-radius: 5px;
-  background: rgba(0,0,0,0.35);
+  background: var(--ht-agent-tc-body-bg);
   font: 10.5px/1.45 'JetBrainsMono Nerd Font Mono','JetBrains Mono','SF Mono',monospace;
   color: var(--text-muted); max-height: 160px; overflow-y: auto;
   white-space: pre-wrap; word-break: break-all;
@@ -7697,17 +7697,17 @@ body::after {
 .agent-tc-body-hidden { display: none; }
 
 /* Diff highlighting in tool results */
-.agent-diff-add { color: #4ade80; }
-.agent-diff-del { color: #f87171; opacity: 0.75; }
+.agent-diff-add { color: var(--ht-sem-success); }
+.agent-diff-del { color: var(--ht-sem-error); opacity: 0.75; }
 
 /* Inline tool results (in history) */
 .agent-tc-inline-hdr {
-  font-size: 10.5px; font-weight: 600; color: #4ade80;
+  font-size: 10.5px; font-weight: 600; color: var(--ht-sem-success);
   margin-bottom: 2px; display: flex; align-items: center; gap: 6px;
 }
-.agent-tc-inline-err { color: #f87171; }
+.agent-tc-inline-err { color: var(--ht-sem-error); }
 .agent-tc-inline-body {
-  padding: 5px 8px; border-radius: 5px; background: rgba(0,0,0,0.3);
+  padding: 5px 8px; border-radius: 5px; background: var(--ht-sidebar-filter-selected-shadow);
   font: 10.5px/1.45 'JetBrainsMono Nerd Font Mono','JetBrains Mono','SF Mono',monospace;
   color: var(--text-dim); max-height: 100px; overflow-y: auto;
   white-space: pre-wrap; word-break: break-all;
@@ -7717,8 +7717,8 @@ body::after {
 }
 .agent-tool-actions-empty { display: none; }
 .agent-tool-action-btn {
-  border: 0.5px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.03);
+  border: 0.5px solid var(--ht-panel-border-soft);
+  background: var(--ht-package-header-bg-hover);
   color: var(--text-dim);
   border-radius: 12px;
   padding: 2px 8px;
@@ -7729,14 +7729,14 @@ body::after {
 
 /* Bash prompt */
 .agent-bash-prompt {
-  color: #4ade80; font-weight: 700;
+  color: var(--ht-sem-success); font-weight: 700;
   margin-right: 4px;
 }
 
 /* ── Context meter ── */
 .agent-context-meter {
   position: relative; width: 52px; height: 4px; border-radius: 2px;
-  background: rgba(255,255,255,0.06); flex-shrink: 0; overflow: hidden;
+  background: var(--ht-agent-row-bg-hover-card); flex-shrink: 0; overflow: hidden;
 }
 .agent-context-fill {
   position: absolute; left: 0; top: 0; height: 100%; border-radius: 2px;
@@ -7748,7 +7748,7 @@ body::after {
    * `width 0.5s ease, background 0.5s` which forced layout per frame
    * during context-meter updates. */
   transition: transform 0.5s ease, background 0.5s;
-  box-shadow: 0 0 4px rgba(111, 233, 255,0.2);
+  box-shadow: 0 0 4px var(--ht-palette-divider);
 }
 .agent-context-label {
   position: absolute; top: -1px; right: -28px; font-size: 8px;
@@ -7759,8 +7759,8 @@ body::after {
 .agent-footer {
   display: flex; align-items: center; gap: 12px;
   padding: 3px 12px; flex-shrink: 0;
-  border-top: 0.5px solid rgba(255,255,255,0.03);
-  background: rgba(0,0,0,0.15);
+  border-top: 0.5px solid var(--ht-package-header-bg-hover);
+  background: var(--ht-agent-footer-bg);
 }
 .agent-footer-text {
   font-size: 9.5px; color: var(--text-dim);
@@ -7775,8 +7775,8 @@ body::after {
   margin: 8px 10px 0;
 }
 .agent-widget {
-  border: 0.5px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.025);
+  border: 0.5px solid var(--ht-panel-border-soft);
+  background: var(--ht-sidebar-row-bg-stripe);
   border-radius: 10px;
   padding: 8px 10px;
 }
