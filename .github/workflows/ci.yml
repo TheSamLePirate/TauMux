@@ -42,6 +42,37 @@ jobs:
         # logs are already captured by bun:test on failure.
         run: bun test
 
+  # P9 — coverage gate. Compares the freshly-generated lcov against
+  # the Phase 0 baseline at tests/baselines/coverage-baseline.lcov.
+  # Per-file ratio comparison with 0.5pp slack — no file may go
+  # backwards. To lower the floor, run `bun run baseline:coverage`
+  # locally and commit the new baseline (review-gated).
+  coverage-gate:
+    name: Coverage gate (per-file regression check)
+    runs-on: macos-14
+    timeout-minutes: 12
+    # Don't block on the typecheck job — coverage is independent and
+    # we'd rather see both pass/fail status in parallel.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate coverage
+        # test:coverage runs the web-client build first (some tests
+        # import bundled output) then bun test with lcov reporter.
+        run: bun run test:coverage
+
+      - name: Check coverage against baseline
+        # Exits 1 if any file regressed beyond the 0.5pp slack.
+        run: bun run report:coverage:check
+
   # Playwright e2e suites (web-mirror, native, packaged-app, screenshot-diff)
   # were removed from CI on 2026-04-27. They were authored against pixel
   # baselines that drift on the GitHub runner's font smoothing / accent

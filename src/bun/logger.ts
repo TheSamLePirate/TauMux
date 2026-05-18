@@ -20,6 +20,16 @@
 // deleted at boot (only files matching the `app-*.log` glob — we don't
 // wander into anything user-placed).
 //
+// Size-based rotation (P9): a single multi-day session can swell
+// `app-DATE.log` to multi-GiB if a chatty subsystem (PTY noise, agent
+// streams, sideband demos) is misbehaving. When the active file
+// exceeds `MAX_BYTES_PER_FILE` (50 MiB default, override via
+// `HT_LOG_MAX_BYTES`), we rename the current file to `app-DATE.<n>.log`
+// (next available index 1, 2, 3, …) and open a fresh `app-DATE.log`.
+// `tail -f app-DATE.log` always follows the newest chunk; numbered
+// chunks form the archive. The prune-by-date pass also matches the
+// numbered variants.
+//
 // Tee semantics
 // -------------
 // `process.stdout.write` and `process.stderr.write` are wrapped so the
@@ -38,9 +48,12 @@
 import {
   chmodSync,
   closeSync,
+  existsSync,
+  fstatSync,
   mkdirSync,
   openSync,
   readdirSync,
+  renameSync,
   unlinkSync,
   writeSync,
 } from "node:fs";
@@ -48,6 +61,17 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const RETENTION_DAYS = 14;
+
+/** P9 — size-based rotation threshold. 50 MiB default; HT_LOG_MAX_BYTES
+ *  env override for tests + power users. A value ≤ 0 disables size
+ *  rotation entirely (date rotation still applies). Resolved per
+ *  setupLogging call so tests can flip it between cases. */
+function resolveMaxBytes(): number {
+  const raw = process.env["HT_LOG_MAX_BYTES"];
+  if (!raw) return 50 * 1024 * 1024;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 50 * 1024 * 1024;
+}
 
 /** UTC date stamp, `YYYY-MM-DD`. Stable for a 24h window; stable across
  *  process restarts; never needs locale data. */
@@ -68,7 +92,9 @@ function logFileName(date: string): string {
   return `app-${date}.log`;
 }
 
-const PRUNE_PATTERN = /^app-(\d{4}-\d{2}-\d{2})\.log$/;
+// Matches both `app-2026-04-21.log` (the active chunk) AND the rotated
+// variants `app-2026-04-21.<n>.log` (P9 size rotation).
+const PRUNE_PATTERN = /^app-(\d{4}-\d{2}-\d{2})(?:\.\d+)?\.log$/;
 
 function pruneOldLogs(dir: string, retentionDays: number): void {
   const cutoffMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
@@ -104,6 +130,7 @@ export interface LoggerHandle {
 
 export function setupLogging(configDir: string | undefined): LoggerHandle {
   const dir = resolveLogDir(configDir);
+  const maxBytes = resolveMaxBytes();
 
   try {
     mkdirSync(dir, { recursive: true });
@@ -118,11 +145,19 @@ export function setupLogging(configDir: string | undefined): LoggerHandle {
   let activeDate = isoDate();
   let activePath = join(dir, logFileName(activeDate));
   let fd: number;
+  /** Bytes in the active chunk. Seeded from fstat at open so a
+   *  same-day restart picks up where we left off. */
+  let bytesInActive = 0;
   try {
     // O_APPEND so we interleave safely with a second instance (unlikely
     // but possible — e.g. dev + packaged running side by side both log
     // here if HT_CONFIG_DIR isn't set).
     fd = openSync(activePath, "a");
+    try {
+      bytesInActive = fstatSync(fd).size;
+    } catch {
+      /* best-effort — ignore stat failures */
+    }
     // Owner-only — the log can contain bot tokens and auth handshake
     // URLs (S1 / H.1). Chmod after open in case the file existed with
     // looser perms from a previous version.
@@ -136,7 +171,46 @@ export function setupLogging(configDir: string | undefined): LoggerHandle {
     return { currentPath: null, dispose: () => {} };
   }
 
-  function maybeRotate(): void {
+  /** Find the next available `app-DATE.<n>.log` name. n starts at 1. */
+  function nextRotatedName(date: string): string {
+    for (let n = 1; n < 10_000; n++) {
+      const candidate = join(dir, `app-${date}.${n}.log`);
+      if (!existsSync(candidate)) return candidate;
+    }
+    // Pathological — give up and overwrite slot 9999.
+    return join(dir, `app-${date}.9999.log`);
+  }
+
+  function rotateForSize(): void {
+    // Pull the current chunk aside under a numbered name, then open a
+    // fresh `app-DATE.log` for the next chunk. `tail -f app-DATE.log`
+    // always follows the newest output.
+    try {
+      closeSync(fd);
+    } catch {
+      /* ignore */
+    }
+    try {
+      renameSync(activePath, nextRotatedName(activeDate));
+    } catch {
+      // If the rename fails (cross-device, permissions, whatever), the
+      // active file is still there — open and append. Next rotation
+      // attempt will retry.
+    }
+    try {
+      fd = openSync(activePath, "a");
+      bytesInActive = 0;
+      try {
+        chmodSync(activePath, 0o600);
+      } catch {
+        /* best-effort */
+      }
+    } catch {
+      fd = -1;
+    }
+  }
+
+  function maybeRotateDate(): void {
     const today = isoDate();
     if (today === activeDate) return;
     try {
@@ -146,8 +220,14 @@ export function setupLogging(configDir: string | undefined): LoggerHandle {
     }
     activeDate = today;
     activePath = join(dir, logFileName(activeDate));
+    bytesInActive = 0;
     try {
       fd = openSync(activePath, "a");
+      try {
+        bytesInActive = fstatSync(fd).size;
+      } catch {
+        /* ignore */
+      }
       try {
         chmodSync(activePath, 0o600);
       } catch {
@@ -164,11 +244,17 @@ export function setupLogging(configDir: string | undefined): LoggerHandle {
 
   function writeToFile(chunk: string | Uint8Array): void {
     if (fd < 0) return;
-    maybeRotate();
+    maybeRotateDate();
     try {
       const buf =
         typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk;
       writeSync(fd, buf);
+      bytesInActive += buf.byteLength;
+      // P9 size rotation — check AFTER the write so the current chunk
+      // gets the full burst (rather than splitting mid-line).
+      if (maxBytes > 0 && bytesInActive >= maxBytes) {
+        rotateForSize();
+      }
     } catch {
       /* disk full, EIO, closed — swallow */
     }
