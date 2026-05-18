@@ -1,7 +1,7 @@
 import type { Handler, HandlerDeps } from "./types";
 import { computeNormalizedRects } from "./shared";
 
-const VERSION = "0.3.126";
+const VERSION = "0.3.127";
 const START_TIME_MS = Date.now();
 
 /** system.* handlers: diagnostic + discovery RPCs.

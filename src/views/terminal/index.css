@@ -5271,15 +5271,15 @@ body::before, body::after { content: none; }
 .progress-inline-label {
   top: -18px;
   right: 2px;
-  color: rgba(232, 238, 248, 0.48);
+  color: var(--ht-vnext-text-mute);
   font-size: 9px;
 }
 
 .sidebar-section-header {
   padding: 16px 2px 8px;
-  color: rgba(232, 238, 248, 0.46);
+  color: var(--ht-vnext-text-section-h);
   font-size: 11px;
-  border-top: 0.5px solid rgba(255, 255, 255, 0.05);
+  border-top: 0.5px solid var(--ht-chip-bg);
 }
 
 .sidebar-section-clear {
@@ -5289,16 +5289,16 @@ body::before, body::after { content: none; }
 }
 
 .sidebar-section-clear:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(243, 246, 253, 0.92);
+  background: var(--ht-chip-bg);
+  color: var(--ht-vnext-text-emph);
 }
 
 .notification-item,
 .log-item {
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.035);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--ht-agent-row-bg-hover-card);
+  background: var(--ht-package-header-bg-hover);
+  box-shadow: inset 0 1px 0 var(--ht-package-header-bg-hover);
 }
 
 .notification-title {
@@ -5315,15 +5315,15 @@ body::before, body::after { content: none; }
 
 .sidebar-footer {
   padding-top: 12px;
-  border-top: 0.5px solid rgba(255, 255, 255, 0.05);
+  border-top: 0.5px solid var(--ht-chip-bg);
 }
 
 .sidebar-server-row {
   min-height: 32px;
   padding: 0 12px;
   border-radius: 12px;
-  border: 0.5px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.035);
+  border: 0.5px solid var(--ht-agent-row-bg-hover-card);
+  background: var(--ht-package-header-bg-hover);
 }
 
 .sidebar-server-label,
