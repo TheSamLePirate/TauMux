@@ -1590,3 +1590,46 @@ Grade distribution after S32: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: workspace meta-row / surfaces-more, telegram bridge sub-states, kbd-cheatsheet body, settings panel inputs.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 33 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — search-bar + settings-close-btn (pure reuse pass), then sidebar v2 log-item state colours + notification-dismiss hover.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H search-bar + settings-close-btn (pure reuse) | `882f86d3` | `src/views/terminal/index.css`, `tests/theme-tokens-search-bar.test.ts` (new) | +5 (no new tokens; reuses --ht-agent-row-bg-hover-card, --ht-sidebar-filter-selected-bg-top, --ht-panel-border-soft, --ht-sem-error, --ht-sem-error-tint; both close-affordances now share --ht-sem-error) |
+| Cluster H sidebar v2 log + dismiss states | `7fa721aa` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-sidebar-v2-log.test.ts` (new) | +9 (4 new --ht-sidebar-v2-* tokens for denser amber #f9c84a + amber tint + azure info #8fbcff + dismiss hover red tint 0.14; reuses --ht-sem-error / -tint + --ht-pm-kill-fg) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.114 → 0.3.115 (search-bar) → 0.3.116 (sidebar v2 log).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — double chunk. (1) Pure cross-component reuse pass on search-bar (Ctrl-F overlay) and settings-close-btn: the input bg/focus/btn hover all collapse onto existing white-alpha tokens, and both close-affordances unify on --ht-sem-error. No new tokens — proving that a complete CSS region can shrink to zero literals using only the existing token vocabulary. (2) Sidebar v2 log row + notification-dismiss hover: 4 new --ht-sidebar-v2-* tokens (denser amber distinct from --ht-log-warning-fg, azure info, dismiss hover red tint) plus error-state reuses of --ht-sem-error / -tint and --ht-pm-kill-fg. ~17 literals migrated across two commits. audit:theming: 644 → 628 (−16, double-counted line offset accounts for the 1-literal diff). |
+
+Grade distribution after S33: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **No new issues.** Worktree was reused from S32 (already at main HEAD post-merge); commits flowed onto the same `worktree-aaa-phase7-session32` branch and will fast-forward to main cleanly.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 33)
+
+| Criterion | Status |
+|---|---|
+| Cluster H search-bar + settings-close-btn migrated | ✅ 644 → 638 (−6) |
+| Cluster H sidebar v2 log + dismiss migrated | ✅ 638 → 628 (−10) |
+| `bun test` green (modulo pre-existing flake) | ✅ +14 new tests; full theme-token suite 336 / 336 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 33)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: sidebar v2 workspace cards (port-chip + cpu-bar + metric-cpu, mostly color-mix nested), server-dot status colours, settings panel inputs.
+- Phases 8 (release engineering) + 9 (docs / observability).
