@@ -339,6 +339,14 @@
   --ht-browser-error-fg: rgba(239, 68, 68, 0.95);
   --ht-browser-error-bg: rgba(30, 30, 46, 0.96);
 
+  /* P7 S31 — sidebar section header text ladder. Distinct from the
+   *  sidebar-text family above (which is for the workspace card
+   *  rows) — these alphas sit between the dim (0.42) + soft (0.68)
+   *  values, painting the section headers / counts / hover states. */
+  --ht-sidebar-section-text: rgba(229, 231, 237, 0.58);
+  --ht-sidebar-section-text-hover: rgba(229, 231, 237, 0.9);
+  --ht-sidebar-section-count-fg: rgba(229, 231, 237, 0.56);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg

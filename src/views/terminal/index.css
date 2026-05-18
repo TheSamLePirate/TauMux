@@ -3449,12 +3449,12 @@ body.terminal-typing .panel {
 
 .sidebar-section-header {
   padding: 6px 2px 4px;
-  color: rgba(229, 231, 237, 0.58);
+  color: var(--ht-sidebar-section-text);
   font-size: 10.5px;
   font-weight: 560;
   letter-spacing: 0.01em;
   text-transform: none;
-  border-top: 0.5px solid rgba(255, 255, 255, 0.05);
+  border-top: 0.5px solid var(--ht-pm-card-border);
   gap: 4px;
 }
 
@@ -3475,19 +3475,19 @@ body.terminal-typing .panel {
 }
 
 .sidebar-section-toggle:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(229, 231, 237, 0.9);
+  background: var(--ht-agent-row-bg-hover);
+  color: var(--ht-sidebar-section-text-hover);
 }
 
 .sidebar-section-caret {
   display: inline-flex;
   align-items: center;
-  color: rgba(229, 231, 237, 0.5);
+  color: var(--ht-sidebar-text-mute);
   transition: color var(--transition-fast);
 }
 
 .sidebar-section-toggle:hover .sidebar-section-caret {
-  color: rgba(229, 231, 237, 0.85);
+  color: var(--ht-sidebar-section-text-hover);
 }
 
 .sidebar-section-title {
@@ -3506,8 +3506,8 @@ body.terminal-typing .panel {
   letter-spacing: 0.01em;
   padding: 1px 5px;
   border-radius: 12px;
-  color: rgba(229, 231, 237, 0.56);
-  background: rgba(255, 255, 255, 0.055);
+  color: var(--ht-sidebar-section-count-fg);
+  background: var(--ht-button-bg);
   font-variant-numeric: tabular-nums;
 }
 
@@ -3522,9 +3522,9 @@ body.terminal-typing .panel {
   font-weight: 620;
   line-height: 16px;
   text-align: center;
-  color: #fff;
+  color: var(--text-strong);
   background: var(--accent-primary);
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 0.5px var(--ht-workspace-dot-shadow);
 }
 
 .sidebar-section-badge.visible {
@@ -3537,13 +3537,13 @@ body.terminal-typing .panel {
   display: grid;
   place-items: center;
   border-radius: 5px;
-  color: rgba(229, 231, 237, 0.45);
+  color: var(--ht-sidebar-text-dim);
   transition: color var(--transition-fast), background var(--transition-fast);
 }
 
 .sidebar-section-clear:hover {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.08);
+  color: var(--ht-sem-error);
+  background: var(--ht-pm-kill-bg);
 }
 
 /* Collapsed section just hides the body; the header stays visible. */
