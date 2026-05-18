@@ -620,6 +620,21 @@
   --ht-agent-tree-role-assistant-fg: #93c5fd;
   --ht-agent-tree-role-compaction-fg: #f97316;
 
+  /* P7 S43 chunk 2 — pi-agent input bar (drop state, attachment-
+   *  aware focus ring) + attachment chips + agent status chips.
+   *  Most colours collapse onto S41–S42 cyan / amber / indigo /
+   *  green tokens. The indigo 0.22 attachment-focus border is the
+   *  brightest indigo edge in the panel; the 0.06 inset is its
+   *  faint partner. kbd-fg (0.18 white) is the dim glyph in input-
+   *  hint inline kbd labels. The two new amber/green border tokens
+   *  fill the 0.15 / 0.12 alpha tier above the soft 0.08–0.10 family. */
+  --ht-agent-input-with-attachments-border: rgba(129, 140, 248, 0.22);
+  --ht-agent-input-with-attachments-shadow: rgba(129, 140, 248, 0.06);
+  --ht-agent-attachment-chip-bg: rgba(99, 102, 241, 0.08);
+  --ht-agent-kbd-fg: rgba(255, 255, 255, 0.18);
+  --ht-agent-chip-status-border: rgba(255, 197, 107, 0.15);
+  --ht-agent-chip-streaming-border: rgba(74, 222, 128, 0.12);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
