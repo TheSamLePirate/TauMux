@@ -1633,3 +1633,46 @@ Grade distribution after S33: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: sidebar v2 workspace cards (port-chip + cpu-bar + metric-cpu, mostly color-mix nested), server-dot status colours, settings panel inputs.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 34 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — settings panel form controls, then sidebar v2 global stats (proving the S33 v2-log palette generalises).
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H settings panel form controls | `13c54cb1` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-settings-controls.test.ts` (new) | +11 (1 new --ht-on-accent-fg covering #000-on-accent-fill labels; 17 literals migrated across toggle / segmented / color-swatch / field-group / action-btn / reset-btn; heavy reuse of --ht-sidebar-filter-selected-bg-top, --ht-agent-row-bg-hover-card, --ht-package-bg, --ht-text-strong, --ht-pm-kill-*, --ht-sem-error) |
+| Cluster H sidebar v2 global stats row | `259efc3f` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-sidebar-v2-stats.test.ts` (new) | +8 (2 new --ht-sidebar-v2-* tokens for stat-proc-fg + global-stats-bg; CPU + MEM chips reuse --ht-sidebar-v2-log-warning-fg + -info-fg introduced in S33 — same shades same v2 context; PORT reuses --ht-badge-success-fg) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.116 → 0.3.117 (settings controls) → 0.3.118 (sidebar v2 stats).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — double chunk. (1) Settings panel form controls migrated to 1 new --ht-on-accent-fg token + 17 literals reusing the existing white-alpha / red-tint families: both toggle/segmented active states share a clean on-accent vocabulary, and the reset-btn hover unifies fully on the --ht-pm-kill-* + --ht-sem-error pair. (2) Sidebar v2 global stats row proves the S33 v2-log palette generalises: CPU + MEM chips reuse the same --ht-sidebar-v2-log-warning-fg + -info-fg tokens introduced one session earlier — same shades, same v2 context. Only 2 new tokens needed (stat-proc-fg purple + global-stats-bg black-hold). ~23 literals migrated across two commits. audit:theming: 628 → 605 (−23). |
+
+Grade distribution after S34: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **No new issues.** Continued in S32 worktree (already at main HEAD); commits flow onto same branch and fast-forward to main cleanly.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 34)
+
+| Criterion | Status |
+|---|---|
+| Cluster H settings panel form controls migrated | ✅ 628 → 612 (−16) |
+| Cluster H sidebar v2 global stats migrated | ✅ 612 → 605 (−7) |
+| `bun test` green (modulo pre-existing flake) | ✅ +19 new tests; full theme-token suite 355 / 355 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 34)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: sidebar v2 workspace cards (port-chip + cpu-bar + metric-cpu, color-mix nested), server-dot status colours, settings color-grid + theme-preset cards.
+- Phases 8 (release engineering) + 9 (docs / observability).

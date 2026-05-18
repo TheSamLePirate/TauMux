@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.116
+**Version:** 0.3.118
 **Generated:** 2026-05-18
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 33 landed: Cluster H **double-chunk** — search-bar + settings-close-btn (pure cross-component reuse pass, zero new tokens — both close-affordances now share --ht-sem-error) and sidebar v2 log + dismiss states (4 new --ht-sidebar-v2-* tokens for denser amber + amber tint + azure info + dismiss hover red tint; error state reuses --ht-sem-error / -tint + --ht-pm-kill-fg). audit:theming 644 → 628 (-16 this session). Cumulative P7: 80 lifts across 33 sessions. Remaining P7 long tail: Cluster H literal migration (~628 left, multi-session) + Cluster F.10. Owned across future sessions of P7.
+Phase 7 polish — session 34 landed: Cluster H **double-chunk** — settings panel form controls (1 new --ht-on-accent-fg, 17 literals collapse onto existing white-alpha / red-tint families) and sidebar v2 global stats row (2 new --ht-sidebar-v2-* tokens — CPU + MEM chips reuse the S33 v2-log palette, proving the token investment generalises one session later). audit:theming 628 → 605 (-23 this session). Cumulative P7: 82 lifts across 34 sessions. Remaining P7 long tail: Cluster H literal migration (~605 left, multi-session) + Cluster F.10. Owned across future sessions of P7.
 
 ---
 
@@ -223,7 +223,7 @@ Phase 7 polish — session 33 landed: Cluster H **double-chunk** — search-bar 
 - **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference. Phase 7 (S3) closed the loop with a four-way segmented selector at the top of Settings → Theme that flows through the existing `updateSettings` pipeline.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
-  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S33 walked the long tail by region (most recent stops): sidebar section header brightness ladder + log-item state stamps (S31), sidebar search + filter segment + workspace card sub-rows (S32, 8 new tokens + 21 cross-component reuses), search-bar + settings-close-btn pure-reuse pass + sidebar v2 log + dismiss states (S33, 4 new --ht-sidebar-v2-* tokens; both close-affordances unified on --ht-sem-error). audit:theming count: 1013 → 628 (−385 across S9–S33). Multi-session for the rest.
+  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S34 walked the long tail by region (most recent stops): sidebar search + filter segment + workspace card sub-rows (S32), search-bar + settings-close-btn pure-reuse + sidebar v2 log + dismiss states (S33, 4 new --ht-sidebar-v2-* tokens), settings panel form controls + sidebar v2 global stats row (S34, 3 new tokens; CPU + MEM stats reuse the S33 v2-log palette one session later — proof the per-region token investment generalises). audit:theming count: 1013 → 605 (−408 across S9–S34). Multi-session for the rest.
 
 ---
 
