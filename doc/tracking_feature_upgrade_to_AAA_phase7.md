@@ -1676,3 +1676,46 @@ Grade distribution after S34: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: sidebar v2 workspace cards (port-chip + cpu-bar + metric-cpu, color-mix nested), server-dot status colours, settings color-grid + theme-preset cards.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 35 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — sidebar v2 workspace-script-btn (npm script pulse dots), then sidebar v2 footer + server-dot status palette.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H sidebar v2 workspace-script-btn | `41e4de32` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-sidebar-v2-script.test.ts` (new) | +9 (3 new --ht-sidebar-v2-script-* tokens for dot rest bg + running/error pulse glows; reuses --ht-package-header-bg-hover inside the btn:hover color-mix, --ht-script-running-bg / -error-bg with 1pp delta, --ht-badge-success-fg + --ht-sem-error for dot fills) |
+| Cluster H sidebar v2 server-dot status palette | `ba5e2eeb` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-sidebar-v2-server.test.ts` (new) | +11 (5 new --ht-sidebar-v2-server-* tokens for online/starting/error/conflict glows + conflict orange fg; footer bg reuses --ht-sidebar-filter-selected-shadow exact, dot fills reuse --ht-badge-success-fg + --ht-sidebar-v2-log-warning-fg (third reuse of this S33 token) + --ht-pm-kill-fg) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.118 → 0.3.119 (script-btn) → 0.3.120 (server-dot).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — double chunk. (1) sidebar v2 workspace-script-btn: 3 new --ht-sidebar-v2-script-* tokens for the dot rest bg + running / error pulse glows; the btn:hover color-mix tokenises its inner alpha by reusing --ht-package-header-bg-hover (proving color-mix nested literals can be cleanly tokenised). (2) sidebar v2 footer + server-dot: 5 new --ht-sidebar-v2-server-* tokens cover the status glow alphas + conflict orange; the starting-dot fill reuses --ht-sidebar-v2-log-warning-fg for the *third* time across consecutive sessions (S33 log row → S34 cpu stat chip → S35 server pulse) — the per-region token investment continues to pay forward. ~18 literals migrated across two commits. audit:theming: 605 → 587 (−18). |
+
+Grade distribution after S35: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **PostToolUse formatter** touched the new `theme-tokens-sidebar-v2-server.test.ts` file after Write; no rewrite needed.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 35)
+
+| Criterion | Status |
+|---|---|
+| Cluster H sidebar v2 script-btn migrated | ✅ 605 → 597 (−8) |
+| Cluster H sidebar v2 footer + server-dot migrated | ✅ 597 → 587 (−10) |
+| `bun test` green (modulo pre-existing flake) | ✅ +20 new tests; full theme-token suite 375 / 375 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 35)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: sidebar v2 workspace cards (port-chip + cpu-bar + metric-cpu, color-mix nested but now we have the technique), settings color-grid + theme-preset cards, telegram bridge sub-states.
+- Phases 8 (release engineering) + 9 (docs / observability).
