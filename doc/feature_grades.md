@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.144
+**Version:** 0.3.145
 **Generated:** 2026-05-18
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-**Phase 8 headline items DONE.** Release engineering: `scripts/bump-version.ts` lifted from C → A with --commit/--tag/--changelog/--allow-dirty/--dry-run flags + two-tier rollback (file snapshots + git LIFO undo). `scripts/post-package.ts` cross-platform (macOS / Linux / other branches; Linux gets .tar.zst rebuild with flat APP_DIR_NAME, skips Info.plist + DMG). `tau-focus-audit` lifted from C → A — now wired into `bun test` via a happy-dom fixture suite (chromatic-glow leaks fail the build instead of waiting for DevTools). 31 new tests across `bump-version-flags`, `post-package-platform`, `tau-focus-audit`. Phase 7 remains closed (audit:theming clean across both CSS files; F.10 handler refactor done). P8 stretch items remain (failure-path Playwright cases, CI coverage gate wire-up, mobile-viewport touch-target Playwright assertion — all need live CI/Playwright infra). Phase 9 (docs / observability) untouched.
+**Phase 9 first push landed.** Logging lifted A → S (size-based rotation alongside daily, HT_LOG_MAX_BYTES env override, prune-numbered-chunks). Deferred P8 CI coverage gate wired in (.github/workflows/ci.yml gains a parallel coverage-gate job running `bun run test:coverage` then `report:coverage:check` on macOS-14). CHANGELOG.md populated via the P8 `--changelog` tooling on 312 commits since v0.2.30 — first-class release-notes file for the project. 8 new tests (ci-coverage-gate + logger size-rotation). Phase 7 closed (audit:theming clean), P8 headline done (release-tooling + tau-focus-audit), P9 first push done. Remaining stretch items need live-env Playwright infra.
 
 ---
 
@@ -34,8 +34,8 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 | Grade | Count | Notes |
 |---|---:|---|
-| S (AAA) | **20** | Best-in-class — 20 features cleared every gap. |
-| A | **22** | Most "production-shaped" subsystems. |
+| S (AAA) | **21** | Best-in-class — 21 features cleared every gap. |
+| A | **21** | Most "production-shaped" subsystems. |
 | B (incl. B+) | **6** | Functional, with named polish / test / lifecycle gaps. |
 | C (incl. C+) | **1** | Half-wired audits & release plumbing. |
 | D / F | **0** | No abandoned features. |
@@ -319,12 +319,11 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
   - Sync-on-quit for security-critical fields (telegram token, mirror auth).
 
 ### Logging
-- **Grade: A**
-- **Evidence:** `logger.ts` — daily rotation by UTC date; 14-day pruning matches pattern only; tee preserves TTY; `[boot]` banner sync; disposal restores writers. File mode 0o600 (H.1).
+- **Grade: S**
+- **Evidence:** P9 S2 lifted from A → S. `logger.ts` — daily rotation by UTC date; 14-day pruning; tee preserves TTY; `[boot]` banner sync; disposal restores writers. File mode 0o600 (H.1). **Size-based rotation (P9 S2)**: when active file exceeds `HT_LOG_MAX_BYTES` (50 MiB default; ≤ 0 disables), rename to `app-DATE.<n>.log` and open fresh active chunk. `fstatSync`-seeded `bytesInActive` so same-day restarts pick up where they left off. `PRUNE_PATTERN` extended to match numbered rotated chunks so the 14-day sweep cleans them too. 4 new tests cover prune-numbered, threshold-rotate, env-zero-disables, same-day-resume.
 - **Gaps to AAA:**
-  - Size-based rotation (multi-day runs can produce multi-GiB files).
-  - Gzip of old logs.
-  - Structured log-level filter.
+  - Gzip of old rotated chunks (small follow-up; 50 MiB chunks are manageable).
+  - Structured log-level filter (would require logger API change).
 
 ### RPC handlers (typed dispatch)
 - **Grade: A**
@@ -407,7 +406,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 Ranked by leverage — each lifts multiple features by one letter.
 
 1. **Design-report + τ-focus-audit gated in CI** — , not just generated artifacts. Owned by P8.
-2. **Coverage gate threshold in CI** — Phase 3 landed `bun run report:coverage:check` locally; P8 wires it into CI so a PR can't merge below baseline.
+2. **Coverage gate threshold in CI** — **CLOSED (P9 S1).** Phase 3 landed `bun run report:coverage:check` locally; P9 wired it into `.github/workflows/ci.yml` as a parallel `coverage-gate` job on macOS-14 — a PR with a per-file coverage regression beyond the 0.5pp slack against `tests/baselines/coverage-baseline.lcov` now fails the build. 4 source-grep tests in `tests/ci-coverage-gate.test.ts` lock in the job declaration.
 3. **Mobile/web mirror runtime bounding-box gate** — Phase 1 added the 44 × 44 CSS-px shim on coarse pointers. P3 deferred the Playwright mobile-viewport assertion to P8 (where the live Playwright env runs). (I.5)
 4. **Theme switcher UI + boot-time data-theme application** — Phase 5 landed the token blocks + matchMedia wiring; the Settings panel field that lets users pick a theme is a small follow-up (P7 polish).
 5. **ARIA labels + live regions for git-status chips + notifications** — Phase 1 deferred U7/U8 details. Add `aria-label` to chips and an `aria-live="polite"` region for notification count changes. Owned by P7.
