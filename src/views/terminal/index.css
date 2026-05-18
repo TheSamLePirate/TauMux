@@ -5858,7 +5858,7 @@ body::before, body::after { content: none; }
 
 .process-manager-summary,
 .surface-details-section h3 {
-  color: rgba(232, 238, 248, 0.46);
+  color: var(--ht-vnext-text-section-h);
   font-size: 11px;
   letter-spacing: 0.02em;
   text-transform: none;
@@ -5866,12 +5866,12 @@ body::before, body::after { content: none; }
 
 .process-manager-workspace,
 .surface-details-section {
-  border-color: rgba(255, 255, 255, 0.06);
+  border-color: var(--ht-agent-row-bg-hover-card);
 }
 
 .process-manager-workspace {
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ht-package-header-bg-hover);
 }
 
 .process-manager-workspace-header,
@@ -5880,30 +5880,30 @@ body::before, body::after { content: none; }
 }
 
 .process-manager-workspace-header {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ht-package-header-bg-hover);
 }
 
 .process-manager-workspace-name,
 .process-manager-surface-title,
 .surface-details-dl dd,
 .notification-title {
-  color: rgba(243, 246, 253, 0.94);
+  color: var(--ht-vnext-text-emph);
 }
 
 .process-manager-table th,
 .process-manager-table td,
 .surface-details-table th,
 .surface-details-table td {
-  border-bottom-color: rgba(255, 255, 255, 0.04);
+  border-bottom-color: var(--ht-agent-row-bg-hover);
 }
 
 .process-manager-table th,
 .surface-details-table th {
-  color: rgba(232, 238, 248, 0.46);
+  color: var(--ht-vnext-text-section-h);
   font-size: 10px;
   letter-spacing: 0.02em;
   text-transform: none;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--ht-package-header-bg-hover);
 }
 
 .surface-details-btn,
