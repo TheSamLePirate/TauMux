@@ -367,6 +367,20 @@
   --ht-sidebar-filter-selected-bg-top: rgba(255, 255, 255, 0.1);
   --ht-sidebar-filter-selected-shadow: rgba(0, 0, 0, 0.28);
 
+  /* P7 S32 chunk 2 — workspace card sub-rows (grip / pin / metrics /
+   *  section header). The grip is the dimmest icon in the workspace
+   *  card (0.26 zinc), used only when the card is hovered so the
+   *  drag affordance reveals. The pin hover fg (0.86) sits between
+   *  filter-btn-hover (0.82) and section-text-hover (0.9). The mem
+   *  metric stays softer than CPU (which uses the success badge fg)
+   *  so the eye lands on CPU first. The section-header rest fg
+   *  (0.54) is fractionally below sidebar-section-text (0.58) — the
+   *  workspace card is denser, so it gets a softer label tier. */
+  --ht-workspace-grip-fg: rgba(229, 231, 237, 0.26);
+  --ht-workspace-pin-hover-fg: rgba(229, 231, 237, 0.86);
+  --ht-workspace-metric-mem-fg: rgba(229, 231, 237, 0.62);
+  --ht-workspace-section-header-fg: rgba(229, 231, 237, 0.54);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg

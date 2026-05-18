@@ -3831,7 +3831,7 @@ body.terminal-typing .panel {
   display: inline-flex;
   align-items: center;
   width: 10px;
-  color: rgba(229, 231, 237, 0.26);
+  color: var(--ht-workspace-grip-fg);
   cursor: grab;
   opacity: 0;
   transition: opacity var(--transition-fast), color var(--transition-fast);
@@ -3844,7 +3844,7 @@ body.terminal-typing .panel {
 
 .workspace-grip:active {
   cursor: grabbing;
-  color: rgba(229, 231, 237, 0.56);
+  color: var(--ht-sidebar-section-count-fg);
 }
 
 /* Pin toggle — lives in the header right cluster. */
@@ -3856,7 +3856,7 @@ body.terminal-typing .panel {
   border: none;
   background: var(--tau-panel);
   border-radius: 4px;
-  color: rgba(229, 231, 237, 0.42);
+  color: var(--ht-sidebar-text-dim);
   opacity: 0;
   cursor: pointer;
   transition:
@@ -3873,8 +3873,8 @@ body.terminal-typing .panel {
 }
 
 .workspace-pin:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(229, 231, 237, 0.86);
+  background: var(--ht-agent-row-bg-hover-card);
+  color: var(--ht-workspace-pin-hover-fg);
 }
 
 .workspace-pin.active {
@@ -3894,24 +3894,24 @@ body.terminal-typing .panel {
   gap: 4px;
   padding: 2px 7px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 0.5px solid rgba(255, 255, 255, 0.055);
+  background: var(--ht-agent-row-bg-hover);
+  border: 0.5px solid var(--ht-button-bg);
   font-variant-numeric: tabular-nums;
   font-size: 9.5px;
   font-weight: 560;
-  color: rgba(229, 231, 237, 0.82);
+  color: var(--ht-sidebar-filter-btn-hover-fg);
   line-height: 1;
   flex-shrink: 0;
 }
 
 .workspace-metric-cpu {
-  color: #86efac;
+  color: var(--ht-badge-success-fg);
 }
 
 .workspace-metric-mem {
-  color: rgba(229, 231, 237, 0.62);
+  color: var(--ht-workspace-metric-mem-fg);
   padding-left: 5px;
-  border-left: 0.5px solid rgba(255, 255, 255, 0.08);
+  border-left: 0.5px solid var(--ht-panel-border-soft);
 }
 
 /* Mini CPU sparkline. */
@@ -3941,24 +3941,24 @@ body.terminal-typing .panel {
   border-radius: 5px;
   cursor: pointer;
   font: inherit;
-  color: rgba(229, 231, 237, 0.54);
+  color: var(--ht-workspace-section-header-fg);
   text-align: left;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .workspace-section-header:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(229, 231, 237, 0.9);
+  background: var(--ht-agent-row-bg-hover);
+  color: var(--ht-sidebar-section-text-hover);
 }
 
 .workspace-section-caret {
   display: inline-flex;
   align-items: center;
-  color: rgba(229, 231, 237, 0.45);
+  color: var(--ht-sidebar-text-mute);
 }
 
 .workspace-section-header:hover .workspace-section-caret {
-  color: rgba(229, 231, 237, 0.82);
+  color: var(--ht-sidebar-filter-btn-hover-fg);
 }
 
 .workspace-section-title {
@@ -3971,10 +3971,10 @@ body.terminal-typing .panel {
   margin-left: auto;
   font-size: 9.5px;
   font-weight: 580;
-  color: rgba(229, 231, 237, 0.42);
+  color: var(--ht-sidebar-text-dim);
   padding: 0 6px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--ht-sidebar-row-border);
   font-variant-numeric: tabular-nums;
 }
 
