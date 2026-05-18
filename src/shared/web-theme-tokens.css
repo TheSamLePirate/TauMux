@@ -479,6 +479,21 @@
   --ht-vnext-text-section-h: rgba(232, 238, 248, 0.46);
   --ht-vnext-text-emph: rgba(243, 246, 253, 0.94);
 
+  /* P7 S38 chunk 1 — vNext surface-container / surface-bar shell
+   *  + the missing mid-tier text tiers (0.74 + 0.68). The surface
+   *  shell is a slightly cooler / less opaque variant of the
+   *  --ht-window-* family — the vNext surface sits inside a
+   *  bordered card while --ht-window-* paints the outer frame, so
+   *  the two coexist deliberately. text-soft (0.74) is the
+   *  surface-bar title at rest; text-soft-2 (0.68) is the surface-
+   *  chip body label, both filling holes between text-muted (0.58)
+   *  and text-bright (0.88). */
+  --ht-vnext-surface-bg: rgba(18, 22, 29, 0.84);
+  --ht-vnext-surface-shadow: rgba(0, 0, 0, 0.26);
+  --ht-vnext-surface-bar-bg: rgba(22, 26, 34, 0.92);
+  --ht-vnext-text-soft: rgba(232, 238, 248, 0.74);
+  --ht-vnext-text-soft-2: rgba(232, 238, 248, 0.68);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
