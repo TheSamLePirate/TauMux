@@ -1935,3 +1935,46 @@ Grade distribution after S40: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: the workspace-package + workspace-script + sidebar-section in the same 5236-5269 sub-region (small), then the bigger 7107-7861 + 7892-8233 dense blocks (likely v2 sidebar variants).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 41 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — browser pane (7100-7270) then pi-agent toolbar / badges / stats (7270-7430). First time entering the 7107-7861 dense region.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H browser pane pure-reuse + dead-fallback strip | `2cdb3bb3` | `src/views/terminal/index.css`, `tests/theme-tokens-browser-pane.test.ts` (new) | +11 (zero new tokens; ~20 literals migrated; introduces the "dead var() fallback strip" pattern — `var(--text-strong, #f5f7fb)` → `var(--text-strong)` when the named var IS defined; also remaps `var(--ansi-green, #4ade80)` → `var(--ht-sem-success)` and `var(--ansi-yellow, #f59e0b)` → `var(--ht-sem-warning)`) |
+| Cluster H pi-agent toolbar/badges/stats | `9f9d497b` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-pi-agent-toolbar.test.ts` (new) | +21 (8 new --ht-agent-* tokens for body gradient + cyan/amber/purple status palettes + dense stats hold + dim model-scope glyph; heavy reuse of palette-divider family for cyan tints, notify-amber-soft for amber tints) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.130 → 0.3.131 (browser pane) → 0.3.132 (pi-agent).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — **new single-session drop record: −47 literals** (beats S40's −44). The dead-fallback strip pattern is a major new lever: every `var(--name, <literal>)` where the name is defined is a free literal removal with zero rendering change. The pi-agent panel introduced 8 new --ht-agent-* tokens covering its distinct cyan/amber/purple accent palettes — the model-meta + stats chrome reuses the existing palette-divider + notify-amber families that were originally defined for the command-palette / notification panel, demonstrating the cross-panel token cascade. Cumulative S9–S41: 1013 → 382 (−631). |
+
+Grade distribution after S41: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **Dead-fallback discovery**: when scanning the browser pane, found ~14 `var(--name, <literal>)` patterns where the named var IS defined upstream (--text-strong, --text-muted, --accent-primary, --bg-glass-strong, --border-soft). Verified by grepping `src/views/terminal/index.css` for each name's `--name:` definition. Stripping the fallback removes the literal without changing rendered output. Filed as a reusable pattern for similar v1-style code.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+
+### Exit criteria (session 41)
+
+| Criterion | Status |
+|---|---|
+| Cluster H browser pane migrated | ✅ 429 → 410 (−19) |
+| Cluster H pi-agent toolbar/badges/stats migrated | ✅ 410 → 382 (−28) |
+| `bun test` green (modulo pre-existing flake) | ✅ +32 new tests; full theme-token suite 532 / 532 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 41)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: pi-agent dropdown + welcome + messages + streaming bar (continuing in the 7430+ range), plus the 7892-8233 region (likely panel internals).
+- Phases 8 (release engineering) + 9 (docs / observability).

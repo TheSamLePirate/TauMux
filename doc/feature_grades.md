@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.130
+**Version:** 0.3.132
 **Generated:** 2026-05-18
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 40 landed: Cluster H **double-chunk** — vNext 2026-refresh top half (titlebar + sidebar header, 1 new --ht-vnext-sidebar-bg token for the translucent 0.78 hold) + bottom half (workspace-item card, 3 new --ht-vnext-workspace-shadow/-shadow-active/-text-name tokens). **New single-session drop record: -44 literals** (beats S39's -41). audit:theming 473 → 429 this session. Theme-token suite milestone: 500 tests now. Cumulative P7: 94 lifts across 40 sessions. Remaining P7 long tail: Cluster H literal migration (~429 left, multi-session) + Cluster F.10. Owned across future sessions of P7.
+Phase 7 polish — session 41 landed: Cluster H **double-chunk** — browser pane (zero new tokens, ~20 literals stripped via the new dead-fallback pattern + ansi-green/-yellow remap to sem-success/-warning) and pi-agent toolbar/badges/stats (8 new --ht-agent-* tokens for the cyan/amber/purple accent palettes + dense black hold + dim model-scope glyph). **New single-session drop record: -47 literals** (beats S40's -44). audit:theming 429 → 382 this session. Cumulative P7: 96 lifts across 41 sessions. Remaining P7 long tail: Cluster H literal migration (~382 left, multi-session) + Cluster F.10. Owned across future sessions of P7.
 
 ---
 
@@ -223,7 +223,7 @@ Phase 7 polish — session 40 landed: Cluster H **double-chunk** — vNext 2026-
 - **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference. Phase 7 (S3) closed the loop with a four-way segmented selector at the top of Settings → Theme that flows through the existing `updateSettings` pipeline.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
-  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S40 walked the long tail by region (most recent stops): vNext surface chrome + port/close status palettes (S38), vNext 2026-refresh sidebar/notif/server + settings/card/sheet shell (S39, broke the 500-literal barrier with a -41 single-session drop), vNext 2026-refresh titlebar/sidebar header + workspace-item card (S40, new -44 single-session drop record; brings the --ht-vnext-* family to 22 tokens covering text scale + surface chrome + status palettes + sheet/sidebar shells + workspace card depth + panel chrome). audit:theming count: 1013 → 429 (−584 across S9–S40). Theme-token test suite now at 500 tests. Multi-session for the rest.
+  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S41 walked the long tail by region (most recent stops): vNext 2026-refresh sidebar/notif/server + settings/card/sheet shell (S39, -41), vNext titlebar/sidebar header + workspace-item card (S40, -44), browser pane + pi-agent toolbar/badges/stats (S41, -47 new record — introduces the dead var() fallback strip pattern and brings the --ht-agent-* family to 8 tokens for the agent panel chrome). audit:theming count: 1013 → 382 (−631 across S9–S41). Theme-token test suite now at 532 tests. Multi-session for the rest.
 
 ---
 
