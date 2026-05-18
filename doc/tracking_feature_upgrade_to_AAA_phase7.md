@@ -2021,3 +2021,46 @@ Grade distribution after S42: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: pi-agent slash command menu + dropdown + streaming bar (still in the 7430+ range — completes the panel), then the 7892-8233 dense block (likely modal internals or v2 surfaces).
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 43 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — pi-agent slash menu + dialog + dialog btn/input then input bar + attachment chips + status chips. Continues directly where S42 left off in the 7800-8055 range.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H pi-agent slash + dialog | `e6badc25` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-pi-agent-slash-dialog.test.ts` (new) | +17 (6 new --ht-agent-* tokens: slash-menu-bg + dialog-overlay-bg + dialog-bg + badge-extension-bg + tree-role-assistant/-compaction fgs; 3-way reuse of --ht-notify-cyan-soft for selected states; --ht-agent-code-bg now also serves as a 0.5-black drop-shadow token) |
+| Cluster H pi-agent input + chips | `5b3ac090` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-pi-agent-input.test.ts` (new) | +20 (6 new --ht-agent-input-*/-attachment-*/-kbd-*/-chip-* tokens; input bar gradient chains --ht-agent-footer-bg into --ht-agent-image-thumb-bg; chip-queue reuses --ht-agent-badge-extension-bg three-ways; send-btn fg now uses --ht-on-accent-fg — third reuse of that S34 token) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.134 → 0.3.135 (slash+dialog) → 0.3.136 (input+chips).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — **fourth consecutive session at the dropdown floor: -53 literals** (matches S42's record, S40 -44 / S41 -47 / S42 -53 / S43 -53). The pi-agent panel chain is now nearly complete: input bar, attachment chips, slash menu, confirm dialog with full tree-role colour roster, and the status chip family. The --ht-agent-* family is now 35 tokens and demonstrates strong cross-component reuse — --ht-agent-code-bg pulls double duty as a 0.5-black drop-shadow for slash/dialog, --ht-agent-badge-extension-bg gets reused three-ways for the chip-queue (bg+border) plus the slash-badge-extension. Cumulative S9–S43: 1013 → 276 (−737). |
+
+Grade distribution after S43: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **No new issues.** Continued in S32 worktree at HEAD = main; commits flow cleanly.
+- **Pre-existing typecheck noise** unchanged: 2 errors.
+
+### Exit criteria (session 43)
+
+| Criterion | Status |
+|---|---|
+| Cluster H pi-agent slash + dialog migrated | ✅ 329 → 309 (−20) |
+| Cluster H pi-agent input + chips migrated | ✅ 309 → 276 (−33) |
+| `bun test` green (modulo pre-existing flake) | ✅ +37 new tests; full theme-token suite 611 / 611 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 43)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: pi-agent send-btn stop state + remaining tokens in the 7800s, then the 7892-8233 region beyond the pi-agent block (telegram pane + remaining surfaces).
+- Phases 8 (release engineering) + 9 (docs / observability).
