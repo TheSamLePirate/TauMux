@@ -513,6 +513,30 @@
   --ht-vnext-close-hover-bg: rgba(255, 123, 114, 0.12);
   --ht-vnext-close-hover-border: rgba(255, 123, 114, 0.18);
 
+  /* P7 S39 chunk 2 — vNext settings panel chrome + theme-card +
+   *  sheet shell. Most of this block reuses the existing white-alpha
+   *  + vnext-text-* tokens; the new entries below fill genuine gaps:
+   *  - text-mid (0.52) bridges mute (0.48) and muted (0.58), also
+   *    harmonises the 0.54 section-desc literal (2pp delta).
+   *  - text-elevated (0.64) lands between text-soft-2 (0.68) and
+   *    muted (0.58) for the settings-nav-item rest state.
+   *  - settings-body-bg (0.01 white) is the faintest tier of the
+   *    nav-vs-body contrast hierarchy.
+   *  - range-thumb-border (rgba(22, 25, 33, 0.9)) is the dark hold
+   *    that frames the accent-coloured range thumb.
+   *  - segment-active-fg (#10141a) is the deepest-dark text colour
+   *    used on top of accent fills like segment.active / btn-primary.
+   *  - sheet-bg + modal-overlay-bg are vNext-specific dark holds,
+   *    *not* substitutable for the S36 --ht-window-* family because
+   *    they sit one cascade later with slightly different RGB shifts. */
+  --ht-vnext-text-mid: rgba(232, 238, 248, 0.52);
+  --ht-vnext-text-elevated: rgba(232, 238, 248, 0.64);
+  --ht-vnext-settings-body-bg: rgba(255, 255, 255, 0.01);
+  --ht-vnext-settings-range-thumb-border: rgba(22, 25, 33, 0.9);
+  --ht-vnext-segment-active-fg: #10141a;
+  --ht-vnext-sheet-bg: rgba(24, 28, 36, 0.92);
+  --ht-vnext-modal-overlay-bg: rgba(7, 10, 14, 0.4);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
