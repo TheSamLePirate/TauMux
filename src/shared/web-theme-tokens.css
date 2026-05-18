@@ -442,6 +442,20 @@
   --ht-sidebar-v2-server-conflict-fg: #fab387;
   --ht-sidebar-v2-server-conflict-glow: rgba(250, 179, 135, 0.5);
 
+  /* P7 S36 chunk 2 — t3 window-theme shell base colours. The window
+   *  theme is a distinct visual layer with its own panel / titlebar
+   *  / sidebar / surface / modal-overlay / toast backgrounds. These
+   *  are higher-alpha dark-grey holds (0.94 – 0.99) — denser than the
+   *  ambient surface tokens, deliberately opaque so the desktop never
+   *  bleeds through. They live under the --ht-window-* namespace so a
+   *  future palette swap can repaint the shell in one place. */
+  --ht-window-titlebar-bg: rgba(23, 26, 33, 0.94);
+  --ht-window-sidebar-bg: rgba(23, 26, 33, 0.98);
+  --ht-window-surface-bg: rgba(18, 22, 28, 0.99);
+  --ht-window-surface-bar-bg: rgba(24, 28, 35, 0.99);
+  --ht-window-modal-overlay-bg: rgba(8, 10, 14, 0.46);
+  --ht-window-toast-bg: rgba(28, 32, 40, 0.98);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
