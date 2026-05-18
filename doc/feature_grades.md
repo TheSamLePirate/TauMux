@@ -1,6 +1,6 @@
 # τ-mux Full Feature Review & Grading
 
-**Version:** 0.3.112
+**Version:** 0.3.114
 **Generated:** 2026-05-18
 **Branch:** main
 **Method:** Five parallel deep-dive audits across (1) core terminal + pane management, (2) sideband / canvas panels, (3) UI surfaces / chrome, (4) integrations / external bridges, (5) process metadata / infra / dev/test tooling. Each feature graded against an AAA bar: completeness, polish, robustness under failure, accessibility, performance, and test depth.
@@ -26,7 +26,7 @@ This is a **per-feature grading** companion to `doc/triple_a_analysis.md` (which
 
 ## Headline
 
-Phase 7 polish — session 31 landed: Cluster H **double-chunk** — sidebar section header brightness ladder (3 new --ht-sidebar-section-* tokens + heavy cross-component reuse, ≤3% perceptual harmonisations to existing --ht-sidebar-text-dim / -mute) and sidebar log-item state stamps (3 new --ht-log-* tokens; .success reuses --ht-badge-success-fg). audit:theming 699 → 682 (-17 this session). Cumulative P7: 76 lifts across 31 sessions. Remaining P7 long tail: Cluster H literal migration (~682 left, multi-session) + Cluster F.10. Owned across future sessions of P7.
+Phase 7 polish — session 32 landed: Cluster H **double-chunk** — sidebar search + filter segment region (4 new --ht-sidebar-* tokens covering search input near-white + filter-btn hover fg + selected gradient top stop + black drop-shadow, 11 cross-component reuses) and workspace card sub-rows (4 new --ht-workspace-* tokens for grip / pin hover / mem metric / section-header fg; CPU metric reuses --ht-badge-success-fg, strips the last #86efac literal). audit:theming 682 → 644 (-38 this session). Cumulative P7: 78 lifts across 32 sessions. Remaining P7 long tail: Cluster H literal migration (~644 left, multi-session) + Cluster F.10. Owned across future sessions of P7.
 
 ---
 
@@ -223,7 +223,7 @@ Phase 7 polish — session 31 landed: Cluster H **double-chunk** — sidebar sec
 - **Evidence:** `tau-icons.ts` enforces §6 geometric-SVG rules (sizes 10/11/14/22 px, ≤12 strokes, no curves except circles). `tau-primitives.ts` factories return pure DOM. `tauVar()` helper bridges TS tokens ↔ CSS variables. Phase 5 layered Graphite Light + High Contrast tokens onto the existing Graphite Dark block in `src/shared/web-theme-tokens.css`; `prefers-color-scheme: light` and `forced-colors: active` media queries wire OS-level preferences automatically. `bun run audit:theming` scans for hard-coded colour literals outside the token block. Phase 7 (S2) wired the explicit `chromeTheme` setting (`system | graphite-dark | graphite-light | high-contrast`) end-to-end: the bun-side `pickWebSettings` projects it onto the wire snapshot; the native `applySettings()` and the web-mirror `applyThemeFromSettings()` both write `data-theme=…` on the document root so the `:root[data-theme="…"]` token blocks activate regardless of OS preference. Phase 7 (S3) closed the loop with a four-way segmented selector at the top of Settings → Theme that flows through the existing `updateSettings` pipeline.
 - **Gaps to AAA:**
   - Semantic icon-size scaling (a single `--ht-icon-base` token + multipliers — small follow-up).
-  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S31 walked the long tail by region (most recent stops): drag-ghost + drop overlay (S29), prompt dialog + browser error overlay + kbd dead-fallback cleanup (S30, first time below 700), sidebar section header brightness ladder + log-item state stamps (S31, 6 new tokens + cross-component reuses). audit:theming count: 1013 → 682 (−331 across S9–S31). Multi-session for the rest.
+  - Long-tail migration of ~1013 hard-coded colour literals in component CSS to tokens. P7 S9–S32 walked the long tail by region (most recent stops): prompt dialog + browser error overlay + kbd dead-fallback cleanup (S30, first time below 700), sidebar section header brightness ladder + log-item state stamps (S31, 6 new tokens + cross-component reuses), sidebar search + filter segment + workspace card sub-rows (S32, 8 new tokens + 21 cross-component reuses including --ht-badge-success-fg for the CPU metric). audit:theming count: 1013 → 644 (−369 across S9–S32). Multi-session for the rest.
 
 ---
 

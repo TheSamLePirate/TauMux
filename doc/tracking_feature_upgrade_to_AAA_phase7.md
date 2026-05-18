@@ -1547,3 +1547,46 @@ Grade distribution after S31: **20 S / 20 A / 6 B / 3 C** (unchanged).
 - Cluster F.10: audit remaining ad-hoc handlers (still deferred).
 - Cluster H literal migration — next chunk: sidebar search input + filter segment (zinc-tinted near the section family), workspace card metric rows, telegram bridge sub-states.
 - Phases 8 (release engineering) + 9 (docs / observability).
+
+## Session 32 (2026-05-18)
+
+Slice picked: **Cluster H double-chunk** — sidebar search + filter segment region, then workspace card sub-rows.
+
+### Commits landed
+
+| Topic | Commit | Files | Tests |
+|---|---|---|---|
+| Cluster H sidebar search + filter segment + inline divider | `e91eb41d` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-sidebar-search.test.ts` (new) | +14 (4 new --ht-sidebar-* tokens covering search input fg 0.92 + filter-btn hover fg 0.82 + selected gradient top stop + black drop-shadow; 11 cross-component reuses for borders / focus / hover bg / placeholder / divider / segment chrome) |
+| Cluster H workspace card sub-rows | `4f3c1f90` | `src/shared/web-theme-tokens.css`, `src/views/terminal/index.css`, `tests/theme-tokens-workspace-card.test.ts` (new) | +12 (4 new --ht-workspace-* tokens for grip fg / pin hover fg / mem fg / section-header fg; 10 cross-component reuses including --ht-badge-success-fg for the CPU metric — strips the last #86efac literal in this region) |
+
+Bumps: `bun run bump:patch` ran before each functional commit. Versions: 0.3.112 → 0.3.113 (sidebar search) → 0.3.114 (workspace card).
+
+### Lifts
+
+| Feature | Before | After | Reason |
+|---|---|---|---|
+| `tau-primitives` | S | S | Cluster H continues — double chunk. (1) Sidebar search input + filter segment + inline divider migrated to 4 new --ht-sidebar-* tokens covering the search input near-white (0.92) sitting one tier above the section-text family, the filter-btn hover fg (0.82) bridging section-count-fg (0.56) and section-text-hover (0.9), and the selected segment's gradient top stop + black drop-shadow. (2) Workspace card sub-rows (grip / pin / metrics / section header) migrated to 4 new --ht-workspace-* tokens covering the grip rest fg (0.26 — the dimmest icon in the workspace, hover-revealed), pin hover fg (0.86 between filter-btn-hover and section-text-hover), mem metric fg (0.62 below CPU so the eye lands on CPU first), and a denser-card section-header rest fg (0.54). CPU metric reuses --ht-badge-success-fg exactly (strips the last #86efac literal in this region). ~38 literals migrated across two commits. audit:theming: 682 → 644 (−38). |
+
+Grade distribution after S32: **20 S / 20 A / 6 B / 3 C** (unchanged).
+
+### Issues encountered
+
+- **Read-before-edit** required for the sidebar-search rule after context compaction; resolved with a targeted Read of lines 3716–3760.
+- **Pre-existing typecheck noise** unchanged: 2 errors (electrobun internal import + splitSurface cast).
+
+### Exit criteria (session 32)
+
+| Criterion | Status |
+|---|---|
+| Cluster H sidebar search + filter segment migrated | ✅ 682 → 664 (−18) |
+| Cluster H workspace card sub-rows migrated | ✅ 664 → 644 (−20) |
+| `bun test` green (modulo pre-existing flake) | ✅ +26 new tests; full theme-token suite 322 / 322 green |
+| `bun run typecheck` shows only pre-existing 2 errors | ✅ |
+| `bun run report:feature-grades` regenerated | ✅ |
+| Phase 7 long tail | ⚠ multi-session work continues |
+
+### Next slice (after session 32)
+
+- Cluster F.10: audit remaining ad-hoc handlers (still deferred).
+- Cluster H literal migration — next chunk: workspace meta-row / surfaces-more, telegram bridge sub-states, kbd-cheatsheet body, settings panel inputs.
+- Phases 8 (release engineering) + 9 (docs / observability).
