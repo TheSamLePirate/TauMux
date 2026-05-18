@@ -1,8 +1,8 @@
 {
-  "version": "0.3.142",
+  "version": "0.3.144",
   "generatedAt": "2026-05-18",
   "branch": "main",
-  "headline": "**Phase 7 COMPLETE.** P7-finish push closed the last two open items in one big run: Cluster H (theme-token literal migration, ~1013 → 0 cumulative — `audit:theming` reports clean for the first time across both src/views/terminal/index.css AND src/web-client/client.css) and Cluster F.10 (the deferred bunMessageHandlers refactor — 82 inline handlers extracted into 13 per-domain modules under src/bun/webview-handlers/ with `satisfies BunMessageHandlers` exhaustiveness preserved via BunMessageHandlerSlice<K> + getter-backed late binding; src/bun/index.ts 3471 → 2860 lines; zero behavior change; 2823/2823 tests pass). Total Phase 7 lifts: ~110 across 43 sessions + 1 finish push. Theme-token test suite grew from 0 → 619. Cluster H + F.10 + every prior cluster now closed. Phase 8 (release engineering) + Phase 9 (docs / observability) remain — out of P7 scope.",
+  "headline": "**Phase 8 headline items DONE.** Release engineering: `scripts/bump-version.ts` lifted from C → A with --commit/--tag/--changelog/--allow-dirty/--dry-run flags + two-tier rollback (file snapshots + git LIFO undo). `scripts/post-package.ts` cross-platform (macOS / Linux / other branches; Linux gets .tar.zst rebuild with flat APP_DIR_NAME, skips Info.plist + DMG). `tau-focus-audit` lifted from C → A — now wired into `bun test` via a happy-dom fixture suite (chromatic-glow leaks fail the build instead of waiting for DevTools). 31 new tests across `bump-version-flags`, `post-package-platform`, `tau-focus-audit`. Phase 7 remains closed (audit:theming clean across both CSS files; F.10 handler refactor done). P8 stretch items remain (failure-path Playwright cases, CI coverage gate wire-up, mobile-viewport touch-target Playwright assertion — all need live CI/Playwright infra). Phase 9 (docs / observability) untouched.",
   "clusters": [
     {
       "id": "core-terminal",
@@ -487,23 +487,20 @@
         {
           "id": "release-tooling",
           "name": "Version bumping / release",
-          "grade": "C",
-          "evidence": "`scripts/bump-version.ts` reads `package.json`, applies targeted regex replaces to 7 files. **Does not commit, tag, or generate changelog.** `scripts/post-package.ts` patches CFBundleDisplayName on macOS only; Linux release path undefined. No rollback on partial build failures.",
+          "grade": "A",
+          "evidence": "P8 S1–S3 lifted from C → A. `scripts/bump-version.ts` now exposes `--commit` (chore(release): vX.Y.Z), `--tag` (annotated, refuses to overwrite), `--changelog` (conventional-commit-grouped CHANGELOG.md entry, range = $(prev-tag)..HEAD), `--allow-dirty`, `--dry-run`. Two-tier rollback: file-phase snapshots restored on any update throw (CHANGELOG.md deleted if it didn't pre-exist), git-phase LIFO undo-stack resets the commit if --tag fails afterwards. `BUMP_VERSION_ROOT` env override lets tests sandbox the script without mocking. 12 tests in `tests/bump-version-flags.test.ts` cover happy paths + dirty-tree refusal + duplicate-tag refusal + 3 rollback scenarios. `scripts/post-package.ts` now branches macos / linux / other: Linux gets the .tar.zst rebuild with the flat APP_DIR_NAME, skips Info.plist + DMG (no equivalents); 9 tests in `tests/post-package-platform.test.ts` source-grep the platform-branching invariants.",
           "gaps": [
-            "Changelog generator + tag/commit.",
-            "Cross-platform packaging.",
-            "Rollback on partial failure."
+            "AppImage / .deb / .rpm packaging for Linux (separate pipeline, not part of post-package)."
           ]
         },
         {
           "id": "tau-focus-audit",
           "name": "Tau focus audit",
-          "grade": "C",
-          "evidence": "`tau-focus-audit.ts` walks DOM detecting chromatic glow leaks via box-shadow parsing. Lives in DevTools/REPL — **not wired into `bun test`** (line 22-26). Box-shadow only; filter drop-shadows excluded by design.",
+          "grade": "A",
+          "evidence": "P8 S4 lifted from C → A. `tau-focus-audit.ts` is now wired into `bun test` via a happy-dom fixture suite (`tests/tau-focus-audit.test.ts`, 10 tests): `splitShadows` base case, `isGlow` classification (pure-black elevation rejected, near-zero alpha fade rejected, sub-4px blur rejected, cyan-glow positive case accepted), role assignment (focused pane → focus, non-pane chrome with glow → leak), multi-layer shadow filtering, and the `window.tauAuditFocus` DevTools hook. A chromatic-glow leak in chrome CSS now fails the build instead of waiting for someone to open DevTools. Box-shadow only by design.",
           "gaps": [
-            "Playwright-runnable assertion.",
-            "Report file output.",
-            "Broader focus-leak detection (outline + filter)."
+            "Broader focus-leak detection (outline + filter — would need its own detection logic).",
+            "Playwright assertion for full-app smoke (deferred to a live-env Playwright pass)."
           ]
         },
         {
