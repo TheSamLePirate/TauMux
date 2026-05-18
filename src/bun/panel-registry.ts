@@ -16,6 +16,13 @@ export interface PanelDescriptor {
   updatedAt: number;
 }
 
+/** Default per-surface panel cap. A runaway script that emits a fresh
+ *  panel id every tick can otherwise grow the registry without bound
+ *  and leak memory across both the bun mirror and the webview. 256 is
+ *  generous for legitimate dashboards (the design report renders ~80
+ *  at peak) but kicks in well before the memory hit is visible. */
+export const DEFAULT_MAX_PANELS_PER_SURFACE = 256;
+
 /**
  * Bun-side mirror of the webview's per-surface active panel state. Kept by
  * tapping `onSidebandMeta`: every content message creates/updates a panel,
@@ -26,9 +33,20 @@ export interface PanelDescriptor {
  * Not a source of truth — the webview's PanelManager is — but the two are
  * driven by the same stream, so drift is bounded by "the sideband parser
  * is the arbiter of what's live."
+ *
+ * P9 — per-surface panel cap (default 256, override via constructor)
+ * guards against runaway scripts that mint fresh panel ids forever.
+ * When the cap is reached we evict the OLDEST entry (by createdAt)
+ * before inserting the new one — same semantics as the webview's
+ * PanelManager cap so the two mirrors drift the same way under load.
  */
 export class PanelRegistry {
   private surfaces = new Map<string, Map<string, PanelDescriptor>>();
+  private readonly maxPanelsPerSurface: number;
+
+  constructor(maxPanelsPerSurface: number = DEFAULT_MAX_PANELS_PER_SURFACE) {
+    this.maxPanelsPerSurface = Math.max(1, Math.floor(maxPanelsPerSurface));
+  }
 
   handleMeta(surfaceId: string, msg: SidebandMetaMessage): void {
     if (msg.type === "flush") return;
@@ -51,6 +69,20 @@ export class PanelRegistry {
     if (!panels) {
       panels = new Map();
       this.surfaces.set(surfaceId, panels);
+    }
+    // P9 cap — evict oldest before inserting if we'd otherwise exceed
+    // the per-surface limit AND this id is genuinely new. Updates to
+    // existing ids don't grow the map and skip the cap check entirely.
+    if (!panels.has(content.id) && panels.size >= this.maxPanelsPerSurface) {
+      let oldestId: string | null = null;
+      let oldestAt = Infinity;
+      for (const [id, p] of panels) {
+        if (p.createdAt < oldestAt) {
+          oldestAt = p.createdAt;
+          oldestId = id;
+        }
+      }
+      if (oldestId !== null) panels.delete(oldestId);
     }
     panels.set(content.id, {
       id: content.id,
