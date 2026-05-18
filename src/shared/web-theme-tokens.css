@@ -413,6 +413,19 @@
   --ht-sidebar-v2-stat-proc-fg: #c89aff;
   --ht-sidebar-v2-global-stats-bg: rgba(0, 0, 0, 0.1);
 
+  /* P7 S35 chunk 1 — sidebar v2 workspace-script-btn region (per-
+   *  workspace npm script buttons with running / error pulse dots).
+   *  Dot rest-state white (0.2) is brighter than any existing soft
+   *  alpha — used to read as a neutral idle "no signal yet" colour
+   *  against the dark card. The running / error glow alphas (0.6)
+   *  are unique to the dot pulse and don't match any badge / kill
+   *  family entry. Running and error backgrounds reuse the existing
+   *  --ht-script-running-bg + --ht-script-error-bg (0.05 vs 0.06
+   *  literals — 1pp delta, well within the harmonisation threshold). */
+  --ht-sidebar-v2-script-dot-rest-bg: rgba(255, 255, 255, 0.2);
+  --ht-sidebar-v2-script-running-glow: rgba(134, 239, 172, 0.6);
+  --ht-sidebar-v2-script-error-glow: rgba(248, 113, 113, 0.6);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
