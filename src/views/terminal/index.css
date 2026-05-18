@@ -4183,7 +4183,7 @@ body.terminal-typing .panel {
   padding: 4px 8px;
   border: none;
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ht-agent-row-bg-hover-card);
   color: var(--text-main);
   font-size: 12px;
   font-family: inherit;
@@ -4195,7 +4195,7 @@ body.terminal-typing .panel {
 }
 
 .search-bar-input:focus {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ht-sidebar-filter-selected-bg-top);
 }
 
 .search-bar-btn {
@@ -4210,11 +4210,11 @@ body.terminal-typing .panel {
 
 .search-bar-btn:hover {
   color: var(--text-main);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ht-panel-border-soft);
 }
 
 .search-bar-close:hover {
-  color: #f87171;
+  color: var(--ht-sem-error);
 }
 
 /* ── Settings Panel ── */
@@ -4286,8 +4286,8 @@ body.terminal-typing .panel {
 }
 
 .settings-close-btn:hover {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.1);
+  color: var(--ht-sem-error);
+  background: var(--ht-sem-error-tint);
 }
 
 .settings-body {

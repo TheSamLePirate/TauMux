@@ -20,7 +20,7 @@ Vérifie que le socket est joignable. Sortie 0 en cas de succès ; non-zéro si 
 
 ```bash
 ht version
-# tau-mux 0.3.114 (build: …)
+# tau-mux 0.3.115 (build: …)
 ```
 
 ## identify
