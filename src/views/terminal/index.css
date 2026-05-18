@@ -6300,7 +6300,7 @@ body::after {
 }
 
 .titlebar-info-primary {
-  background: color-mix(in srgb, var(--accent-primary) 8%, rgba(255, 255, 255, 0.025));
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--ht-sidebar-row-bg-stripe));
   border-color: color-mix(in srgb, var(--accent-primary) 18%, var(--window-border));
 }
 
@@ -6312,7 +6312,7 @@ body::after {
 
 #titlebar .toolbar-icon-btn:hover,
 #titlebar .toolbar-icon-btn.active {
-  background: color-mix(in srgb, var(--accent-primary) 10%, rgba(255, 255, 255, 0.02));
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--ht-package-bg));
 }
 
 #sidebar {
@@ -6342,11 +6342,11 @@ body::after {
 }
 
 .workspace-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--ht-chip-bg);
 }
 
 .workspace-item.active {
-  background: color-mix(in srgb, var(--accent-primary) 7%, rgba(255, 255, 255, 0.035));
+  background: color-mix(in srgb, var(--accent-primary) 7%, var(--ht-package-header-bg-hover));
   border-color: color-mix(in srgb, var(--accent-primary) 18%, var(--window-border));
   box-shadow: none;
 }
@@ -6381,13 +6381,13 @@ body::after {
 }
 
 .surface-chip {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--ht-agent-row-bg-hover);
   border-color: var(--window-border);
 }
 
 .surface-chip.chip-command,
 .workspace-meta-fg {
-  background: color-mix(in srgb, var(--accent-primary) 8%, rgba(255, 255, 255, 0.03));
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--ht-package-header-bg-hover));
 }
 
 .surface-terminal {
@@ -6395,11 +6395,11 @@ body::after {
 }
 
 .pane-divider {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--ht-button-bg-hover-fallback);
 }
 
 .pane-divider:hover {
-  background: color-mix(in srgb, var(--accent-primary) 36%, rgba(255, 255, 255, 0.08));
+  background: color-mix(in srgb, var(--accent-primary) 36%, var(--ht-panel-border-soft));
   box-shadow: none;
 }
 
@@ -6429,7 +6429,7 @@ body::after {
 .surface-details-header,
 .settings-header,
 .palette-input-row {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--ht-package-bg);
   border-bottom-color: var(--window-border);
 }
 
@@ -6453,11 +6453,11 @@ body::after {
 .palette-item:hover,
 .palette-item.selected,
 .surface-context-menu-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--ht-chip-bg);
 }
 
 .settings-nav-item.active {
-  background: color-mix(in srgb, var(--accent-primary) 10%, rgba(255, 255, 255, 0.03));
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--ht-package-header-bg-hover));
 }
 
 .settings-input,
@@ -6465,7 +6465,7 @@ body::after {
 .prompt-input,
 .search-bar-input,
 .palette-footer-key {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--ht-agent-row-bg-hover);
   border-color: var(--window-border);
 }
 
@@ -6484,7 +6484,7 @@ body::after {
 
 .process-manager-table th,
 .surface-details-table th {
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--ht-sidebar-row-bg-stripe);
 }
 
 .toast {
