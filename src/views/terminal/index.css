@@ -3003,8 +3003,8 @@ body.terminal-typing .panel {
   justify-content: center;
   padding: 20px 40px;
   text-align: center;
-  color: rgba(239, 68, 68, 0.95);
-  background: rgba(30, 30, 46, 0.96);
+  color: var(--ht-browser-error-fg);
+  background: var(--ht-browser-error-bg);
   font: 500 13px/1.55 -apple-system, system-ui, sans-serif;
   z-index: 4;
   pointer-events: none;
@@ -3229,7 +3229,7 @@ body.terminal-typing .panel {
   border-radius: 12px;
   box-shadow: 0 34px 90px var(--ht-palette-shadow);
   overflow: hidden;
-  color: var(--fg, #e6f4f7);
+  color: var(--text-strong);
 }
 .kbd-header {
   display: flex;
@@ -3249,14 +3249,14 @@ body.terminal-typing .panel {
 .kbd-close {
   background: transparent;
   border: none;
-  color: var(--fg-dim, #9aa);
+  color: var(--text-dim);
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
   padding: 0 6px;
 }
 .kbd-close:hover {
-  color: var(--fg, #e6f4f7);
+  color: var(--text-strong);
 }
 .kbd-body {
   display: grid;
@@ -3302,13 +3302,13 @@ body.terminal-typing .panel {
 .kbd-row .kbd-desc {
   flex: 1 1 auto;
   text-align: right;
-  color: var(--fg-dim, #9aa);
+  color: var(--text-dim);
 }
 .kbd-footer {
   padding: 8px 18px;
   border-top: 1px solid var(--ht-palette-divider);
   font-size: 11px;
-  color: var(--fg-dim, #9aa);
+  color: var(--text-dim);
   text-align: right;
 }
 .kbd-footer kbd {

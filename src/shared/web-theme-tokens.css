@@ -332,6 +332,13 @@
   --ht-prompt-primary-bg: rgba(111, 233, 255, 0.94);
   --ht-prompt-primary-fg: #09090b;
 
+  /* P7 S30 — browser pane load-error overlay. Distinct from --ht-ask-
+   *  danger-* (which is the trust-boundary modal's danger family);
+   *  this is a soft, near-full-opacity warning that the browser engine
+   *  failed to load the URL. Dark eggplant bg + bright soft-red fg. */
+  --ht-browser-error-fg: rgba(239, 68, 68, 0.95);
+  --ht-browser-error-bg: rgba(30, 30, 46, 0.96);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
