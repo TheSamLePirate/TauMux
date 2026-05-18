@@ -537,6 +537,12 @@
   --ht-vnext-sheet-bg: rgba(24, 28, 36, 0.92);
   --ht-vnext-modal-overlay-bg: rgba(7, 10, 14, 0.4);
 
+  /* P7 S40 chunk 1 — vNext sidebar shell. The vNext sidebar is
+   *  intentionally translucent (0.78 alpha) so the desktop bloom can
+   *  bleed through at a controlled level — a deliberate departure
+   *  from the S36 --ht-window-sidebar-bg's 0.98 opaque hold. */
+  --ht-vnext-sidebar-bg: rgba(22, 25, 33, 0.78);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg

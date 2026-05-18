@@ -4964,7 +4964,7 @@ body::before, body::after { content: none; }
 }
 
 #titlebar-caption {
-  color: rgba(232, 238, 248, 0.46);
+  color: var(--ht-vnext-text-section-h);
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.01em;
@@ -4990,9 +4990,9 @@ body::before, body::after { content: none; }
   gap: 7px;
   padding: 0 10px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(232, 238, 248, 0.68);
+  border: 1px solid var(--ht-agent-row-bg-hover-card);
+  background: var(--ht-agent-row-bg-hover);
+  color: var(--ht-vnext-text-soft-2);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.01em;
@@ -5001,31 +5001,31 @@ body::before, body::after { content: none; }
 
 .titlebar-info-primary {
   color: var(--accent-primary);
-  border-color: color-mix(in srgb, var(--accent-primary) 24%, rgba(255, 255, 255, 0.08));
-  background: color-mix(in srgb, var(--accent-primary) 10%, rgba(255, 255, 255, 0.03));
+  border-color: color-mix(in srgb, var(--accent-primary) 24%, var(--ht-panel-border-soft));
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--ht-package-header-bg-hover));
 }
 
 #titlebar .toolbar-icon-strip {
   gap: 4px;
   padding: 4px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--ht-agent-row-bg-hover-card);
+  background: var(--ht-agent-row-bg-hover);
+  box-shadow: inset 0 1px 0 var(--ht-package-header-bg-hover);
 }
 
 #titlebar .toolbar-icon-btn {
   width: 30px;
   height: 30px;
   border-radius: 10px;
-  color: rgba(232, 238, 248, 0.62);
+  color: var(--ht-vnext-text-elevated);
   opacity: 1;
 }
 
 #titlebar .toolbar-icon-btn:hover,
 #titlebar .toolbar-icon-btn.active {
-  color: rgba(243, 246, 253, 0.96);
-  background: color-mix(in srgb, var(--accent-primary) 14%, rgba(255, 255, 255, 0.02));
+  color: var(--ht-sidebar-text-strong);
+  background: color-mix(in srgb, var(--accent-primary) 14%, var(--ht-package-bg));
 }
 
 #titlebar .toolbar-icon-btn:hover .ht-icon,
@@ -5043,9 +5043,9 @@ body::before, body::after { content: none; }
   padding: 14px 12px 16px 14px;
   gap: 12px;
   background:
-    rgba(22, 25, 33, 0.78);
-  border-right: 0.5px solid rgba(255, 255, 255, 0.06);
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.02);
+    var(--ht-vnext-sidebar-bg);
+  border-right: 0.5px solid var(--ht-agent-row-bg-hover-card);
+  box-shadow: inset -1px 0 0 var(--ht-package-bg);
 }
 
 .sidebar-header,
@@ -5068,7 +5068,7 @@ body::before, body::after { content: none; }
 
 .sidebar-title {
   gap: 8px;
-  color: rgba(243, 246, 253, 0.96);
+  color: var(--ht-sidebar-text-strong);
   font-size: 13px;
   font-weight: 620;
   letter-spacing: -0.01em;
@@ -5082,7 +5082,7 @@ body::before, body::after { content: none; }
 }
 
 .sidebar-subtitle {
-  color: rgba(232, 238, 248, 0.52);
+  color: var(--ht-vnext-text-mid);
   font-size: 11px;
   line-height: 1.45;
 }
@@ -5091,15 +5091,15 @@ body::before, body::after { content: none; }
   width: 28px;
   height: 28px;
   border-radius: 9px;
-  color: rgba(243, 246, 253, 0.82);
-  background: rgba(255, 255, 255, 0.05);
-  border: 0.5px solid rgba(255, 255, 255, 0.06);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  color: var(--ht-sidebar-filter-btn-hover-fg);
+  background: var(--ht-chip-bg);
+  border: 0.5px solid var(--ht-agent-row-bg-hover-card);
+  box-shadow: inset 0 1px 0 var(--ht-package-header-bg-hover);
 }
 
 .sidebar-new-btn:hover {
-  color: rgba(243, 246, 253, 0.96);
-  background: color-mix(in srgb, var(--accent-primary) 12%, rgba(255, 255, 255, 0.04));
+  color: var(--ht-sidebar-text-strong);
+  background: color-mix(in srgb, var(--accent-primary) 12%, var(--ht-agent-row-bg-hover));
 }
 
 .workspace-item {
