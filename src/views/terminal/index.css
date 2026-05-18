@@ -4559,7 +4559,7 @@ body.terminal-typing .panel {
   position: absolute;
   inset: 0;
   border-radius: 11px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ht-sidebar-filter-selected-bg-top);
   transition: background var(--transition-fast);
 }
 
@@ -4583,7 +4583,7 @@ body.terminal-typing .panel {
 
 .settings-toggle input:checked + .settings-toggle-slider::after {
   transform: translateX(16px);
-  background: #fff;
+  background: var(--ht-text-strong);
 }
 
 /* Segmented control */
@@ -4592,7 +4592,7 @@ body.terminal-typing .panel {
   display: flex;
   border-radius: var(--radius-sm);
   overflow: hidden;
-  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  border: 0.5px solid var(--ht-panel-border-soft);
 }
 
 .settings-segment {
@@ -4600,8 +4600,8 @@ body.terminal-typing .panel {
   font-size: 11px;
   font-weight: 500;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.02);
-  border-right: 0.5px solid rgba(255, 255, 255, 0.06);
+  background: var(--ht-package-bg);
+  border-right: 0.5px solid var(--ht-agent-row-bg-hover-card);
   cursor: pointer;
   transition:
     background var(--transition-fast),
@@ -4613,13 +4613,13 @@ body.terminal-typing .panel {
 }
 
 .settings-segment:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ht-agent-row-bg-hover-card);
   color: var(--text-main);
 }
 
 .settings-segment.active {
   background: var(--accent-primary);
-  color: #000;
+  color: var(--ht-on-accent-fg);
 }
 
 /* Color field */
@@ -4635,7 +4635,7 @@ body.terminal-typing .panel {
   appearance: none;
   width: 28px;
   height: 28px;
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  border: 2px solid var(--ht-sidebar-filter-selected-bg-top);
   border-radius: 6px;
   cursor: pointer;
   padding: 0;
@@ -4660,7 +4660,7 @@ body.terminal-typing .panel {
 
 .settings-field-group {
   padding: 14px 0;
-  border-bottom: 0.5px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 0.5px solid var(--ht-pm-surface-divider);
 }
 
 .settings-field-group-label {
@@ -4720,9 +4720,9 @@ body.terminal-typing .panel {
   padding: 6px 12px;
   font-size: 11px;
   color: var(--text-muted);
-  border: 0.5px solid rgba(255, 255, 255, 0.06);
+  border: 0.5px solid var(--ht-agent-row-bg-hover-card);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--ht-package-bg);
   cursor: pointer;
   transition:
     background var(--transition-fast),
@@ -4730,7 +4730,7 @@ body.terminal-typing .panel {
 }
 
 .settings-action-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ht-agent-row-bg-hover-card);
   color: var(--text);
 }
 
@@ -4741,9 +4741,9 @@ body.terminal-typing .panel {
   padding: 5px 12px;
   font-size: 11px;
   color: var(--text-muted);
-  border: 0.5px solid rgba(255, 255, 255, 0.06);
+  border: 0.5px solid var(--ht-agent-row-bg-hover-card);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--ht-package-bg);
   cursor: pointer;
   transition:
     background var(--transition-fast),
@@ -4751,9 +4751,9 @@ body.terminal-typing .panel {
 }
 
 .settings-reset-btn:hover {
-  background: rgba(248, 113, 113, 0.1);
-  color: #f87171;
-  border-color: rgba(248, 113, 113, 0.2);
+  background: var(--ht-pm-kill-bg);
+  color: var(--ht-sem-error);
+  border-color: var(--ht-pm-kill-border);
 }
 
 .settings-reset-wrap {

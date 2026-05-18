@@ -396,6 +396,13 @@
   --ht-sidebar-v2-log-info-fg: #8fbcff;
   --ht-sidebar-v2-dismiss-hover-bg: rgba(248, 113, 113, 0.14);
 
+  /* P7 S34 chunk 1 — settings panel form controls (toggle / segmented
+   *  control / action btn / reset btn). The on-accent fg (#000)
+   *  paints labels that sit on top of an --accent-primary fill —
+   *  reusable wherever a button "selected" state inverts. Everything
+   *  else collapses onto existing white-alpha + red-tint tokens. */
+  --ht-on-accent-fg: #000;
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg
