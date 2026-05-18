@@ -17,13 +17,20 @@ Ou démarrez-la à chaque lancement en définissant `HYPERTERM_WEB_PORT` dans l'
 
 ## Ce qui est mirroré
 
+Le plan M11–M17 (0.2.85 → 0.3.0) a amené le miroir web à **parité fonctionnelle avec la sidebar native**. La série M18 (0.3.1–0.3.3) a poursuivi la queue de dimensionnement multi-pane jusqu'à zéro dérive.
+
 | Surface | Comportement dans le miroir |
 |---|---|
-| Texte du terminal | Rendu xterm.js complet avec le même thème. Le stdin (la frappe) fait l'aller-retour. |
-| Puces de panneau | cwd / commande de premier plan / puces de port en direct. Cliquez sur une puce de port pour l'ouvrir sur l'appareil miroir. |
-| Barre latérale | Espaces de travail, pastilles de statut, entrées de log. |
+| Texte du terminal | Rendu xterm.js complet avec le même thème. Le stdin (la frappe) fait l'aller-retour. `fit()` par pane fait correspondre chaque xterm à son propre conteneur — les layouts multi-pane se dimensionnent correctement (M18). |
+| Chips de pane | Même DOM que le natif (`.surface-bar`, `.surface-chip*`) — `renderSurfaceChips` partagé (M16). Chips cwd / commande fg / git / port, avec ouverture-au-clic sur l'appareil miroir. |
+| Diffusion thème + settings | Les nouvelles envelopes `settingsSnapshot` et `htKeysSeen` (M11) poussent preset de thème, palette ANSI, police, densité, `paneGap`, ordre des clés de barre de statut, flags d'overlay de notifications. Les changements de thème s'appliquent sans rechargement. Les champs sensibles (token d'auth, token bot telegram, ids autorisés) sont dropés côté serveur. |
+| Barre de statut inférieure | Même barre data-driven de 26 px que le natif (M12) — trois zones (identité / jauges / focus). |
+| Cartes workspace sidebar | Cartes riches qui matchent le natif : bande colorée, point + nom + badge de compte de panes, chips commande + ports d'écoute (+N de débordement après 3), sparkline CPU + RAM, ligne de chips de CWD épinglés, liste de panes pliable, progression OSC 9;4 (M13). Épinglage de CWD par workspace via l'envelope `selectWorkspaceCwd`. |
+| Cartes manifest | Cartes `package.json` et `Cargo.toml` (M14) — même `renderManifestCard` partagé. Cargo dérive automatiquement `build`/`run`/`test`/`check`/`clippy`/`fmt`. Les clics de script-run déclenchent une Web Notification en v1 ; le vrai spawn de surface est reporté à v1.1. |
+| Notifications flottantes | Pile de cartes par surface ancrée en haut-droite dans chaque conteneur de pane (M15) — même DOM + auto-dismiss + pause au survol + pastille de débordement +N qu'en natif. Piloté par `notificationOverlayEnabled` / `notificationOverlayMs` depuis la diffusion settings. |
+| Panneau de plan | Une quatrième zone persistante de sidebar au-dessus des notifications (M17). Plans, étapes, éditions, audit auto-continue — tout est routé à travers les envelopes `plansSnapshot` + `autoContinueAudit`. La bande d'audit se cache quand `autoContinueEngine` est désactivé. |
+| Zone de logs | Lignes polies : badge de niveau coloré + timestamp `HH:MM:SS` + libellé de source + corps. Cliquez n'importe où sur la ligne pour copier `[HH:MM:SS] [source] [level] message`. L'en-tête montre `Logs (count) (showing 10)`. |
 | Panneaux sideband | Les quatre types de contenu sont rendus. Glisser/redimensionner reroute vers l'hôte. |
-| Notifications | Mirroirées. |
 | Process Manager | En lecture seule dans le miroir (pas de bouton kill — pour l'instant). |
 
 ## Auth et durcissement

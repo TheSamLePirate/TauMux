@@ -46,6 +46,10 @@ The client stores `sessionId` for resume, sets up xterm with the snapshot, and s
 | `panelCreate` / `panelUpdate` / `panelClear` | Sideband panel lifecycle. | panel options or id |
 | `sidebarUpdate` | Status pill / progress / log change. | partial sidebar state |
 | `notificationCreate` / `notificationDismiss` | Notifications. | notification record / id |
+| `settingsSnapshot` | Theme / font / status-bar settings broadcast (M11, 0.2.85). | theme preset, ANSI palette, font, density, status-bar key order, notification-overlay flags, autoContinueEngine — sensitive fields (auth token, telegram bot token, allowed ids) are dropped by `pickWebSettings` server-side |
+| `htKeysSeen` | `ht set-status` discovery list (M11, 0.2.85). | array of registered keys |
+| `plansSnapshot` | Plan panel content (M17, 0.3.0). | per-workspace plan-step list |
+| `autoContinueAudit` | Auto-continue audit feed (M17, 0.3.0). | recent audit entries; hidden client-side when `autoContinueEngine` is off |
 | `pong` | Reply to a client `ping`. | server time |
 
 Each carries a `seq` — a per-session sequence number incremented on every frame.
@@ -58,6 +62,7 @@ Each carries a `seq` — a per-session sequence number incremented on every fram
 | `surfaceResizeRequest` | xterm reports new dims. | `surfaceId`, `cols` (10–500), `rows` (4–500) |
 | `surfaceFocus` | UI focus follows. | `surfaceId` |
 | `panelInteract` | Click / drag / resize on an interactive panel. | panel id, event |
+| `selectWorkspaceCwd` | Pin a CWD from the workspace card chip row (M13, 0.2.87). | `workspaceId`, `cwd`. v1 stores in localStorage; bun-side hook is null-safe so wiring can land later without a protocol bump |
 | `ping` | Liveness check. | `nonce` |
 | `cancel` | Cancel a streaming method (e.g. metadata follow). | `id` |
 

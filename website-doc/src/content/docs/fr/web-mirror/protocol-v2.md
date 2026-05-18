@@ -46,6 +46,10 @@ Le client stocke `sessionId` pour la reprise, configure xterm avec l'instantané
 | `panelCreate` / `panelUpdate` / `panelClear` | Cycle de vie des panneaux sideband. | options de panneau ou id |
 | `sidebarUpdate` | Changement de pastille de statut / progression / journal. | état partiel de la barre latérale |
 | `notificationCreate` / `notificationDismiss` | Notifications. | enregistrement de notification / id |
+| `settingsSnapshot` | Diffusion thème / police / barre de statut (M11, 0.2.85). | preset de thème, palette ANSI, police, densité, ordre des clés de barre de statut, flags d'overlay de notification, `autoContinueEngine` — les champs sensibles (token d'auth, token bot telegram, ids autorisés) sont dropés par `pickWebSettings` côté serveur |
+| `htKeysSeen` | Liste de découverte `ht set-status` (M11, 0.2.85). | tableau des clés enregistrées |
+| `plansSnapshot` | Contenu du panneau de plan (M17, 0.3.0). | liste d'étapes de plan par workspace |
+| `autoContinueAudit` | Flux d'audit auto-continue (M17, 0.3.0). | entrées d'audit récentes ; cachées côté client quand `autoContinueEngine` est désactivé |
 | `pong` | Réponse à un `ping` du client. | heure du serveur |
 
 Chacune porte un `seq` — un numéro de séquence par session incrémenté à chaque trame.
@@ -58,6 +62,7 @@ Chacune porte un `seq` — un numéro de séquence par session incrémenté à c
 | `surfaceResizeRequest` | xterm rapporte de nouvelles dimensions. | `surfaceId`, `cols` (10–500), `rows` (4–500) |
 | `surfaceFocus` | Le focus UI suit. | `surfaceId` |
 | `panelInteract` | Clic / glisser / redimensionnement sur un panneau interactif. | id de panneau, événement |
+| `selectWorkspaceCwd` | Épingler un CWD depuis la ligne de chips de la carte workspace (M13, 0.2.87). | `workspaceId`, `cwd`. v1 stocke en localStorage ; le hook bun-side est null-safe pour que le câblage puisse atterrir plus tard sans bump de protocole |
 | `ping` | Vérification de présence. | `nonce` |
 | `cancel` | Annule une méthode en streaming (par exemple suivi de métadonnées). | `id` |
 
