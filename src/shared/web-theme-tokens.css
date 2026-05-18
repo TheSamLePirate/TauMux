@@ -403,6 +403,16 @@
    *  else collapses onto existing white-alpha + red-tint tokens. */
   --ht-on-accent-fg: #000;
 
+  /* P7 S34 chunk 2 — sidebar v2 global stats row (CPU / MEM / PROC /
+   *  PORT chips). The cpu (#f9c84a) and mem (#8fbcff) chips reuse
+   *  the --ht-sidebar-v2-log-warning-fg + -info-fg tokens introduced
+   *  in S33 — same shades, same context (the v2 sidebar palette).
+   *  PROC gets its own purple slot. The row sits on a black-hold bg
+   *  (0.1 alpha) that has no near-match in the existing token set —
+   *  unlike the white-alpha family, the black-alpha family is sparse. */
+  --ht-sidebar-v2-stat-proc-fg: #c89aff;
+  --ht-sidebar-v2-global-stats-bg: rgba(0, 0, 0, 0.1);
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg

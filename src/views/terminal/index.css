@@ -8389,7 +8389,7 @@ body::after {
 }
 
 #sidebar.sidebar-v2 .sidebar-filter-btn:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--ht-agent-row-bg-hover);
   color: var(--sb-ink);
 }
 
@@ -8405,7 +8405,7 @@ body::after {
   gap: 0;
   padding: 0;
   border-bottom: 0.5px solid var(--sb-hairline);
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--ht-sidebar-v2-global-stats-bg);
 }
 
 #sidebar.sidebar-v2 .sidebar-global-stat {
@@ -8433,19 +8433,19 @@ body::after {
 
 #sidebar.sidebar-v2 .sidebar-global-stat.stat-cpu .ht-icon,
 #sidebar.sidebar-v2 .sidebar-global-stat.stat-cpu {
-  color: #f9c84a;
+  color: var(--ht-sidebar-v2-log-warning-fg);
 }
 
 #sidebar.sidebar-v2 .sidebar-global-stat.stat-mem {
-  color: #8fbcff;
+  color: var(--ht-sidebar-v2-log-info-fg);
 }
 
 #sidebar.sidebar-v2 .sidebar-global-stat.stat-proc {
-  color: #c89aff;
+  color: var(--ht-sidebar-v2-stat-proc-fg);
 }
 
 #sidebar.sidebar-v2 .sidebar-global-stat.stat-port {
-  color: #86efac;
+  color: var(--ht-badge-success-fg);
 }
 
 /* ── Workspace list wrapper ──────────────────────────────────────── */
