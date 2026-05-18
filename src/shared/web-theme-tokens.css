@@ -347,6 +347,15 @@
   --ht-sidebar-section-text-hover: rgba(229, 231, 237, 0.9);
   --ht-sidebar-section-count-fg: rgba(229, 231, 237, 0.56);
 
+  /* P7 S31 — log-item state colours. The sidebar log strip stamps
+   *  each entry by severity. Success reuses --ht-badge-success-fg
+   *  (#86efac); warning / error / progress have their own
+   *  Catppuccin-style bright stamps that don't fit the badge family
+   *  (which is alpha-tinted, not full-saturation hex). */
+  --ht-log-warning-fg: #facc15;
+  --ht-log-error-fg: #fb7185;
+  --ht-log-progress-fg: #d8b4fe;
+
   /* P7 S18 — cross-component semantic badge tints. The PM port/git
    *  badges, surface chips, and sidebar status pills all paint the
    *  same three semantic kinds (success / warn / info) at a soft-bg

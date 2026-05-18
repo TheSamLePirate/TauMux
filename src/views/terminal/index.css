@@ -3683,19 +3683,19 @@ body.terminal-typing .panel {
 }
 
 .log-item.success {
-  color: #86efac;
+  color: var(--ht-badge-success-fg);
 }
 
 .log-item.warning {
-  color: #facc15;
+  color: var(--ht-log-warning-fg);
 }
 
 .log-item.error {
-  color: #fb7185;
+  color: var(--ht-log-error-fg);
 }
 
 .log-item.progress {
-  color: #d8b4fe;
+  color: var(--ht-log-progress-fg);
 }
 
 /* ══════════════════════════════════════════════════════════════════
