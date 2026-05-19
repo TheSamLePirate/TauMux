@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>τ-mux</title>
     <link rel="stylesheet" href="xterm.css" />
+    <!-- Design tokens (--ht-* / --tau-* / theme blocks). Loaded BEFORE
+         index.css so the per-component rules in index.css resolve their
+         var(--ht-*) references against the canonical token block in
+         src/shared/web-theme-tokens.css. Without this, ~333 --ht-*
+         references in index.css fall back to "invalid at computed-value
+         time", and any element whose last cascade rule uses one becomes
+         transparent — notably .ask-user-sheet / .prompt-sheet (see
+         v0.3.158). -->
+    <link rel="stylesheet" href="theme-tokens.css" />
     <link rel="stylesheet" href="index.css" />
   </head>
   <body>

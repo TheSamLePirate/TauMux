@@ -224,8 +224,13 @@
    *  for the user — same cyan tint family as the modal's accent. The
    *  ht-ask prefix sits outside the U2 light/HC override gate. */
   --ht-ask-scrim-bg: rgba(0, 0, 0, 0.86);
-  --ht-ask-sheet-bg: #0f161a;
-  --ht-ask-sheet-border: rgba(111, 233, 255, 0.72);
+  /* Sheet bg sits one elevation step above --tau-panel-hi (#0f161a) so
+   *  the modal reads as a clearly elevated surface against the terminal
+   *  bg (~#181a21 raw, darkened to ~#0d0d0d after the surface-terminal
+   *  mix). #0f161a was still too close to the terminal and the sheet
+   *  still looked transparent — see v0.3.157. */
+  --ht-ask-sheet-bg: #1e2a35;
+  --ht-ask-sheet-border: rgba(111, 233, 255, 0.78);
   --ht-ask-sheet-shadow: rgba(0, 0, 0, 0.72);
   --ht-ask-codebox-bg: #060a0d;
   --ht-ask-codebox-border: rgba(255, 255, 255, 0.08);

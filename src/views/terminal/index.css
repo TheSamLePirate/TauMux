@@ -6896,7 +6896,6 @@ body::after {
 .toast,
 .panel,
 .surface-context-menu,
-.prompt-sheet,
 .palette-container,
 .settings-panel,
 .process-manager-panel,
@@ -6904,6 +6903,15 @@ body::after {
   background: var(--t3-card);
   border-color: var(--t3-border);
   box-shadow: none;
+}
+
+/* `.prompt-sheet` intentionally NOT in the rule above — it must keep
+ *  the trust-boundary --ht-ask-sheet-bg (shared with .ask-user-sheet)
+ *  so the ht-plan summary prompt and the ask-user modal both stand out
+ *  against the terminal. See v0.3.157. */
+.prompt-sheet {
+  background: var(--ht-ask-sheet-bg);
+  border-color: var(--ht-ask-sheet-border);
 }
 
 .workspace-item {
