@@ -2617,17 +2617,6 @@ body.sidebar-resizing {
   background: var(--tau-cyan);
 }
 
-.xterm-helper-textarea {
-  position: fixed !important;
-  top: -9999px !important;
-  left: -9999px !important;
-  width: 1px !important;
-  height: 1px !important;
-  opacity: 0 !important;
-  overflow: hidden !important;
-  pointer-events: none !important;
-}
-
 .xterm-viewport {
   background-color: transparent !important;
   scrollbar-width: none;

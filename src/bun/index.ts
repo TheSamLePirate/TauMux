@@ -1946,7 +1946,7 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     const p = payload as ActionPayloadByAction["createSurface"];
     createWorkspaceSurface(80, 24, p.cwd);
   } else if (action === "splitSurface") {
-    const p = payload as ActionPayloadByAction["splitSurface"];
+    const p = payload as unknown as ActionPayloadByAction["splitSurface"];
     splitSurface(p.direction, p.surfaceId ?? p.surface_id ?? null, p.cwd);
   } else if (action === "closeSurface") {
     const p = payload as ActionPayloadByAction["closeSurface"];

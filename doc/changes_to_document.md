@@ -17,6 +17,8 @@ _(Always add new items below the cleared line above. When folding into the websi
 
 ## Pending — 2026-05-19
 
+- **IME candidate positioning fix (v0.3.153)** — native terminal and web mirror no longer override xterm's helper textarea with off-screen `!important` positioning. xterm 5.3.0's `CompositionHelper` can now keep the hidden helper textarea aligned with `.composition-view` at the cursor so IME candidate windows appear in the right place.
+  - Add a changelog note (en + fr) when updating `website-doc`.
 - **CLI rename verbs auto-detect target (v0.3.151)** — `ht rename-workspace NAME` no longer requires `--workspace W` when run from inside a τ-mux pane: the CLI now forwards `HT_SURFACE` as `surface_id`, the backend resolves the workspace from it (or falls back to the active workspace), so the bare `ht rename-workspace "build"` form works. New `ht rename-surface [--surface S] NAME` verb mirrors `surface.rename` over the CLI, defaulting to `HT_SURFACE` / focused surface. Help banner documents both auto-detect paths.
   - Update `website-doc/src/content/docs/cli/overview.md` (en + fr) — rename-workspace / rename-surface rows in the verb table, note the HT_SURFACE auto-detect rule.
   - Update `website-doc/src/content/docs/api/workspace.md` + `api/surface.md` (en + fr) — document the new `surface_id` param on `workspace.rename` and the active-workspace fallback; note `surface.rename` now honors the focused surface.
