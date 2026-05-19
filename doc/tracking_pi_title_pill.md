@@ -38,13 +38,13 @@ Replace the current "first-clause-of-prompt" label in the **Claude** sidebar pil
 | PR / step | Item | Status | Commit | Notes |
 |-----------|------|--------|--------|-------|
 | 1 | Tracking doc | landed | — | This file. |
-| 2 | `index.ts` — Config + SessionState extensions | landed (uncommitted) | — | Added `titleEnabled`, `titleStartingLabel`, `titleNeutralColor`, `titleSidecarTimeoutMs`, `titlePiBin`, `titlePiArgs` to Config; `currentTitle`, `promptActive` to SessionState. Env overrides for `HT_CLAUDE_TITLE_ENABLED` and `HT_CLAUDE_PI_BIN`. |
-| 3 | `index.ts` — handlePrompt rewrite + spawnTitleSidecar | landed (uncommitted) | — | Pill flips to `Starting…` (`#cdd6f4`); `spawnTitleSidecar` re-invokes the same script with argv `["title", sessionId]` detached + unref. `titleEnabled=false` keeps the original first-clause label path. |
-| 4 | `index.ts` — handleTitle (new) + sanitizer + runTitleSidecar | landed (uncommitted) | — | Builds the generation prompt (previous title + new prompt → 3-5 word rule), spawns `pi` with a 5s SIGTERM timeout, sanitizes output (strip quotes, markdown prefixes, cap to `labelMaxChars`). Re-loads state before writing so a concurrent Stop wins for `promptActive`. |
-| 5 | `index.ts` — handleStop / handleNotifyIdle / handleNotifyPermission update promptActive | landed (uncommitted) | — | All three set `promptActive=false`. Stop notification title now prefers `currentTitle` over `currentLabel`. |
-| 6 | `config.json` — new optional fields | landed (uncommitted) | — | Added title fields with `_titleNote` explanation. |
-| 7 | `claude-integration/ht-bridge/README.md` — Title generation section | landed (uncommitted) | — | New "Title generation" section with phase table, env vars, requirements, disabling. |
-| 8 | `claude-integration/README.md` — pi-mirror table refresh | landed (uncommitted) | — | Haiku-label row now reads "pi -p --model openai/gpt-5-nano sidecar". Footnote rewritten for the detached/unref'd architecture. |
+| 2 | `index.ts` — Config + SessionState extensions | landed | 3a378f47 | Added `titleEnabled`, `titleStartingLabel`, `titleNeutralColor`, `titleSidecarTimeoutMs`, `titlePiBin`, `titlePiArgs` to Config; `currentTitle`, `promptActive` to SessionState. Env overrides for `HT_CLAUDE_TITLE_ENABLED` and `HT_CLAUDE_PI_BIN`. |
+| 3 | `index.ts` — handlePrompt rewrite + spawnTitleSidecar | landed | 3a378f47 | Pill flips to `Starting…` (`#cdd6f4`); `spawnTitleSidecar` re-invokes the same script with argv `["title", sessionId]` detached + unref. `titleEnabled=false` keeps the original first-clause label path. |
+| 4 | `index.ts` — handleTitle (new) + sanitizer + runTitleSidecar | landed | 3a378f47 | Builds the generation prompt (previous title + new prompt → 3-5 word rule), spawns `pi` with a 5s SIGTERM timeout, sanitizes output (strip quotes, markdown prefixes, cap to `labelMaxChars`). Re-loads state before writing so a concurrent Stop wins for `promptActive`. |
+| 5 | `index.ts` — handleStop / handleNotifyIdle / handleNotifyPermission update promptActive | landed | 3a378f47 | All three set `promptActive=false`. Stop notification title now prefers `currentTitle` over `currentLabel`. |
+| 6 | `config.json` — new optional fields | landed | 3a378f47 | Added title fields with `_titleNote` explanation. |
+| 7 | `claude-integration/ht-bridge/README.md` — Title generation section | landed | 3a378f47 | New "Title generation" section with phase table, env vars, requirements, disabling. |
+| 8 | `claude-integration/README.md` — pi-mirror table refresh | landed | 3a378f47 | Haiku-label row now reads "pi -p --model openai/gpt-5-nano sidecar". Footnote rewritten for the detached/unref'd architecture. |
 | 9 | Manual smoke test (turn 1, turn 2, pi missing, disabled, stop) | passed | — | Turn 1: `Refactor to JWT authentication` at t=2s. Turn 2 with same session: `DynamoDB Based Refresh Flow Consistency` (refined correctly). pi-missing: `currentTitle=""` silent. `titleEnabled=0`: `currentLabel` populated, `currentTitle=""`. Stop: `promptActive=false`, title preserved. |
 
 ## Deviations from plan
