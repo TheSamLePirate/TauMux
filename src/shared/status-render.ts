@@ -53,10 +53,16 @@ export interface RenderEntryInput {
   icon?: string;
   /** Where the entry will live. */
   context: "bar" | "card";
+  /** When true, inline renderers emit value DOM only — label span and
+   *  icon prefix are stripped. Used by the native sidebar's
+   *  `buildStatusGrid`, which already renders its own keyLine (icon
+   *  SVG + label) above the value row and would otherwise show both
+   *  twice. No-op for block renderers (they own their own label). */
+  valueOnly?: boolean;
 }
 
 export function renderStatusEntry(input: RenderEntryInput): HTMLElement {
-  const { parsed, value, context, color, icon } = input;
+  const { parsed, value, context, color, icon, valueOnly } = input;
   const primary = parsed.renderers[0] ?? "text";
   const body = parseStatusBody(primary, value);
   // If the body parser fell back to text (malformed), force the text
@@ -69,9 +75,37 @@ export function renderStatusEntry(input: RenderEntryInput): HTMLElement {
   const dom = useBlock
     ? renderBlock(parsed, body, effective, icon)
     : renderInline(parsed, body, effective, icon);
+  // valueOnly only meaningfully applies to inline renderers — block
+  // renderers handle the label themselves and the strip would either
+  // hide the entire title or no-op depending on the renderer.
+  if (valueOnly && !useBlock) stripLabelAndIcon(dom);
   applySemantic(dom, parsed.semantic, color);
   if (icon) dom.dataset["icon"] = icon;
   return dom;
+}
+
+/**
+ * Remove the leading `.tau-status-label`, `.tau-ht-icon`, and the
+ * separator text node that `inlineKv` / `inlineCode` / `inlineStatus`
+ * insert between them. Leaves the value child(ren) intact. Used by the
+ * native sidebar when its own keyLine already shows the label.
+ */
+function stripLabelAndIcon(root: HTMLElement): void {
+  const children = Array.from(root.childNodes);
+  for (const node of children) {
+    if (node.nodeType === 1) {
+      const el = node as HTMLElement;
+      if (
+        el.classList.contains("tau-status-label") ||
+        el.classList.contains("tau-ht-icon")
+      ) {
+        root.removeChild(el);
+      }
+    } else if (node.nodeType === 3 && (node.textContent ?? "").trim() === "") {
+      // Whitespace separator text nodes between icon/label/value.
+      root.removeChild(node);
+    }
+  }
 }
 
 const BLOCK_RENDERERS: ReadonlySet<RendererId> = new Set([
@@ -524,7 +558,11 @@ function inlineBadge(
   wrap.appendChild(document.createTextNode(" "));
   const badge = document.createElement("span");
   badge.className = "tau-ht-badge";
-  if (icon) {
+  // Same length gate as appendIcon: drop icon *names* (>2 chars), keep
+  // glyphs. Bridges that pass "bolt" / "chart" don't get a badge icon
+  // here; scripts passing a unicode glyph (e.g. gear or triangle char)
+  // still do.
+  if (icon && icon.length <= 2) {
     const ic = document.createElement("span");
     ic.className = "tau-ht-badge-icon";
     ic.textContent = icon;
@@ -1261,6 +1299,16 @@ function stateClass(state: string): string {
 }
 
 function appendIcon(wrap: HTMLElement, icon: string): void {
+  // `--icon` was originally meant to receive a 1-2 char unicode glyph
+  // (e.g. a gear or triangle character) that can be rendered as text.
+  // Newer bridges (claude-integration ht-bridge, pi-extensions) instead
+  // pass icon *names* like "bolt" / "chart" expecting a registry lookup.
+  // Only the native sidebar's keyLine builder does that lookup (via
+  // ICON_TEMPLATES); this shared renderer can't, so anything longer than
+  // 2 UTF-16 units is treated as a name and dropped — otherwise we
+  // leaked "bolt" / "chart" / etc. as visible text in the bottom bar
+  // and value lines.
+  if (icon.length > 2) return;
   const el = document.createElement("span");
   el.className = "tau-ht-icon";
   el.textContent = icon;

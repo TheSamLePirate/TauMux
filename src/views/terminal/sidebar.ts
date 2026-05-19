@@ -1934,6 +1934,9 @@ export class Sidebar {
             color: pill.color,
             icon: pill.icon,
             context: "card",
+            // keyLine above already renders icon SVG + displayName;
+            // skip them here so the value row doesn't repeat them.
+            valueOnly: true,
           }),
         );
         entry.appendChild(valueLine);

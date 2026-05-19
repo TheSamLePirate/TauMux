@@ -345,6 +345,51 @@ describe("renderStatusEntry — v2 state renderers", () => {
     expect(el.querySelector(".tau-ht-badge-text")?.textContent).toBe("v0.2.4");
     expect(el.querySelector(".tau-ht-badge-icon")?.textContent).toBe("⚙");
   });
+
+  test("inline icon-name (>2 chars) is dropped, not rendered as text", async () => {
+    const { parseStatusKey, renderStatusEntry } = await loadDeps();
+    const el = renderStatusEntry({
+      parsed: parseStatusKey("cc"),
+      value: "turn 3 · 2.1 min",
+      icon: "chart",
+      context: "bar",
+    });
+    expect(el.querySelector(".tau-ht-icon")).toBeNull();
+    expect(el.textContent ?? "").not.toContain("chart");
+    // The displayName label is still shown — only the icon-name leak goes.
+    expect(el.querySelector(".tau-status-label")?.textContent).toBe("cc");
+    expect(el.querySelector(".tau-status-value")?.textContent).toBe(
+      "turn 3 · 2.1 min",
+    );
+  });
+
+  test("badge icon-name (>2 chars) is dropped from the badge", async () => {
+    const { parseStatusKey, renderStatusEntry } = await loadDeps();
+    const el = renderStatusEntry({
+      parsed: parseStatusKey("ver_badge"),
+      value: "v0.2.4",
+      icon: "bolt",
+      context: "bar",
+    });
+    expect(el.querySelector(".tau-ht-badge-icon")).toBeNull();
+    expect(el.querySelector(".tau-ht-badge-text")?.textContent).toBe("v0.2.4");
+  });
+
+  test("valueOnly strips label and icon, keeps value", async () => {
+    const { parseStatusKey, renderStatusEntry } = await loadDeps();
+    const el = renderStatusEntry({
+      parsed: parseStatusKey("cc"),
+      value: "turn 3 · 2.1 min",
+      icon: "⚙",
+      context: "card",
+      valueOnly: true,
+    });
+    expect(el.querySelector(".tau-status-label")).toBeNull();
+    expect(el.querySelector(".tau-ht-icon")).toBeNull();
+    expect(el.querySelector(".tau-status-value")?.textContent).toBe(
+      "turn 3 · 2.1 min",
+    );
+  });
 });
 
 describe("renderStatusEntry — v2 chart renderers", () => {
