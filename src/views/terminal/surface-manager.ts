@@ -2707,8 +2707,10 @@ function fitSurfaceTerminal(view: {
   const padY =
     (parseInt(cs.paddingTop) || 0) + (parseInt(cs.paddingBottom) || 0);
 
-  const cols = Math.max(2, Math.floor((w - padX) / cell.width));
-  const rows = Math.max(1, Math.floor((h - padY) / cell.height));
+  // +0.5 epsilon — see src/shared/xterm-fit.ts for rationale. Keep in
+  // lockstep with the web fit so native and web compute identical dims.
+  const cols = Math.max(2, Math.floor((w - padX + 0.5) / cell.width));
+  const rows = Math.max(1, Math.floor((h - padY + 0.5) / cell.height));
   if (term.cols === cols && term.rows === rows) return;
   core._renderService?.clear();
   term.resize(cols, rows);

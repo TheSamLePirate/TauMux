@@ -218,8 +218,17 @@ export class SettingsPanel {
   }
 
   updateSettings(settings: AppSettings): void {
-    this.settings = { ...settings, ansiColors: { ...settings.ansiColors } };
-    if (this.visible) this.renderActiveSection();
+    const prev = this.settings;
+    const next = { ...settings, ansiColors: { ...settings.ansiColors } };
+    this.settings = next;
+    if (!this.visible) return;
+    // Skip the re-render when the incoming settings match what we already
+    // have locally. emit() mirrors changes into this.settings synchronously,
+    // so the server's settingsChanged echo arrives as a no-op — re-rendering
+    // here would destroy the active <input type="range"> mid-drag and the
+    // gesture would only advance one step per pointer move.
+    if (settingsEqual(prev, next)) return;
+    this.renderActiveSection();
   }
 
   setDiagnostics(d: SettingsDiagnostics): void {
@@ -1899,6 +1908,18 @@ export class SettingsPanel {
     }
     this.onChange(partial);
   }
+}
+
+function settingsEqual(a: AppSettings, b: AppSettings): boolean {
+  if (a === b) return true;
+  const ka = Object.keys(a) as (keyof AppSettings)[];
+  const kb = Object.keys(b) as (keyof AppSettings)[];
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) {
+    if (k === "ansiColors") continue;
+    if (a[k] !== b[k]) return false;
+  }
+  return JSON.stringify(a.ansiColors) === JSON.stringify(b.ansiColors);
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -96,8 +96,11 @@ export function fitTerminal(
     padY = (parseInt(cs.paddingTop) || 0) + (parseInt(cs.paddingBottom) || 0);
   }
 
-  const cols = Math.max(2, Math.floor((w - padX) / cell.width));
-  const rows = Math.max(1, Math.floor((h - padY) / cell.height));
+  // +0.5 epsilon: DOM measurements can land at e.g. 1199.6 instead of
+  // 1200, which `floor` would silently shave by a whole column. Matches
+  // xterm's own FitAddon and keeps native/web byte-identical.
+  const cols = Math.max(2, Math.floor((w - padX + 0.5) / cell.width));
+  const rows = Math.max(1, Math.floor((h - padY + 0.5) / cell.height));
   if (t.cols === cols && t.rows === rows) {
     return { cols, rows, skipped: true };
   }

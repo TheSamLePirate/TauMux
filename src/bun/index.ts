@@ -2421,6 +2421,15 @@ void runAndPublishAudits();
 // Auto-start web mirror server
 function setupWebServerCallbacks(ws: WebServer) {
   ws.setOnHumanInput((surfaceId) => autoContinue.notifyHumanInput(surfaceId));
+  // Honour PTY resize proposals from web clients. Last-write-wins with
+  // the native `viewport.resize` path (webview-handlers/viewport.ts) —
+  // the 250 ms client-side debounce keeps storms in check. Without this
+  // wiring, web mirror's xterm and PTY drift in cols/rows, producing
+  // wrap glitches + the zsh `%` PROMPT_SP cookie on every clear.
+  ws.onSurfaceResizeRequest = (surfaceId, cols, rows) => {
+    sessions.resize(surfaceId, cols, rows);
+    ws.sendResize(surfaceId, cols, rows);
+  };
   ws.onPanelUpdate = (surfaceId, panelId, fields) => {
     rpc.send("sidebandMeta", {
       surfaceId,

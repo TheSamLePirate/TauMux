@@ -190,6 +190,12 @@ function boot() {
     chipsEl: HTMLElement;
     /** Mobile / dictation input shim attached to xterm's helper textarea. */
     dictation?: DictationInput;
+    /** Send a `surfaceResizeRequest` if cols/rows just changed. Lives
+     *  on the term ref so window-resize can drive it across all panes
+     *  in nativeViewport mirror mode (where the per-pane ResizeObserver
+     *  does not fire — CSS box is unchanged, only the transform scale
+     *  is). Defined for `kind === "term"` panes only. */
+    proposeResize?: () => void;
     /** Telegram-only handle on the chat DOM and its update fn. */
     telegram?: {
       messagesEl: HTMLElement;
@@ -408,6 +414,26 @@ function boot() {
     }
     reconcilePanes(state);
     reconcilePanels(state);
+    // Host is authoritative for cols/rows. When a `resize` envelope
+    // lands (native window or pane drag, another web client's
+    // proposal, sessions.resize from any RPC path), apply it to the
+    // local xterm grid synchronously. Without this, the web's xterm
+    // kept whatever the last local fit picked and only caught up when
+    // workspace switching recreated the pane.
+    for (const sid in state.surfaces) {
+      const s = state.surfaces[sid];
+      const ps = prev.surfaces[sid];
+      if (!s) continue;
+      if (ps && s.cols === ps.cols && s.rows === ps.rows) continue;
+      const ref = terms[sid];
+      if (!ref || ref.kind !== "term" || !ref.term) continue;
+      if (ref.term.cols === s.cols && ref.term.rows === s.rows) continue;
+      try {
+        ref.term.resize(s.cols, s.rows);
+      } catch {
+        /* xterm not yet ready / disposed — skip */
+      }
+    }
     layoutView.applyLayout(state);
     applyChips(state, prev);
     applyFullscreen(state, prev);
@@ -598,6 +624,34 @@ function boot() {
     let lastProposed: { cols: number; rows: number } | null = null;
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     let layoutScheduled = false;
+    // Pulls the current fit dims and sends a `surfaceResizeRequest` only
+    // when they differ from what we last proposed. Hoisted out of the
+    // ResizeObserver callback so the window-resize debounce can call it
+    // too (the per-pane RO does not fire in nativeViewport mirror mode).
+    const proposeIfChanged = () => {
+      try {
+        const dims = fitAddon.proposeDimensions();
+        if (!dims || !dims.cols || !dims.rows) return;
+        if (
+          lastProposed &&
+          lastProposed.cols === dims.cols &&
+          lastProposed.rows === dims.rows
+        )
+          return;
+        lastProposed = { cols: dims.cols, rows: dims.rows };
+        sendMsg("surfaceResizeRequest", {
+          surfaceId,
+          cols: dims.cols,
+          rows: dims.rows,
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+    const scheduleProposal = () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(proposeIfChanged, 250);
+    };
     const ro = new ResizeObserver(() => {
       if (!layoutScheduled) {
         layoutScheduled = true;
@@ -610,27 +664,7 @@ function boot() {
           }
         });
       }
-      if (resizeTimer) clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        try {
-          const dims = fitAddon.proposeDimensions();
-          if (!dims || !dims.cols || !dims.rows) return;
-          if (
-            lastProposed &&
-            lastProposed.cols === dims.cols &&
-            lastProposed.rows === dims.rows
-          )
-            return;
-          lastProposed = { cols: dims.cols, rows: dims.rows };
-          sendMsg("surfaceResizeRequest", {
-            surfaceId,
-            cols: dims.cols,
-            rows: dims.rows,
-          });
-        } catch {
-          /* ignore */
-        }
-      }, 250);
+      scheduleProposal();
     });
     ro.observe(termEl);
 
@@ -643,6 +677,7 @@ function boot() {
       barTitle,
       chipsEl,
       dictation: dictation ?? undefined,
+      proposeResize: scheduleProposal,
     };
 
     // Paint chips from existing metadata, if any.
@@ -1153,6 +1188,22 @@ function boot() {
       const s = store.getState();
       if (!s.fullscreenSurfaceId) layoutView.applyLayout(s);
       layoutView.scaleTerminals(s);
+      // In nativeViewport mirror mode the per-pane ResizeObserver does
+      // not fire on browser resize: applyLayout writes pane rects in
+      // native pixels and applyMirrorScale handles browser fit via a
+      // CSS transform — the pane's CSS box (clientWidth/Height) is
+      // unchanged. Refit + propose explicitly so the PTY tracks the
+      // browser-driven size like it does on workspace switch.
+      for (const sid in terms) {
+        const ref = terms[sid];
+        if (!ref?.term) continue;
+        try {
+          fitTerminal(ref.term, ref.termEl);
+        } catch {
+          /* ignore */
+        }
+        ref.proposeResize?.();
+      }
     }, 100);
   });
 

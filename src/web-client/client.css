@@ -342,7 +342,11 @@ button {
 
 .pane .xterm {
   height: 100%;
-  padding: 6px 8px 8px;
+  /* No padding here — native (`.surface-terminal .xterm`) has none either.
+   * Any inset would make the web fit math (which subtracts xterm padding,
+   * `src/shared/xterm-fit.ts:99`) compute fewer cols than native's PTY
+   * already advertises, causing wrap glitches + zsh's `%` cookie. If a
+   * visual gutter is wanted, put it on `.pane-term` instead. */
 }
 
 .xterm-viewport {
