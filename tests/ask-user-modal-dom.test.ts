@@ -50,6 +50,8 @@ interface Harness {
   state: import("../src/views/terminal/ask-user-state").AskUserState;
   answers: Array<{ id: string; value: string }>;
   cancels: Array<{ id: string; reason: string | undefined }>;
+  shown: number;
+  hidden: number;
   setActive(id: string | null): void;
   destroy(): void;
 }
@@ -61,6 +63,8 @@ async function mkHarness(): Promise<Harness> {
   const answers: Array<{ id: string; value: string }> = [];
   const cancels: Array<{ id: string; reason: string | undefined }> = [];
   let activeId: string | null = "surface:1";
+  let shown = 0;
+  let hidden = 0;
   const handle = modalMod.installAskUserModal({
     state,
     onAnswer: (id, value) => {
@@ -71,11 +75,23 @@ async function mkHarness(): Promise<Harness> {
     },
     getActiveSurfaceId: () => activeId,
     getAttribution: (sid) => ({ workspace: "ws-1", surface: `pane-${sid}` }),
+    onModalShown: () => {
+      shown += 1;
+    },
+    onModalHidden: () => {
+      hidden += 1;
+    },
   });
   return {
     state,
     answers,
     cancels,
+    get shown() {
+      return shown;
+    },
+    get hidden() {
+      return hidden;
+    },
     setActive: (id) => {
       activeId = id;
       window.dispatchEvent(new CustomEvent("ht-surface-focused"));
@@ -248,19 +264,19 @@ describe("AskUserModal — DOM behaviour", () => {
     h.destroy();
   });
 
-  test("modal hides when active surface has no pending and reappears on switch", async () => {
+  test("modal shows globally without focusing the source surface", async () => {
     const { readActiveAskUserModal } = await loadModal();
     const h = await mkHarness();
     const req = mkReq({ kind: "yesno", surface_id: "surface:other" });
     h.state.pushShown(req);
-    // We're focused on surface:1; surface:other has the request.
-    expect(readActiveAskUserModal()).toBeNull();
-    // Switch focus.
-    h.setActive("surface:other");
-    expect(readActiveAskUserModal()?.request_id).toBe(req.request_id);
-    // Switch back.
+    // We're focused on surface:1; surface:other has the request, but
+    // human-in-the-loop prompts are global and must appear immediately.
+    const snap = readActiveAskUserModal();
+    expect(snap?.request_id).toBe(req.request_id);
+    expect(snap?.attribution).toContain("pane-surface:other");
+    // Switching focus should not hide the already-visible global prompt.
     h.setActive("surface:1");
-    expect(readActiveAskUserModal()).toBeNull();
+    expect(readActiveAskUserModal()?.request_id).toBe(req.request_id);
     h.destroy();
   });
 
@@ -286,6 +302,25 @@ describe("AskUserModal — DOM behaviour", () => {
     Object.defineProperty(ev, "target", { value: overlay });
     overlay.dispatchEvent(ev);
     expect(h.cancels.length).toBe(1);
+    h.destroy();
+  });
+
+  test("modal lifecycle callbacks fire on mount and unmount", async () => {
+    const h = await mkHarness();
+    const req = mkReq({ kind: "yesno" });
+    h.state.pushShown(req);
+    expect(h.shown).toBe(1);
+    expect(h.hidden).toBe(0);
+    h.state.pushResolved(req.request_id);
+    expect(h.hidden).toBe(1);
+    h.destroy();
+  });
+
+  test("overlay is visible synchronously on mount", async () => {
+    const h = await mkHarness();
+    h.state.pushShown(mkReq({ kind: "yesno" }));
+    const overlay = document.querySelector(".ask-user-overlay") as HTMLElement;
+    expect(overlay.classList.contains("visible")).toBe(true);
     h.destroy();
   });
 

@@ -4,9 +4,9 @@
  * Holds the `AskUserRequest`s the webview learns about over the
  * Electrobun `askUserEvent` push channel, plus a snapshot seeded
  * via `agent.ask_pending` on bootstrap. The modal subscribes to
- * change notifications and renders the head request for whichever
- * surface is currently focused; the sidebar badge reads pending
- * counts.
+ * change notifications and renders the oldest pending request globally
+ * so human-in-the-loop prompts are visible even when another pane is
+ * focused; the sidebar badge still reads per-surface pending counts.
  *
  * This module owns no DOM and no RPC — both are wired in `index.ts`.
  * That separation is what makes the store hermetically testable
@@ -95,13 +95,14 @@ export class AskUserState {
     return this.bySurface.get(surface_id)?.length ?? 0;
   }
 
-  /** All pending requests across every surface in insertion order
-   *  per surface. Surface order is whatever the Map iteration order
-   *  is (insertion order of first-pending-on-that-surface). */
+  /** All pending requests in authoritative insertion order. */
   getAllPending(): AskUserRequest[] {
-    const out: AskUserRequest[] = [];
-    for (const list of this.bySurface.values()) out.push(...list);
-    return out;
+    return Array.from(this.byId.values());
+  }
+
+  /** Oldest pending request globally, or null when the queue is empty. */
+  getGlobalHead(): AskUserRequest | null {
+    return this.byId.values().next().value ?? null;
   }
 
   /** Total pending count across every surface. */

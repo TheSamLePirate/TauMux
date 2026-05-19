@@ -1,15 +1,15 @@
 /**
  * Webview modal for Plan #10 ask-user (commit C).
  *
- * Renders the head AskUserRequest pending for the currently focused
- * surface. Modeled on prompt-dialog.ts: a single document-root overlay,
- * proven keyboard / focus / Esc / Enter behavior, plus four kind
- * variants (yesno · choice · text · confirm-command).
+ * Renders the oldest pending AskUserRequest globally. Modeled on
+ * prompt-dialog.ts: a single document-root overlay, proven keyboard /
+ * focus / Esc / Enter behavior, plus four kind variants (yesno ·
+ * choice · text · confirm-command).
  *
  * Lifecycle:
- *   - The state subscriber + `ht-surface-focused` listener trigger
- *     re-render: when the active surface changes, or when its head
- *     request appears / resolves, swap the sheet contents in place.
+ *   - The state subscriber triggers re-render: when any request appears
+ *     / resolves, swap the sheet contents in place. Prompts are global
+ *     so the user never has to focus the source pane first.
  *   - Optimistic dismiss: clicking an answer removes the modal locally
  *     and dispatches `askUserAnswer` / `askUserCancel` to bun. The
  *     authoritative `askUserEvent: resolved` arrives shortly after and
@@ -35,12 +35,19 @@ export interface AskUserModalOptions {
   onAnswer: (request_id: string, value: string) => void;
   /** Dispatched on user cancel. */
   onCancel: (request_id: string, reason?: string) => void;
-  /** Live read — the currently focused surface in the webview. */
-  getActiveSurfaceId: () => string | null;
+  /** Deprecated compatibility hook. Prompts are global now, but tests
+   *  and older callers may still provide this function. */
+  getActiveSurfaceId?: () => string | null;
   /** Pretty header line — workspace name and surface title at the
    *  moment the request shows. Best-effort: missing values render as
    *  empty strings, the modal still works. */
   getAttribution: (surface_id: string) => AskUserAttribution;
+  /** Called when the modal is mounted. Native browser panes use OOPIF
+   *  overlays that can otherwise paint above DOM modals. */
+  onModalShown?: () => void;
+  /** Called when the modal is unmounted. The caller decides whether it
+   *  is safe to restore native browser panes. */
+  onModalHidden?: () => void;
 }
 
 interface MountedModal {
@@ -65,15 +72,12 @@ export function installAskUserModal(options: AskUserModalOptions): {
 } {
   activeOptions = options;
   const offState = options.state.subscribe((change) => onStateChange(change));
-  const onSurfaceFocused = (): void => rerender();
-  window.addEventListener("ht-surface-focused", onSurfaceFocused);
 
   return {
     rerender,
     isVisible: () => active !== null,
     destroy: () => {
       offState();
-      window.removeEventListener("ht-surface-focused", onSurfaceFocused);
       unmount();
       activeOptions = null;
     },
@@ -81,20 +85,14 @@ export function installAskUserModal(options: AskUserModalOptions): {
 }
 
 function onStateChange(_change: AskUserStateChange): void {
-  // We always reconcile against the head of the active surface,
-  // regardless of which event landed. Cheap render — singleton DOM,
-  // no diff cost.
+  // We always reconcile against the global head, regardless of which
+  // event landed. Cheap render — singleton DOM, no diff cost.
   rerender();
 }
 
 function rerender(): void {
   if (!activeOptions) return;
-  const surfaceId = activeOptions.getActiveSurfaceId();
-  if (!surfaceId) {
-    unmount();
-    return;
-  }
-  const head = activeOptions.state.getHeadForSurface(surfaceId);
+  const head = activeOptions.state.getGlobalHead();
   if (!head) {
     unmount();
     return;
@@ -110,8 +108,10 @@ function rerender(): void {
 function mount(request: AskUserRequest): void {
   if (!activeOptions) return;
 
+  activeOptions.onModalShown?.();
+
   const overlay = document.createElement("div");
-  overlay.className = "ask-user-overlay";
+  overlay.className = "ask-user-overlay visible";
   overlay.setAttribute("data-ask-user-overlay", "1");
   overlay.setAttribute("data-request-id", request.request_id);
   overlay.setAttribute("data-kind", request.kind);
@@ -176,12 +176,11 @@ function mount(request: AskUserRequest): void {
   overlay.appendChild(sheet);
   document.body.appendChild(overlay);
   // Open the host synchronously so a same-tick Escape / backdrop click
-  // is caught even before the rAF visibility animation runs (tests
-  // dispatch events immediately after pushShown and need the listeners
-  // attached). The rAF only stages the .visible class for the fade-in.
+  // is caught immediately. The overlay is already visible when appended;
+  // this avoids a transparent rAF race when the window is not focused or
+  // browser-native overlays are being hidden.
   host.open();
   requestAnimationFrame(() => {
-    overlay.classList.add("visible");
     focusInitial();
   });
 }
@@ -191,6 +190,7 @@ function unmount(): void {
   active.host.close();
   active.overlay.remove();
   active = null;
+  activeOptions?.onModalHidden?.();
 }
 
 function answerActive(value: string): void {

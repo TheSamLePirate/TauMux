@@ -56,6 +56,18 @@ describe("theme-token migration — ask-user modal + workspace badge (P7 S17)", 
     expect(sheet).toContain("var(--ht-ask-sheet-shadow)");
   });
 
+  test("ask-user overlay sits above palette/settings and notification rings", () => {
+    const overlay = matchRule(indexCss, ".ask-user-overlay");
+    const z = /z-index:\s*(\d+)/.exec(overlay)?.[1];
+    expect(z).toBeDefined();
+    expect(Number(z)).toBeGreaterThan(2147483000);
+  });
+
+  test("ask-user overlay is visible by default to avoid rAF transparency races", () => {
+    const overlay = matchRule(indexCss, ".ask-user-overlay");
+    expect(overlay).toContain("opacity: 1");
+  });
+
   test("ask-user codebox uses the new tokens", () => {
     const code = matchRule(indexCss, ".ask-user-codebox");
     expect(code).toContain("var(--ht-ask-codebox-bg)");

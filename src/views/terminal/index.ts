@@ -377,6 +377,15 @@ variantContext.setSurfaceManager(surfaceManager);
 // creation, sidebar render). Snapshot seed is deferred to the same
 // setTimeout that fires the initial resize so it never races with
 // the bun bridge readiness.
+function shouldRestoreBrowserWebviewsAfterAskModal(): boolean {
+  // Ask/plan prompts are top-layer, but other overlays also hide native
+  // browser OOPIF panes. Do not reveal browsers under those overlays when
+  // an ask prompt closes.
+  return !document.querySelector(
+    ".settings-overlay.visible, .palette-overlay:not(.hidden), .process-manager-overlay.visible, .surface-details-overlay.visible, .kbd-cheatsheet:not(.hidden)",
+  );
+}
+
 let askUserModalHandle: {
   rerender: () => void;
   isVisible: () => boolean;
@@ -408,6 +417,14 @@ try {
         };
       } catch {
         return { workspace: "", surface: "" };
+      }
+    },
+    onModalShown: () => {
+      surfaceManager.hideBrowserWebviews();
+    },
+    onModalHidden: () => {
+      if (shouldRestoreBrowserWebviewsAfterAskModal()) {
+        surfaceManager.showBrowserWebviews();
       }
     },
   });

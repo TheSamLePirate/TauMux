@@ -3057,26 +3057,24 @@ body.terminal-typing .panel {
 }
 
 /* Plan #10 commit C — ask-user modal. Cloned from .prompt-overlay
- * with a slightly darker backdrop and a higher z-index so it sits
- * above the prompt-dialog tier (1800) and below settings (1900) /
- * palette (2000). The sheet reuses .prompt-title / .prompt-message /
- * .prompt-input / .prompt-btn classes so any theming work for the
- * existing prompt-dialog automatically applies here. */
+ * with a darker backdrop. Ask-user also powers ht_plan_set approval,
+ * so it is a blocking human-in-the-loop prompt and must sit above all
+ * app chrome, settings/palette overlays, browser OOPIF panes (hidden
+ * while mounted), and pane notification rings (2147483000). */
 .ask-user-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1850;
+  z-index: 2147483600;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding-top: 96px;
   background: var(--ht-ask-scrim-bg);
-  opacity: 0;
-  transition: opacity var(--transition-fast);
+  opacity: 1;
 }
 
-.ask-user-overlay.visible {
-  opacity: 1;
+.ask-user-overlay:not(.visible) {
+  opacity: 0;
 }
 
 .ask-user-sheet {
