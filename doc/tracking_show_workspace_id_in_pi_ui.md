@@ -3,7 +3,7 @@
 - Start commit: `2831ada3`
 - Date: 2026-05-19
 - Release bump: `bun run bump:patch` → `0.3.155`
-- Commit: pending
+- Implementation commit: `d24404ee`
 
 ## Progress
 
