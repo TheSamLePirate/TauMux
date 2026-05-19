@@ -147,3 +147,65 @@ dangling, and the isAncestorOrSelf unit cases.
   B until the mirror protocol arrives)
 - typecheck unchanged (2 pre-existing errors only)
 - versions 0.3.146 → 0.3.148
+
+## P9 follow-up (2026-05-19) — command-palette + CLI ergonomics
+
+### Command palette completeness (`31723f12`, v0.3.150)
+
+`buildPaletteCommands()` in `src/views/terminal/index.ts` previously
+exposed ~26 verbs — heavy on layout / split / font / browser-open and
+light on everything else, so workspace rename, pane rename, browser
+navigation, theme switching, and editor open-by-path were only
+reachable via memorised keychords or the settings panel.
+
+Added ~30 entries so every UI capability is reachable via ⌘⇧P:
+- **Workspace**: Rename Workspace, Close Workspace, Set Workspace Color
+  (hex prompt), Set Workspace CWD (path prompt), dynamic "Switch to
+  Workspace: <name>" per workspace with ⌘1..⌘9 shortcut hints on the
+  first nine.
+- **Pane**: Rename Pane, Copy Pane CWD (clipboard), Open Pane CWD in
+  Editor (split editor pane rooted at the pane's CWD).
+- **Browser** (gated on `getActiveSurfaceType() === "browser"`): Back,
+  Forward, Reload, Toggle DevTools, Find in Page, Focus Address Bar,
+  Zoom In / Out / Reset.
+- **Theme**: one entry per `THEME_PRESETS` row, "✓" suffix on the
+  active preset, applies via the same `updateSettings` round-trip the
+  settings panel uses.
+- **Editor**: Open File in Editor (absolute-path prompt →
+  `splitEditorSurface`).
+- **View**: Clear Sidebar Logs, Reveal Log File.
+
+All entries route through existing SurfaceManager / RPC paths — no
+new bun-side surface needed. Source-level completeness guard added at
+`tests/command-palette-completeness.test.ts` (26 tests). Full bun
+test: 2936 pass / 0 fail.
+
+### `ht rename-workspace` / `rename-surface` auto-detection (`b1c72cfc`, v0.3.151)
+
+Previously `ht rename-workspace NAME` required `--workspace ws:3`
+even when run from inside a τ-mux pane that already exports
+`HT_SURFACE`. Closed the ergonomic gap and added the symmetric
+`rename-surface` verb:
+
+- `bin/ht`: `rename-workspace` forwards `HT_SURFACE` as `surface_id`
+  when `--workspace` is absent; new `rename-surface` case forwards
+  `HT_SURFACE` as `surface_id` when `--surface` is absent. Help
+  banner enumerates both verbs and the auto-detect rule.
+- `src/bun/rpc-handlers/workspace.ts`: `workspace.rename` now uses
+  `resolveWorkspaceId` (explicit → surface_id-owner → active
+  workspace fallback).
+- `src/bun/rpc-handlers/surface.ts`: `surface.rename` now uses
+  `resolveSurfaceId` (explicit → focused surface fallback), matching
+  every other surface-targeting verb.
+
+5 new tests in `tests/rpc-handler.test.ts` + 1 in
+`tests/bin-ht-help.test.ts` cover the new resolution paths. Full
+bun test: 2941 pass / 0 fail.
+
+### Summary
+
+- 2 commits (31723f12, b1c72cfc) on top of P9 follow-up
+- ~30 new palette verbs + 1 new CLI verb + 2 widened CLI verbs
+- 32 new tests across 3 files (26 + 5 + 1)
+- typecheck unchanged (2 pre-existing errors only)
+- versions 0.3.148 → 0.3.151
