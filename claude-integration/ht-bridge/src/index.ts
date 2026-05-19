@@ -30,7 +30,7 @@
  * HT_CLAUDE_DEBUG=1 to surface errors on stderr.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -86,6 +86,18 @@ interface Config {
   // ht-bridge config.json (or set HT_CLAUDE_NOTIFY_ON_IDLE=1).
   notifyOnIdle: boolean;
 
+  // Conversation-title sidecar. On UserPromptSubmit the pill flips to
+  // `titleStartingLabel` in `titleNeutralColor`, then a detached `pi -p`
+  // call generates a 3-5 word title and switches the pill to the pink
+  // `labelColor`. Previous title is passed back to pi so the title can
+  // be refined across turns.
+  titleEnabled: boolean;
+  titleStartingLabel: string;
+  titleNeutralColor: string;
+  titleSidecarTimeoutMs: number;
+  titlePiBin: string;
+  titlePiArgs: string[];
+
   // Pricing tables — $ per million tokens. Unknown models fall back to
   // a tier heuristic (opus / sonnet / haiku substring match).
   pricing: Record<string, ModelCost>;
@@ -103,6 +115,15 @@ interface SessionState {
   promptStartedAt: number;
   currentLabel: string;
   currentPrompt: string;
+  /** pi-generated 3-5 word title. Refined across turns when present. */
+  currentTitle: string;
+  /**
+   * True between a `prompt` event and the next `stop`/`notify-*`.
+   * The title sidecar always updates `currentTitle` so the next turn has
+   * context, but only touches the visible pill when this flag is true —
+   * preventing a "ghost" pill after Stop if the sidecar finishes late.
+   */
+  promptActive: boolean;
   turnCount: number;
   lastModel: string;
   totalInputTokens: number;
@@ -132,6 +153,28 @@ const DEFAULT_CONFIG: Config = {
   tickerColor: "#89b4fa",
   notifySubtitle: "Claude Code",
   notifyOnIdle: false,
+  titleEnabled: true,
+  titleStartingLabel: "Starting…",
+  titleNeutralColor: "#cdd6f4",
+  titleSidecarTimeoutMs: 5000,
+  titlePiBin: "pi",
+  // Minimal pi invocation: print mode, gpt-5-nano without thinking, no
+  // tools / sessions / extensions / skills / prompt templates / themes /
+  // context files so it boots fast and stays text-only.
+  titlePiArgs: [
+    "-p",
+    "--model",
+    "openai/gpt-5-nano",
+    "--thinking",
+    "off",
+    "--no-tools",
+    "--no-session",
+    "--no-extensions",
+    "--no-skills",
+    "--no-prompt-templates",
+    "--no-themes",
+    "-nc",
+  ],
   // Seed prices for the Claude 4.x family as of 2026-04. Unknown versions
   // fall back to a tier heuristic in `findFuzzyPrice`. Users can override
   // via config.json without touching this source.
@@ -213,6 +256,12 @@ function loadConfig(): Config {
       env.HT_CLAUDE_NOTIFY_ON_IDLE !== "0" &&
       env.HT_CLAUDE_NOTIFY_ON_IDLE.toLowerCase() !== "false";
   }
+  if (env.HT_CLAUDE_TITLE_ENABLED !== undefined) {
+    c.titleEnabled =
+      env.HT_CLAUDE_TITLE_ENABLED !== "0" &&
+      env.HT_CLAUDE_TITLE_ENABLED.toLowerCase() !== "false";
+  }
+  if (env.HT_CLAUDE_PI_BIN) c.titlePiBin = env.HT_CLAUDE_PI_BIN;
   return c;
 }
 
@@ -227,6 +276,8 @@ function newState(sessionId: string): SessionState {
     promptStartedAt: 0,
     currentLabel: "",
     currentPrompt: "",
+    currentTitle: "",
+    promptActive: false,
     turnCount: 0,
     lastModel: "",
     totalInputTokens: 0,
@@ -404,6 +455,133 @@ function findFuzzyPrice(cfg: Config, model: string): ModelCost | null {
 }
 
 // ---------------------------------------------------------------------------
+// Title sidecar — detached `pi -p` call that generates a 3-5 word title
+// for the current turn. Updates state.currentTitle (always) and the
+// Claude pill (only if state.promptActive when the result arrives).
+// ---------------------------------------------------------------------------
+
+/** Strip quoted/markdown decorations from pi output and cap length. */
+function sanitizeTitle(raw: string, max: number): string {
+  let t = raw.replace(/^\s+|\s+$/g, "").split("\n")[0] ?? "";
+  t = t.trim();
+  // Drop wrapping quotes / backticks the model sometimes adds despite the
+  // "no quotes" instruction.
+  t = t.replace(/^[`'"“”‘’]+|[`'"“”‘’]+$/g, "").trim();
+  // Drop common markdown prefixes ("- ", "* ", "1. ", "# ").
+  t = t.replace(/^(?:[-*]\s+|\d+[.)]\s+|#+\s+)/, "").trim();
+  if (!t) return "";
+  if (t.length > max) t = t.slice(0, max - 1).trimEnd() + "…";
+  return t;
+}
+
+/** Build the prompt sent to pi on stdin. */
+function buildTitlePrompt(previousTitle: string, userPrompt: string): string {
+  const prev = previousTitle.trim() || "(none — first turn)";
+  return [
+    "Generate a 3 to 5 word title for this coding task.",
+    `Previous title: ${prev}`,
+    "New user prompt:",
+    userPrompt.trim(),
+    "",
+    "Rules: reply with ONLY the title, no quotes, no punctuation, no markdown.",
+    "If the new prompt continues the same topic, refine the previous title.",
+    "If it pivots, write a fresh title.",
+  ].join("\n");
+}
+
+/** Fire the detached second invocation that runs `handleTitle`. */
+function spawnTitleSidecar(sessionId: string): void {
+  try {
+    const child = spawn(
+      process.execPath,
+      [fileURLToPath(import.meta.url), "title", sessionId],
+      { detached: true, stdio: "ignore" },
+    );
+    child.on("error", (err) => {
+      if (process.env.HT_CLAUDE_DEBUG) {
+        console.error(`[ht-bridge] title sidecar spawn: ${err.message}`);
+      }
+    });
+    child.unref();
+  } catch (err) {
+    if (process.env.HT_CLAUDE_DEBUG) {
+      console.error(
+        `[ht-bridge] title sidecar spawn failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+}
+
+/**
+ * Run pi non-interactively and collect stdout. Returns "" on timeout,
+ * non-zero exit, spawn error, or empty output. LC_ALL=C, LANG=C so any
+ * locale-specific output stays predictable.
+ */
+function runTitleSidecar(cfg: Config, promptText: string): Promise<string> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let stdout = "";
+    let stderr = "";
+    const finish = (s: string) => {
+      if (settled) return;
+      settled = true;
+      resolve(s);
+    };
+    let child: ChildProcess;
+    try {
+      child = spawn(cfg.titlePiBin, cfg.titlePiArgs, {
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, LC_ALL: "C", LANG: "C" },
+      });
+    } catch (err) {
+      if (process.env.HT_CLAUDE_DEBUG) {
+        console.error(
+          `[ht-bridge] pi spawn failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      return finish("");
+    }
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        /* already exited */
+      }
+      finish("");
+    }, cfg.titleSidecarTimeoutMs);
+    child.stdout?.on("data", (b: Buffer) => {
+      stdout += b.toString("utf-8");
+    });
+    child.stderr?.on("data", (b: Buffer) => {
+      stderr += b.toString("utf-8");
+    });
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      if (process.env.HT_CLAUDE_DEBUG) {
+        console.error(`[ht-bridge] pi error: ${err.message}`);
+      }
+      finish("");
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        if (process.env.HT_CLAUDE_DEBUG) {
+          console.error(`[ht-bridge] pi exit ${code}: ${stderr.trim()}`);
+        }
+        return finish("");
+      }
+      finish(stdout);
+    });
+    try {
+      child.stdin?.write(promptText);
+      child.stdin?.end();
+    } catch {
+      /* pi closed early — handler above resolves */
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // ht CLI wrappers — fire-and-forget; exit code is ignored.
 // ---------------------------------------------------------------------------
 
@@ -486,18 +664,58 @@ function handlePrompt(cfg: Config, payload: Record<string, unknown>): void {
   state.turnCount += 1;
   state.currentPrompt =
     typeof payload["prompt"] === "string" ? (payload["prompt"] as string) : "";
+  // First-clause fallback. Used when titleEnabled=false or while the
+  // sidecar is still running. handleStop also reads this as a fallback
+  // when currentTitle hasn't been generated yet.
   state.currentLabel = truncateLabel(state.currentPrompt, cfg.labelMaxChars);
+  state.promptActive = true;
   if (typeof payload["cwd"] === "string") state.cwd = payload["cwd"] as string;
   saveState(cfg, state);
 
-  htSetStatus(
-    cfg,
-    cfg.labelKey,
-    state.currentLabel,
-    cfg.labelIcon,
-    cfg.labelColor,
-  );
-  setTicker(cfg, state, state.currentLabel);
+  if (cfg.titleEnabled) {
+    // Two-phase: muted "Starting…" → pink title once pi returns.
+    htSetStatus(
+      cfg,
+      cfg.labelKey,
+      cfg.titleStartingLabel,
+      cfg.labelIcon,
+      cfg.titleNeutralColor,
+    );
+    setTicker(cfg, state, cfg.titleStartingLabel);
+    spawnTitleSidecar(sessionId);
+  } else {
+    // Escape hatch — preserves the original first-clause-of-prompt label.
+    htSetStatus(
+      cfg,
+      cfg.labelKey,
+      state.currentLabel,
+      cfg.labelIcon,
+      cfg.labelColor,
+    );
+    setTicker(cfg, state, state.currentLabel);
+  }
+}
+
+async function handleTitle(cfg: Config, sessionId: string): Promise<void> {
+  if (!cfg.titleEnabled) return;
+  const state = loadState(cfg, sessionId);
+  if (!state.currentPrompt) return;
+
+  const promptText = buildTitlePrompt(state.currentTitle, state.currentPrompt);
+  const raw = await runTitleSidecar(cfg, promptText);
+  const title = sanitizeTitle(raw, cfg.labelMaxChars);
+  if (!title) return;
+
+  // Re-load before writing — Stop/Idle/Permission may have run while we
+  // were waiting on pi, and they own promptActive.
+  const fresh = loadState(cfg, sessionId);
+  fresh.currentTitle = title;
+  saveState(cfg, fresh);
+
+  if (fresh.promptActive) {
+    htSetStatus(cfg, cfg.labelKey, title, cfg.labelIcon, cfg.labelColor);
+    setTicker(cfg, fresh, title);
+  }
 }
 
 function handleStop(cfg: Config, payload: Record<string, unknown>): void {
@@ -521,15 +739,16 @@ function handleStop(cfg: Config, payload: Record<string, unknown>): void {
 
   const turnMs =
     state.promptStartedAt > 0 ? Date.now() - state.promptStartedAt : 0;
+  state.promptActive = false;
   saveState(cfg, state);
 
   htClearStatus(cfg, cfg.labelKey);
 
-  // Build the notification. Title carries the label so the sidebar row
-  // is scannable; body carries the original prompt + metadata.
-  const title = state.currentLabel
-    ? `Claude · ${state.currentLabel}`
-    : "Claude done";
+  // Build the notification. Title carries the pi-generated label (or
+  // the first-clause fallback while the sidecar hasn't returned) so the
+  // sidebar row is scannable; body carries the original prompt + metadata.
+  const labelForTitle = state.currentTitle || state.currentLabel;
+  const title = labelForTitle ? `Claude · ${labelForTitle}` : "Claude done";
   const metaParts: string[] = [];
   if (turnMs > 0) metaParts.push(formatDuration(turnMs));
   if (state.totalCostUSD > 0) metaParts.push(formatCost(state.totalCostUSD));
@@ -548,6 +767,8 @@ function handleNotifyIdle(cfg: Config, payload: Record<string, unknown>): void {
   const sessionId = (payload["session_id"] as string) || "unknown";
   const state = loadState(cfg, sessionId);
   // Don't bump turnCount — this is a mid-turn signal, not a new turn.
+  // Drop promptActive so a late title sidecar won't repaint the pill.
+  state.promptActive = false;
   saveState(cfg, state);
 
   htSetStatus(
@@ -572,6 +793,7 @@ function handleNotifyPermission(
 ): void {
   const sessionId = (payload["session_id"] as string) || "unknown";
   const state = loadState(cfg, sessionId);
+  state.promptActive = false;
   saveState(cfg, state);
 
   htSetStatus(
@@ -623,6 +845,28 @@ async function main(): Promise<void> {
   }
 
   pruneOldState(cfg);
+
+  // `title` is the detached self-re-invocation from spawnTitleSidecar.
+  // It reads sessionId from argv[3] (not stdin) and runs pi.
+  if (event === "title") {
+    const sessionId = process.argv[3];
+    if (!sessionId) {
+      if (process.env.HT_CLAUDE_DEBUG) {
+        console.error("[ht-bridge] title: missing sessionId argv[3]");
+      }
+      return;
+    }
+    try {
+      await handleTitle(cfg, sessionId);
+    } catch (err) {
+      if (process.env.HT_CLAUDE_DEBUG) {
+        console.error(
+          `[ht-bridge] title failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    return;
+  }
 
   let payload: Record<string, unknown> = {};
   try {

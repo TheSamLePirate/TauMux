@@ -9,5 +9,26 @@
   "idleColor": "#f9e2af",
   "permissionColor": "#f38ba8",
   "labelMaxChars": 40,
-  "notifySubtitle": "Claude Code"
+  "notifySubtitle": "Claude Code",
+
+  "_titleNote": "Conversation-title sidecar. On UserPromptSubmit the Claude pill shows titleStartingLabel in titleNeutralColor, then a detached `pi -p` invocation generates a 3-5 word title and switches the pill to labelColor. Disable with titleEnabled=false (or HT_CLAUDE_TITLE_ENABLED=0) to keep the original first-clause-of-prompt label. titlePiArgs is the full argv to `titlePiBin` — adjust the model or thinking level here if you want something other than gpt-5-nano.",
+  "titleEnabled": true,
+  "titleStartingLabel": "Starting…",
+  "titleNeutralColor": "#cdd6f4",
+  "titleSidecarTimeoutMs": 5000,
+  "titlePiBin": "pi",
+  "titlePiArgs": [
+    "-p",
+    "--model",
+    "openai/gpt-5-nano",
+    "--thinking",
+    "off",
+    "--no-tools",
+    "--no-session",
+    "--no-extensions",
+    "--no-skills",
+    "--no-prompt-templates",
+    "--no-themes",
+    "-nc"
+  ]
 }

@@ -45,7 +45,7 @@ The pi side packs both the passive surface (active label, cost ticker, notificat
 | `pi-extensions/ht-bridge` capability                 | Claude Code analog                                                                  |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `before_agent_start` → "Thinking…" pill              | `UserPromptSubmit` hook → active label pill (`ht-bridge/`)                          |
-| Haiku call → 3-5 word label                          | First clause of prompt (free, 40-char cap) [1]                                      |
+| Haiku call → 3-5 word label                          | `pi -p --model openai/gpt-5-nano --thinking off` sidecar — 3-5 word title, refined across turns. Falls back to first clause of prompt when `titleEnabled=false`. [1] |
 | `agent_end` → `ht notify` summary                    | `Stop` hook → `ht notify` with prompt + duration + cost (`ht-bridge/`)              |
 | `turn_end` → `ctx · %` ticker                        | `Stop` hook → `cc · turn N · cost` ticker (`ht-bridge/`)                            |
 | Cost from pi-ai's `model.cost`                       | Cost from parsing the transcript JSONL (`ht-bridge/`)                               |
@@ -59,7 +59,7 @@ The pi side packs both the passive surface (active label, cost ticker, notificat
 | Bash-safety gate (registered via `before_tool_call`) | `tau-mux` skill — instructs the model to gate destructive bash via `ht ask confirm-command` |
 | System-prompt primer at every turn                   | `tau-mux` skill — Claude Code loads the skill body when its `description` matches the user's task |
 
-[1] An LLM upgrade is a straightforward add — `claude -p "…"` with `--output-format text` would slot into the `handlePrompt` path. Default stays free to keep latency off the hook critical path.
+[1] The title sidecar is detached (`spawn(...).unref()`) so the hook itself returns in ~ms; the pill flips from `Starting…` to the generated title when pi exits (~1–3 s typical, 5 s hard timeout).
 
 ## Uninstall
 
