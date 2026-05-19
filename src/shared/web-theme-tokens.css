@@ -224,11 +224,11 @@
    *  for the user — same cyan tint family as the modal's accent. The
    *  ht-ask prefix sits outside the U2 light/HC override gate. */
   --ht-ask-scrim-bg: rgba(0, 0, 0, 0.86);
-  --ht-ask-sheet-bg: #05070a;
-  --ht-ask-sheet-border: rgba(111, 233, 255, 0.58);
-  --ht-ask-sheet-shadow: rgba(0, 0, 0, 0.62);
-  --ht-ask-codebox-bg: rgba(10, 10, 13, 0.92);
-  --ht-ask-codebox-border: rgba(39, 39, 42, 0.96);
+  --ht-ask-sheet-bg: #0f161a;
+  --ht-ask-sheet-border: rgba(111, 233, 255, 0.72);
+  --ht-ask-sheet-shadow: rgba(0, 0, 0, 0.72);
+  --ht-ask-codebox-bg: #060a0d;
+  --ht-ask-codebox-border: rgba(255, 255, 255, 0.08);
   --ht-ask-danger-bg: rgba(239, 68, 68, 0.92);
   --ht-ask-danger-fg: #18020a;
   --ht-ask-danger-banner-bg: rgba(239, 68, 68, 0.14);
@@ -369,7 +369,7 @@
    *  border + a faint red box-shadow. The primary "Confirm" button
    *  uses a near-solid cyan with a near-black text colour so the call-
    *  to-action reads at a glance. */
-  --ht-prompt-scrim-bg: rgba(0, 0, 0, 0.35);
+  --ht-prompt-scrim-bg: rgba(0, 0, 0, 0.78);
   --ht-prompt-focus-glow: rgba(111, 233, 255, 0.16);
   --ht-prompt-invalid-border: rgba(239, 68, 68, 0.7);
   --ht-prompt-invalid-shadow: rgba(239, 68, 68, 0.22);

@@ -17,6 +17,8 @@ _(Always add new items below the cleared line above. When folding into the websi
 
 ## Pending — 2026-05-19
 
+- **Brighter ask/plan modal sheet for contrast (v0.3.156)** — followup to v0.3.155. Upstream's `--ht-ask-sheet-bg: #05070a` was essentially the same color as the terminal bg (`#07090b`) so the sheet still blended in and looked transparent. Switched to `#0f161a` (the `--tau-panel-hi` off-black) so the sheet now reads as a distinct surface against the terminal. Same change benefits both `ht ask` and the prompt-dialog used by `ht plan` summary entry / rename verbs (they share the token). Also raised `--ht-prompt-scrim-bg` 0.35 → 0.78 so the prompt-dialog gets a similarly opaque backdrop. Strengthened sheet border + shadow (0.58→0.72, 0.62→0.72) and bumped codebox contrast (`rgba(10,10,13,0.92)` → `#060a0d`) so nested code in ask-user reads against the lighter sheet. Test guard at `tests/theme-tokens-ask.test.ts` updated.
+  - Add a changelog note (en + fr) when updating `website-doc`.
 - **Opaque ask/plan prompt chrome (v0.3.155)** — `ht_ask_user` / `ht_plan_set` prompt chrome now uses a much darker scrim and a fully opaque sheet background so prompts do not look transparent over terminal/browser content.
   - Add a changelog note (en + fr) when updating `website-doc`.
 - **Pi ht-bridge workspace id footer fix (v0.3.155)** — ht-bridge now reads the current snake_case `system.identify` payload and falls back through `system.tree`, so the pi footer status line upgrades from `τ-mux surface:N` to `τ-mux ws:N surface:N` reliably after enrichment.
