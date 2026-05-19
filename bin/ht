@@ -361,10 +361,16 @@ function mapCommand(): RpcCall {
         params: { workspace_id: flags["workspace"] },
       };
     case "rename-workspace":
+      // --workspace W is optional. When absent, the backend resolves the
+      // workspace from `surface_id` (which we set from HT_SURFACE so
+      // `ht rename-workspace "build"` works from inside a τ-mux pane).
+      // If neither is set, the backend falls back to the active workspace.
       return {
         method: "workspace.rename",
         params: {
           workspace_id: flags["workspace"],
+          surface_id:
+            flags["surface"] || process.env["HT_SURFACE"] || undefined,
           name: positional[0],
         },
       };
@@ -389,6 +395,18 @@ function mapCommand(): RpcCall {
       return {
         method: "surface.focus",
         params: { surface_id: flags["surface"] },
+      };
+    case "rename-surface":
+      // --surface S is optional. When absent, the backend resolves the
+      // surface from HT_SURFACE (set in every τ-mux pane) and finally
+      // from the focused surface.
+      return {
+        method: "surface.rename",
+        params: {
+          surface_id:
+            flags["surface"] || process.env["HT_SURFACE"] || undefined,
+          name: positional[0],
+        },
       };
 
     case "send":
@@ -2140,7 +2158,9 @@ Workspaces:
   new-workspace [--name N] [--cwd P] Create new workspace
   select-workspace --workspace W    Switch to workspace
   close-workspace --workspace W     Close workspace
-  rename-workspace [--workspace W] NAME  Rename workspace
+  rename-workspace [--workspace W] NAME  Rename workspace (auto-detects
+                                    from HT_SURFACE or active workspace
+                                    when --workspace is omitted)
   next-workspace                    Switch to next
   previous-workspace                Switch to previous
 
@@ -2149,6 +2169,8 @@ Surfaces & Panes:
   new-split <right|down|left|up>    Split focused pane
   close-surface [--surface S]       Close surface
   focus-surface --surface S         Focus surface
+  rename-surface [--surface S] NAME Rename surface (defaults to HT_SURFACE
+                                    or the focused surface)
   list-panes                        List panes
 
 Editor:

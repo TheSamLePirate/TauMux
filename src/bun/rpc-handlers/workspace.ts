@@ -1,3 +1,4 @@
+import { resolveWorkspaceId } from "./shared";
 import type { Handler, HandlerDeps } from "./types";
 
 export function registerWorkspace(deps: HandlerDeps): Record<string, Handler> {
@@ -41,8 +42,17 @@ export function registerWorkspace(deps: HandlerDeps): Record<string, Handler> {
     },
 
     "workspace.rename": (params) => {
+      // Lookup order: --workspace W → workspace owning surface_id (set
+      // from HT_SURFACE by the CLI) → active workspace. Matches the rest
+      // of the workspace-targeting verbs and lets bare
+      // `ht rename-workspace "build"` work inside a τ-mux pane.
+      const state = getState();
+      const workspaceId =
+        resolveWorkspaceId(params, state.workspaces) ??
+        state.activeWorkspaceId ??
+        undefined;
       dispatch("renameWorkspace", {
-        workspaceId: params["workspace_id"] ?? params["workspace"],
+        workspaceId,
         name: params["name"] ?? params["title"],
       });
       return "OK";

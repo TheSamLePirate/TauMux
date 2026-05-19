@@ -59,6 +59,16 @@ describe("bin/ht --help", () => {
     expect(r.stdout).toContain("doctor");
     expect(r.stdout).toContain("logs");
   });
+
+  test("documents rename-workspace + rename-surface auto-detection", async () => {
+    const r = await runHt(["--help"]);
+    // Both verbs must show up in the help banner; both must mention the
+    // auto-detect behavior so users know --workspace / --surface are
+    // optional inside a τ-mux pane.
+    expect(r.stdout).toMatch(/rename-workspace .* NAME/);
+    expect(r.stdout).toMatch(/rename-surface .* NAME/);
+    expect(r.stdout).toContain("HT_SURFACE");
+  });
 });
 
 describe("bin/ht browser help", () => {

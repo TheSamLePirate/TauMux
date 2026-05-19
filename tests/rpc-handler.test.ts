@@ -163,6 +163,43 @@ describe("RPC Handler", () => {
     handler("workspace.rename", { workspace_id: "ws:1", name: "NewName" });
     expect(dispatched[0].action).toBe("renameWorkspace");
     expect(dispatched[0].payload["name"]).toBe("NewName");
+    expect(dispatched[0].payload["workspaceId"]).toBe("ws:1");
+  });
+
+  test("workspace.rename resolves workspace from surface_id (HT_SURFACE)", () => {
+    const handler = setup({
+      workspaces: [
+        {
+          id: "ws:1",
+          name: "Build",
+          color: "#000",
+          surfaceIds: ["surface:1"],
+          focusedSurfaceId: "surface:1",
+          layout: { type: "leaf", surfaceId: "surface:1" },
+        },
+        {
+          id: "ws:3",
+          name: "Test",
+          color: "#000",
+          surfaceIds: ["surface:9"],
+          focusedSurfaceId: "surface:9",
+          layout: { type: "leaf", surfaceId: "surface:9" },
+        },
+      ],
+      activeWorkspaceId: "ws:1",
+    });
+    handler("workspace.rename", { surface_id: "surface:9", name: "QA" });
+    expect(dispatched[0].action).toBe("renameWorkspace");
+    expect(dispatched[0].payload["workspaceId"]).toBe("ws:3");
+    expect(dispatched[0].payload["name"]).toBe("QA");
+  });
+
+  test("workspace.rename falls back to active workspace when nothing is supplied", () => {
+    const handler = setup();
+    handler("workspace.rename", { name: "Renamed" });
+    expect(dispatched[0].action).toBe("renameWorkspace");
+    expect(dispatched[0].payload["workspaceId"]).toBe("ws:1");
+    expect(dispatched[0].payload["name"]).toBe("Renamed");
   });
 
   test("workspace.next dispatches nextWorkspace", () => {
@@ -218,6 +255,20 @@ describe("RPC Handler", () => {
     expect(dispatched[0].action).toBe("renameSurface");
     expect(dispatched[0].payload["surfaceId"]).toBe("surface:5");
     expect(dispatched[0].payload["title"]).toBe("Server");
+  });
+
+  test("surface.rename falls back to focused surface when surface_id is omitted", () => {
+    const handler = setup({ focusedSurfaceId: "surface:7" });
+    handler("surface.rename", { name: "Watcher" });
+    expect(dispatched[0].action).toBe("renameSurface");
+    expect(dispatched[0].payload["surfaceId"]).toBe("surface:7");
+    expect(dispatched[0].payload["title"]).toBe("Watcher");
+  });
+
+  test("surface.rename is a no-op when neither surface_id nor focused surface is available", () => {
+    const handler = setup({ focusedSurfaceId: null });
+    handler("surface.rename", { name: "Server" });
+    expect(dispatched.length).toBe(0);
   });
 
   test("surface.send_text writes to PTY", async () => {

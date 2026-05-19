@@ -246,8 +246,11 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
     },
 
     "surface.rename": (params) => {
-      const id =
-        (params["surface_id"] as string) ?? (params["surface"] as string);
+      // Fall back from explicit surface_id to the focused surface so
+      // bare `ht rename-surface "watcher"` works inside a τ-mux pane
+      // (the CLI feeds HT_SURFACE into params; if it's absent we still
+      // accept the focused-surface default).
+      const id = resolveSurfaceId(params, getState().focusedSurfaceId);
       const title = (params["name"] as string) ?? (params["title"] as string);
       if (id && title) dispatch("renameSurface", { surfaceId: id, title });
       return "OK";
