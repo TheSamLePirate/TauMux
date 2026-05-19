@@ -6,9 +6,12 @@
  *
  * `HT_SURFACE` is auto-set by τ-mux for every spawned shell (see
  * `src/bun/pty-manager.ts`). The workspace id and live cwd / fg
- * command are pulled from `system.identify` at session start — that
- * RPC returns `{ workspaceId, surfaceId, metadata }` in one round
- * trip, so we don't need a separate `surface.metadata` call.
+ * command are pulled from `system.identify` at session start. Older
+ * τ-mux builds return snake_case `{ active_workspace,
+ * focused_surface }`, newer bridge tests may use camelCase aliases;
+ * both shapes are accepted. If the focused surface is not the pi pane,
+ * `system.tree` is used as a best-effort fallback to map HT_SURFACE to
+ * its owning workspace.
  *
  * `enrichContext` mutates the same object readers already hold, so
  * sub-modules captured the reference at session_start and they pick
@@ -62,15 +65,28 @@ export async function enrichContext(
     const id = await ht.call<{
       workspaceId?: string;
       surfaceId?: string;
+      active_workspace?: string;
+      focused_surface?: string;
       metadata?: { cwd?: string | null; fg?: string | null };
     }>("system.identify", {});
-    if (typeof id?.workspaceId === "string" && id.workspaceId.length > 0) {
-      ctx.workspaceId = id.workspaceId;
+    const focusedSurface = firstNonEmptyString(id?.surfaceId, id?.focused_surface);
+    const identifiedWorkspace = firstNonEmptyString(
+      id?.workspaceId,
+      id?.active_workspace,
+    );
+
+    if (identifiedWorkspace && (!focusedSurface || focusedSurface === ctx.surfaceId)) {
+      ctx.workspaceId = identifiedWorkspace;
+    } else if (ctx.surfaceId) {
+      const workspaceFromTree = await findWorkspaceForSurface(ctx.surfaceId, ht);
+      if (workspaceFromTree) ctx.workspaceId = workspaceFromTree;
+      else if (identifiedWorkspace) ctx.workspaceId = identifiedWorkspace;
+    } else if (identifiedWorkspace) {
+      ctx.workspaceId = identifiedWorkspace;
     }
-    // `system.identify` reports the focused surface, which may not
-    // be the pi pane if pi was backgrounded. Trust HT_SURFACE for
-    // surface attribution but pick up cwd/fg from whichever surface
-    // the call resolved against — they're advisory metadata only.
+
+    // `system.identify` metadata is advisory. Trust HT_SURFACE for
+    // surface attribution; cwd/fg are used only for status context.
     if (id?.metadata) {
       if (typeof id.metadata.cwd === "string") ctx.cwd = id.metadata.cwd;
       if (typeof id.metadata.fg === "string") ctx.fg = id.metadata.fg;
@@ -82,4 +98,41 @@ export async function enrichContext(
       );
     }
   }
+}
+
+function firstNonEmptyString(...values: unknown[]): string | null {
+  for (const v of values) {
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return null;
+}
+
+async function findWorkspaceForSurface(
+  surfaceId: string,
+  ht: HtClient,
+): Promise<string | null> {
+  try {
+    const tree = await ht.call<
+      Array<{
+        workspace?: string;
+        id?: string;
+        surfaces?: Array<{ id?: string } | string>;
+      }>
+    >("system.tree", {});
+    if (!Array.isArray(tree)) return null;
+    for (const ws of tree) {
+      const surfaces = Array.isArray(ws.surfaces) ? ws.surfaces : [];
+      const found = surfaces.some((s) =>
+        typeof s === "string" ? s === surfaceId : s?.id === surfaceId,
+      );
+      if (found) return firstNonEmptyString(ws.workspace, ws.id);
+    }
+  } catch (err) {
+    if (debugEnabled()) {
+      console.error(
+        `[ht-bridge] surface-context tree lookup failed: ${(err as Error).message}`,
+      );
+    }
+  }
+  return null;
 }

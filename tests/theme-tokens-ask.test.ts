@@ -49,6 +49,9 @@ describe("theme-token migration — ask-user modal + workspace badge (P7 S17)", 
     const overlay = matchRule(indexCss, ".ask-user-overlay");
     expect(overlay).toContain("var(--ht-ask-scrim-bg)");
     expect(overlay).not.toMatch(/rgba\(0,\s*0,\s*0,\s*0\.42\)/);
+    expect(tokens).toContain("--ht-ask-scrim-bg: rgba(0, 0, 0, 0.86)");
+    expect(tokens).toContain("--ht-ask-sheet-bg: #05070a");
+    expect(tokens).not.toContain("--ht-ask-sheet-bg: rgba");
 
     const sheet = matchRule(indexCss, ".ask-user-sheet");
     expect(sheet).toContain("var(--ht-ask-sheet-bg)");

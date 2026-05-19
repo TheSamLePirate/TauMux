@@ -17,6 +17,10 @@ _(Always add new items below the cleared line above. When folding into the websi
 
 ## Pending — 2026-05-19
 
+- **Opaque ask/plan prompt chrome (v0.3.155)** — `ht_ask_user` / `ht_plan_set` prompt chrome now uses a much darker scrim and a fully opaque sheet background so prompts do not look transparent over terminal/browser content.
+  - Add a changelog note (en + fr) when updating `website-doc`.
+- **Pi ht-bridge workspace id footer fix (v0.3.155)** — ht-bridge now reads the current snake_case `system.identify` payload and falls back through `system.tree`, so the pi footer status line upgrades from `τ-mux surface:N` to `τ-mux ws:N surface:N` reliably after enrichment.
+  - Add a changelog note (en + fr) when updating `website-doc`.
 - **Ask/plan prompt top-layer reliability (v0.3.154)** — `ht_ask_user` and `ht_plan_set` approval prompts now render as global blocking prompts instead of being scoped to the currently focused pane. Native browser panes are hidden while the prompt is mounted, the prompt tier sits above settings/palette/notification rings, and the overlay is visible synchronously to avoid transparent rAF races.
   - Add a changelog note (en + fr) when updating `website-doc`.
 - **IME candidate positioning fix (v0.3.153)** — native terminal and web mirror no longer override xterm's helper textarea with off-screen `!important` positioning. xterm 5.3.0's `CompositionHelper` can now keep the hidden helper textarea aligned with `.composition-view` at the cursor so IME candidate windows appear in the right place.

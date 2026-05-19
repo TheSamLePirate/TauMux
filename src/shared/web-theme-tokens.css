@@ -223,8 +223,8 @@
    *  sidebar's pending-question pill that points to a surface waiting
    *  for the user — same cyan tint family as the modal's accent. The
    *  ht-ask prefix sits outside the U2 light/HC override gate. */
-  --ht-ask-scrim-bg: rgba(0, 0, 0, 0.42);
-  --ht-ask-sheet-bg: rgba(0, 0, 0, 0.92);
+  --ht-ask-scrim-bg: rgba(0, 0, 0, 0.86);
+  --ht-ask-sheet-bg: #05070a;
   --ht-ask-sheet-border: rgba(111, 233, 255, 0.58);
   --ht-ask-sheet-shadow: rgba(0, 0, 0, 0.62);
   --ht-ask-codebox-bg: rgba(10, 10, 13, 0.92);
