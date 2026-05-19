@@ -8,6 +8,7 @@ import {
   type AppSettings,
   DEFAULT_SETTINGS,
   mergeSettings,
+  THEME_PRESETS,
 } from "../../shared/settings";
 import { SurfaceManager } from "./surface-manager";
 import { CommandPalette, type PaletteCommand } from "./command-palette";
@@ -938,6 +939,19 @@ function resetFontSize(): void {
 
 function buildPaletteCommands(): PaletteCommand[] {
   const terminalEffectsEnabled = surfaceManager.areTerminalEffectsEnabled();
+  const wsState = surfaceManager.getWorkspaceState();
+  const activeWsId = wsState.activeWorkspaceId;
+  const activeWs = activeWsId
+    ? wsState.workspaces.find((w) => w.id === activeWsId)
+    : null;
+  const activeSurfaceId = surfaceManager.getActiveSurfaceId();
+  const activeSurfaceType = surfaceManager.getActiveSurfaceType();
+  const activeSurfaceMetadata = activeSurfaceId
+    ? surfaceManager.getSurfaceMetadata(activeSurfaceId)
+    : null;
+  const activeSurfaceCwd = activeSurfaceMetadata?.cwd ?? null;
+  const isBrowser = activeSurfaceType === "browser";
+  const activePresetId = currentSettings?.themePreset ?? THEME_PRESETS[0].id;
 
   return [
     {
@@ -947,6 +961,260 @@ function buildPaletteCommands(): PaletteCommand[] {
       description: "Open a fresh shell workspace.",
       shortcut: "\u2318N",
       action: () => rpc.send("createSurface", {}),
+    },
+    {
+      id: "workspace-rename",
+      category: "Workspace",
+      label: "Rename Workspace",
+      description: activeWs
+        ? `Change the name of "${activeWs.name}".`
+        : "Change the name of the active workspace.",
+      action: () => {
+        if (activeWs) {
+          void promptRenameWorkspace(activeWs.id, activeWs.name);
+        }
+      },
+    },
+    {
+      id: "workspace-close",
+      category: "Workspace",
+      label: "Close Workspace",
+      description: activeWs
+        ? `Close "${activeWs.name}" and every pane it owns.`
+        : "Close the active workspace and all its panes.",
+      action: () => {
+        if (activeWs) surfaceManager.closeWorkspaceById(activeWs.id);
+      },
+    },
+    {
+      id: "workspace-color",
+      category: "Workspace",
+      label: "Set Workspace Color",
+      description: "Override the accent color for the active workspace.",
+      action: async () => {
+        if (!activeWs) return;
+        const next = await showPromptDialog({
+          title: "Workspace color",
+          message:
+            "Hex color (e.g. #6fe9ff). Leave blank to keep the current value.",
+          initialValue: activeWs.color,
+          placeholder: "#6fe9ff",
+          confirmLabel: "Apply",
+        });
+        if (next && /^#?[0-9a-fA-F]{3,8}$/.test(next.trim())) {
+          const value = next.trim().startsWith("#")
+            ? next.trim()
+            : `#${next.trim()}`;
+          surfaceManager.setWorkspaceColor(activeWs.id, value);
+        }
+      },
+    },
+    {
+      id: "workspace-cwd",
+      category: "Workspace",
+      label: "Set Workspace CWD",
+      description:
+        "Pin the cwd this workspace uses for new panes and the file explorer.",
+      action: async () => {
+        if (!activeWs) return;
+        const next = await showPromptDialog({
+          title: "Workspace cwd",
+          message:
+            "Absolute path used by new panes + the sidebar file explorer.",
+          initialValue: activeWs.selectedCwd ?? "",
+          placeholder: "/Users/me/code/foo",
+          confirmLabel: "Set CWD",
+        });
+        if (next && next.trim()) {
+          surfaceManager.setWorkspaceCwd(activeWs.id, next.trim());
+        }
+      },
+    },
+    ...wsState.workspaces.map((ws, idx) => ({
+      id: `workspace-jump-${ws.id}`,
+      category: "Workspace",
+      label: `Switch to Workspace: ${ws.name}`,
+      description: `Focus workspace ${idx + 1} (${ws.surfaceIds.length} pane${ws.surfaceIds.length === 1 ? "" : "s"}).`,
+      shortcut: idx < 9 ? `\u2318${idx + 1}` : undefined,
+      action: () => surfaceManager.focusWorkspaceById(ws.id),
+    })),
+    {
+      id: "pane-rename",
+      category: "Pane",
+      label: "Rename Pane",
+      description: "Give the focused pane a custom label.",
+      action: () => {
+        if (!activeSurfaceId) return;
+        const title = surfaceManager.getSurfaceTitle(activeSurfaceId) ?? "";
+        void promptRenameSurface(activeSurfaceId, title);
+      },
+    },
+    {
+      id: "pane-copy-cwd",
+      category: "Pane",
+      label: "Copy Pane CWD",
+      description: activeSurfaceCwd
+        ? `Copy "${activeSurfaceCwd}" to the clipboard.`
+        : "Copy the focused pane's working directory to the clipboard.",
+      action: () => {
+        if (activeSurfaceCwd) {
+          rpc.send("clipboardWrite", { text: activeSurfaceCwd });
+          showToast(`Copied ${activeSurfaceCwd}`, "info");
+        }
+      },
+    },
+    {
+      id: "pane-open-cwd-editor",
+      category: "Pane",
+      label: "Open Pane CWD in Editor",
+      description:
+        "Open a CodeMirror editor pane rooted at the focused pane's CWD.",
+      action: () => {
+        if (!activeSurfaceCwd) return;
+        rpc.send("splitEditorSurface", {
+          direction: "horizontal",
+          cwd: activeSurfaceCwd,
+        });
+      },
+    },
+    {
+      id: "editor-open-path",
+      category: "Editor",
+      label: "Open File in Editor",
+      description:
+        "Prompt for an absolute path and open it in a new editor pane.",
+      action: async () => {
+        const next = await showPromptDialog({
+          title: "Open file",
+          message: "Absolute path to a text file.",
+          placeholder: activeSurfaceCwd
+            ? `${activeSurfaceCwd}/`
+            : "/Users/me/code/foo/README.md",
+          confirmLabel: "Open",
+        });
+        if (next && next.trim()) {
+          rpc.send("splitEditorSurface", {
+            direction: "horizontal",
+            path: next.trim(),
+          });
+        }
+      },
+    },
+    {
+      id: "browser-back",
+      category: "Browser",
+      label: "Browser: Back",
+      description: "Navigate the focused browser pane backwards.",
+      action: () => {
+        if (isBrowser) surfaceManager.browserGoBack();
+      },
+    },
+    {
+      id: "browser-forward",
+      category: "Browser",
+      label: "Browser: Forward",
+      description: "Navigate the focused browser pane forward.",
+      action: () => {
+        if (isBrowser) surfaceManager.browserGoForward();
+      },
+    },
+    {
+      id: "browser-reload",
+      category: "Browser",
+      label: "Browser: Reload",
+      description: "Reload the focused browser pane.",
+      action: () => {
+        if (isBrowser) surfaceManager.browserReload();
+      },
+    },
+    {
+      id: "browser-devtools",
+      category: "Browser",
+      label: "Browser: Toggle DevTools",
+      description:
+        "Open or close the WebKit inspector for the focused browser pane.",
+      action: () => {
+        if (isBrowser) surfaceManager.browserToggleDevTools();
+      },
+    },
+    {
+      id: "browser-find",
+      category: "Browser",
+      label: "Browser: Find in Page",
+      description: "Open the find-in-page bar for the focused browser pane.",
+      action: () => {
+        if (isBrowser) surfaceManager.browserFindInPage();
+      },
+    },
+    {
+      id: "browser-address-bar",
+      category: "Browser",
+      label: "Browser: Focus Address Bar",
+      description: "Move keyboard focus to the URL field.",
+      action: () => {
+        if (isBrowser) surfaceManager.focusBrowserAddressBar();
+      },
+    },
+    {
+      id: "browser-zoom-in",
+      category: "Browser",
+      label: "Browser: Zoom In",
+      description: "Increase the zoom level of the focused browser pane.",
+      action: () => {
+        if (isBrowser) surfaceManager.browserZoomIn();
+      },
+    },
+    {
+      id: "browser-zoom-out",
+      category: "Browser",
+      label: "Browser: Zoom Out",
+      description: "Decrease the zoom level of the focused browser pane.",
+      action: () => {
+        if (isBrowser) surfaceManager.browserZoomOut();
+      },
+    },
+    {
+      id: "browser-zoom-reset",
+      category: "Browser",
+      label: "Browser: Reset Zoom",
+      description: "Restore the focused browser pane to 100%.",
+      action: () => {
+        if (isBrowser) surfaceManager.browserZoomReset();
+      },
+    },
+    ...THEME_PRESETS.map((preset) => ({
+      id: `theme-${preset.id}`,
+      category: "Theme",
+      label: `Theme: ${preset.name}${preset.id === activePresetId ? " \u2713" : ""}`,
+      description: `Apply the ${preset.name} preset (accent ${preset.accentColor}).`,
+      action: () => {
+        const base = currentSettings ?? DEFAULT_SETTINGS;
+        const partial: Partial<AppSettings> = {
+          themePreset: preset.id,
+          accentColor: preset.accentColor,
+          secondaryColor: preset.secondaryColor,
+          foregroundColor: preset.foregroundColor,
+          bgBase: preset.bgBase,
+          terminalBgOpacity: preset.terminalBgOpacity,
+          ansiColors: { ...preset.ansiColors },
+        };
+        applySettings(mergeSettings(base, partial));
+        rpc.send("updateSettings", { settings: partial });
+      },
+    })),
+    {
+      id: "sidebar-clear-logs",
+      category: "View",
+      label: "Clear Sidebar Logs",
+      description: "Clear the activity log feed in the sidebar.",
+      action: () => surfaceManager.clearLogs(),
+    },
+    {
+      id: "reveal-log-file",
+      category: "View",
+      label: "Reveal Log File",
+      description: "Open the \u03c4-mux log file in Finder.",
+      action: () => rpc.send("revealLogFile"),
     },
     {
       id: "keyboard-help",

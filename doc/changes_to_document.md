@@ -14,3 +14,9 @@ _Backlog cleared 2026-05-18 — full sweep folded every M11–M18 web-mirror par
 - `website-doc/src/content/docs/development/observability.md` (en + fr) — NEW page documenting logger date+size rotation, `HT_LOG_MAX_BYTES` env, CI coverage gate, `audit:theming`, `tau-focus-audit`, health registry.
 
 _(Always add new items below the cleared line above. When folding into the website, bump the version notes in api/system.md + cli/system.md + their French mirrors, and clear the backlog by overwriting the "Pending —" entries with a fresh "Backlog cleared <date> — …" line.)_
+
+## Pending — 2026-05-19
+
+- **Command palette completeness sweep (v0.3.150)** — `buildPaletteCommands()` now exposes ~30 additional verbs so every UI capability is reachable via ⌘⇧P. New entries cover workspace ops (Rename, Close, Set Color, Set CWD, dynamic "Switch to Workspace: <name>" per workspace with ⌘1..⌘9 hints), pane ops (Rename, Copy CWD, Open CWD in Editor), the full browser action set (Back / Forward / Reload / Toggle DevTools / Find in Page / Focus Address Bar / Zoom In / Out / Reset, gated on `getActiveSurfaceType() === "browser"`), one entry per `THEME_PRESETS` row with a ✓ on the active preset, an "Open File in Editor" prompt routed through `splitEditorSurface`, and view utilities (Clear Sidebar Logs, Reveal Log File). Source-level completeness guard added at `tests/command-palette-completeness.test.ts`.
+  - Update `website-doc/src/content/docs/features/command-palette.md` (en + fr) to enumerate the new categories.
+  - Add a one-line entry to `website-doc/src/content/docs/changelog.md` (en + fr) under v0.3.150: "Command palette: workspace/pane/browser/theme/editor verbs added so every UI capability is reachable via ⌘⇧P."
