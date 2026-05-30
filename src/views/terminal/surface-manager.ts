@@ -37,7 +37,7 @@ import { type AppSettings, hexToRgb } from "../../shared/settings";
 import { attachSidebarResize } from "../../shared/sidebar-resize";
 import { focusXtermPreservingScroll } from "../../shared/xterm-focus";
 import { htEvents } from "../../shared/event-bus";
-import { playNotificationSound, setNotificationSoundSettings } from "./sounds";
+import { setNotificationSoundSettings } from "./sounds";
 import {
   type AgentPaneView,
   createAgentPaneView,
@@ -52,14 +52,8 @@ import {
   BrowserSurfaceController,
   type BrowserCookie,
 } from "./browser-surface-controller";
-import {
-  type TelegramPaneView,
-  createTelegramPaneView,
-  telegramPaneApplyState,
-  telegramPaneApplyHistory,
-  telegramPaneAppendMessage,
-  destroyTelegramPaneView,
-} from "./telegram-pane";
+import type { TelegramPaneView } from "./telegram-pane";
+import { TelegramSurfaceController } from "./telegram-surface-controller";
 import {
   type EditorPaneViewRef,
   createEditorPaneView,
@@ -190,6 +184,8 @@ export class SurfaceManager {
    *  browser-pane API + view factory + actions; SurfaceManager delegates its
    *  browser-specific branches to it. Assigned in the constructor. */
   private browser: BrowserSurfaceController;
+  /** Telegram-pane concern, extracted from this god object (H10). */
+  private telegram: TelegramSurfaceController;
   private wsCounter = 0;
   private paneDrag: PaneDragController;
   private fontSize: number;
@@ -258,6 +254,13 @@ export class SurfaceManager {
       activeWorkspaceSurfaceIds: () => this.activeWorkspace()?.surfaceIds ?? [],
       focusSurface: (id) => this.focusSurface(id),
       updateSidebar: () => this.updateSidebar(),
+    });
+    this.telegram = new TelegramSurfaceController({
+      getSurface: (id) => this.surfaces.get(id),
+      getFocusedSurfaceId: () => this.focusedSurfaceId,
+      allSurfaces: () => this.surfaces.values(),
+      focusSurface: (id) => this.focusSurface(id),
+      notifyGlow: (id) => this.notifyGlow(id),
     });
     this.sidebar = new Sidebar(sidebarContainer, {
       onSelectWorkspace: (id) => {
@@ -538,59 +541,24 @@ export class SurfaceManager {
     return true;
   }
 
-  /** Push a freshly-arrived Telegram message into every Telegram pane.
-   *  Multiple panes may show the same chat — broadcast keeps them in
-   *  sync without round-tripping through the server. Inbound messages
-   *  also pulse glow + play the notification chime if the user isn't
-   *  already focused on a Telegram pane (so a fresh DM doesn't get
-   *  silently lost when the user is in a terminal pane). */
+  // Telegram message/history/state handlers — thin forwards to
+  // TelegramSurfaceController. Public names unchanged for the index.ts RPC
+  // handlers that call them.
   handleTelegramMessage(message: TelegramWireMessage): void {
-    let landedInTelegramPane = false;
-    for (const view of this.surfaces.values()) {
-      if (view.telegramView) {
-        telegramPaneAppendMessage(view.telegramView, message);
-        landedInTelegramPane = true;
-        if (view.id !== this.focusedSurfaceId && message.direction === "in") {
-          this.notifyGlow(view.id);
-        }
-      }
-    }
-    if (
-      landedInTelegramPane &&
-      message.direction === "in" &&
-      this.focusedSurfaceId !== null
-    ) {
-      const focused = this.surfaces.get(this.focusedSurfaceId);
-      if (focused?.surfaceType !== "telegram") {
-        playNotificationSound();
-      }
-    }
+    this.telegram.handleMessage(message);
   }
-
-  /** Apply a paginated history payload to every Telegram pane that's
-   *  currently bound to the chat. */
   handleTelegramHistory(payload: {
     chatId: string;
     messages: TelegramWireMessage[];
     isLatest: boolean;
   }): void {
-    for (const view of this.surfaces.values()) {
-      if (view.telegramView) {
-        telegramPaneApplyHistory(view.telegramView, payload);
-      }
-    }
+    this.telegram.handleHistory(payload);
   }
-
-  /** Apply a service status + chat list snapshot to every Telegram pane. */
   handleTelegramState(state: {
     chats: TelegramChatWire[];
     status: TelegramStatusWire;
   }): void {
-    for (const view of this.surfaces.values()) {
-      if (view.telegramView) {
-        telegramPaneApplyState(view.telegramView, state);
-      }
-    }
+    this.telegram.handleState(state);
   }
 
   /** Handle a pi agent event for the corresponding agent surface. */
@@ -740,7 +708,7 @@ export class SurfaceManager {
     // surfaceId + callbacks; detach them explicitly or they leak for
     // the lifetime of the electrobun <electrobun-webview> tag.
     if (view.browserView) this.browser.destroyView(view.browserView);
-    if (view.telegramView) destroyTelegramPaneView(view.telegramView);
+    if (view.telegramView) this.telegram.destroyView(view.telegramView);
     if (view.editorView) destroyEditorPaneView(view.editorView);
     view.container.remove();
     this.surfaces.delete(surfaceId);
@@ -2281,24 +2249,7 @@ export class SurfaceManager {
   }
 
   private createTelegramSurfaceView(surfaceId: string): SurfaceView {
-    const telegramView = createTelegramPaneView(surfaceId, {
-      onSend: (chatId, text) => {
-        htEvents.emit("ht-telegram-send", { chatId, text });
-      },
-      onRequestHistory: (chatId, before) => {
-        htEvents.emit("ht-telegram-request-history", { chatId, before });
-      },
-      onRequestState: () => {
-        htEvents.emit("ht-telegram-request-state", undefined);
-      },
-      onClose: (sid) => {
-        htEvents.emit("ht-close-surface", { surfaceId: sid });
-      },
-      onSplit: (sid, direction) => {
-        htEvents.emit("ht-split", { surfaceId: sid, direction });
-      },
-      onFocus: (sid) => this.focusSurface(sid),
-    });
+    const telegramView = this.telegram.createTelegramView(surfaceId);
 
     this.terminalContainer.appendChild(telegramView.container);
 

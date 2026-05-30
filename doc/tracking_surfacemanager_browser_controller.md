@@ -39,4 +39,4 @@ Pure code-move + delegation. No logic changed (zoom clamps, search-engine cachin
 - Apply the same controller pattern to the agent / editor / telegram surface kinds (the rest of H10).
 
 ## Commit / release
-- (recorded below)
+- **Committed** on `main` as **`108da04a`** (v0.3.169). 12 files, +513/-193. Not pushed.
