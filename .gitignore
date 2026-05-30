@@ -32,3 +32,6 @@ assets/web-client/
 /.design-artifacts/
 # Coverage output from `bun test --coverage` (J.1 / T1).
 /coverage/
+
+# bun.lock is the single source of truth; npm lockfile drifts (W3-3)
+package-lock.json

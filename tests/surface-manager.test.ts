@@ -89,7 +89,7 @@ function makeStubTerm(): StubTerm {
 
 const termInstances: StubTerm[] = [];
 
-mock.module("xterm", () => ({
+mock.module("@xterm/xterm", () => ({
   Terminal: class {
     constructor() {
       const t = makeStubTerm();

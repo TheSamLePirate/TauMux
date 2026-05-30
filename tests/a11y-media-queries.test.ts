@@ -33,6 +33,30 @@ describe("[U2+U3] a11y media queries — native CSS", () => {
     });
   }
 
+  // W3-2 (full_app_review_2026-05.md §19.1): the HCM / prefers-contrast
+  // blocks targeted `.ask-user-modal`, a class the ask-user modal never
+  // emits (it uses `.ask-user-sheet` / `.ask-user-overlay`), so the safety-
+  // critical confirm-command prompt got NO high-contrast treatment. Pin the
+  // real class is targeted and the dead one is gone so this can't recur.
+  it("the ask-user contrast/HCM selector matches the class the modal emits", () => {
+    const ASK_SHEET = readFileSync(
+      join(
+        import.meta.dir,
+        "..",
+        "src",
+        "views",
+        "terminal",
+        "ask-user-modal.ts",
+      ),
+      "utf-8",
+    );
+    // The modal really produces `ask-user-sheet`.
+    expect(ASK_SHEET).toContain('"ask-user-sheet"');
+    // The contrast styling must target that class, not the phantom one.
+    expect(NATIVE_CSS).toContain(".ask-user-sheet");
+    expect(NATIVE_CSS).not.toContain(".ask-user-modal");
+  });
+
   it("includes a blanket reduced-motion rule that catches every animation", () => {
     // The blanket rule is `*, *::before, *::after { animation-duration:
     // 0.001ms !important; transition-duration: 0.001ms !important; }`

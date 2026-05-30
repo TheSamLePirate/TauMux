@@ -38,4 +38,4 @@ Files: `src/shared/rpc-token.ts` (new — shared constants/helpers), `src/shared
 - Enforcement-on behaviour (reject without/with-wrong token, read-only exempt, shutdown not exempt, `__token` not leaked to handler params) covered by unit tests.
 
 ## Commit / release
-- (pending bump + commit — recorded below)
+- **Committed** on `main` as **`c5dd020a`** (v0.3.163). `bun run bump:patch` first (0.3.162 → 0.3.163; synced electrobun.config.ts, rpc-handlers/system.ts, website-doc {en,fr}/{cli,api}/system.md). 20 files, +399/-12. Not pushed.

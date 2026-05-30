@@ -1,4 +1,4 @@
-import type { Terminal } from "xterm";
+import type { Terminal } from "@xterm/xterm";
 import type { SidebandContentMessage, PanelEvent } from "../../shared/types";
 import { Panel } from "./panel";
 

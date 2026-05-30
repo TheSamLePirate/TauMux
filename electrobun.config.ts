@@ -11,7 +11,7 @@ export default {
     // surprises in CI / shell scripts.
     name: "tau-mux",
     identifier: "dev.hyperterm.canvas",
-    version: "0.3.163",
+    version: "0.3.164",
     description:
       "A hybrid terminal emulator with floating canvas overlays for images, charts, and interactive widgets.",
   },
@@ -36,8 +36,8 @@ export default {
       // matching <link> tag.
       "src/shared/web-theme-tokens.css": "views/terminal/theme-tokens.css",
       // Web UI assets (inlined by the HTTP server at runtime)
-      "node_modules/xterm/lib/xterm.js": "vendor/xterm.js",
-      "node_modules/xterm/css/xterm.css": "vendor/xterm.css",
+      "node_modules/@xterm/xterm/lib/xterm.js": "vendor/xterm.js",
+      "node_modules/@xterm/xterm/css/xterm.css": "vendor/xterm.css",
       "node_modules/@xterm/addon-fit/lib/addon-fit.js": "vendor/addon-fit.js",
       "node_modules/@xterm/addon-web-links/lib/addon-web-links.js":
         "vendor/addon-web-links.js",

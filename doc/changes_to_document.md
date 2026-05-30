@@ -15,6 +15,15 @@ _Backlog cleared 2026-05-18 — full sweep folded every M11–M18 web-mirror par
 
 _(Always add new items below the cleared line above. When folding into the website, bump the version notes in api/system.md + cli/system.md + their French mirrors, and clear the backlog by overwriting the "Pending —" entries with a fresh "Backlog cleared <date> — …" line.)_
 
+## Pending — 2026-05-30 (Wave 3 — xterm v6 + cleanup)
+
+Source: `doc/full_app_review_2026-05.md` §18.1/§19.1/§18.2. Tracking: `doc/tracking_wave3_xterm_and_cleanup.md`.
+
+- **Webview migrated to `@xterm/xterm@6`** (was deprecated unscoped `xterm@5.3.0`) — core now aligned with the already-v6 addons/headless; no user-facing behaviour change. Changelog line (internal/deps). If any contributor docs mention `xterm` the dep, update to `@xterm/xterm`.
+- **ask-user modal now gets High-Contrast / forced-colors styling** — the safety-critical "This will execute on your machine" confirm prompt previously fell through to default styling in HCM (CSS targeted a non-existent class). Changelog line (a11y fix).
+- **`package-lock.json` removed; `bun install` is the only supported install path** — if any doc/README mentions `npm install`, change to `bun install`.
+- Internal: dropped a pre-existing broken `ui.spec.ts` fullscreen test from the functional e2e gate (no doc impact).
+
 ## Pending — 2026-05-30 (Wave 2 — opt-in RPC socket token)
 
 Source: `doc/full_app_review_2026-05.md` §6.1. Tracking: `doc/tracking_wave2_socket_token.md`.

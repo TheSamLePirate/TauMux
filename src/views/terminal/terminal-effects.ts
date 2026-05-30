@@ -1,4 +1,4 @@
-import type { Terminal } from "xterm";
+import type { Terminal } from "@xterm/xterm";
 import { showToast } from "./toast";
 
 type GLContext = WebGLRenderingContext | WebGL2RenderingContext;

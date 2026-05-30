@@ -12093,7 +12093,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   .kbd-panel,
   .settings-panel,
   .process-manager,
-  .ask-user-modal {
+  .ask-user-sheet {
     border-width: 1px;
     border-color: var(--ht-contrast-border-cyan-strong);
   }
@@ -12120,7 +12120,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   .palette-container,
   .kbd-panel,
   .settings-panel,
-  .ask-user-modal {
+  .ask-user-sheet {
     border: 1px solid ButtonText;
     background: ButtonFace;
     color: ButtonText;

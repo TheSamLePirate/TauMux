@@ -34,8 +34,8 @@ const VENDOR_DIR = findVendorDir();
 // Map from dev-mode paths (relative to project root) to vendor filenames.
 // Keeping this flat makes it explicit which assets we bundle into the .app.
 export const VENDOR_MAP: Record<string, string> = {
-  "node_modules/xterm/lib/xterm.js": "xterm.js",
-  "node_modules/xterm/css/xterm.css": "xterm.css",
+  "node_modules/@xterm/xterm/lib/xterm.js": "xterm.js",
+  "node_modules/@xterm/xterm/css/xterm.css": "xterm.css",
   "node_modules/@xterm/addon-fit/lib/addon-fit.js": "addon-fit.js",
   "node_modules/@xterm/addon-web-links/lib/addon-web-links.js":
     "addon-web-links.js",
@@ -68,7 +68,7 @@ function findProjectRoot(): string {
   }
   for (const d of candidates) {
     try {
-      readFileSync(resolve(d, "node_modules/xterm/lib/xterm.js"), "utf-8");
+      readFileSync(resolve(d, "node_modules/@xterm/xterm/lib/xterm.js"), "utf-8");
       return d;
     } catch {
       // try next
@@ -117,8 +117,8 @@ export function readAsset(relativePath: string): string {
 
 // Vendor assets loaded once at module load. The xterm bundle is ~300 KB;
 // loading it synchronously here keeps the first-fetch latency low.
-export const XTERM_JS = readAsset("node_modules/xterm/lib/xterm.js");
-export const XTERM_CSS = readAsset("node_modules/xterm/css/xterm.css");
+export const XTERM_JS = readAsset("node_modules/@xterm/xterm/lib/xterm.js");
+export const XTERM_CSS = readAsset("node_modules/@xterm/xterm/css/xterm.css");
 export const FIT_ADDON_JS = readAsset(
   "node_modules/@xterm/addon-fit/lib/addon-fit.js",
 );
