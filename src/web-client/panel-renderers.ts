@@ -19,6 +19,8 @@
  * reach back into the store.
  */
 
+import { renderSandboxedMarkup } from "../shared/sideband-sandbox";
+
 export type PanelRenderer = (
   contentEl: HTMLElement,
   data: unknown,
@@ -93,102 +95,12 @@ export const renderImage: PanelRenderer = (contentEl, data, meta, isBinary) => {
   }
 };
 
-/**
- * Wrap sideband HTML/SVG in a strict-CSP HTML shell so the iframe srcdoc
- * never inherits the mirror page's privileges (Triple-A S2 / H.7).
- *
- * Before this module's mirror-side sandboxing, `renderHtml` / `renderSvg`
- * set `contentEl.innerHTML = payload` directly. Once a LAN peer
- * authenticated, anything that could write to fd 4 of any pane (a
- * careless `curl|sh`, a npm postinstall, a Homebrew formula) could
- * inject script that ran in the mirror page's origin — with access to
- * the auth token, localStorage, and the live WebSocket.
- *
- * The shell carries three independent defenses:
- *
- *   1. `<iframe sandbox>` (no `allow-scripts`, no `allow-same-origin`)
- *      — the browser refuses to run script and refuses to read cookies
- *      / localStorage / the parent origin.
- *   2. `<meta http-equiv="Content-Security-Policy" content="…">` —
- *      `script-src 'none'`, `default-src 'none'`. A second line of
- *      defence in case a future browser bug weakens the sandbox.
- *   3. `script-src 'none'` blocks `<script>` even if the sandbox
- *      somehow allowed it.
- *
- * Inline styles are intentionally permitted (`style-src 'unsafe-inline'`)
- * because sideband producers ship presentation-heavy markup; inline
- * styles can't pivot to code execution. `img-src data: blob:` is
- * needed for sparklines / icons producers ship in-line.
- */
-const SIDEBAND_HTML_CSP =
-  "default-src 'none'; " +
-  "style-src 'unsafe-inline'; " +
-  "img-src data: blob:; " +
-  "script-src 'none'; " +
-  "object-src 'none'; " +
-  "base-uri 'none'; " +
-  "frame-ancestors 'none';";
-
-function wrapInSandboxedShell(
-  body: string,
-  contentType: "html" | "svg",
-): string {
-  // The shell deliberately omits a <!doctype>: an iframe srcdoc renders
-  // in quirks mode without one, and modern CSS works either way. Keeping
-  // the shell minimal also means a sideband producer that ships its own
-  // `<html>` / `<head>` won't end up with a nested structure that
-  // browsers render quirkily.
-  const bodyMarkup =
-    contentType === "svg"
-      ? // Wrap raw SVG in a <body> so the iframe sizes correctly.
-        `<body style="margin:0;padding:0;background:transparent">${body}</body>`
-      : body;
-  return (
-    `<meta http-equiv="Content-Security-Policy" content="${SIDEBAND_HTML_CSP}">` +
-    `<meta charset="utf-8">` +
-    bodyMarkup
-  );
-}
-
-/** Create-or-reuse the sandbox iframe inside `contentEl`. The reuse
- *  path is important — every frame of a 30 fps stream creates a fresh
- *  payload, and tearing the iframe down on each one would burn cycles
- *  and lose any scroll position the panel maintained. */
-function ensureSandboxIframe(contentEl: HTMLElement): HTMLIFrameElement {
-  let iframe = contentEl.querySelector(
-    "iframe.sideband-sandbox",
-  ) as HTMLIFrameElement | null;
-  if (iframe) return iframe;
-  contentEl.innerHTML = "";
-  iframe = document.createElement("iframe");
-  iframe.className = "sideband-sandbox";
-  // Empty sandbox attribute = most restrictive: no scripts, no
-  // same-origin, no top-nav, no forms, no popups. We DO NOT add
-  // `allow-scripts` because that defeats the entire point. We DO NOT
-  // add `allow-same-origin` because that lets the iframe read the
-  // parent's cookies / localStorage via document.cookie.
-  iframe.setAttribute("sandbox", "");
-  iframe.style.cssText =
-    "width:100%;height:100%;border:0;background:transparent;display:block";
-  iframe.setAttribute("aria-label", "Sideband panel content");
-  contentEl.appendChild(iframe);
-  return iframe;
-}
-
-/**
- * C2 (full_app_review_2026-05.md): the ONE html/svg sink. Renders
- * already-decoded raw markup into the sandboxed iframe. Both the binary
- * renderers below AND the inline `meta.data` path in main.ts route through
- * here, so there is no parallel `innerHTML` sink that bypasses the sandbox.
- */
-export function renderSandboxedMarkup(
-  contentEl: HTMLElement,
-  markup: string,
-  kind: "html" | "svg",
-): void {
-  const iframe = ensureSandboxIframe(contentEl);
-  iframe.srcdoc = wrapInSandboxedShell(markup, kind);
-}
+// C2 / H4 (full_app_review_2026-05.md §7.1–7.2): the html/svg sandbox now
+// lives in `src/shared/sideband-sandbox.ts` so the web mirror and the
+// native webview share ONE implementation that can't drift. Re-exported
+// so `main.ts` (the inline `meta.data` path) and the existing tests keep
+// their import site.
+export { renderSandboxedMarkup };
 
 export const renderSvg: PanelRenderer = (contentEl, data, _meta, isBinary) => {
   renderSandboxedMarkup(contentEl, decodeB64Text(data, isBinary), "svg");

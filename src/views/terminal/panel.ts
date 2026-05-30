@@ -5,6 +5,7 @@ import {
   getRendererIcon,
   getRendererCssClass,
 } from "./content-renderers";
+import { renderSandboxedMarkup } from "../../shared/sideband-sandbox";
 
 export class Panel {
   readonly id: string;
@@ -80,7 +81,7 @@ export class Panel {
     this.syncClasses();
     this.applyMeta(meta);
     if (meta.data !== undefined) {
-      this.contentEl.innerHTML = meta.data;
+      this.renderInlineData(meta.data);
       this.hasContent = true;
     }
     this.setupDrag();
@@ -110,11 +111,32 @@ export class Panel {
       this.setupInteractive(msg.interactive);
     }
     if (msg.data !== undefined) {
-      this.contentEl.innerHTML = msg.data;
+      this.renderInlineData(msg.data);
     }
 
     this.syncClasses();
     this.applyMeta(this.meta);
+  }
+
+  /**
+   * H4 (full_app_review_2026-05.md §7.2): the inline `meta.data` markup
+   * sink. Display-only html/svg renders inside the shared sandboxed iframe
+   * (no scripts, no same-origin, strict CSP) so a sideband producer can't
+   * run script with the native webview's Electrobun RPC privilege. An
+   * interactive panel forwards DOM events via listeners on `contentEl`,
+   * which an iframe would intercept, so it keeps the DIRECT path — the
+   * explicit, opt-in native trust boundary. Non-markup inline data (any
+   * other type) is unchanged.
+   */
+  private renderInlineData(data: string): void {
+    const type = this.meta.type;
+    if ((type === "html" || type === "svg") && !this.meta.interactive) {
+      // `type` is narrowed to "html" | "svg" here; the cast placates the
+      // `(string & {})` autocomplete-union on SidebandContentMessage.type.
+      renderSandboxedMarkup(this.contentEl, data, type as "html" | "svg");
+    } else {
+      this.contentEl.innerHTML = data;
+    }
   }
 
   setContent(data: Uint8Array): void {

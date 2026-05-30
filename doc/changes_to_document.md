@@ -65,3 +65,11 @@ _(Always add new items below the cleared line above. When folding into the websi
   different shortened path and rendered any sub-1 MB process as a bogus `0M`
   (now `512K` etc.). Worth a one-line changelog mention (web-mirror parity bug
   fix); the full card-DOM unification is deferred.
+- **Native sideband html/svg sandbox (H4, v0.3.181).** Display-only `html`/`svg`
+  panel content (inline or fd4) now renders inside a strict-CSP sandboxed
+  iframe on the **native** app too — not just the web mirror — closing a path
+  where a sideband producer's markup could run script with the native webview's
+  full (RPC-bridge) privilege. Interactive panels keep the direct path as a
+  documented opt-in trust boundary. Worth a short security/changelog note;
+  affects the sideband-protocol security docs (`doc/system-sideband-protocol.md`
+  is now partly stale re: §7.6).

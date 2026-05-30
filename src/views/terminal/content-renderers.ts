@@ -1,7 +1,32 @@
 import type { SidebandContentMessage } from "../../shared/types";
 import type { IconName } from "./icons";
+import { renderSandboxedMarkup } from "../../shared/sideband-sandbox";
 
 const decoder = new TextDecoder();
+
+/**
+ * H4 (full_app_review_2026-05.md §7.2): the native html/svg sink. The
+ * native webview holds the Electrobun RPC bridge, so injected script here
+ * is strictly more dangerous than on the LAN mirror. Display-only markup
+ * is rendered inside the shared sandboxed iframe (no scripts, no
+ * same-origin, strict CSP). An *interactive* panel forwards DOM events to
+ * the host via listeners on `contentEl`, which an iframe would intercept —
+ * so interactive panels keep the DIRECT `innerHTML` path. That is the
+ * explicit, opt-in native trust boundary: a producer must set
+ * `interactive` to gain full-privilege script execution.
+ */
+function renderMarkup(
+  contentEl: HTMLElement,
+  markup: string,
+  kind: "html" | "svg",
+  meta: SidebandContentMessage,
+): void {
+  if (meta.interactive) {
+    contentEl.innerHTML = markup;
+  } else {
+    renderSandboxedMarkup(contentEl, markup, kind);
+  }
+}
 
 // === Content Renderer Interface ===
 
@@ -118,9 +143,13 @@ registerRenderer("image", {
 
 // -- SVG Renderer --
 
-function renderSvg(contentEl: HTMLDivElement, data: Uint8Array): void {
+function renderSvg(
+  contentEl: HTMLDivElement,
+  data: Uint8Array,
+  meta: SidebandContentMessage,
+): void {
   revokeBlobUrl(contentEl);
-  contentEl.innerHTML = decoder.decode(data);
+  renderMarkup(contentEl, decoder.decode(data), "svg", meta);
 }
 
 registerRenderer("svg", {
@@ -133,9 +162,13 @@ registerRenderer("svg", {
 
 // -- HTML Renderer --
 
-function renderHtml(contentEl: HTMLDivElement, data: Uint8Array): void {
+function renderHtml(
+  contentEl: HTMLDivElement,
+  data: Uint8Array,
+  meta: SidebandContentMessage,
+): void {
   revokeBlobUrl(contentEl);
-  contentEl.innerHTML = decoder.decode(data);
+  renderMarkup(contentEl, decoder.decode(data), "html", meta);
 }
 
 registerRenderer("html", {
