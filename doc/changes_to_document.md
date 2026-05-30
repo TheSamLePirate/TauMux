@@ -46,3 +46,9 @@ _(Always add new items below the cleared line above. When folding into the websi
   machinery from `PiAgentInstance` (−199 lines); the agent IPC has always used
   the fire-and-forget `sendNoWait` path. Internal-only, no behavior change —
   changelog-only if mentioned at all.
+- **Metadata poller test coverage (H14, v0.3.178).** Made the four subprocess
+  runners (`ps`/`lsof`/`git`) injectable on `SurfaceMetadataPoller` (defaulting
+  to the real impls) and added 11 orchestration tests for the previously
+  untested 1 Hz `tick()` (emit-on-change, cpu/rss delta gate, dead-surface
+  eviction, prune-on-empty, git TTL + multi-repo). Internal hardening, no
+  behavior change — not user-facing.

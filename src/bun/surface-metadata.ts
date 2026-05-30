@@ -472,6 +472,19 @@ interface SessionsLike {
   getAllSurfaces(): SurfaceLike[];
 }
 
+/** The four subprocess runners `tick()` orchestrates. Injectable so the
+ *  1 Hz orchestration (filtering, dead-snapshot eviction, tree/fg/port/
+ *  cwd union, git/pkg/cargo resolution, prune-on-empty, gitCache
+ *  eviction, emit decision) can be unit-tested with canned fixtures —
+ *  the same seam `SessionsLike` already provides for the surface list.
+ *  Defaults to the real `ps`/`lsof`/`git` impls (H14). */
+export interface MetadataRunners {
+  runPs: () => Promise<Map<number, PsRow> | null>;
+  runListeningPorts: (pids: number[]) => Promise<Map<number, ListeningPort[]>>;
+  runCwds: (pids: number[]) => Promise<Map<number, string>>;
+  runGit: (cwd: string) => Promise<GitInfo | null>;
+}
+
 interface GitCacheEntry {
   info: GitInfo | null;
   at: number;
@@ -494,6 +507,15 @@ export class SurfaceMetadataPoller {
   constructor(
     private sessions: SessionsLike,
     private intervalMs = 1000,
+    /** Subprocess seam — defaults to the real ps/lsof/git runners.
+     *  Function declarations below are hoisted, so referencing them
+     *  here (evaluated at construction) is safe. */
+    private runners: MetadataRunners = {
+      runPs,
+      runListeningPorts,
+      runCwds,
+      runGit,
+    },
   ) {}
 
   start(): void {
@@ -543,6 +565,14 @@ export class SurfaceMetadataPoller {
     return this.last.get(surfaceId) ?? null;
   }
 
+  /** Test seam (H14) — run exactly one tick and await its completion.
+   *  Production drives ticks via the `start()` interval; tests call this
+   *  to exercise the orchestration deterministically with injected
+   *  runners. */
+  runTickForTest(): Promise<void> {
+    return this.tick();
+  }
+
   private async tick(): Promise<void> {
     if (this.inFlight || this.stopped) return;
     this.inFlight = true;
@@ -571,7 +601,7 @@ export class SurfaceMetadataPoller {
         return;
       }
 
-      const psMap = await runPs();
+      const psMap = await this.runners.runPs();
       if (!psMap) return;
 
       // Compute trees + fg pid first; gather union of pids.
@@ -589,9 +619,11 @@ export class SurfaceMetadataPoller {
 
       const [portsByPid, cwdByPid] = await Promise.all([
         treePids.size > 0
-          ? runListeningPorts([...treePids])
+          ? this.runners.runListeningPorts([...treePids])
           : Promise.resolve(new Map()),
-        fgPids.size > 0 ? runCwds([...fgPids]) : Promise.resolve(new Map()),
+        fgPids.size > 0
+          ? this.runners.runCwds([...fgPids])
+          : Promise.resolve(new Map()),
       ]);
 
       const now = Date.now();
@@ -741,7 +773,7 @@ export class SurfaceMetadataPoller {
     await Promise.all(
       stale.map(async (cwd) => {
         const startedAt = Date.now();
-        const info = await runGit(cwd);
+        const info = await this.runners.runGit(cwd);
         const elapsed = Date.now() - startedAt;
         if (elapsed >= stallThresholdMs) anyStall = true;
         this.gitCache.set(cwd, { info, at: now });
