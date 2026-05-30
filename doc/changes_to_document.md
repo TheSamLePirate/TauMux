@@ -30,3 +30,9 @@ _(Always add new items below the cleared line above. When folding into the websi
   every cursor blink (H5) and pause for background (non-visible) workspaces
   (H6); Process Manager CPU/RSS now refresh on small deltas instead of staying
   frozen (H7). Changelog-only.
+- **Auto-continue cost gates (H8 + 10.2, v0.3.175).** The auto-continue engine
+  now runs its deterministic cooldown and runaway gates *before* any paid model
+  call, so a chatty or runaway/looped agent can no longer trigger an
+  Anthropic round-trip per turn-end notification. The "agent looped" audit
+  entry is now emitted once per loop episode instead of every notification.
+  Changelog-only (no API/CLI surface change).

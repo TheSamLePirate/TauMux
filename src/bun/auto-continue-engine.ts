@@ -217,6 +217,52 @@ export class AutoContinueEngine {
       notificationText: args.notificationText,
     });
 
+    // 2. Cheap deterministic gates run BEFORE any paid model call (H8).
+    //    A chatty agent firing faster than `cooldownMs`, or a runaway
+    //    surface past `maxConsecutive`, must never trigger a billed
+    //    Anthropic round-trip — those are exactly the scenarios the
+    //    engine exists to contain, so consulting the model first was
+    //    the opposite of intent. The heuristic above is free; the model
+    //    is consulted only once a notification clears both gates.
+    const surfaceState = this.surfaceState(args.surfaceId);
+    // The first fire on a surface has lastFireAt === 0; without this
+    // guard the cooldown gate would block it because `now - 0` is
+    // always ≥ cooldownMs once the clock has been running. Skip the
+    // gate when we've never fired before.
+    const sinceLast = this.now() - surfaceState.lastFireAt;
+    if (surfaceState.lastFireAt > 0 && sinceLast < settings.cooldownMs) {
+      return this.record(
+        args,
+        {
+          kind: "skipped",
+          reason: `cooldown — ${settings.cooldownMs - sinceLast}ms remaining`,
+          decision: heuristic,
+        },
+        settings,
+        false,
+      );
+    }
+
+    // Runaway gate — skip after maxConsecutive auto-continues with no
+    // intervening human input. `loopWarned` latches so the "paused —
+    // looped" audit fires only once per loop episode instead of on
+    // every subsequent notification (10.2 — previously dead state,
+    // written but never read). notifyHumanInput()/resume() clear it, so
+    // a real human intervention re-arms auto-continue and a fresh loop
+    // re-emits the warning. Either way no model is consulted while
+    // looping.
+    if (surfaceState.consecutive >= settings.maxConsecutive) {
+      const firstTrip = !surfaceState.loopWarned;
+      surfaceState.loopWarned = true;
+      const skipped: AutoContinueOutcome = {
+        kind: "skipped",
+        reason: `paused — agent looped (${surfaceState.consecutive} auto-continues without user input)`,
+        decision: heuristic,
+      };
+      return firstTrip ? this.record(args, skipped, settings, false) : skipped;
+    }
+
+    // 3. Both cheap gates passed — now (and only now) consult the model.
     let decision = heuristic;
     let modelConsulted = false;
 
@@ -247,43 +293,6 @@ export class AutoContinueEngine {
         {
           kind: "skipped",
           reason: decision.reason,
-          decision,
-        },
-        settings,
-        modelConsulted,
-      );
-    }
-
-    // 2. Cooldown gate — protects against a chatty agent firing
-    //    notifications faster than the user can read them.
-    const surfaceState = this.surfaceState(args.surfaceId);
-    // The first fire on a surface has lastFireAt === 0; without
-    // this guard the cooldown gate would block it because
-    // `now - 0` is always ≥ cooldownMs only on a clock that started
-    // hours ago. Skip the gate when we've never fired before.
-    const sinceLast = this.now() - surfaceState.lastFireAt;
-    if (surfaceState.lastFireAt > 0 && sinceLast < settings.cooldownMs) {
-      return this.record(
-        args,
-        {
-          kind: "skipped",
-          reason: `cooldown — ${settings.cooldownMs - sinceLast}ms remaining`,
-          decision,
-        },
-        settings,
-        modelConsulted,
-      );
-    }
-
-    // 3. Runaway gate — pause after maxConsecutive auto-continues
-    //    without an intervening human input.
-    if (surfaceState.consecutive >= settings.maxConsecutive) {
-      surfaceState.loopWarned = true;
-      return this.record(
-        args,
-        {
-          kind: "skipped",
-          reason: `paused — agent looped (${surfaceState.consecutive} auto-continues without user input)`,
           decision,
         },
         settings,

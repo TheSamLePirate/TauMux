@@ -239,6 +239,142 @@ describe("AutoContinueEngine — runaway counter", () => {
   });
 });
 
+// ── H8 / 10.2 — cheap gates run before the paid model call ───
+
+describe("AutoContinueEngine — gates short-circuit before the model (H8)", () => {
+  let nowMs = 1_000;
+  beforeEach(() => {
+    nowMs = 1_000;
+  });
+
+  test("cooldown gate skips WITHOUT consulting the model", async () => {
+    const callModel = mock(async () => ({
+      action: "continue" as const,
+      reason: "model says go",
+    }));
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings({ engine: "model", cooldownMs: 5_000 }),
+      sendText: () => {},
+      callModel,
+      now: () => nowMs,
+    });
+    // First dispatch fires (and consults the model once).
+    await engine.dispatch({
+      surfaceId: "s1",
+      plan: samplePlan,
+      surfaceTail: [],
+    });
+    expect(callModel).toHaveBeenCalledTimes(1);
+    // Second dispatch is inside the cooldown window — must skip with
+    // NO additional billed round-trip.
+    nowMs += 1_000;
+    const out = await engine.dispatch({
+      surfaceId: "s1",
+      plan: samplePlan,
+      surfaceTail: [],
+    });
+    expect(out.kind).toBe("skipped");
+    expect(out.kind === "skipped" && out.reason).toContain("cooldown");
+    expect(callModel).toHaveBeenCalledTimes(1);
+    // The cooldown audit must not claim the model was consulted.
+    const last = engine.getAudit().at(-1)!;
+    expect(last.modelConsulted).toBe(false);
+  });
+
+  test("runaway gate skips WITHOUT consulting the model", async () => {
+    const callModel = mock(async () => ({
+      action: "continue" as const,
+      reason: "model says go",
+    }));
+    const engine = new AutoContinueEngine({
+      getSettings: () =>
+        settings({ engine: "model", maxConsecutive: 2, cooldownMs: 0 }),
+      sendText: () => {},
+      callModel,
+    });
+    await engine.dispatch({
+      surfaceId: "s1",
+      plan: samplePlan,
+      surfaceTail: [],
+    });
+    await engine.dispatch({
+      surfaceId: "s1",
+      plan: samplePlan,
+      surfaceTail: [],
+    });
+    expect(callModel).toHaveBeenCalledTimes(2);
+    // Third dispatch trips the runaway gate — looped surfaces are the
+    // headline cost runaway; the model must not be called again.
+    const out = await engine.dispatch({
+      surfaceId: "s1",
+      plan: samplePlan,
+      surfaceTail: [],
+    });
+    expect(out.kind).toBe("skipped");
+    expect(out.kind === "skipped" && out.reason).toContain("looped");
+    expect(callModel).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("AutoContinueEngine — runaway audit de-dupe (10.2)", () => {
+  test("emits the looped audit once per episode, then suppresses repeats", async () => {
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings({ maxConsecutive: 2 }),
+      sendText: () => {},
+    });
+    // 2 fires + 3 looped dispatches.
+    for (let i = 0; i < 2; i++) {
+      await engine.dispatch({
+        surfaceId: "s1",
+        plan: samplePlan,
+        surfaceTail: [],
+      });
+    }
+    for (let i = 0; i < 3; i++) {
+      const out = await engine.dispatch({
+        surfaceId: "s1",
+        plan: samplePlan,
+        surfaceTail: [],
+      });
+      expect(out.kind).toBe("skipped");
+      expect(out.kind === "skipped" && out.reason).toContain("looped");
+    }
+    // Only ONE looped audit entry despite three looped dispatches.
+    const looped = engine.getAudit().filter((e) => e.reason.includes("looped"));
+    expect(looped).toHaveLength(1);
+  });
+
+  test("a human intervention re-arms the looped warning", async () => {
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings({ maxConsecutive: 1 }),
+      sendText: () => {},
+    });
+    await engine.dispatch({
+      surfaceId: "s1",
+      plan: samplePlan,
+      surfaceTail: [],
+    });
+    await engine.dispatch({
+      surfaceId: "s1",
+      plan: samplePlan,
+      surfaceTail: [],
+    }); // loop #1 (audited)
+    engine.notifyHumanInput("s1"); // resets consecutive + loopWarned
+    await engine.dispatch({
+      surfaceId: "s1",
+      plan: samplePlan,
+      surfaceTail: [],
+    }); // fires again
+    await engine.dispatch({
+      surfaceId: "s1",
+      plan: samplePlan,
+      surfaceTail: [],
+    }); // loop #2 (audited again)
+    const looped = engine.getAudit().filter((e) => e.reason.includes("looped"));
+    expect(looped).toHaveLength(2);
+  });
+});
+
 // ── Model + hybrid ───────────────────────────────────────────
 
 describe("AutoContinueEngine — model + hybrid", () => {

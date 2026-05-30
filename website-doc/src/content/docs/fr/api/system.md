@@ -18,7 +18,7 @@ Méthodes d'introspection au niveau système.
 
 ```json
 { "method": "system.version", "params": {} }
-→ { "result": { "version": "0.3.174", "build": "…" } }
+→ { "result": { "version": "0.3.175", "build": "…" } }
 ```
 
 La chaîne de version vient d'une unique source de vérité dans `package.json` et est propagée vers six autres fichiers par `scripts/bump-version.ts` à chaque bump de release. Le script a gagné cinq flags en 0.3.143 (outillage de release Phase 8) — voir la [page processus de release](/fr/development/release-process/) pour le workflow complet.
