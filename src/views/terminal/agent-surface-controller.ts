@@ -70,6 +70,9 @@ export class AgentSurfaceController {
       onGetState: (aid) => {
         htEvents.emit("ht-agent-get-state", { agentId: aid });
       },
+      onRestart: (sid, opts) => {
+        htEvents.emit("ht-agent-restart", { surfaceId: sid, ...opts });
+      },
     });
   }
 

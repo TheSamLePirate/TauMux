@@ -36,3 +36,8 @@ _(Always add new items below the cleared line above. When folding into the websi
   Anthropic round-trip per turn-end notification. The "agent looped" audit
   entry is now emitted once per loop episode instead of every notification.
   Changelog-only (no API/CLI surface change).
+- **Crashed agent recovery (H13, v0.3.176).** When a pi agent subprocess exits
+  (crash / OOM / self-exit), the agent pane now disables its input + send
+  button, shows an "Agent process exited (code N)" banner, and offers a
+  one-click **Restart agent** button — previously the input stayed enabled and
+  silently swallowed every keystroke with no way to recover. Changelog-only.

@@ -79,6 +79,13 @@ export interface AgentPanelCallbacks {
   onFocus: (surfaceId: string) => void;
   onGetModels: (agentId: string) => void;
   onGetState: (agentId: string) => void;
+  /** H13 — restart a dead (exited) agent. Carries the model/provider/
+   *  thinking the panel knew so the replacement comes back configured
+   *  the same; the host closes this dead surface. */
+  onRestart: (
+    surfaceId: string,
+    opts: { provider?: string; model?: string; thinkingLevel?: string },
+  ) => void;
 }
 
 export interface SlashCommand {
@@ -196,6 +203,13 @@ export interface AgentPanelState {
    *  in the romaji buffer doesn't open the slash menu and Enter to
    *  commit doesn't send the half-composed message. */
   composing: boolean;
+  /** H13 — the pi subprocess has exited (crash / OOM / self-exit). The
+   *  instance is evicted host-side, so every further command would be a
+   *  silent no-op; we latch this flag to disable input + send and show
+   *  a restart banner instead of swallowing keystrokes. */
+  dead: boolean;
+  /** Exit code reported on `agent_exit`, or null if unknown. */
+  exitCode: number | null;
 }
 
 interface AgentPanelElements {
@@ -203,6 +217,7 @@ interface AgentPanelElements {
   inputEl: HTMLTextAreaElement;
   inputBarEl: HTMLDivElement;
   footerEl: HTMLDivElement;
+  deadBannerEl: HTMLDivElement;
   sendBtn: HTMLButtonElement;
   modelBtnLabel: HTMLSpanElement;
   thinkingBtnLabel: HTMLSpanElement;
@@ -477,6 +492,31 @@ export function createAgentPaneView(
   dialogOverlay.className = "agent-dialog-overlay agent-dialog-hidden";
   body.appendChild(dialogOverlay);
 
+  // ── Dead-agent banner (H13) ──
+  // Shown when the pi subprocess exits. Before this existed, a crashed
+  // agent left the input enabled and silently swallowed every keystroke
+  // (`getAgent(id) → undefined` host-side no-op) with no path to
+  // recover. The banner disables input (see `setAgentDead`) and offers
+  // a one-click restart.
+  const deadBannerEl = document.createElement("div");
+  deadBannerEl.className = "agent-dead-banner agent-dead-banner-hidden";
+  const deadBannerText = document.createElement("span");
+  deadBannerText.className = "agent-dead-banner-text";
+  deadBannerText.textContent = "Agent process exited.";
+  deadBannerEl.appendChild(deadBannerText);
+  const restartBtn = document.createElement("button");
+  restartBtn.className = "agent-dead-restart-btn";
+  restartBtn.textContent = "Restart agent";
+  restartBtn.addEventListener("click", () => {
+    callbacks.onRestart(surfaceId, {
+      provider: state.model?.provider,
+      model: state.model?.id,
+      thinkingLevel: state.thinkingLevel,
+    });
+  });
+  deadBannerEl.appendChild(restartBtn);
+  body.appendChild(deadBannerEl);
+
   // ── Input bar ──
   const inputBarEl = document.createElement("div");
   inputBarEl.className = "agent-input-bar";
@@ -618,6 +658,8 @@ export function createAgentPaneView(
     slashSelectedIndex: 0,
     activeDialog: null,
     composing: false,
+    dead: false,
+    exitCode: null,
   };
 
   const elements: AgentPanelElements = {
@@ -625,6 +667,7 @@ export function createAgentPaneView(
     inputEl,
     inputBarEl,
     footerEl,
+    deadBannerEl,
     sendBtn,
     modelBtnLabel,
     thinkingBtnLabel,
@@ -870,11 +913,13 @@ export function agentPanelHandleEvent(
     case "agent_exit": {
       s.isStreaming = false;
       flushStreaming(view);
-      addSystemMessage(
-        view,
-        `Agent process exited (code ${event["code"] ?? "?"})`,
-      );
+      const rawCode = event["code"];
+      const code = typeof rawCode === "number" ? rawCode : null;
+      addSystemMessage(view, `Agent process exited (code ${code ?? "?"})`);
       syncStreamingUI(view);
+      // H13 — latch the dead state LAST so it wins over syncStreamingUI
+      // (which would otherwise re-enable the send button).
+      setAgentDead(view, code);
       break;
     }
   }
@@ -906,6 +951,13 @@ function handleInputKeydown(
   cb: AgentPanelCallbacks,
 ): void {
   const s = view._state;
+
+  // H13 — a dead agent's input is disabled, so keydown shouldn't fire;
+  // guard anyway in case focus/synthetic events reach a husk pane.
+  if (s.dead) {
+    e.preventDefault();
+    return;
+  }
 
   // P7 S27 / B.U15 — IME composition guard. Swallow Enter / Tab
   // while the user is mid-composition. Some IMEs use a synthetic
@@ -1037,6 +1089,10 @@ function handleInputKeydown(
 }
 
 function submitInput(view: AgentPaneView, cb: AgentPanelCallbacks): void {
+  // H13 — a dead agent has no host instance; swallow nothing, send
+  // nothing. The input is also disabled, so this is defense-in-depth
+  // for any programmatic caller.
+  if (view._state.dead) return;
   const text = view._elements.inputEl.value.trim();
   const images = [...view._state.pendingImages];
   if (!text && images.length === 0) return;
@@ -1246,6 +1302,39 @@ function syncStreamingUI(view: AgentPaneView): void {
     streamingIndicator.classList.add("agent-streaming-bar-hidden");
   }
   syncFooter(view);
+}
+
+/** H13 — latch the agent pane into the "exited" state: reveal the
+ *  restart banner, disable input + send so keystrokes are never
+ *  silently swallowed, and pin the footer to the exit code. Idempotent;
+ *  cleared only by mounting a fresh agent surface (restart). */
+function setAgentDead(view: AgentPaneView, code: number | null): void {
+  const s = view._state;
+  s.dead = true;
+  s.exitCode = code;
+  s.isStreaming = false;
+  const { inputEl, sendBtn, deadBannerEl, footerEl, streamingIndicator } =
+    view._elements;
+  const codeSuffix = code != null ? ` (code ${code})` : "";
+
+  inputEl.disabled = true;
+  inputEl.placeholder = "Agent exited — Restart to start a new session";
+  sendBtn.disabled = true;
+  sendBtn.classList.remove("agent-send-stop");
+  streamingIndicator.classList.add("agent-streaming-bar-hidden");
+
+  const bannerText = deadBannerEl.querySelector(
+    ".agent-dead-banner-text",
+  ) as HTMLElement | null;
+  if (bannerText) {
+    bannerText.textContent = `Agent process exited${codeSuffix}. Input is disabled.`;
+  }
+  deadBannerEl.classList.remove("agent-dead-banner-hidden");
+
+  const footerText = footerEl.querySelector(
+    ".agent-footer-text",
+  ) as HTMLElement | null;
+  if (footerText) footerText.textContent = `Agent exited${codeSuffix}`;
 }
 
 function setStreamLabel(el: AgentPanelElements, text: string): void {

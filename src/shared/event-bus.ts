@@ -410,6 +410,17 @@ export interface AgentCommandPayload {
   agentId: string;
 }
 
+/** Agent pane restart request — fired when the user clicks "Restart" on
+ *  a dead (exited) agent pane (H13). Carries the dead surface id so the
+ *  host can close the husk, plus the provider/model/thinking the panel
+ *  knew so the replacement agent comes back configured the same. */
+export interface AgentRestartPayload {
+  surfaceId: string;
+  provider?: string;
+  model?: string;
+  thinkingLevel?: string;
+}
+
 export interface HtEventMap extends Record<string, unknown> {
   "ht-reorder-workspaces": ReorderWorkspacesPayload;
   "ht-surface-focused": SurfaceFocusedPayload;
@@ -466,6 +477,7 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-agent-compact": AgentCommandPayload;
   "ht-agent-get-models": AgentCommandPayload;
   "ht-agent-get-state": AgentCommandPayload;
+  "ht-agent-restart": AgentRestartPayload;
 }
 
 /** Singleton bus that dispatches on `window`. Importers can grab this

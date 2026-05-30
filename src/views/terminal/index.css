@@ -7938,6 +7938,31 @@ body::after {
 .agent-dialog-cancel:hover { color: var(--text-muted); }
 
 /* ── Input bar ── */
+/* H13 — dead-agent banner. Shown above the input bar when the pi
+   subprocess exits; the input is disabled and a restart is offered. */
+.agent-dead-banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; flex-shrink: 0;
+  border-top: 0.5px solid color-mix(in srgb, #f87171 38%, transparent);
+  background: color-mix(in srgb, #f87171 12%, transparent);
+  color: var(--text-strong);
+  font: 12px/1.4 inherit;
+}
+.agent-dead-banner-hidden { display: none; }
+.agent-dead-banner-text { flex: 1; opacity: 0.92; }
+.agent-dead-restart-btn {
+  flex-shrink: 0;
+  border: 0.5px solid color-mix(in srgb, var(--accent-primary) 45%, transparent);
+  border-radius: 8px;
+  background: var(--accent-primary-soft); color: var(--accent-primary);
+  font: 600 11.5px/1 inherit; padding: 6px 12px; cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.agent-dead-restart-btn:hover {
+  background: color-mix(in srgb, var(--accent-primary) 24%, transparent);
+  border-color: var(--accent-primary-strong);
+}
+
 .agent-input-bar {
   display: flex; align-items: flex-end; gap: 8px;
   padding: 10px 12px; flex-shrink: 0;

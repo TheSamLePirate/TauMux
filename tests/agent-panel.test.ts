@@ -42,6 +42,10 @@ interface Spies {
   thinkings: { agentId: string; level: string }[];
   newSessions: string[];
   compacts: string[];
+  restarts: {
+    surfaceId: string;
+    opts: { provider?: string; model?: string; thinkingLevel?: string };
+  }[];
 }
 
 function spies(): Spies {
@@ -57,6 +61,7 @@ function spies(): Spies {
     thinkings: [],
     newSessions: [],
     compacts: [],
+    restarts: [],
   };
 }
 
@@ -94,6 +99,12 @@ function callbacks(s: Spies) {
     },
     onGetState: (agentId: string) => {
       s.stateGets.push(agentId);
+    },
+    onRestart: (
+      surfaceId: string,
+      opts: { provider?: string; model?: string; thinkingLevel?: string },
+    ) => {
+      s.restarts.push({ surfaceId, opts });
     },
   };
 }
@@ -260,5 +271,71 @@ describe("Agent pane — agentPanelHandleEvent", () => {
     expect(() => {
       a.agentPanelHandleEvent(view, { type: "not-a-real-event-type" });
     }).not.toThrow();
+  });
+});
+
+describe("Agent pane — dead-agent state (H13)", () => {
+  test("agent_exit latches dead, disables input + send, reveals banner", async () => {
+    const a = await load();
+    const view = a.createAgentPaneView(
+      "agent:1",
+      "agent-id-xyz",
+      callbacks(spies()),
+    );
+    a.agentPanelHandleEvent(view, { type: "agent_exit", code: 137 });
+    expect(view._state.dead).toBe(true);
+    expect(view._state.exitCode).toBe(137);
+    expect(view._elements.inputEl.disabled).toBe(true);
+    expect(view._elements.sendBtn.disabled).toBe(true);
+    expect(
+      view._elements.deadBannerEl.classList.contains(
+        "agent-dead-banner-hidden",
+      ),
+    ).toBe(false);
+    const footer = view._elements.footerEl.querySelector(
+      ".agent-footer-text",
+    ) as HTMLElement;
+    expect(footer.textContent).toContain("137");
+  });
+
+  test("a dead agent swallows nothing — submit is a no-op", async () => {
+    const a = await load();
+    const s = spies();
+    const view = a.createAgentPaneView("agent:1", "agent-id-xyz", callbacks(s));
+    a.agentPanelHandleEvent(view, { type: "agent_exit", code: 1 });
+    // Simulate a programmatic submit (the disabled input blocks the UI
+    // path; this guards the defense-in-depth code path).
+    view._elements.inputEl.disabled = false; // pretend re-enabled
+    view._elements.inputEl.value = "should not send";
+    // submitInput is module-private; drive it via the public keydown to
+    // confirm the guard. A dead pane must not emit a prompt.
+    view._elements.inputEl.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+    expect(s.prompts).toHaveLength(0);
+  });
+
+  test("Restart button fires onRestart with the panel's model/provider", async () => {
+    const a = await load();
+    const s = spies();
+    const view = a.createAgentPaneView("agent:1", "agent-id-xyz", callbacks(s));
+    view._state.model = {
+      id: "claude-opus-4-8",
+      provider: "anthropic",
+      name: "Opus",
+    } as never;
+    view._state.thinkingLevel = "high";
+    a.agentPanelHandleEvent(view, { type: "agent_exit", code: 1 });
+    const restartBtn = view._elements.deadBannerEl.querySelector(
+      ".agent-dead-restart-btn",
+    ) as HTMLButtonElement;
+    restartBtn.click();
+    expect(s.restarts).toHaveLength(1);
+    expect(s.restarts[0].surfaceId).toBe("agent:1");
+    expect(s.restarts[0].opts).toEqual({
+      provider: "anthropic",
+      model: "claude-opus-4-8",
+      thinkingLevel: "high",
+    });
   });
 });

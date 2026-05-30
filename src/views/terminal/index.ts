@@ -2453,6 +2453,21 @@ window.addEventListener("ht-new-workspace", () => {
   rpc.send("createSurface", {});
 });
 
+// H13 — restart a dead (exited) agent. Spawns a fresh agent surface
+// carrying the model/provider/thinking the panel knew, then closes the
+// dead husk so it doesn't linger. Both are the same proven RPC paths
+// the "new agent" command and pane-close use; rpc.send preserves order.
+window.addEventListener("ht-agent-restart", (e: Event) => {
+  const detail = (e as CustomEvent).detail;
+  if (!detail?.surfaceId) return;
+  rpc.send("createAgentSurface", {
+    provider: detail.provider,
+    model: detail.model,
+    thinkingLevel: detail.thinkingLevel,
+  });
+  rpc.send("closeSurface", { surfaceId: detail.surfaceId });
+});
+
 window.addEventListener("ht-open-external", (e: Event) => {
   const detail = (e as CustomEvent).detail;
   if (detail?.url) rpc.send("openExternal", { url: detail.url });
