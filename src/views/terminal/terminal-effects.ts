@@ -340,8 +340,15 @@ export class TerminalEffects {
       return;
     }
 
+    // H5 (full_app_review_2026-05.md §8.1): do NOT subscribe to onRender.
+    // xterm fires onRender on every cursor-blink phase toggle (~600ms) even
+    // on a fully idle pane, which would markDirty → re-rasterise the whole
+    // grid ~1.6×/s forever (violating the "idle CPU ~0" priority). The
+    // occluder/lights rasteriser reads cell CONTENT only — never the cursor
+    // or selection — so onWriteParsed (every write) + onScroll (every scroll)
+    // + the ResizeObserver (every resize) already cover every mutation it
+    // consumes. Dropping onRender removes the blink-driven work outright.
     this.subscriptions.push(
-      term.onRender(() => this.markDirty()),
       term.onScroll(() => this.markDirty()),
       term.onWriteParsed(() => this.markDirty()),
     );

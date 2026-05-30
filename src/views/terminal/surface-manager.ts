@@ -836,10 +836,18 @@ export class SurfaceManager {
     this.terminalEffectsEnabled = enabled;
     for (const view of this.surfaces.values()) {
       if (view.effects) {
-        view.effects.setEnabled(enabled);
+        // H6: only enable for panes in the active workspace (a hidden pane
+        // has display:none) — don't re-light backgrounded workspaces.
+        view.effects.setEnabled(enabled && this.isSurfaceVisible(view));
         view.effects.setFocused(view.id === this.focusedSurfaceId);
       }
     }
+  }
+
+  /** True when the surface's pane is in the active workspace (not hidden by
+   *  a workspace switch). Cheap: the switch toggles `display:none`. */
+  private isSurfaceVisible(view: SurfaceView): boolean {
+    return view.container.style.display !== "none";
   }
 
   toggleTerminalEffects(): boolean {
@@ -1125,7 +1133,8 @@ export class SurfaceManager {
       t.refresh(0, t.rows - 1);
       fitSurfaceTerminal(view);
       if (view.effects) {
-        view.effects.setEnabled(s.terminalBloom);
+        // H6: respect workspace visibility — don't light hidden panes.
+        view.effects.setEnabled(s.terminalBloom && this.isSurfaceVisible(view));
         view.effects.setIntensity(s.bloomIntensity);
         view.effects.setFocused(view.id === this.focusedSurfaceId);
       }
@@ -1727,6 +1736,13 @@ export class SurfaceManager {
     for (const view of this.surfaces.values()) {
       const inActive = activeWs?.surfaceIds.has(view.id) ?? false;
       view.container.style.display = inActive ? "flex" : "none";
+      // H6 (full_app_review_2026-05.md §8.2): disable WebGL effects for panes
+      // in hidden workspaces. Otherwise a backgrounded pane producing output
+      // (build log, tail -f, agent stdout) keeps firing onWriteParsed →
+      // markDirty → full-grid rasterise + GPU draw into a display:none canvas
+      // nobody can see. setEnabled(false) sets active=false, so markDirty
+      // becomes a no-op and the work stops. Re-enabled on switch-back.
+      view.effects?.setEnabled(inActive && this.terminalEffectsEnabled);
       // Manage browser webview OOPIF overlay visibility
       if (view.browserView) {
         this.browser.setHidden(view.browserView, !inActive);

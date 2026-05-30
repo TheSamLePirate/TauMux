@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import {
+  cpuOrRssMoved,
   findForegroundPid,
   metadataEqual,
   parseCwds,
@@ -331,6 +332,48 @@ describe("metadataEqual", () => {
         },
       }),
     ).toBe(false);
+  });
+});
+
+describe("cpuOrRssMoved (H7 — keep live CPU/MEM unfrozen)", () => {
+  const base: SurfaceMetadata = {
+    pid: 10,
+    foregroundPid: 10,
+    cwd: "/tmp",
+    tree: [{ pid: 10, ppid: 1, command: "node", cpu: 5, rssKb: 100_000 }],
+    listeningPorts: [],
+    git: null,
+    packageJson: null,
+    updatedAt: 1,
+  };
+  const withTree = (cpu: number, rssKb: number): SurfaceMetadata => ({
+    ...base,
+    tree: [{ pid: 10, ppid: 1, command: "node", cpu, rssKb }],
+  });
+
+  test("CPU moved >= 1.0 point → re-emit", () => {
+    expect(cpuOrRssMoved(base, withTree(6.0, 100_000))).toBe(true);
+  });
+  test("CPU jitter < 1.0 point → no emit (idle noise stays quiet)", () => {
+    expect(cpuOrRssMoved(base, withTree(5.4, 100_000))).toBe(false);
+  });
+  test("RSS moved >= 4 MiB → re-emit", () => {
+    expect(cpuOrRssMoved(base, withTree(5, 104_096))).toBe(true);
+  });
+  test("RSS moved < 4 MiB → no emit", () => {
+    expect(cpuOrRssMoved(base, withTree(5, 101_000))).toBe(false);
+  });
+  test("identical CPU/RSS → no emit", () => {
+    expect(cpuOrRssMoved(base, withTree(5, 100_000))).toBe(false);
+  });
+  test("shape/pid change defers to metadataEqual (returns false here)", () => {
+    expect(
+      cpuOrRssMoved(base, {
+        ...base,
+        tree: [{ pid: 99, ppid: 1, command: "node", cpu: 50, rssKb: 999_999 }],
+      }),
+    ).toBe(false);
+    expect(cpuOrRssMoved(base, { ...base, tree: [] })).toBe(false);
   });
 });
 

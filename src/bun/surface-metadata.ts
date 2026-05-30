@@ -375,6 +375,32 @@ export function metadataEqual(a: SurfaceMetadata, b: SurfaceMetadata): boolean {
   return true;
 }
 
+// H7 (full_app_review_2026-05.md §5.1): metadataEqual deliberately ignores
+// cpu/rssKb so the steady-state channel stays quiet — but that froze the live
+// CPU/MEM columns (Process Manager, pane chips, sidebar aggregates) whenever
+// the process tree was stable (the common case for a running dev server).
+// We re-emit when a tracked process's CPU moved by >= CPU_EMIT_DELTA points or
+// its RSS by >= RSS_EMIT_DELTA_KB — enough to keep an ACTIVE process's numbers
+// live, while idle (~0%) noise stays below the threshold and never emits.
+const CPU_EMIT_DELTA = 1.0; // percentage points
+const RSS_EMIT_DELTA_KB = 4096; // 4 MiB
+
+/** True when CPU/RSS moved enough to be worth re-emitting, ASSUMING the tree
+ *  shape is otherwise equal (metadataEqual handles shape changes). Returns
+ *  false on any shape/order mismatch so the two checks don't double-fire. */
+export function cpuOrRssMoved(a: SurfaceMetadata, b: SurfaceMetadata): boolean {
+  if (a.tree.length !== b.tree.length) return false;
+  for (let i = 0; i < a.tree.length; i++) {
+    const x = a.tree[i];
+    const y = b.tree[i];
+    if (x.pid !== y.pid) return false;
+    if (Math.abs((x.cpu ?? 0) - (y.cpu ?? 0)) >= CPU_EMIT_DELTA) return true;
+    if (Math.abs((x.rssKb ?? 0) - (y.rssKb ?? 0)) >= RSS_EMIT_DELTA_KB)
+      return true;
+  }
+  return false;
+}
+
 function pkgEqual(a: PackageInfo | null, b: PackageInfo | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -622,7 +648,11 @@ export class SurfaceMetadataPoller {
         };
 
         const prev = this.last.get(s.id);
-        if (!prev || !metadataEqual(prev, metadata)) {
+        if (
+          !prev ||
+          !metadataEqual(prev, metadata) ||
+          cpuOrRssMoved(prev, metadata)
+        ) {
           this.last.set(s.id, metadata);
           this.onMetadata?.(s.id, metadata);
         }
