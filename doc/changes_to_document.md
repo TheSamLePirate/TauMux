@@ -59,3 +59,9 @@ _(Always add new items below the cleared line above. When folding into the websi
   window focus). An idle-but-focused terminal drops from ~6–9% of a core to a
   trickle; an active terminal is unchanged. Worth a one-line changelog mention
   (perf), no config/API surface.
+- **Web-mirror sidebar parity fix (H11 leaf helpers, v0.3.180).** The workspace
+  card's cwd-shortening and RAM formatting are now shared between the native
+  sidebar and the web mirror, fixing drift where the web mirror showed a
+  different shortened path and rendered any sub-1 MB process as a bogus `0M`
+  (now `512K` etc.). Worth a one-line changelog mention (web-mirror parity bug
+  fix); the full card-DOM unification is deferred.

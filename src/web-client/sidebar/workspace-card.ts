@@ -24,6 +24,7 @@
 import { renderStatusEntry } from "../../shared/status-render";
 import { parseStatusKey } from "../../shared/status-key";
 import type { WorkspaceInfo } from "../../shared/sidebar-state";
+import { shortenCwd, formatRss } from "../../shared/sidebar-format";
 import { buildCpuSparkline } from "./cpu-sparkline";
 import { getWorkspaceUi, setWorkspaceUi } from "./local-ui-state";
 import { buildManifestsSection } from "./card-manifests";
@@ -288,7 +289,7 @@ function buildStats(ws: WorkspaceInfo): HTMLElement {
 
   const chips = document.createElement("div");
   chips.className = "workspace-stat-chips";
-  chips.appendChild(makeChip("ram", formatMem(ws.memRssKb)));
+  chips.appendChild(makeChip("ram", formatRss(ws.memRssKb)));
   chips.appendChild(makeChip("procs", String(ws.processCount)));
   el.appendChild(chips);
   return el;
@@ -305,12 +306,6 @@ function makeChip(label: string, value: string): HTMLElement {
   v.textContent = value;
   chip.append(l, v);
   return chip;
-}
-
-function formatMem(rssKb: number): string {
-  const mb = rssKb / 1024;
-  if (mb >= 1024) return `${(mb / 1024).toFixed(1)}G`;
-  return `${Math.round(mb)}M`;
 }
 
 function buildCwds(
@@ -335,16 +330,6 @@ function buildCwds(
     el.appendChild(chip);
   }
   return el;
-}
-
-function shortenCwd(cwd: string): string {
-  const m = cwd.match(/^(\/Users\/[^/]+)(.*)$/);
-  let short = m ? "~" + m[2] : cwd;
-  if (short.length > 32) {
-    const parts = short.split("/");
-    if (parts.length > 3) short = `${parts[0]}/…/${parts.slice(-2).join("/")}`;
-  }
-  return short;
 }
 
 function buildPanes(ws: WorkspaceInfo): HTMLElement {

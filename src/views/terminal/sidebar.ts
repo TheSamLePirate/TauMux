@@ -7,6 +7,7 @@ import type {
   SidebarFileExplorerListing,
 } from "../../shared/types";
 import { parseStatusKey } from "../../shared/status-key";
+import { shortenCwd, formatRss } from "../../shared/sidebar-format";
 import { ICON_TEMPLATES, createIcon, type IconName } from "./icons";
 import {
   renderManifestCard,
@@ -716,7 +717,7 @@ export class Sidebar {
     mem.title = `Total resident memory`;
     mem.append(createIcon("memory", "", 10));
     const memVal = document.createElement("span");
-    memVal.textContent = humanRss(totalMem);
+    memVal.textContent = formatRss(totalMem);
     mem.appendChild(memVal);
 
     const proc = document.createElement("span");
@@ -1512,8 +1513,8 @@ export class Sidebar {
 
     const mem = document.createElement("span");
     mem.className = "workspace-metric workspace-metric-mem";
-    mem.textContent = humanRss(ws.memRssKb);
-    mem.title = `Resident ${humanRss(ws.memRssKb)}`;
+    mem.textContent = formatRss(ws.memRssKb);
+    mem.title = `Resident ${formatRss(ws.memRssKb)}`;
     metrics.appendChild(mem);
 
     const sep2 = document.createElement("span");
@@ -1595,7 +1596,7 @@ export class Sidebar {
       const chip = document.createElement("button");
       chip.type = "button";
       chip.className = `workspace-cwd-chip${cwd === ws.selectedCwd || (ws.selectedCwd == null && cwd === ws.cwds[0]) ? " active" : ""}`;
-      chip.textContent = shortCwd(cwd);
+      chip.textContent = shortenCwd(cwd);
       chip.title = cwd;
       chip.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1672,7 +1673,7 @@ export class Sidebar {
     head.className = "workspace-file-head";
     const rootLabel = document.createElement("span");
     rootLabel.className = "workspace-file-root";
-    rootLabel.textContent = shortCwd(root);
+    rootLabel.textContent = shortenCwd(root);
     rootLabel.title = root;
     head.appendChild(rootLabel);
     if (listing && !listing.error) {
@@ -3363,27 +3364,10 @@ function pkgBinaryNames(pkg: PackageInfo): string[] | undefined {
 }
 
 /** Last two path segments (or full path if short). */
-function shortCwd(cwd: string): string {
-  if (!cwd) return "";
-  const parts = cwd.replace(/\/+$/, "").split("/").filter(Boolean);
-  if (parts.length <= 2) {
-    return cwd.startsWith("/") ? "/" + parts.join("/") : parts.join("/");
-  }
-  return "\u2026/" + parts.slice(-2).join("/");
-}
-
 function humanFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
   const kb = bytes / 1024;
   if (kb < 1024) return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)}K`;
-  const mb = kb / 1024;
-  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)}M`;
-  const gb = mb / 1024;
-  return `${gb < 10 ? gb.toFixed(1) : Math.round(gb)}G`;
-}
-
-function humanRss(kb: number): string {
-  if (kb < 1024) return `${Math.round(kb)}K`;
   const mb = kb / 1024;
   if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)}M`;
   const gb = mb / 1024;
