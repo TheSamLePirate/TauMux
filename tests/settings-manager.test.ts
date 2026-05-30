@@ -46,6 +46,30 @@ describe("SettingsManager persistence recovery", () => {
     expect(reloaded.get().fontSize).toBe(18);
   });
 
+  // W4-1 — the schema version is persistence metadata: written to disk as
+  // `__schemaVersion` but never present on the in-memory settings object.
+  test("schema version is stamped on disk but never leaks into get()", () => {
+    const mgr = new SettingsManager(dir, file);
+    mgr.update({ fontSize: 15 });
+    mgr.saveNow();
+    const onDisk = JSON.parse(readFileSync(file, "utf-8"));
+    expect(onDisk.__schemaVersion).toBe(1);
+    // The in-memory object must NOT carry the metadata key.
+    expect("__schemaVersion" in mgr.get()).toBe(false);
+  });
+
+  // A pre-versioning file (no __schemaVersion) loads fine and gets stamped.
+  test("a legacy versionless settings.json loads and is upgraded in place", () => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(file, JSON.stringify({ fontSize: 20 }));
+    const mgr = new SettingsManager(dir, file);
+    expect(mgr.get().fontSize).toBe(20);
+    mgr.saveNow();
+    const onDisk = JSON.parse(readFileSync(file, "utf-8"));
+    expect(onDisk.__schemaVersion).toBe(1);
+    expect(onDisk.fontSize).toBe(20);
+  });
+
   test("a corrupt settings.json is backed up and the user gets defaults", () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(file, "this is not JSON at all");

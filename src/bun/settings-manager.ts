@@ -5,6 +5,11 @@ import {
   applyBloomMigration,
   mergeSettings,
 } from "../shared/settings";
+import {
+  SCHEMA_VERSION_KEY,
+  SETTINGS_SCHEMA_VERSION,
+  migrateSettings,
+} from "../shared/settings-migrations";
 import { writeFileAtomic } from "./atomic-write";
 
 export class SettingsManager {
@@ -74,9 +79,18 @@ export class SettingsManager {
       // parse error, so the user lost their last save.
       // Owner-only — settings.json contains the Telegram bot token
       // and webMirrorAuthToken (H.1 / S1).
-      writeFileAtomic(this.filePath, JSON.stringify(this.settings, null, 2), {
-        mode: 0o600,
-      });
+      // W4-1 — stamp the on-disk schema version (persistence metadata, not
+      // an AppSettings field). `validateSettings` drops the key on the way
+      // back in, so it never pollutes the in-memory settings.
+      writeFileAtomic(
+        this.filePath,
+        JSON.stringify(
+          { ...this.settings, [SCHEMA_VERSION_KEY]: SETTINGS_SCHEMA_VERSION },
+          null,
+          2,
+        ),
+        { mode: 0o600 },
+      );
       this.writeWarned = false;
     } catch (err) {
       // Write failures (disk full, permission denied) used to silently
@@ -97,16 +111,23 @@ export class SettingsManager {
     try {
       if (!existsSync(this.filePath)) return { ...DEFAULT_SETTINGS };
       const raw = readFileSync(this.filePath, "utf-8");
-      const parsed = JSON.parse(raw) as Partial<AppSettings>;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      // W4-1 — run ordered schema migrations first (forward-only). Missing
+      // version = pre-versioning file (treated as v0). `validateSettings`
+      // (inside mergeSettings) drops the `__schemaVersion` key afterward.
+      const { data: versioned, from, to } = migrateSettings(parsed);
       // τ-mux §11 bloom gate: stamp the migration flag + snapshot the
       // user's pre-revamp bloomIntensity into legacyBloomIntensity on
       // the first load after upgrading. Deliberately non-destructive —
       // we keep the user's terminalBloom toggle exactly as-is so nobody
       // loses a setting they chose. Persist the stamp next tick so the
       // migration doesn't re-run on every launch.
-      const merged = mergeSettings({ ...DEFAULT_SETTINGS }, parsed);
+      const merged = mergeSettings(
+        { ...DEFAULT_SETTINGS },
+        versioned as Partial<AppSettings>,
+      );
       const migrated = applyBloomMigration(merged);
-      if (migrated !== merged) {
+      if (migrated !== merged || from !== to) {
         // Persist the migration stamp on the next tick. IMPORTANT: do
         // NOT re-assign `this.settings` here — the constructor already
         // stored the migrated value, and any `update()` call that
