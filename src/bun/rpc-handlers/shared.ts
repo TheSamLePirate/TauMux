@@ -161,6 +161,12 @@ type ParamSpec =
 
 type MethodSchema = Record<string, ParamSpec>;
 
+/** Shared cap for any RPC method that ships a script/CSS payload into a
+ *  browser pane's page origin (eval/addscript/addstyle). Anything bigger
+ *  than 256 KiB is almost certainly misuse. Keeping it in one const stops
+ *  the three sibling methods from drifting apart. */
+const BROWSER_SCRIPT_MAX = 256 * 1024;
+
 export const METHOD_SCHEMAS: Record<string, MethodSchema> = {
   // PID ancestry + signal whitelist already enforced in the handler;
   // this catches garbage inputs earlier with clearer errors.
@@ -187,7 +193,21 @@ export const METHOD_SCHEMAS: Record<string, MethodSchema> = {
   "browser.eval": {
     surface_id: { type: "string", maxLength: 128 },
     surface: { type: "string", maxLength: 128 },
-    script: { type: "string", required: true, maxLength: 256 * 1024 },
+    script: { type: "string", required: true, maxLength: BROWSER_SCRIPT_MAX },
+  },
+  // W1-4 (full_app_review_2026-05.md §6.2): addscript/addstyle dispatch to
+  // the SAME browser.evalJs action as browser.eval but previously had no
+  // schema, so they bypassed the 256 KiB cap entirely. Mirror the cap so
+  // the limit can't be circumvented by picking a different verb.
+  "browser.addscript": {
+    surface_id: { type: "string", maxLength: 128 },
+    surface: { type: "string", maxLength: 128 },
+    script: { type: "string", required: true, maxLength: BROWSER_SCRIPT_MAX },
+  },
+  "browser.addstyle": {
+    surface_id: { type: "string", maxLength: 128 },
+    surface: { type: "string", maxLength: 128 },
+    css: { type: "string", required: true, maxLength: BROWSER_SCRIPT_MAX },
   },
   "browser.click": {
     surface_id: { type: "string", maxLength: 128 },

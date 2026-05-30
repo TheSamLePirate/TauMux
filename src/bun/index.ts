@@ -570,6 +570,8 @@ const {
   listPiSessions,
   readPiSessionTree,
   applyWebMirrorPort,
+  restartWebMirror,
+  setWebMirrorAuthToken,
   applyTelegramSettings,
   rebuildAudits,
   runAndPublishAudits,
@@ -2512,18 +2514,36 @@ if (autoStartWebMirror) {
 }
 sendWebServerStatus();
 
-/** Rebuild the web mirror on a new port. Restarts if it was running. */
-function applyWebMirrorPort(newPort: number): void {
+/** Stop and (if it was running and still configured) recreate the web
+ *  mirror. A live `Bun.serve` listener can't be rebound, so port AND bind
+ *  changes both need this full restart. Construction goes through
+ *  `createWebServer()`, so the restart always re-reads the latest
+ *  bind/auth-token settings. */
+function restartWebMirror(): void {
   if (webServerPortEnv) return; // env var wins, ignore setting change
   const wasRunning = app.webServer?.running ?? false;
   app.webServer?.stop();
   app.webServer = null;
-  app.webServerPort = newPort;
-  if (wasRunning && newPort > 0) {
+  if (wasRunning && app.webServerPort > 0) {
     app.webServer = createWebServer();
     app.webServer.start();
   }
   sendWebServerStatus();
+}
+
+/** Rebuild the web mirror on a new port. Restarts if it was running. */
+function applyWebMirrorPort(newPort: number): void {
+  if (webServerPortEnv) return; // env var wins, ignore setting change
+  app.webServerPort = newPort;
+  restartWebMirror();
+}
+
+/** W1-1 (full_app_review_2026-05.md §9.4): apply an auth-token change to
+ *  the live server with no restart. `setAuthToken` also clears the per-IP
+ *  throttle so a rotation takes full effect immediately. A no-op when the
+ *  mirror isn't running (the next start reads the token from settings). */
+function setWebMirrorAuthToken(token: string): void {
+  app.webServer?.setAuthToken(token);
 }
 
 // ── Layout Persistence ──

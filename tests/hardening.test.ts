@@ -262,6 +262,43 @@ describe("rpc: schema validator rejects oversize browser.eval scripts", () => {
       h("browser.eval", { surface_id: "surface:1", script: huge }),
     ).toThrow(/exceeds maxLength/);
   });
+
+  // W1-4 (full_app_review_2026-05.md §6.2): addscript/addstyle dispatch to
+  // the SAME browser.evalJs action and previously had no schema, so the
+  // 256 KiB cap was trivially circumvented by picking a different verb.
+  test("browser.addscript above cap is rejected (no cap bypass)", () => {
+    sessions = new SessionManager("/bin/sh");
+    const h = createRpcHandler(
+      sessions,
+      () => ({
+        focusedSurfaceId: "surface:1",
+        workspaces: [],
+        activeWorkspaceId: null,
+      }),
+      () => {},
+    );
+    const huge = "x".repeat(256 * 1024 + 1);
+    expect(() =>
+      h("browser.addscript", { surface_id: "surface:1", script: huge }),
+    ).toThrow(/exceeds maxLength/);
+  });
+
+  test("browser.addstyle above cap is rejected (no cap bypass)", () => {
+    sessions = new SessionManager("/bin/sh");
+    const h = createRpcHandler(
+      sessions,
+      () => ({
+        focusedSurfaceId: "surface:1",
+        workspaces: [],
+        activeWorkspaceId: null,
+      }),
+      () => {},
+    );
+    const huge = "x".repeat(256 * 1024 + 1);
+    expect(() =>
+      h("browser.addstyle", { surface_id: "surface:1", css: huge }),
+    ).toThrow(/exceeds maxLength/);
+  });
 });
 
 describe("pty-manager: resize before terminal is ready", () => {

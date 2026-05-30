@@ -20,16 +20,22 @@ export function isSplitDirection(v: unknown): v is SplitDirection {
   );
 }
 
-/** Validate `url` looks like a navigable URL — `http(s)://…` or
- *  `file://…` or an `about:…` / `data:…` / `chrome-extension://…`
- *  scheme. We don't try to be a full URL parser; the goal is to reject
- *  obvious typos (`"htps://"`, `""`, an integer that fell through the
- *  param schema) without rejecting otherwise-fine inputs the webview
- *  will happily render. */
+/** Validate `url` looks like a navigable URL — `http(s)://…` or an
+ *  `about:…` / `data:…` / `chrome-extension://…` scheme. We don't try to
+ *  be a full URL parser; the goal is to reject obvious typos (`"htps://"`,
+ *  `""`, an integer that fell through the param schema) without rejecting
+ *  otherwise-fine inputs the webview will happily render.
+ *
+ *  W1-4 (full_app_review_2026-05.md §13.4): `file://` is deliberately NOT
+ *  allowed over the RPC navigate path. A same-user socket client could
+ *  otherwise point a pane at `file:///etc/passwd` (or any path) and read
+ *  it back via `browser.get html` / eval — local file disclosure. (http to
+ *  localhost / internal hosts stays allowed: browsing a local dev server
+ *  is the browser pane's primary purpose.) If a local-HTML workflow is
+ *  ever needed, add an explicit opt-in setting scoped to a directory. */
 const ALLOWED_URL_PREFIXES = [
   "http://",
   "https://",
-  "file://",
   "about:",
   "data:",
   "chrome-extension://",

@@ -168,6 +168,11 @@ export interface WebviewHandlerContext {
   listPiSessions: () => Array<Record<string, unknown>>;
   readPiSessionTree: (sessionPath?: string) => Array<Record<string, unknown>>;
   applyWebMirrorPort: (port: number) => void;
+  /** Recreate the running web mirror (needed for a bind-address change —
+   *  a live listener can't be rebound). No-op when not running. */
+  restartWebMirror: () => void;
+  /** Apply an auth-token change to the live web mirror without a restart. */
+  setWebMirrorAuthToken: (token: string) => void;
   applyTelegramSettings: () => Promise<void>;
   rebuildAudits: () => void;
   runAndPublishAudits: () => Promise<void>;

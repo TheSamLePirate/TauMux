@@ -62,6 +62,34 @@ import { join } from "node:path";
 
 const RETENTION_DAYS = 14;
 
+/** W1-5 (full_app_review_2026-05.md §16.1) — secret-shaped patterns scrubbed
+ *  from every line before it reaches the on-disk tee. Centralising this in
+ *  the logger (rather than relying on every call site to log `err.message`)
+ *  means a future `catch (err) { console.warn(prefix, err) }` around a
+ *  telegram/auth request can't silently persist a credential for 14 days. */
+const SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  // Telegram bot token: `<digits>:<35ish base64url chars>` (with `bot` prefix
+  // in the api.telegram.org URL Bun.inspect prints on a fetch error).
+  [/bot(\d{4,}):[A-Za-z0-9_-]{20,}/g, "bot$1:<redacted>"],
+  // Bare telegram token shape (no `bot` prefix) — keep the leading digits
+  // group short-circuited so we don't mangle ordinary `123:456` text: require
+  // the secret half to be long + token-charset.
+  [/\b(\d{6,}):([A-Za-z0-9_-]{30,})\b/g, "$1:<redacted>"],
+  // token= / auth= / access_token= in a URL or query string.
+  [/([?&](?:token|auth|access_token)=)[^&\s"'\\]+/gi, "$1<redacted>"],
+  // Authorization: Bearer <token>
+  [/(authorization:\s*bearer\s+)[A-Za-z0-9._-]+/gi, "$1<redacted>"],
+];
+
+/** Replace secret-shaped substrings with `<redacted>`. Pure + exported so
+ *  it can be unit-tested directly. Safe on any string; leaves
+ *  non-secret-shaped text untouched. */
+export function redactSecrets(s: string): string {
+  let out = s;
+  for (const [re, rep] of SECRET_PATTERNS) out = out.replace(re, rep);
+  return out;
+}
+
 /** P9 — size-based rotation threshold. 50 MiB default; HT_LOG_MAX_BYTES
  *  env override for tests + power users. A value ≤ 0 disables size
  *  rotation entirely (date rotation still applies). Resolved per
@@ -310,18 +338,21 @@ export function setupLogging(configDir: string | undefined): LoggerHandle {
     debug: console.debug.bind(console),
   };
   function formatArgs(args: unknown[]): string {
-    return (
-      args
-        .map((a) => {
-          if (typeof a === "string") return a;
-          try {
-            return Bun.inspect(a);
-          } catch {
-            return String(a);
-          }
-        })
-        .join(" ") + "\n"
-    );
+    const body = args
+      .map((a) => {
+        if (typeof a === "string") return a;
+        try {
+          return Bun.inspect(a);
+        } catch {
+          return String(a);
+        }
+      })
+      .join(" ");
+    // W1-5 (full_app_review_2026-05.md §16.1): scrub secrets before the
+    // line hits the on-disk 14-day tee. `Bun.inspect` of a raw fetch error
+    // prints the token-bearing telegram URL; redacting here defends every
+    // console.* call site centrally, including future ones a refactor adds.
+    return redactSecrets(body) + "\n";
   }
   console.log = (...args: unknown[]) => {
     writeToFile(formatArgs(args));

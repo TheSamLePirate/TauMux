@@ -8,6 +8,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -113,5 +114,20 @@ describe("writeFileAtomic", () => {
     // Inherits the process umask; assert only that 0o600 wasn't forced.
     const mode = statSync(target).mode & 0o777;
     expect(mode).not.toBe(0o600);
+  });
+
+  // W1-3 (full_app_review_2026-05.md §13.1 / H0e): the tmp file is created
+  // with the requested mode and fchmod'd before any bytes are written, so a
+  // secrets file never has a world-readable window — even if a stale .tmp
+  // from a crashed write was left at loose perms.
+  it("[W1-3] forces 0o600 on the destination even with a pre-existing loose .tmp", () => {
+    const dir = tmp();
+    const target = join(dir, "secret.json");
+    // Simulate a leftover tmp from a previously-crashed write (umask perms).
+    writeFileSync(`${target}.tmp`, "stale", { mode: 0o666 });
+    writeFileAtomic(target, "fresh", { mode: 0o600 });
+    expect(readFileSync(target, "utf-8")).toBe("fresh");
+    expect(statSync(target).mode & 0o777).toBe(0o600);
+    expect(existsSync(`${target}.tmp`)).toBe(false);
   });
 });

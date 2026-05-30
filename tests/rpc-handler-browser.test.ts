@@ -288,11 +288,25 @@ describe("RPC handler browser methods", () => {
     expect(dispatched).toHaveLength(0);
   });
 
-  test("browser.navigate accepts file:// and about: schemes", () => {
+  // W1-4 (full_app_review_2026-05.md §13.4): file:// is no longer a
+  // navigable scheme over RPC — a socket client could otherwise read local
+  // files via a browser pane. about:/https:// stay allowed.
+  test("browser.navigate rejects file:// (local-file read vector)", () => {
+    const { handler, dispatched } = setup();
+    expect(() =>
+      handler("browser.navigate", {
+        surface_id: "browser:1",
+        url: "file:///etc/passwd",
+      }),
+    ).toThrow(/url must start with/);
+    expect(dispatched).toHaveLength(0);
+  });
+
+  test("browser.navigate still accepts about: and https:// schemes", () => {
     const { handler, dispatched } = setup();
     handler("browser.navigate", {
       surface_id: "browser:1",
-      url: "file:///tmp/page.html",
+      url: "https://example.com",
     });
     handler("browser.navigate", {
       surface_id: "browser:1",

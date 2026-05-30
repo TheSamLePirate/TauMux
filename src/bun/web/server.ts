@@ -146,21 +146,31 @@ export class WebServer {
     this.onHumanInput = fn;
   }
 
-  /** Allow live updates from the settings panel without restarting. */
+  /** Allow live updates from the settings panel without restarting.
+   *  W1-1 (full_app_review_2026-05.md §9.4): rotating the token also
+   *  clears the per-IP brute-force buckets so a rotation after a
+   *  suspected compromise doesn't leave a stale cooldown stranding a
+   *  legitimate client (or preserving an attacker's near-trip state). */
   setAuthToken(token: string): void {
     this.authToken = (token ?? "").trim();
+    this.authFails.clear();
   }
 
   /** Per-IP brute-force throttle state (H.4 / S5). Map keyed on the
    *  source IP recovered from `req`. */
   private authFails = new Map<string, AuthFailRecord>();
 
-  /** Extract a best-effort source IP from a Request. Bun.serve
-   *  exposes `server.requestIP(req)` for this in newer versions; we
-   *  fall back to `x-forwarded-for` (first hop) for proxy setups,
-   *  then to the `host` header as a last resort. None of these are
-   *  spoofable from the LAN itself but they're best-effort. */
-  private clientIp(req: Request): string {
+  /** Extract the source IP for brute-force throttling.
+   *  W1-2 (full_app_review_2026-05.md §9.3): the authoritative key is the
+   *  real socket peer from `server.requestIP(req)`. The previous code keyed
+   *  on `x-forwarded-for` / `host` — both client-controlled on a direct LAN
+   *  connection (we run no trusted proxy), so an attacker rotated the header
+   *  per request and never tripped the cooldown, while a single bogus value
+   *  could 429 every real client. XFF/Host stay only as a labelled
+   *  last-resort fallback for the rare case `requestIP` is unavailable. */
+  private clientIp(req: Request, server: ReturnType<typeof Bun.serve>): string {
+    const peer = server.requestIP(req)?.address;
+    if (peer) return peer;
     const xff = req.headers.get("x-forwarded-for");
     if (xff) {
       const first = xff.split(",")[0]?.trim();
@@ -299,7 +309,7 @@ export class WebServer {
             });
 
           // Per-IP throttle check on any auth-gated path (H.4 / S5).
-          const ip = this.clientIp(req);
+          const ip = this.clientIp(req, server);
           if (this.authToken && this.throttled(ip)) {
             return respond("Too Many Requests", {
               status: 429,

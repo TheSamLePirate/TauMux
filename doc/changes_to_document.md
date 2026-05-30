@@ -15,6 +15,15 @@ _Backlog cleared 2026-05-18 — full sweep folded every M11–M18 web-mirror par
 
 _(Always add new items below the cleared line above. When folding into the website, bump the version notes in api/system.md + cli/system.md + their French mirrors, and clear the backlog by overwriting the "Pending —" entries with a fresh "Backlog cleared <date> — …" line.)_
 
+## Pending — 2026-05-30 (Wave 1 security hardening)
+
+Source: `doc/full_app_review_2026-05.md` §1.1 Wave 1. Tracking: `doc/tracking_wave1_security_hardening.md`.
+
+- **Web-mirror auth token / bind apply live (W1-1)** — changing the auth token or bind address in Settings now takes effect on the running mirror without a restart (token in place; bind via re-listen). Token rotation also clears the brute-force cooldown. Changelog line; no API change.
+- **`ht browser navigate` no longer accepts `file://` (W1-4)** — **user-visible CLI change.** A `file://` URL is now rejected (it allowed local-file read via a pane over the socket). `http(s)://` (incl. localhost dev servers), `about:`, `data:`, `chrome-extension://` still work. Note in `cli/` browser docs (en + fr) + changelog.
+- **`browser.addscript`/`addstyle` now enforce the 256 KiB script/CSS cap (W1-4)** — same cap as `browser.eval`; only affects pathologically large payloads. Changelog only.
+- **Internal hardening (no doc change beyond changelog):** brute-force throttle keyed on the real peer IP; secrets-at-rest write window closed (atomic-write tmp created `0600` + fsync); logger redacts telegram/auth tokens before the on-disk tee.
+
 ## Pending — 2026-05-30 (Wave 0 ship-stopper security fixes)
 
 Source: `doc/full_app_review_2026-05.md` §1.1 Wave 0. Tracking: `doc/tracking_ship_stoppers.md`. These are **security-behavior changes** that should be called out in the changelog + the relevant feature/security docs (en + fr).

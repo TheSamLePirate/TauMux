@@ -33,6 +33,15 @@ export function registerSystemWebviewHandlers(
       if (updated.webMirrorPort !== previous.webMirrorPort) {
         ctx.applyWebMirrorPort(updated.webMirrorPort);
       }
+      // W1-1: apply bind / auth-token changes to the live mirror. A bind
+      // change needs a re-listen; a token change is applied in place.
+      // (A port change above already rebuilt with the latest settings.)
+      else if (updated.webMirrorBind !== previous.webMirrorBind) {
+        ctx.restartWebMirror();
+      }
+      if (updated.webMirrorAuthToken !== previous.webMirrorAuthToken) {
+        ctx.setWebMirrorAuthToken(updated.webMirrorAuthToken);
+      }
       if (
         updated.telegramEnabled !== previous.telegramEnabled ||
         updated.telegramBotToken !== previous.telegramBotToken ||

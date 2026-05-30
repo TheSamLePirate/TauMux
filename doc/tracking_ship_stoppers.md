@@ -96,7 +96,7 @@ Legend: ⬜ todo · 🔄 in progress · ✅ done · ⚠️ blocked/deviation
 - `package.json` — `test:e2e:functional` script.
 
 ## Commit / release
-- **Not committed.** Per repo policy, committing requires a `bun run bump:patch` first and the user has not asked to commit. Awaiting user go-ahead. When committing: bump patch, commit with the C1–H0c summary, record the commit id here.
+- **Committed** on `main` as **`58de2857`** (v0.3.161). `bun run bump:patch` ran first (0.3.160 → 0.3.161; also updated electrobun.config.ts, rpc-handlers/system.ts, and website-doc {en,fr}/{cli,api}/system.md version strings). 28 files, +1069/-62. Not pushed (user has not asked to push).
 
 ## Deviations / notes
 - The "make params required = compile error" guard only binds `src/` call sites (tests are excluded from `tsconfig`). Mitigated by `tests/web-autostart-security.test.ts`, which fails if a raw `new WebServer(` reappears in index.ts.
