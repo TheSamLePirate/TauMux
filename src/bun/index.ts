@@ -1,4 +1,4 @@
-import {
+import Electrobun, {
   ApplicationMenu,
   BrowserWindow,
   BrowserView,
@@ -2859,6 +2859,21 @@ async function gracefulShutdown(): Promise<void> {
   } catch (err) {
     console.warn("[main] forceLayoutSync failed:", err);
   }
+  persistAndCloseSync();
+  clearTimeout(hardExit);
+  process.exit(0);
+}
+
+/** C3 (full_app_review_2026-05.md §4.1): the SYNCHRONOUS half of teardown —
+ *  persist durable state + close resources. Safe to call from Electrobun's
+ *  `before-quit` (which fires synchronously inside quit() and cannot await),
+ *  AND from `gracefulShutdown` after its async forceLayoutSync. Idempotent:
+ *  the first caller wins; a second call (the SIGINT path racing before-quit,
+ *  or vice-versa) is a no-op so the JSON saves never run twice. */
+let syncTeardownDone = false;
+function persistAndCloseSync(): void {
+  if (syncTeardownDone) return;
+  syncTeardownDone = true;
   try {
     saveLayout();
   } catch (err) {
@@ -2906,8 +2921,10 @@ async function gracefulShutdown(): Promise<void> {
   } catch (err) {
     console.warn("[main] sessions.destroy failed:", err);
   }
+  // Fire-and-forget in this sync path — stop() just aborts the long-poll;
+  // the data flush that matters is telegramDb.close() below.
   try {
-    await telegramService?.stop();
+    void telegramService?.stop();
   } catch (err) {
     console.warn("[main] telegramService.stop failed:", err);
   }
@@ -2916,8 +2933,22 @@ async function gracefulShutdown(): Promise<void> {
   } catch (err) {
     console.warn("[main] telegramDb.close failed:", err);
   }
-  clearTimeout(hardExit);
-  process.exit(0);
 }
+
 process.on("SIGINT", () => void gracefulShutdown());
 process.on("SIGTERM", () => void gracefulShutdown());
+
+// C3: macOS GUI quits — the window-close button, ⌘Q (menu Quit), Dock-quit,
+// and the programmatic close after the last surface exits — all go through
+// Electrobun's quit() → native forceExit(0) and NEVER deliver SIGINT/SIGTERM,
+// so the signal handlers above don't run on the dominant exit paths. Without
+// this, a just-made split/rename/cwd change, a settings tweak made right
+// before quitting, freshly-set cookies, and browser history were silently
+// dropped. Electrobun's `before-quit` app event fires synchronously inside
+// quit(); run the synchronous persistence there. The async forceLayoutSync
+// round-trip can't complete synchronously, but the webview's debounced
+// `workspaceStateSync` keeps `app.workspaceState` within ~100 ms of current,
+// so `saveLayout()` is correct without it.
+Electrobun.events.on("before-quit", () => {
+  persistAndCloseSync();
+});

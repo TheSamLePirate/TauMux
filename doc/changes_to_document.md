@@ -13,3 +13,20 @@ _Backlog cleared 2026-05-30 — full sweep folded the post-`full_app_review_2026
 - `website-doc/src/content/docs/cli/browser.md` + `api/browser.md` (en + fr) — `navigate` rejects `file://` (allowed-schemes note); `eval`/`addscript`/`addstyle` share the 256 KiB cap (v0.3.162).
 
 _(Always add new items below the cleared line above. When folding into the website, the version notes in api/system.md + cli/system.md + their French mirrors are auto-bumped by `bump-version.ts`; clear the backlog by overwriting the "Pending —" entries with a fresh "Backlog cleared <date> — …" line.)_
+
+---
+
+## Pending — post-0.3.172 reliability & performance wave
+
+- **Graceful persistence on macOS GUI quit (C3, v0.3.174).** Window-close, ⌘Q,
+  Dock-quit, and last-surface-exit go through Electrobun's `quit()` →
+  `forceExit(0)` and never deliver SIGINT/SIGTERM, so layout / settings /
+  cookies / browser-history saves were silently skipped on the common exit
+  paths. Now an idempotent `persistAndCloseSync()` runs from
+  `Electrobun.events.on("before-quit", …)` (and is shared by the existing
+  SIGINT/SIGTERM `gracefulShutdown`). No user-facing API/CLI change — fold into
+  the changelog only.
+- **Performance wave (v0.3.173).** Bloom/WebGL effects no longer re-render on
+  every cursor blink (H5) and pause for background (non-visible) workspaces
+  (H6); Process Manager CPU/RSS now refresh on small deltas instead of staying
+  frozen (H7). Changelog-only.

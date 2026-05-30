@@ -73,3 +73,52 @@ describe("[L12] gracefulShutdown clears every module-level debounce timer", () =
     );
   });
 });
+
+describe("[C3] synchronous persistence on macOS GUI quit", () => {
+  // full_app_review_2026-05.md §4.1: macOS GUI quits (window close, ⌘Q,
+  // Dock-quit, last-surface-exit) go through Electrobun.quit() → native
+  // forceExit(0) and never deliver SIGINT/SIGTERM, so the signal handlers
+  // can't flush state. The fix routes the synchronous half of teardown
+  // through Electrobun's `before-quit` app event. These guards fail if a
+  // refactor drops the subscription or stops persisting durable state.
+
+  it("extracts the sync teardown into an idempotent persistAndCloseSync()", () => {
+    expect(SRC).toMatch(/let syncTeardownDone = false;/);
+    expect(SRC).toMatch(/function persistAndCloseSync\(\): void \{/);
+    // Idempotency guard: early-return before the flag is set.
+    expect(SRC).toMatch(
+      /function persistAndCloseSync\(\): void \{\s*if \(syncTeardownDone\) return;\s*syncTeardownDone = true;/,
+    );
+  });
+
+  it("persists every durable store inside persistAndCloseSync()", () => {
+    const fnMatch = SRC.match(
+      /function persistAndCloseSync\(\): void \{[\s\S]*?telegramDb\.close\(\)/,
+    );
+    expect(fnMatch).not.toBeNull();
+    const body = fnMatch![0];
+    for (const call of [
+      "saveLayout()",
+      "settingsManager.saveNow()",
+      "browserHistory.saveNow()",
+      "cookieStore.saveNow()",
+      "telegramDb.close()",
+    ]) {
+      expect(body).toContain(call);
+    }
+  });
+
+  it("subscribes the sync teardown to Electrobun's before-quit event", () => {
+    expect(SRC).toMatch(
+      /Electrobun\.events\.on\("before-quit",\s*\(\) => \{\s*persistAndCloseSync\(\);\s*\}\)/,
+    );
+  });
+
+  it("still calls persistAndCloseSync() from the async gracefulShutdown path", () => {
+    const fnMatch = SRC.match(
+      /async function gracefulShutdown\(\)[\s\S]*?process\.exit\(0\);\s*\}/,
+    );
+    expect(fnMatch).not.toBeNull();
+    expect(fnMatch![0]).toContain("persistAndCloseSync()");
+  });
+});
