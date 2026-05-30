@@ -45,25 +45,13 @@ import {
   agentPanelAddUserMessage,
   agentPanelFocusInput,
 } from "./agent-panel";
+// Browser-pane logic lives in BrowserSurfaceController; SurfaceManager only
+// needs the view TYPE for its SurfaceView shape + generic-machinery branches.
+import type { BrowserPaneView } from "./browser-pane";
 import {
-  type BrowserPaneView,
-  createBrowserPaneView,
-  browserPaneNavigateTo,
-  browserPaneGoBack,
-  browserPaneGoForward,
-  browserPaneReload,
-  browserPaneEvalJs,
-  browserPaneFindInPage,
-  browserPaneStopFind,
-  browserPaneToggleDevTools,
-  browserPaneFocusAddressBar,
-  browserPaneSyncDimensions,
-  browserPaneSetHidden,
-  browserPaneApplyDarkMode,
-  browserPaneInjectCookies,
-  browserPaneGetCookies,
-  destroyBrowserPaneView,
-} from "./browser-pane";
+  BrowserSurfaceController,
+  type BrowserCookie,
+} from "./browser-surface-controller";
 import {
   type TelegramPaneView,
   createTelegramPaneView,
@@ -129,7 +117,7 @@ const defaultGlassTheme = {
   brightWhite: "#f5f7fb",
 };
 
-interface SurfaceView {
+export interface SurfaceView {
   id: string;
   surfaceType: SurfaceKind;
   // Terminal-specific (null for browser panes)
@@ -198,11 +186,10 @@ export class SurfaceManager {
   /** Cached `ht set-status` hidden keys — same as above for
    *  visibility. */
   private htStatusKeyHidden: readonly string[] = [];
-  /** P7 S7 — cached browser search-engine choice from settings so a new
-   *  browser pane uses the user's pick (was hardcoded `"google"` after
-   *  the S6 punt). Updated by `applySettings`; read by
-   *  `createBrowserSurfaceView`. */
-  private browserSearchEngine: AppSettings["browserSearchEngine"] = "google";
+  /** Browser-pane concern, extracted from this god object (H10). Owns the
+   *  browser-pane API + view factory + actions; SurfaceManager delegates its
+   *  browser-specific branches to it. Assigned in the constructor. */
+  private browser: BrowserSurfaceController;
   private wsCounter = 0;
   private paneDrag: PaneDragController;
   private fontSize: number;
@@ -263,6 +250,14 @@ export class SurfaceManager {
           : null;
         focusSurfaceTerminal(view);
       },
+    });
+    this.browser = new BrowserSurfaceController({
+      getSurface: (id) => this.surfaces.get(id),
+      getFocusedSurfaceId: () => this.focusedSurfaceId,
+      allSurfaces: () => this.surfaces.values(),
+      activeWorkspaceSurfaceIds: () => this.activeWorkspace()?.surfaceIds ?? [],
+      focusSurface: (id) => this.focusSurface(id),
+      updateSidebar: () => this.updateSidebar(),
     });
     this.sidebar = new Sidebar(sidebarContainer, {
       onSelectWorkspace: (id) => {
@@ -744,7 +739,7 @@ export class SurfaceManager {
     // Browser panes keep webviewEl.on() handlers that close over
     // surfaceId + callbacks; detach them explicitly or they leak for
     // the lifetime of the electrobun <electrobun-webview> tag.
-    if (view.browserView) destroyBrowserPaneView(view.browserView);
+    if (view.browserView) this.browser.destroyView(view.browserView);
     if (view.telegramView) destroyTelegramPaneView(view.telegramView);
     if (view.editorView) destroyEditorPaneView(view.editorView);
     view.container.remove();
@@ -1126,7 +1121,7 @@ export class SurfaceManager {
     // P7 S7 — cache the browser search engine choice so the next
     // `createBrowserSurfaceView` picks up the user's setting instead
     // of the hardcoded fallback that S6 punted.
-    this.browserSearchEngine = s.browserSearchEngine;
+    this.browser.setSearchEngine(s.browserSearchEngine);
     // Plan #06 — push the workspace-card display preferences into
     // the sidebar. Each toggle gates whether the corresponding
     // section is rendered for the active workspace; density drives
@@ -1221,7 +1216,7 @@ export class SurfaceManager {
     // Apply dark mode to all browser panes
     for (const view of this.surfaces.values()) {
       if (view.surfaceType === "browser" && view.browserView) {
-        browserPaneApplyDarkMode(view.browserView, s.browserForceDarkMode);
+        this.browser.applyDarkMode(view.browserView, s.browserForceDarkMode);
       }
     }
 
@@ -1313,128 +1308,62 @@ export class SurfaceManager {
 
   // ── Browser pane actions ──
 
-  /** Run fn against the browser view of `surfaceId` — or the focused
-   *  surface if null/undefined. A no-op when nothing resolves to a
-   *  browser pane. This collapses the guard that used to be inlined
-   *  at the top of every browser* method. */
-  private withBrowserView(
-    surfaceId: string | null | undefined,
-    fn: (view: BrowserPaneView, resolvedId: string) => void,
-  ): void {
-    const id = surfaceId ?? this.focusedSurfaceId;
-    if (!id) return;
-    const view = this.surfaces.get(id);
-    if (view?.browserView) fn(view.browserView, id);
-  }
-
-  /** Set a browser pane's zoom + dispatch the persistence event. */
-  private applyBrowserZoom(
-    view: BrowserPaneView,
-    surfaceId: string,
-    zoom: number,
-  ): void {
-    view.zoom = zoom;
-    htEvents.emit("ht-browser-zoom", { surfaceId, zoom });
-  }
-
+  // Browser actions — thin forwards to BrowserSurfaceController. The public
+  // names are unchanged so keybindings (index.ts) + the socket API
+  // (socket-actions.ts) keep calling `surfaceManager.browser*`.
   browserNavigateTo(surfaceId: string | null, url: string): void {
-    this.withBrowserView(surfaceId, (v) => browserPaneNavigateTo(v, url));
+    this.browser.navigateTo(surfaceId, url);
   }
-
   browserGoBack(surfaceId?: string | null): void {
-    this.withBrowserView(surfaceId, (v) => browserPaneGoBack(v));
+    this.browser.goBack(surfaceId);
   }
-
   browserGoForward(surfaceId?: string | null): void {
-    this.withBrowserView(surfaceId, (v) => browserPaneGoForward(v));
+    this.browser.goForward(surfaceId);
   }
-
   browserReload(surfaceId?: string | null): void {
-    this.withBrowserView(surfaceId, (v) => browserPaneReload(v));
+    this.browser.reload(surfaceId);
   }
-
   browserEvalJs(
     surfaceId: string | null,
     script: string,
     reqId?: string,
   ): void {
-    this.withBrowserView(surfaceId, (v) => browserPaneEvalJs(v, script, reqId));
+    this.browser.evalJs(surfaceId, script, reqId);
   }
-
   browserFindInPage(surfaceId?: string | null, query?: string): void {
-    this.withBrowserView(surfaceId, (v) =>
-      browserPaneFindInPage(v, query ?? ""),
-    );
+    this.browser.findInPage(surfaceId, query);
   }
-
   browserStopFind(surfaceId?: string | null): void {
-    this.withBrowserView(surfaceId, (v) => browserPaneStopFind(v));
+    this.browser.stopFind(surfaceId);
   }
-
   browserToggleDevTools(surfaceId?: string | null): void {
-    this.withBrowserView(surfaceId, (v) => browserPaneToggleDevTools(v));
+    this.browser.toggleDevTools(surfaceId);
   }
-
-  browserInjectCookies(
-    surfaceId: string,
-    cookies: Array<{
-      name: string;
-      value: string;
-      path: string;
-      expires: number;
-      secure: boolean;
-      sameSite: string;
-    }>,
-  ): void {
-    this.withBrowserView(surfaceId, (v) =>
-      browserPaneInjectCookies(v, cookies),
-    );
+  browserInjectCookies(surfaceId: string, cookies: BrowserCookie[]): void {
+    this.browser.injectCookies(surfaceId, cookies);
   }
-
   browserGetCookies(surfaceId: string, reqId: string): void {
-    this.withBrowserView(surfaceId, (v) => browserPaneGetCookies(v, reqId));
+    this.browser.getCookies(surfaceId, reqId);
   }
-
   focusBrowserAddressBar(): void {
-    this.withBrowserView(null, (v) => browserPaneFocusAddressBar(v));
+    this.browser.focusAddressBar();
   }
-
   browserZoomIn(): void {
-    this.withBrowserView(null, (v, id) => {
-      this.applyBrowserZoom(v, id, Math.min(5.0, (v.zoom || 1.0) + 0.1));
-    });
+    this.browser.zoomIn();
   }
-
   browserZoomOut(): void {
-    this.withBrowserView(null, (v, id) => {
-      this.applyBrowserZoom(v, id, Math.max(0.25, (v.zoom || 1.0) - 0.1));
-    });
+    this.browser.zoomOut();
   }
-
   browserZoomReset(): void {
-    this.withBrowserView(null, (v, id) => this.applyBrowserZoom(v, id, 1.0));
+    this.browser.zoomReset();
   }
-
   /** Hide all browser webview overlays (called when overlays open). */
   hideBrowserWebviews(): void {
-    for (const view of this.surfaces.values()) {
-      if (view.browserView) browserPaneSetHidden(view.browserView, true);
-    }
+    this.browser.hideAllWebviews();
   }
-
   /** Show browser webview overlays for the active workspace. */
   showBrowserWebviews(): void {
-    const ws = this.activeWorkspace();
-    if (!ws) return;
-    for (const sid of ws.surfaceIds) {
-      const view = this.surfaces.get(sid);
-      if (view?.browserView) {
-        browserPaneSetHidden(view.browserView, false);
-        // Force-sync on return-from-hidden — the cache was cleared
-        // by setHidden(false) so this is a fresh sync regardless.
-        browserPaneSyncDimensions(view.browserView, undefined, true);
-      }
-    }
+    this.browser.showActiveWebviews();
   }
 
   // Workspace navigation
@@ -1860,7 +1789,7 @@ export class SurfaceManager {
       view.container.style.display = inActive ? "flex" : "none";
       // Manage browser webview OOPIF overlay visibility
       if (view.browserView) {
-        browserPaneSetHidden(view.browserView, !inActive);
+        this.browser.setHidden(view.browserView, !inActive);
       }
     }
 
@@ -1959,78 +1888,11 @@ export class SurfaceManager {
     url: string,
     partition?: string,
   ): SurfaceView {
-    const browserView = createBrowserPaneView(
+    // The controller owns browser-pane creation + callback wiring; this
+    // method only attaches the container and assembles the SurfaceView.
+    const browserView = this.browser.createBrowserView(
       surfaceId,
       url,
-      {
-        onNavigated: (sid, navUrl, navTitle) => {
-          htEvents.emit("ht-browser-navigated", {
-            surfaceId: sid,
-            url: navUrl,
-            title: navTitle,
-          });
-        },
-        onTitleChanged: (sid, newTitle) => {
-          const view = this.surfaces.get(sid);
-          if (view) {
-            view.title = newTitle;
-            view.titleEl.textContent = newTitle;
-          }
-          htEvents.emit("ht-browser-title-changed", {
-            surfaceId: sid,
-            title: newTitle,
-          });
-          this.updateSidebar();
-        },
-        onNewWindow: (sid, newUrl) => {
-          // Open links from the page in the same browser pane
-          const view = this.surfaces.get(sid);
-          if (view?.browserView) {
-            browserPaneNavigateTo(view.browserView, newUrl);
-          }
-        },
-        onFocus: (sid) => {
-          this.focusSurface(sid);
-        },
-        onClose: (sid) => {
-          htEvents.emit("ht-close-surface", { surfaceId: sid });
-        },
-        onSplit: (sid, direction) => {
-          htEvents.emit("ht-split", { surfaceId: sid, direction });
-        },
-        onEvalResult: (sid, reqId, result, error) => {
-          htEvents.emit("ht-browser-eval-result", {
-            surfaceId: sid,
-            reqId,
-            result,
-            error,
-          });
-        },
-        onConsoleLog: (sid, level, args, timestamp) => {
-          htEvents.emit("ht-browser-console-log", {
-            surfaceId: sid,
-            level,
-            args,
-            timestamp,
-          });
-        },
-        onError: (sid, message, filename, lineno, timestamp) => {
-          htEvents.emit("ht-browser-error", {
-            surfaceId: sid,
-            message,
-            filename,
-            lineno,
-            timestamp,
-          });
-        },
-        onDomReady: (sid, domUrl) => {
-          htEvents.emit("ht-browser-dom-ready", {
-            surfaceId: sid,
-            url: domUrl,
-          });
-        },
-      },
-      this.browserSearchEngine,
       partition,
     );
 
@@ -2511,7 +2373,7 @@ export class SurfaceManager {
         // we just pass the freshly-computed rect so it doesn't have
         // to re-read layout.
         if (view.browserView) {
-          browserPaneSyncDimensions(view.browserView, rects?.get(surfaceId));
+          this.browser.syncDimensions(view.browserView, rects?.get(surfaceId));
         }
       } else if (view.surfaceType === "telegram") {
         // Telegram panes are pure DOM — no terminal to fit, no OOPIF to

@@ -26,4 +26,4 @@ Source: `doc/full_app_review_2026-05.md` §18.4 (corrected — see Wave 4 tracki
 - The ruleset is `tseslint.configs.recommended` (non-type-aware — fast). A future, more thorough pass could enable type-checked rules (needs `projectService`/`project`) and triage the additional findings; deferred to keep this change clean.
 
 ## Commit / release
-- (recorded below)
+- **Committed** on `main` as **`9a7f53fc`** (v0.3.168). 17 files, +88/-22. Not pushed.
