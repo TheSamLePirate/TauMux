@@ -490,8 +490,17 @@ interface GitCacheEntry {
   at: number;
 }
 
+/** §5.3 — ceiling for the idle backoff. An idle-but-focused terminal
+ *  settles here instead of spawning `ps`/`lsof` every second; 5 s keeps
+ *  chips feeling live while cutting sustained idle CPU to a trickle. */
+const IDLE_POLL_CAP_MS = 5000;
+
 export class SurfaceMetadataPoller {
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  /** True between start() and stop(). Guards re-entrant start() and the
+   *  self-rescheduling tick loop (the adaptive cadence means we can't use
+   *  a fixed setInterval). */
+  private running = false;
   private inFlight = false;
   /** Fenced once stop() has been called. An in-flight tick must not
    *  repopulate caches the stop call just cleared. */
@@ -500,13 +509,23 @@ export class SurfaceMetadataPoller {
   /** cwd → git snapshot + freshness. Reuses across ticks (TTL gated). */
   private gitCache = new Map<string, GitCacheEntry>();
   private gitTtlMs = 3000;
+  /** §5.3 — consecutive ticks that produced no emit AND no surface
+   *  add/remove. Drives the idle backoff in `effectiveInterval()`. Reset
+   *  to 0 on any change (emit / live-set change), on `setPollRate`, and
+   *  whenever the cheap no-surfaces / ps-failure paths run. */
+  private idleStreak = 0;
+  /** Signature of the live surface-id set last tick — a change (pane
+   *  open/close) counts as activity and snaps the cadence back to base. */
+  private lastLiveKey = "";
 
   onMetadata: ((surfaceId: string, metadata: SurfaceMetadata) => void) | null =
     null;
 
   constructor(
     private sessions: SessionsLike,
-    private intervalMs = 1000,
+    /** Active (non-idle) cadence. The effective interval grows from this
+     *  while idle and snaps back to it on activity. */
+    private baseIntervalMs = 1000,
     /** Subprocess seam — defaults to the real ps/lsof/git runners.
      *  Function declarations below are hoisted, so referencing them
      *  here (evaluated at construction) is safe. */
@@ -519,50 +538,74 @@ export class SurfaceMetadataPoller {
   ) {}
 
   start(): void {
-    if (this.timer) return;
+    if (this.running) return;
+    this.running = true;
     this.stopped = false;
-    this.timer = setInterval(() => {
-      void this.tick();
-    }, this.intervalMs);
-    void this.tick();
+    this.idleStreak = 0;
+    this.scheduleNext(0); // immediate first tick
   }
 
   stop(): void {
+    this.running = false;
     this.stopped = true;
-    if (this.timer) clearInterval(this.timer);
+    if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.last.clear();
     this.gitCache.clear();
     pkgScanner.clear();
     cargoScanner.clear();
+    this.idleStreak = 0;
+    this.lastLiveKey = "";
   }
 
-  /** Adjust tick interval at runtime. Restarts the timer if already running.
-   *  When speeding up (ms got smaller — e.g. window became visible again),
-   *  fires an immediate tick so the user sees fresh chips/metadata on focus
-   *  return rather than waiting up to 3s for the next scheduled tick. */
+  /** §5.3 — idle-adaptive cadence. While metadata is unchanging, double
+   *  the base interval per consecutive idle tick (1s → 2s → 4s …) capped
+   *  at IDLE_POLL_CAP_MS, so an idle-but-focused terminal stops spawning
+   *  `ps`/`lsof` every second. Snaps back to base on the first change. */
+  private effectiveInterval(): number {
+    // Cap the exponent so a long idle period can't overflow to Infinity.
+    const mult = 2 ** Math.min(this.idleStreak, 8);
+    return Math.min(this.baseIntervalMs * mult, IDLE_POLL_CAP_MS);
+  }
+
+  /** Schedule the next tick. `overrideDelay` forces an immediate-ish run
+   *  (start / speed-up). Always clears any pending timer first so callers
+   *  racing the in-flight tick's reschedule can't leave two timers live. */
+  private scheduleNext(overrideDelay?: number): void {
+    if (this.stopped || !this.running) return;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    const delay = overrideDelay ?? this.effectiveInterval();
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.tick().finally(() => this.scheduleNext());
+    }, delay);
+  }
+
+  /** Adjust the active poll rate at runtime (e.g. window hidden → 3s).
+   *  Resets the idle streak so the new base takes effect immediately, and
+   *  when speeding up (window visible again) fires a near-immediate tick
+   *  so the user sees fresh chips on focus return. */
   setPollRate(ms: number): void {
     const next = Math.max(250, Math.floor(ms));
-    if (next === this.intervalMs) return;
-    const speedingUp = next < this.intervalMs;
-    this.intervalMs = next;
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = setInterval(() => {
-        void this.tick();
-      }, this.intervalMs);
-      if (speedingUp) {
-        // Immediate refresh — any in-flight tick is short-circuited by
-        // `inFlight` in tick() itself, so this is safe even if one's
-        // already running.
-        void this.tick();
-      }
-    }
+    if (next === this.baseIntervalMs) return;
+    const speedingUp = next < this.baseIntervalMs;
+    this.baseIntervalMs = next;
+    this.idleStreak = 0; // snap back to the (new) base cadence
+    if (this.running) this.scheduleNext(speedingUp ? 0 : undefined);
   }
 
   /** Exposed for `ht` CLI / tests. */
   getSnapshot(surfaceId: string): SurfaceMetadata | null {
     return this.last.get(surfaceId) ?? null;
+  }
+
+  /** Test seam (§5.3) — the delay the next tick would be scheduled at,
+   *  reflecting the current idle-backoff streak. */
+  peekNextDelayForTest(): number {
+    return this.effectiveInterval();
   }
 
   /** Test seam (H14) — run exactly one tick and await its completion.
@@ -590,19 +633,32 @@ export class SurfaceMetadataPoller {
       for (const k of [...this.last.keys()]) {
         if (!live.has(k)) this.last.delete(k);
       }
+      // §5.3 — a pane opening or closing is activity: snap the cadence
+      // back to base so a new surface's first chip (or a prune) isn't
+      // delayed by the idle backoff.
+      const liveKey = [...live].sort().join(",");
+      const liveChanged = liveKey !== this.lastLiveKey;
+      this.lastLiveKey = liveKey;
+
       if (surfaces.length === 0) {
         // No active terminals — release cached data that would otherwise
         // sit in memory indefinitely (manifest scanners / gitCache are
         // only pruned inside their resolve paths which are skipped when
-        // no cwds to resolve).
+        // no cwds to resolve). Cheap path (no subprocess): stay at base
+        // cadence so a new surface is picked up promptly.
         this.gitCache.clear();
         pkgScanner.clear();
         cargoScanner.clear();
+        this.idleStreak = 0;
         return;
       }
 
       const psMap = await this.runners.runPs();
-      if (!psMap) return;
+      if (!psMap) {
+        // Transient ps failure — recover at base cadence.
+        this.idleStreak = 0;
+        return;
+      }
 
       // Compute trees + fg pid first; gather union of pids.
       const per = new Map<string, { tree: ProcessNode[]; fg: number }>();
@@ -649,6 +705,7 @@ export class SurfaceMetadataPoller {
         }
       }
 
+      let emitted = false;
       for (const s of surfaces) {
         const entry = per.get(s.id);
         if (!entry) continue;
@@ -687,8 +744,14 @@ export class SurfaceMetadataPoller {
         ) {
           this.last.set(s.id, metadata);
           this.onMetadata?.(s.id, metadata);
+          emitted = true;
         }
       }
+
+      // §5.3 — drive the idle backoff. A change this tick (any emit) or a
+      // pane open/close resets the cadence to base; a fully-stable tick
+      // grows the streak so `effectiveInterval()` backs off.
+      this.idleStreak = emitted || liveChanged ? 0 : this.idleStreak + 1;
     } catch (err) {
       // Poller failures must never crash the app. Differentiate
       // subprocess timeouts (slow NFS, contended FS lock — common,
@@ -701,6 +764,9 @@ export class SurfaceMetadataPoller {
       } else {
         console.error("[metadata] tick failed:", err);
       }
+      // Recover at base cadence rather than compounding a backoff on top
+      // of an error.
+      this.idleStreak = 0;
     } finally {
       this.inFlight = false;
     }

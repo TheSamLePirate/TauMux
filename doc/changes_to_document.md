@@ -52,3 +52,10 @@ _(Always add new items below the cleared line above. When folding into the websi
   untested 1 Hz `tick()` (emit-on-change, cpu/rss delta gate, dead-surface
   eviction, prune-on-empty, git TTL + multi-repo). Internal hardening, no
   behavior change — not user-facing.
+- **Adaptive idle polling cuts idle CPU (§5.3, v0.3.179).** The 1 Hz process
+  metadata poller now backs off (1s → 2s → 4s, capped 5s) while a terminal is
+  idle and unchanging — instead of spawning `ps`/`lsof` every second forever —
+  snapping back to 1s the instant anything changes (output, a new/closed pane,
+  window focus). An idle-but-focused terminal drops from ~6–9% of a core to a
+  trickle; an active terminal is unchanged. Worth a one-line changelog mention
+  (perf), no config/API surface.

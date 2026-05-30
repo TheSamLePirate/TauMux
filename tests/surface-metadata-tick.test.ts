@@ -336,3 +336,121 @@ describe("SurfaceMetadataPoller.tick — git TTL + multi-repo", () => {
     expect(gitCalls).toBe(1);
   });
 });
+
+describe("SurfaceMetadataPoller — idle backoff cadence (§5.3)", () => {
+  test("stable ticks back off 1s → 2s → 4s, capped at 5s", async () => {
+    // Stable metadata: same command/cwd, cpu pinned so cpuOrRssMoved is
+    // false → every tick after the first is a no-emit (idle) tick.
+    const { poller } = makePoller(
+      [{ id: "s1", pid: 100 }],
+      runners({
+        runPs: async () => shellWithFg({ cpu: 0 }),
+        runCwds: async () => new Map([[200, "/proj/a"]]),
+      }),
+    );
+
+    // Base cadence before any tick.
+    expect(poller.peekNextDelayForTest()).toBe(1000);
+
+    await poller.runTickForTest(); // emit #1 (first snapshot) → streak 0
+    expect(poller.peekNextDelayForTest()).toBe(1000);
+
+    await poller.runTickForTest(); // idle → streak 1
+    expect(poller.peekNextDelayForTest()).toBe(2000);
+
+    await poller.runTickForTest(); // idle → streak 2
+    expect(poller.peekNextDelayForTest()).toBe(4000);
+
+    await poller.runTickForTest(); // idle → streak 3 → 8000 capped
+    expect(poller.peekNextDelayForTest()).toBe(5000);
+
+    await poller.runTickForTest(); // idle → still capped
+    expect(poller.peekNextDelayForTest()).toBe(5000);
+  });
+
+  test("a change snaps the cadence back to base", async () => {
+    let cmd = "node a.js";
+    const { poller } = makePoller(
+      [{ id: "s1", pid: 100 }],
+      runners({
+        runPs: async () => shellWithFg({ cmd }),
+        runCwds: async () => new Map([[200, "/proj/a"]]),
+      }),
+    );
+
+    await poller.runTickForTest(); // emit
+    await poller.runTickForTest(); // idle → 2000
+    await poller.runTickForTest(); // idle → 4000
+    expect(poller.peekNextDelayForTest()).toBe(4000);
+
+    cmd = "node b.js"; // activity
+    await poller.runTickForTest(); // emit → snap back
+    expect(poller.peekNextDelayForTest()).toBe(1000);
+  });
+
+  test("a pane open/close snaps the cadence back even with no emit", async () => {
+    let live = [
+      { id: "s1", pid: 100 },
+      { id: "s2", pid: 300 },
+    ];
+    const poller = new SurfaceMetadataPoller(
+      {
+        getAllSurfaces: () =>
+          live.map((s) => ({ id: s.id, pty: { pid: s.pid } })),
+      },
+      1000,
+      runners({
+        runPs: async () =>
+          new Map<number, PsRow>([
+            ...shellWithFg({ cpu: 0 }),
+            [300, psRow({ pid: 300, ppid: 1, pgid: 300, stat: "Ss" })],
+            [
+              400,
+              psRow({
+                pid: 400,
+                ppid: 300,
+                pgid: 400,
+                stat: "S+",
+                command: "vim",
+              }),
+            ],
+          ]),
+        runCwds: async () =>
+          new Map([
+            [200, "/proj/a"],
+            [400, "/proj/b"],
+          ]),
+      }),
+    );
+
+    await poller.runTickForTest(); // both emit
+    await poller.runTickForTest(); // idle → 2000
+    expect(poller.peekNextDelayForTest()).toBe(2000);
+
+    live = [{ id: "s1", pid: 100 }]; // s2 closes → live-set change
+    await poller.runTickForTest();
+    expect(poller.peekNextDelayForTest()).toBe(1000);
+  });
+
+  test("setPollRate resets the streak and rebases the cadence (hidden window)", async () => {
+    const { poller } = makePoller(
+      [{ id: "s1", pid: 100 }],
+      runners({
+        runPs: async () => shellWithFg({ cpu: 0 }),
+        runCwds: async () => new Map([[200, "/proj/a"]]),
+      }),
+    );
+
+    await poller.runTickForTest(); // emit
+    await poller.runTickForTest(); // idle → 2000
+    await poller.runTickForTest(); // idle → 4000
+    expect(poller.peekNextDelayForTest()).toBe(4000);
+
+    poller.setPollRate(3000); // window hidden → slower base, streak reset
+    expect(poller.peekNextDelayForTest()).toBe(3000);
+
+    // Idle again from the new base → 6000 capped at 5000.
+    await poller.runTickForTest();
+    expect(poller.peekNextDelayForTest()).toBe(5000);
+  });
+});
