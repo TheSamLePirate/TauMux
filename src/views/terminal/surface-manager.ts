@@ -38,13 +38,11 @@ import { attachSidebarResize } from "../../shared/sidebar-resize";
 import { focusXtermPreservingScroll } from "../../shared/xterm-focus";
 import { htEvents } from "../../shared/event-bus";
 import { setNotificationSoundSettings } from "./sounds";
+import type { AgentPaneView } from "./agent-panel";
 import {
-  type AgentPaneView,
-  createAgentPaneView,
-  agentPanelHandleEvent,
-  agentPanelAddUserMessage,
-  agentPanelFocusInput,
-} from "./agent-panel";
+  AgentSurfaceController,
+  type AgentImage,
+} from "./agent-surface-controller";
 // Browser-pane logic lives in BrowserSurfaceController; SurfaceManager only
 // needs the view TYPE for its SurfaceView shape + generic-machinery branches.
 import type { BrowserPaneView } from "./browser-pane";
@@ -54,15 +52,8 @@ import {
 } from "./browser-surface-controller";
 import type { TelegramPaneView } from "./telegram-pane";
 import { TelegramSurfaceController } from "./telegram-surface-controller";
-import {
-  type EditorPaneViewRef,
-  createEditorPaneView,
-  editorPaneApplySnapshot,
-  editorPaneApplySaveResult,
-  saveEditor,
-  reloadEditor,
-  destroyEditorPaneView,
-} from "./editor-pane";
+import type { EditorPaneViewRef } from "./editor-pane";
+import { EditorSurfaceController } from "./editor-surface-controller";
 import type {
   EditorFileSnapshot,
   EditorSaveResult,
@@ -186,6 +177,10 @@ export class SurfaceManager {
   private browser: BrowserSurfaceController;
   /** Telegram-pane concern, extracted from this god object (H10). */
   private telegram: TelegramSurfaceController;
+  /** Editor-pane concern, extracted from this god object (H10). */
+  private editor: EditorSurfaceController;
+  /** Agent-pane concern, extracted from this god object (H10). */
+  private agent: AgentSurfaceController;
   private wsCounter = 0;
   private paneDrag: PaneDragController;
   private fontSize: number;
@@ -261,6 +256,16 @@ export class SurfaceManager {
       allSurfaces: () => this.surfaces.values(),
       focusSurface: (id) => this.focusSurface(id),
       notifyGlow: (id) => this.notifyGlow(id),
+    });
+    this.editor = new EditorSurfaceController({
+      getSurface: (id) => this.surfaces.get(id),
+      getFocusedSurfaceId: () => this.focusedSurfaceId,
+      focusSurface: (id) => this.focusSurface(id),
+      updateSidebar: () => this.updateSidebar(),
+    });
+    this.agent = new AgentSurfaceController({
+      getSurface: (id) => this.surfaces.get(id),
+      focusSurface: (id) => this.focusSurface(id),
     });
     this.sidebar = new Sidebar(sidebarContainer, {
       onSelectWorkspace: (id) => {
@@ -507,38 +512,19 @@ export class SurfaceManager {
     this.removeSurface(surfaceId);
   }
 
+  // Editor handlers — thin forwards to EditorSurfaceController. Public names
+  // unchanged for the index.ts RPC handlers + keybindings + palette.
   applyEditorFileSnapshot(snapshot: EditorFileSnapshot): void {
-    const view = this.surfaces.get(snapshot.surfaceId)?.editorView;
-    if (view) {
-      editorPaneApplySnapshot(view, snapshot);
-      const surface = this.surfaces.get(snapshot.surfaceId);
-      if (surface) {
-        surface.title = view.title;
-        surface.titleEl.textContent = view.title;
-      }
-      this.updateSidebar();
-    }
+    this.editor.applySnapshot(snapshot);
   }
-
   applyEditorSaveResult(result: EditorSaveResult): void {
-    const view = this.surfaces.get(result.surfaceId)?.editorView;
-    if (view) editorPaneApplySaveResult(view, result);
+    this.editor.applySaveResult(result);
   }
-
   saveEditorSurface(surfaceId?: string | null): boolean {
-    const id = surfaceId ?? this.focusedSurfaceId;
-    const view = id ? this.surfaces.get(id)?.editorView : null;
-    if (!view) return false;
-    saveEditor(view);
-    return true;
+    return this.editor.save(surfaceId);
   }
-
   reloadEditorSurface(surfaceId?: string | null): boolean {
-    const id = surfaceId ?? this.focusedSurfaceId;
-    const view = id ? this.surfaces.get(id)?.editorView : null;
-    if (!view) return false;
-    reloadEditor(view);
-    return true;
+    return this.editor.reload(surfaceId);
   }
 
   // Telegram message/history/state handlers — thin forwards to
@@ -561,34 +547,20 @@ export class SurfaceManager {
     this.telegram.handleState(state);
   }
 
-  /** Handle a pi agent event for the corresponding agent surface. */
+  // Agent handlers — thin forwards to AgentSurfaceController. Public names
+  // unchanged for socket-actions.ts + agent-events.ts callers.
   handleAgentEvent(agentId: string, event: Record<string, unknown>): void {
-    const view = this.surfaces.get(agentId);
-    if (!view?.agentView) return;
-    agentPanelHandleEvent(view.agentView, event);
+    this.agent.handleEvent(agentId, event);
   }
-
-  /** Send a user message to an agent panel's display. */
   agentAddUserMessage(
     agentId: string,
     text: string,
-    images?: {
-      type: "image";
-      data: string;
-      mimeType: string;
-      fileName?: string;
-    }[],
+    images?: AgentImage[],
   ): void {
-    const view = this.surfaces.get(agentId);
-    if (!view?.agentView) return;
-    agentPanelAddUserMessage(view.agentView, text, images);
+    this.agent.addUserMessage(agentId, text, images);
   }
-
-  /** Focus the agent panel input. */
   agentFocusInput(agentId: string): void {
-    const view = this.surfaces.get(agentId);
-    if (!view?.agentView) return;
-    agentPanelFocusInput(view.agentView);
+    this.agent.focusInput(agentId);
   }
 
   /** Add a surface as a split within the active workspace. */
@@ -709,7 +681,7 @@ export class SurfaceManager {
     // the lifetime of the electrobun <electrobun-webview> tag.
     if (view.browserView) this.browser.destroyView(view.browserView);
     if (view.telegramView) this.telegram.destroyView(view.telegramView);
-    if (view.editorView) destroyEditorPaneView(view.editorView);
+    if (view.editorView) this.editor.destroyView(view.editorView);
     view.container.remove();
     this.surfaces.delete(surfaceId);
     this.metadata.delete(surfaceId);
@@ -1890,45 +1862,7 @@ export class SurfaceManager {
     surfaceId: string,
     agentId: string,
   ): SurfaceView {
-    const agentView = createAgentPaneView(surfaceId, agentId, {
-      onSendPrompt: (aid, message, images) => {
-        htEvents.emit("ht-agent-prompt", { agentId: aid, message, images });
-      },
-      onAbort: (aid) => {
-        htEvents.emit("ht-agent-abort", { agentId: aid });
-      },
-      onSetModel: (aid, provider, modelId) => {
-        htEvents.emit("ht-agent-set-model", {
-          agentId: aid,
-          provider,
-          modelId,
-        });
-      },
-      onSetThinking: (aid, level) => {
-        htEvents.emit("ht-agent-set-thinking", { agentId: aid, level });
-      },
-      onNewSession: (aid) => {
-        htEvents.emit("ht-agent-new-session", { agentId: aid });
-      },
-      onCompact: (aid) => {
-        htEvents.emit("ht-agent-compact", { agentId: aid });
-      },
-      onClose: (sid) => {
-        htEvents.emit("ht-close-surface", { surfaceId: sid });
-      },
-      onSplit: (sid, direction) => {
-        htEvents.emit("ht-split", { surfaceId: sid, direction });
-      },
-      onFocus: (sid) => {
-        this.focusSurface(sid);
-      },
-      onGetModels: (aid) => {
-        htEvents.emit("ht-agent-get-models", { agentId: aid });
-      },
-      onGetState: (aid) => {
-        htEvents.emit("ht-agent-get-state", { agentId: aid });
-      },
-    });
+    const agentView = this.agent.createAgentView(surfaceId, agentId);
 
     this.terminalContainer.appendChild(agentView.container);
 
@@ -2192,39 +2126,7 @@ export class SurfaceManager {
     surfaceId: string,
     path?: string,
   ): SurfaceView {
-    const editorView = createEditorPaneView(surfaceId, path, {
-      onRead: (sid, filePath, create) => {
-        htEvents.emit("ht-editor-read-file", {
-          surfaceId: sid,
-          path: filePath,
-          create,
-        });
-      },
-      onSave: (sid, filePath, content, expectedMtimeMs) => {
-        htEvents.emit("ht-editor-save-file", {
-          surfaceId: sid,
-          path: filePath,
-          content,
-          expectedMtimeMs,
-        });
-      },
-      onReload: (sid, filePath) => {
-        htEvents.emit("ht-editor-reload-file", {
-          surfaceId: sid,
-          path: filePath,
-        });
-      },
-      onClose: (sid) => {
-        htEvents.emit("ht-close-surface", { surfaceId: sid });
-      },
-      onSplit: (_sid, direction) => {
-        htEvents.emit("ht-split-editor", {
-          path: editorView.path ?? undefined,
-          direction,
-        });
-      },
-      onFocus: (sid) => this.focusSurface(sid),
-    });
+    const editorView = this.editor.createEditorView(surfaceId, path);
 
     this.terminalContainer.appendChild(editorView.container);
 

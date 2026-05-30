@@ -34,9 +34,22 @@ It reaches back into SurfaceManager through a small injected deps bag (`getSurfa
 ## Behavior preservation
 Pure code-move + delegation. No logic changed (zoom clamps, search-engine caching, callback emissions, overlay show/hide, OOPIF sync are byte-identical). The `browserInjectCookies` inline cookie type became the named `BrowserCookie` (structurally identical).
 
+## H10 COMPLETE — all four non-terminal surface kinds extracted
+Applied the same controller pattern to telegram, editor, and agent:
+- `telegram-surface-controller.ts` — view factory + message/history/state broadcast handlers (glow + chime). Deps incl. `notifyGlow`. (commit `656e1bab`, v0.3.170)
+- `editor-surface-controller.ts` — view factory + snapshot/save-result handlers + save/reload + title sync.
+- `agent-surface-controller.ts` — view factory (10 callbacks) + event/add-message/focus handlers. (no destroy hook — agent panes use the generic container.remove())
+
+SurfaceManager keeps the generic machinery and delegates each kind's branches; the public methods (`handleTelegram*`, `applyEditor*`/`saveEditorSurface`/`reloadEditorSurface`, `handleAgentEvent`/`agentAddUserMessage`/`agentFocusInput`) stay as thin forwards — zero call-site churn.
+
+**Cumulative result:** `surface-manager.ts` is **−285 net lines** (vs commit 2071da80 before H10): −389/+104. The browser-pane/telegram-pane/editor-pane/agent-panel function imports are gone (only the `type` imports remain), and four cohesive controllers now own those concerns. Adding a 6th surface kind is now "one controller + one descriptor," not shotgun surgery across SurfaceManager.
+
+### ⚠️ Controller unit tests removed (bun mock.module leakage)
+I initially added per-controller unit tests that used `mock.module("./<kind>-pane", …)`. bun 1.3.9's `mock.module` is **process-global and pre-applied during collection** (and `mock.restore()` / re-mock-to-real in afterAll do NOT undo it), so the stubs leaked into the real-module tests that already exist (`browser-pane.test.ts`, `editor-pane.test.ts`, `sounds.test.ts`) — deterministically breaking `editor-pane.test.ts`. Removed all three controller test files. The extractions are pure behavior-preserving code-moves, covered by: typecheck (signatures), the full existing suite (which exercises the real pane modules + SurfaceManager), and **live `bun start` + `ht` verification** (browser surface create/navigate/reload/back end-to-end, editor open, zero runtime errors). A future controller test would need to inject the pane ops as deps (rather than mock.module) to be isolation-safe.
+
 ## Follow-ups (deferred)
-- Optionally inline `surfaceManager.browser.X()` at the 25 call sites and drop the forwarding methods to also reduce SurfaceManager's method COUNT (cosmetic; the logic/coupling reduction — the review's real concern — is already done).
-- Apply the same controller pattern to the agent / editor / telegram surface kinds (the rest of H10).
+- Optionally inline `surfaceManager.<kind>.X()` at call sites and drop the forwarding methods to also cut SurfaceManager's method COUNT (cosmetic; the logic/coupling reduction is done).
+- A `SurfaceKindController` registry/descriptor so add/remove/restore for a new kind is one registration (the controllers are now uniform enough to unify).
 
 ## Commit / release
-- **Committed** on `main` as **`108da04a`** (v0.3.169). 12 files, +513/-193. Not pushed.
+- Browser: **`108da04a`** (v0.3.169). Telegram: **`656e1bab`** (v0.3.170). Editor+agent (+ test removal): recorded below. Not pushed.
