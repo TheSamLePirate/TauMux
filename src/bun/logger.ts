@@ -59,6 +59,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { LOG_DIR_NAME } from "../shared/brand";
 
 const RETENTION_DAYS = 14;
 
@@ -112,7 +113,7 @@ function resolveLogDir(configDir: string | undefined): string {
   if (configDir && process.env["HT_CONFIG_DIR"]) {
     return join(configDir, "logs");
   }
-  return join(homedir(), "Library", "Logs", "tau-mux");
+  return join(homedir(), "Library", "Logs", LOG_DIR_NAME);
 }
 
 /** Pattern: `app-2026-04-21.log`. Used for both write + prune. */

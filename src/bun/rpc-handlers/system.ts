@@ -1,7 +1,8 @@
 import type { Handler, HandlerDeps } from "./types";
 import { computeNormalizedRects } from "./shared";
+import { RPC_PROTOCOL } from "../../shared/brand";
 
-const VERSION = "0.3.171";
+const VERSION = "0.3.172";
 const START_TIME_MS = Date.now();
 
 /** system.* handlers: diagnostic + discovery RPCs.
@@ -57,7 +58,7 @@ export function registerSystem(
     },
 
     "system.capabilities": () => ({
-      protocol: "hyperterm-socket",
+      protocol: RPC_PROTOCOL,
       version: 1,
       methods: allMethodNames().sort(),
     }),

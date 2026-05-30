@@ -52,4 +52,4 @@ I initially added per-controller unit tests that used `mock.module("./<kind>-pan
 - A `SurfaceKindController` registry/descriptor so add/remove/restore for a new kind is one registration (the controllers are now uniform enough to unify).
 
 ## Commit / release
-- Browser: **`108da04a`** (v0.3.169). Telegram: **`656e1bab`** (v0.3.170). Editor+agent (+ test removal): recorded below. Not pushed.
+- Browser: **`108da04a`** (v0.3.169). Telegram: **`656e1bab`** (v0.3.170). Editor+agent (+ test removal): **`806e2852`** (v0.3.171). Not pushed.

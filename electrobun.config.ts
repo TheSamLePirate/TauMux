@@ -10,8 +10,12 @@ export default {
     // USTAR tarball errors during packaging and prevents path-quoting
     // surprises in CI / shell scripts.
     name: "tau-mux",
+    // Mirrors src/shared/brand.ts BUNDLE_IDENTIFIER — kept literal here (this
+    // config is evaluated by the electrobun build, before src/ is bundled).
+    // LOAD-BEARING: macOS Keychain / TCC permissions / LaunchServices key on
+    // it; changing it orphans installed apps' permissions. See brand.ts.
     identifier: "dev.hyperterm.canvas",
-    version: "0.3.171",
+    version: "0.3.172",
     description:
       "A hybrid terminal emulator with floating canvas overlays for images, charts, and interactive widgets.",
   },

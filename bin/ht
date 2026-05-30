@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
- * ht — HyperTerm Canvas CLI
- * Controls HyperTerm Canvas via Unix socket (JSON-RPC).
+ * ht — τ-mux CLI
+ * Controls τ-mux via Unix socket (JSON-RPC).
  */
 
 import { connect } from "net";
@@ -1304,7 +1304,7 @@ async function runLogs(): Promise<void> {
     // App not running. We can still tell the user where logs *would* be
     // for the default config dir; rederiving the exact path would
     // duplicate logger.ts's logic, so just point at the directory.
-    console.error("HyperTerm Canvas is not running.");
+    console.error("τ-mux is not running.");
     console.error(`Default log directory: ~/Library/Logs/tau-mux/`);
     process.exit(1);
   }
@@ -1606,7 +1606,7 @@ async function main(): Promise<void> {
   } catch (err) {
     const e = err as Error & { code?: string };
     if (e.code === "ENOENT" || e.code === "ECONNREFUSED") {
-      console.error("HyperTerm Canvas is not running.");
+      console.error("τ-mux is not running.");
       console.error(`Socket not found: ${SOCKET_PATH}`);
     } else {
       console.error(`Error: ${e.message}`);
@@ -2161,7 +2161,7 @@ function formatRelative(ts: number): string {
 }
 
 function printHelp(): void {
-  console.log(`ht — HyperTerm Canvas CLI
+  console.log(`ht — τ-mux CLI
 
 Usage: ht <command> [options]
 

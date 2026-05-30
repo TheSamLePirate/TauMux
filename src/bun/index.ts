@@ -30,6 +30,7 @@ import {
 import { randomBytes } from "node:crypto";
 import { writeFileAtomic } from "./atomic-write";
 import { rpcTokenPathForSocket } from "../shared/rpc-token";
+import { CONFIG_DIR_NAME, SOCKET_BASENAME } from "../shared/brand";
 import type {
   TauMuxRPC,
   PersistedLayout,
@@ -105,7 +106,7 @@ import {
 // browser history, and cookies under a per-worker throwaway dir. Default path
 // (user's Library/Application Support) is unchanged.
 const configDir =
-  process.env["HT_CONFIG_DIR"] ?? join(Utils.paths.config, "hyperterm-canvas");
+  process.env["HT_CONFIG_DIR"] ?? join(Utils.paths.config, CONFIG_DIR_NAME);
 
 // Tee stdout + stderr to a daily-rotated log file. Must run before the
 // first `console.*` call so the bootstrap banner captures early output
@@ -2176,7 +2177,7 @@ async function requestWebview(
 // RPC handler and the SocketServer share the same constant so external
 // tooling (`ht identify`) can never disagree with what was actually
 // bound.
-const socketPath = join(configDir, "hyperterm.sock");
+const socketPath = join(configDir, SOCKET_BASENAME);
 // Ensure the config directory exists before binding the socket
 if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
 // Expose path to child shells so the `ht` CLI can locate the server

@@ -35,7 +35,7 @@ describe("bin/ht --help", () => {
   test("exits 0 and prints the help banner", async () => {
     const r = await runHt(["--help"]);
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toContain("ht — HyperTerm Canvas CLI");
+    expect(r.stdout).toContain("ht — τ-mux CLI");
     expect(r.stdout).toContain("Usage: ht <command>");
   });
 
