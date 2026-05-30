@@ -41,3 +41,8 @@ _(Always add new items below the cleared line above. When folding into the websi
   button, shows an "Agent process exited (code N)" banner, and offers a
   one-click **Restart agent** button — previously the input stayed enabled and
   silently swallowed every keystroke with no way to recover. Changelog-only.
+- **Dead-code removal in the pi-agent manager (H12, v0.3.177).** Deleted the
+  unused Promise-based `send()` + ~25 typed wrappers + `responseWaiters`
+  machinery from `PiAgentInstance` (−199 lines); the agent IPC has always used
+  the fire-and-forget `sendNoWait` path. Internal-only, no behavior change —
+  changelog-only if mentioned at all.

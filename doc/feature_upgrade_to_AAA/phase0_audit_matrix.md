@@ -10,7 +10,7 @@
 
 | PR # | Issue id | Fix present in code? | Regression test exists? | Notes |
 |---|---|---|---|---|
-| 2 | G.1 L1+L10 | ✅ `src/bun/pi-agent-manager.ts:130, :221, :227` | ✅ `tests/pi-agent-manager.test.ts` — "evicts a dead instance via _managerExit" + "kill() drains pending response waiters" | Both L1 (dead-instance eviction via `_managerExit`) and L10 (clearTimeout on response/kill drain) tested. |
+| 2 | G.1 L1+L10 | ✅ `src/bun/pi-agent-manager.ts:130, :221` | ✅ `tests/pi-agent-manager.test.ts` — "evicts a dead instance via _managerExit" + "kill() before start() marks the instance dead without throwing" | L1 (dead-instance eviction via `_managerExit`) tested. L10 originally covered the kill() response-waiter drain; H12 removed that machinery (dead code), so the test now guards kill() idempotency/crash-safety instead. |
 | 3 | G.5 L4 | ✅ `src/bun/socket-server.ts:22, :88` (`MAX_BUFFER_BYTES = 1_048_576`) | ✅ `tests/socket-server.test.ts:~186` (1.5 MiB garbage write asserts error at 1 MiB) | Solid. |
 | 4 | G.3 L6+L12 | ✅ `src/bun/index.ts:3206-3248` (`shuttingDown` flag + clears `plansBroadcastTimer` / `autoContinueAuditTimer` / `htKeysSeenTimer` / `domReadyDebounce` / `layoutSaveTimer`) | ❌ no dedicated test | Idempotent guard + timer cleanup present but untested. |
 | 5 | G.6+G.7 L8+L11 | ✅ `src/views/terminal/command-palette.ts:27, :148` (AbortController + destroy); `src/bun/index.ts:~1150` (domReadyDebounce cleanup on browserSurfaceClosed) | ❌ no dedicated test | Wired correctly, no regression assertion. |

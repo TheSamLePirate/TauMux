@@ -66,38 +66,17 @@ describe("PiAgentManager — manager-level exit hook", () => {
   });
 });
 
-describe("PiAgentInstance — kill() drains pending response waiters", () => {
-  it("rejects all pending waiters synchronously and clears their timers", async () => {
-    // We can't easily exercise send() without a live subprocess, but
-    // we can poke at the private map to verify the kill() drain
-    // semantics. A real proc would feed responses back into the map
-    // via parseLine; our test just seeds one entry.
+describe("PiAgentInstance — kill() is idempotent and safe pre-start", () => {
+  it("kill() before start() marks the instance dead without throwing", () => {
+    // H12 removed the responseWaiters drain; kill() now just flips the
+    // dead flag and best-effort kills the (absent) proc. Guard that it
+    // stays crash-free when called on an unstarted instance.
     const inst = new PiAgentInstance("test-agent", {});
-
-    // Seed a fake waiter with a real setTimeout we expect kill() to
-    // clear. If the timer is NOT cleared, the test runtime will hold
-    // the event loop open for 30 s (Bun's test runner enforces a
-    // default timeout, so a regression would surface as a timeout).
-    let rejectedWith: Error | null = null;
-    const waiter = {
-      resolve: () => {
-        /* unused */
-      },
-      reject: (err: Error) => {
-        rejectedWith = err;
-      },
-      timer: setTimeout(() => {
-        throw new Error("timer should have been cleared by kill()");
-      }, 30_000),
-    };
-    // @ts-expect-error reach into private for test
-    inst.responseWaiters.set("req_test", waiter);
-
-    inst.kill();
-
-    expect(rejectedWith).toBeInstanceOf(Error);
-    expect((rejectedWith as Error | null)?.message).toContain("killed");
-    // @ts-expect-error reach into private for test
-    expect(inst.responseWaiters.size).toBe(0);
+    expect(inst.isAlive).toBe(true);
+    expect(() => inst.kill()).not.toThrow();
+    expect(inst.isAlive).toBe(false);
+    // Idempotent — a second kill is a no-op.
+    expect(() => inst.kill()).not.toThrow();
+    expect(inst.isAlive).toBe(false);
   });
 });
