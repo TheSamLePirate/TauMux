@@ -45,4 +45,4 @@ Legend: ⬜ todo · 🔄 in progress · ✅ done · ⚠️ deviation
 
 ## Commit / release
 - Commit A (W4-1): `f40a5bea` (v0.3.165).
-- Commit B (W4-2): (recorded below)
+- Commit B (W4-2): `1dfddf20` (v0.3.166). Both on `main`, not pushed.
