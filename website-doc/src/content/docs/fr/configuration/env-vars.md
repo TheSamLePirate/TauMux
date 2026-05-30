@@ -18,6 +18,7 @@ sidebar:
 | `HT_SOCKET_PATH` | `/tmp/hyperterm.sock` | Surcharge le chemin du socket Unix. Doit correspondre entre τ-mux et le CLI `ht`. |
 | `HYPERTERM_INCLUDE_TEST_HOOKS` | `1` (dev), `0` (stable) | Indique si les méthodes RPC réservées aux tests sont exposées. Mettez à `0` pour les builds de production. |
 | `HT_CONFIG_DIR` | `~/Library/Application Support/hyperterm-canvas` | Emplacement de settings.json, telegram.db, browser-history.json, cookie-store.json, et (en e2e) logs/. Les tests surchargent cette valeur. |
+| `HT_RPC_TOKEN_PATH` | un fichier `socket.token` à côté du socket RPC | Surcharge le chemin où le CLI `ht` (et le `ht-bridge` pi/Claude) lit le jeton du socket RPC propre au boot. Pertinent uniquement quand **Exiger un jeton de socket RPC** (`rpcSocketRequireToken`) est activé. *(ajouté en v0.3.163)* |
 
 ## Définies automatiquement dans les shells lancés
 
@@ -37,6 +38,7 @@ Celles-ci sont peuplées automatiquement quand τ-mux lance une nouvelle surface
 |---|---|
 | `HT_SOCKET_PATH` | Surcharge `/tmp/hyperterm.sock`. |
 | `HT_SURFACE` | `--surface` par défaut pour les commandes `ht`. |
+| `HT_RPC_TOKEN_PATH` | Surcharge l'emplacement où le CLI `ht` lit le jeton du socket RPC propre au boot. Par défaut, un fichier `socket.token` dans le même répertoire que le socket RPC. Pertinent uniquement quand **Exiger un jeton de socket RPC** est activé. *(ajouté en v0.3.163)* |
 | `HYPERTERM_DEBUG` | Active les logs de débogage dans les clients sideband Python / TS. |
 
 ## Patterns courants

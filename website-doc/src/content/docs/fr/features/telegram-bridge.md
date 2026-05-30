@@ -25,10 +25,17 @@ sidebar:
 
 ## Politique d'accès
 
-Vous pouvez verrouiller le bot en configurant une liste blanche :
+Le bot n'agit que sur les messages provenant d'identifiants présents dans la liste blanche (`telegramAllowedUserIds`, une liste d'identifiants utilisateur Telegram numériques séparés par des virgules, définie dans **Settings → Telegram**).
 
-- **Open** — toute personne qui envoie un message au bot est autorisée.
-- **Allowlist (DM only)** — seuls des utilisateurs Telegram spécifiques peuvent envoyer un DM au bot.
+:::caution[Fermé par défaut (v0.3.161+)]
+La liste blanche est désormais **vide par défaut et fonctionne en mode fermé (fail-closed)** : tant qu'elle est vide, **chaque message entrant et chaque appui sur un bouton est rejeté**. Vous devez saisir vos propres identifiants utilisateur Telegram numériques dans **Settings → Telegram** avant que le bot n'agisse sur vos messages ou sur les boutons de notification. Un avertissement unique est journalisé tant que la liste est vide.
+
+C'est délibéré. Un canal capable de taper dans — et d'envoyer un SIGINT à — vos shells via les boutons de notification et les invites [ask-user](/fr/features/ask-user/) doit refuser par défaut, et non autoriser tout le monde. Les versions antérieures embarquaient un identifiant utilisateur par défaut codé en dur et traitaient une liste blanche vide comme « accepter de tout le monde » (fail-open) ; ce n'est plus le cas.
+:::
+
+Une fois votre identifiant dans la liste blanche, vous pouvez restreindre davantage le bot :
+
+- **Allowlist (DM only)** — seuls les utilisateurs Telegram listés peuvent envoyer un DM au bot.
 - **Allowlist (DM + groups)** — idem plus une liste de conversations de groupe approuvées.
 
 Approuvez une nouvelle conversation depuis l'intérieur de τ-mux quand une demande d'appairage arrive.

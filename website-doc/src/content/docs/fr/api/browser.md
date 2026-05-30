@@ -27,6 +27,8 @@ Les méthodes `browser.*` opèrent sur un [panneau navigateur](/fr/features/brow
 | `browser.reload` | `{ surfaceId?: string }` | `{ ok: true }` |
 | `browser.url` | `{ surfaceId?: string }` | `{ url }` |
 
+`browser.navigate` accepte les URLs `http://` / `https://` (y compris localhost / les serveurs de dev en LAN), `about:` (par ex. `about:blank`), `data:` et `chrome-extension://`. Les URLs `file://` sont volontairement rejetées pour des raisons de sécurité — elles permettraient à un panneau de navigateur de lire des fichiers locaux arbitraires via le socket.
+
 ## Attente
 
 | Méthode | Params | Résultat |
@@ -67,6 +69,8 @@ Fournissez au plus un seul de `selector`, `text`, `loadState`. Timeout par défa
 |---|---|---|
 | `browser.addscript` | `{ surfaceId?: string, source: string }` | `{ ok: true }` |
 | `browser.addstyle` | `{ surfaceId?: string, source: string }` | `{ ok: true }` |
+
+`browser.eval`, `browser.addscript` et `browser.addstyle` rejettent les charges utiles supérieures à 256 KiB — cela ne concerne que les scripts ou feuilles de style anormalement volumineux.
 
 ## Recherche / DevTools
 

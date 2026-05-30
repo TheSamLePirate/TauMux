@@ -42,6 +42,8 @@ ht browser navigate https://example.org    # uses HT_SURFACE
 | `url` / `get-url` | Print the current URL. |
 | `identify` | Surface id, title, URL. |
 
+`navigate` / `goto` accept `http://` and `https://` (including localhost / LAN dev servers), `about:` (e.g. `about:blank`), `data:`, and `chrome-extension://` URLs. `file://` URLs are intentionally rejected for security — they would let a browser pane read arbitrary local files over the socket.
+
 ## Waiting
 
 ```bash
@@ -93,6 +95,8 @@ ht browser browser:1 eval "await fetch('/api/health').then(r => r.json())"
 ```
 
 `eval` returns the JSON-serialized result. Async expressions are awaited automatically.
+
+`addscript`, `addstyle`, and `eval` reject payloads larger than 256 KiB — this only affects pathologically large scripts or stylesheets.
 
 ## Console / errors
 

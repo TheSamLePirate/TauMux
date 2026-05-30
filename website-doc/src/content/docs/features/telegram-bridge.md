@@ -25,10 +25,17 @@ sidebar:
 
 ## Access policy
 
-You can lock the bot down by configuring an allowlist:
+The bot only acts on messages from user ids in the allowlist (`telegramAllowedUserIds`, a comma-separated list of numeric Telegram user ids set in **Settings → Telegram**).
 
-- **Open** — anyone who messages the bot is allowed.
-- **Allowlist (DM only)** — only specific Telegram users can DM the bot.
+:::caution[Fail-closed by default (v0.3.161+)]
+The allowlist now **defaults to empty and is fail-closed**: while it is empty, **every inbound message and button tap is rejected**. You must enter your own numeric Telegram user id(s) in **Settings → Telegram** before the bot will act on your messages or notification buttons. A one-time warning is logged while the list is empty.
+
+This is deliberate. A channel that can type into — and SIGINT — your shells via notification buttons and [ask-user](/features/ask-user/) prompts must default to **deny**, not allow-anyone. Earlier versions shipped a hardcoded default user id and treated an empty allowlist as "accept from anyone" (fail-open); that is no longer the case.
+:::
+
+Once your id is in the allowlist, you can scope the bot further:
+
+- **Allowlist (DM only)** — only the listed Telegram users can DM the bot.
 - **Allowlist (DM + groups)** — same plus a list of approved group chats.
 
 Approve a new chat from inside τ-mux when a pairing request arrives.

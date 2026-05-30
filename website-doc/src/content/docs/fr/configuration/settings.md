@@ -52,7 +52,8 @@ Schéma : `AppSettings` dans `src/shared/settings.ts`. Valeurs par défaut : `DE
 | `autoStartWebMirror` | boolean | `false` | Si le miroir démarre au lancement de l'application. |
 | `webMirrorPort` | number | `3000` | Port TCP. **Redémarre** un miroir en cours d'exécution lors d'un changement. |
 | `webMirrorBind` | string | `"0.0.0.0"` | Adresse de bind. Mettez `"127.0.0.1"` pour rester local uniquement. **Redémarre** lors d'un changement. |
-| `webMirrorAuthToken` | string | `""` | Secret partagé. Vide = pas d'authentification. **Redémarre** lors d'un changement. |
+| `webMirrorAuthToken` | string | `""` | Secret partagé. Vide = pas d'authentification. **Redémarre** lors d'un changement. Depuis la **v0.3.161**, ce paramètre (et `webMirrorBind`) s'applique aussi quand le miroir démarre automatiquement au lancement, et pas seulement lors d'un démarrage manuel. |
+| `rpcSocketRequireToken` | boolean | `false` | Lorsqu'activé, le socket Unix `ht` exige un jeton propre au boot pour les commandes qui modifient l'état (saisie dans les panneaux, arrêt de processus) ; les diagnostics en lecture seule restent ouverts. Le `ht` fourni ainsi que les bridges pi/Claude le présentent automatiquement ; les anciennes installations `ht` externes perdent les commandes de modification jusqu'à leur mise à jour. Défense en profondeur contre les processus opportunistes du même utilisateur, pas une frontière stricte. Paramètres → Réseau → « Exiger un jeton de socket RPC ». *(ajouté en v0.3.163)* |
 
 ## Navigateur
 
@@ -70,6 +71,7 @@ Schéma : `AppSettings` dans `src/shared/settings.ts`. Valeurs par défaut : `DE
 | `botToken` | string | `""` | Jeton de BotFather. |
 | `accessPolicy` | enum | `"open"` | `open`, `dm-only`, `allowlist`. |
 | `allowedChats` | string[] | `[]` | Identifiants de chat autorisés sous `allowlist`. |
+| `telegramAllowedUserIds` | string[] | `[]` | Identifiants numériques d'utilisateurs Telegram autorisés à joindre le bot. Depuis la **v0.3.161**, ce paramètre est **vide** par défaut, et une liste vide est **fail-closed** — elle rejette *tous* les messages entrants. Vous devez saisir votre propre identifiant Telegram numérique pour recevoir des messages. |
 | `forwardNotifications` | boolean | `false` | Transférer `ht notify` vers Telegram. |
 | `forwardChatId` | string | `""` | Chat cible pour les notifications transférées. |
 
@@ -87,8 +89,9 @@ Schéma : `AppSettings` dans `src/shared/settings.ts`. Valeurs par défaut : `DE
 La plupart des champs s'appliquent en direct dans tous les panneaux à l'instant où ils sont enregistrés. Exceptions :
 
 - `shellPath` — nouvelles surfaces uniquement.
-- `webMirrorPort`, `webMirrorBind`, `webMirrorAuthToken` — redémarrent un miroir en cours d'exécution.
+- `webMirrorPort`, `webMirrorBind`, `webMirrorAuthToken` — redémarrent un miroir en cours d'exécution. Depuis la v0.3.161, `webMirrorBind` et `webMirrorAuthToken` prennent aussi effet lors du démarrage automatique au lancement.
 - `autoStartWebMirror` — uniquement au lancement (basculez le miroir manuellement à tout moment).
+- `rpcSocketRequireToken` — s'applique immédiatement aux nouvelles connexions au socket `ht`.
 
 ## Édition du JSON
 

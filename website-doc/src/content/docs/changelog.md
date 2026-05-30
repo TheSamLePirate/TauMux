@@ -7,6 +7,40 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.3.172 — Security review & architecture hardening
+
+A full code review (`doc/full_app_review_2026-05.md`) drove a wave of security ship-stoppers, dependency/tooling cleanups, and an architecture decomposition. Newest first.
+
+### Security (0.3.161 → 0.3.167)
+
+- **Web mirror honours your bind + auth token on auto-start (0.3.161).** Previously the auth token (`webMirrorAuthToken`) and `127.0.0.1` bind were applied only via the manual Settings toggle; when the mirror auto-started at launch (or its port changed) it silently bound `0.0.0.0` with **no auth**. Fixed — your configured token / loopback bind now take effect on auto-start.
+- **Telegram allow-list defaults to empty and fails closed (0.3.161).** `telegramAllowedUserIds` no longer ships a hardcoded id, and an empty allow-list now **rejects all** inbound messages + notification-button taps (was: accept-anyone). Enter your numeric Telegram id in **Settings → Telegram** to enable remote control.
+- **Sideband HTML/SVG sandboxed in the web mirror (0.3.161).** Inline panel `meta.data` markup now renders in the same sandboxed `<iframe>` (CSP `script-src 'none'`) as binary frames, closing a LAN-XSS hole.
+- **Live auth-token rotation (0.3.162).** Changing the mirror token / bind in Settings now takes effect without a restart; rotating the token also clears the brute-force cooldown.
+- **`ht browser navigate` rejects `file://` (0.3.162).** Prevents reading arbitrary local files via a pane over the socket; `http(s)://`, `about:`, `data:`, `chrome-extension://` still work. `browser.eval` / `addscript` / `addstyle` now share a 256 KiB payload cap.
+- **More hardening (0.3.162).** Brute-force throttle keyed on the real peer IP (not a spoofable header); settings + cookie files are created `0600` from the first byte (+ `fsync` for power-loss durability); the on-disk log redacts Telegram / auth tokens.
+- **Opt-in RPC socket token (0.3.163, default off).** **Settings → Network → "Require RPC socket token"** gates state-mutating `ht` commands (typing into panes, killing processes) behind a per-boot token; read-only diagnostics stay open. Defense-in-depth against opportunistic same-user processes — not a hard boundary. New env override `HT_RPC_TOKEN_PATH`.
+- **All dependency-audit vulnerabilities cleared (0.3.167).** `bun audit` went 7 → 0 via targeted `overrides` (ws, ip-address, brace-expansion, basic-ftp).
+
+### Architecture & tooling (0.3.164 → 0.3.172)
+
+- **xterm migrated to `@xterm/xterm@6` (0.3.164).** The webview core is now aligned with the v6 addons + headless it already used (the deprecated unscoped `xterm@5.3.0` is gone). No user-facing change.
+- **ask-user modal gets High-Contrast styling (0.3.164).** The "This will execute on your machine" confirm prompt previously fell through to default styling in Windows High Contrast / `prefers-contrast` (the CSS targeted a class the modal never emits). Fixed.
+- **Settings schema versioning (0.3.165).** `settings.json` now carries a `__schemaVersion` + an ordered migration runner, so a future field rename/removal won't silently drop your data.
+- **Supply-chain hygiene (0.3.166).** A Renovate config + a non-blocking dependency-vulnerability scan (`bun audit`) in CI.
+- **eslint fixed + wired into CI (0.3.168).** A flat eslint config scoped to the project's authored TypeScript (the previous config crawled `.claude/` git worktrees → ~22k bogus errors and was never run).
+- **`SurfaceManager` decomposition (0.3.169 → 0.3.171).** The browser / Telegram / editor / agent surface concerns were extracted into dedicated controllers — ~285 net lines out of the 2,700-line module. Pure internal refactor; no behavior change.
+- **Brand consolidation (0.3.172).** Brand identifiers centralized in one module; the `ht` CLI now prints "τ-mux" rather than "HyperTerm Canvas". (The config dir, bundle id, and socket name stay for back-compat.)
+- **CI / release gates.** The release workflow now runs typecheck + tests before uploading binaries; CI re-runs the functional (non-pixel) web-mirror security e2e specs and lints on every push.
+
+### Earlier 0.3.x (0.3.150 → 0.3.160)
+
+- **Command palette completeness (0.3.150).** ~30 more verbs reachable via ⌘⇧P — workspace, pane, browser, theme, and editor operations.
+- **CLI rename verbs auto-detect (0.3.151).** `ht rename-workspace NAME` / `ht rename-surface NAME` resolve the target from `HT_SURFACE` when run inside a pane (no `--workspace` needed).
+- **IME candidate positioning (0.3.153).** Native + web mirror no longer force xterm's helper textarea off-screen, so IME candidate windows appear at the cursor.
+- **Ask/plan prompt opacity + top-layer reliability (0.3.154 → 0.3.158).** Prompts render as global blocking overlays with an opaque sheet + scrim; root-caused to the native webview not loading the `--ht-*` design-token stylesheet (now linked into `index.html`).
+- **Web mirror terminal-sizing parity (0.3.160).** Web/native cell math aligned (pane padding, resize plumbing, a sub-pixel epsilon) so `clear` no longer surfaces a stray `%` and long lines don't wrap a column short.
+
 ## 0.3.x — Triple-A polish (Phases 6 → 9)
 
 The 0.3 series ran a multi-phase polish push grading every feature against an S/A/B/C rubric and lifting concrete gaps to a higher grade in each session. The work is tracked in `doc/feature_grades.json` + `doc/feature_grades.md` + per-phase `doc/tracking_feature_upgrade_to_AAA_phase*.md` files in the repo.

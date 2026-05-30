@@ -23,4 +23,4 @@ A future change can flip the config-dir to the new brand via a one-time rename-o
 - `bun start`: boots clean — log dir / socket path / config dir all resolve from the brand constants; `ht version` + `ht identify` round-trip; zero runtime errors. Rebuilt `build/ht-cli` shows "ht — τ-mux CLI" + "τ-mux is not running."
 
 ## Commit / release
-- (recorded below)
+- **Committed** on `main` as **`c4bd01b8`** (v0.3.172). Not pushed.

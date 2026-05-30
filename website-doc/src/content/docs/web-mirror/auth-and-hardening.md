@@ -21,6 +21,10 @@ If the token is wrong:
 - HTTP requests get `401 Unauthorized` with no body.
 - WebSocket upgrades are rejected before the handshake completes.
 
+:::note[Fixed in v0.3.161 — token applies on auto-start]
+Previously the configured token (and bind address) were honored **only** when you toggled the mirror on manually in Settings. When the mirror auto-started at app launch — or when its port changed — it silently fell back to binding `0.0.0.0` with **no auth**, ignoring your configured token / loopback bind. This is fixed: a configured token and a `127.0.0.1` bind now take effect on auto-start too.
+:::
+
 ### `?t=…` is scrubbed from the URL after first auth
 
 When the page loads from a `?t=<token>` link, the browser captures the token at module-load time and then **removes it from `window.location` via `history.replaceState`** as soon as the first WebSocket open succeeds. Reconnects keep authenticating because the token survives in module scope — only the URL gets cleaned. Net effect: the token can't leak via screenshare, the back/forward stack, copy-paste of the URL, or `Referer` headers from outbound links.
@@ -61,6 +65,25 @@ Resume tokens are 128-bit hex from `crypto.getRandomValues`. No predictable stru
 ## Bind address
 
 Default bind is `0.0.0.0` (all interfaces). Set `webMirrorBind` to `127.0.0.1` to make the mirror reachable only from the laptop itself — useful when you want the URL but don't want it on the LAN.
+
+As of **v0.3.161** this bind address is honored on auto-start as well — not just when toggling the mirror on manually (see the note under [Token auth](#token-auth)).
+
+## RPC socket token
+
+The `ht` CLI talks to the app over a Unix socket. The socket file is created with mode `0600`, so only the same OS user can open it. That's the baseline boundary.
+
+New in **v0.3.163** is an optional second layer: **Settings → Network → "Require RPC socket token"** (**off by default**). When enabled, the socket requires a per-boot token for **state-mutating** commands — typing into panes, killing processes, creating splits, and the like. **Read-only diagnostics** stay open even without the token, so a token mismatch can still be diagnosed:
+
+- `ht version`
+- `ht identify`
+- `ht doctor`
+- tree / read-screen and other inspection commands
+
+The bundled `ht` and the pi / Claude `ht-bridge` read and present the token automatically — nothing to configure on those paths. **Older external `ht` installs lose mutating commands until updated** (their read-only diagnostics keep working).
+
+The token is written to a file named `socket.token` (mode `0600`) beside the socket. Set the env var `HT_RPC_TOKEN_PATH` to override that path.
+
+**Threat model — be explicit:** this is *defense-in-depth* against an opportunistic same-user process that speaks JSON-RPC to a well-known socket path. It is **not** a hard security boundary — any same-user process can also read the `0600` token file. It raises the bar; it doesn't seal it.
 
 ## Threat model — what's NOT covered
 

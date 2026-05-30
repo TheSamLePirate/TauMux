@@ -18,6 +18,7 @@ sidebar:
 | `HT_SOCKET_PATH` | `/tmp/hyperterm.sock` | Override the Unix socket path. Must match between τ-mux and `ht` CLI. |
 | `HYPERTERM_INCLUDE_TEST_HOOKS` | `1` (dev), `0` (stable) | Whether test-only RPC methods are exposed. Set to `0` for production builds. |
 | `HT_CONFIG_DIR` | `~/Library/Application Support/hyperterm-canvas` | Where settings.json, telegram.db, browser-history.json, cookie-store.json, and (in e2e) logs/ live. Tests override this. |
+| `HT_RPC_TOKEN_PATH` | a `socket.token` file next to the RPC socket | Overrides the path where the `ht` CLI (and the pi/Claude `ht-bridge`) reads the per-boot RPC socket token. Only relevant when **Require RPC socket token** (`rpcSocketRequireToken`) is enabled. *(added v0.3.163)* |
 
 ## Auto-set inside spawned shells
 
@@ -37,6 +38,7 @@ These are populated automatically when τ-mux spawns a new terminal surface. Scr
 |---|---|
 | `HT_SOCKET_PATH` | Override `/tmp/hyperterm.sock`. |
 | `HT_SURFACE` | Default `--surface` for `ht` commands. |
+| `HT_RPC_TOKEN_PATH` | Overrides where the `ht` CLI reads the per-boot RPC socket token. Defaults to a `socket.token` file in the same directory as the RPC socket. Only relevant when **Require RPC socket token** is enabled. *(added v0.3.163)* |
 | `HYPERTERM_DEBUG` | Enables debug logs in the Python / TS sideband clients. |
 
 ## Common patterns

@@ -21,6 +21,10 @@ Si le jeton est incorrect :
 - Les requêtes HTTP reçoivent un `401 Unauthorized` sans corps.
 - Les upgrades WebSocket sont rejetés avant la fin du handshake.
 
+:::note[Corrigé en v0.3.161 — le jeton s'applique au démarrage automatique]
+Auparavant, le jeton configuré (et l'adresse de bind) n'étaient honorés **que** lorsque vous activiez le miroir manuellement dans les Réglages. Quand le miroir démarrait automatiquement au lancement de l'application — ou quand son port changeait — il retombait silencieusement sur un bind `0.0.0.0` **sans aucune authentification**, ignorant votre jeton configuré / votre bind sur la loopback. C'est corrigé : un jeton configuré et un bind `127.0.0.1` prennent désormais effet au démarrage automatique également.
+:::
+
 ### `?t=…` est nettoyé de l'URL après la première authentification
 
 Quand la page charge depuis un lien `?t=<token>`, le navigateur capture le jeton au chargement du module puis **le retire de `window.location` via `history.replaceState`** dès que la première ouverture WebSocket réussit. Les reconnexions continuent à s'authentifier parce que le jeton survit dans la portée du module — seule l'URL est nettoyée. Effet net : le jeton ne peut pas fuir via partage d'écran, la pile back/forward, le copier-coller de l'URL, ou les en-têtes `Referer` des liens sortants.
@@ -61,6 +65,25 @@ Les jetons de reprise sont des chaînes hexadécimales 128 bits issues de `crypt
 ## Adresse de bind
 
 Le bind par défaut est `0.0.0.0` (toutes les interfaces). Réglez `webMirrorBind` sur `127.0.0.1` pour rendre le miroir joignable uniquement depuis le portable lui-même — utile lorsque vous voulez l'URL mais pas l'exposer sur le LAN.
+
+Depuis la **v0.3.161**, cette adresse de bind est honorée au démarrage automatique également — pas seulement lors de l'activation manuelle du miroir (voir la note sous [Authentification par jeton](#authentification-par-jeton)).
+
+## Jeton de socket RPC
+
+La CLI `ht` communique avec l'application via un socket Unix. Le fichier socket est créé avec le mode `0600`, de sorte que seul le même utilisateur système peut l'ouvrir. C'est la barrière de base.
+
+Nouveau en **v0.3.163** : une seconde couche optionnelle — **Réglages → Réseau → « Exiger un jeton de socket RPC »** (**désactivé par défaut**). Une fois activée, le socket exige un jeton par démarrage (per-boot) pour les commandes **qui modifient l'état** — frappe dans les panneaux, arrêt de processus, création de splits, et autres. Les **diagnostics en lecture seule** restent ouverts même sans le jeton, afin qu'une incohérence de jeton reste diagnosticable :
+
+- `ht version`
+- `ht identify`
+- `ht doctor`
+- arbre / lecture d'écran et autres commandes d'inspection
+
+Le `ht` fourni et le `ht-bridge` de pi / Claude lisent et présentent le jeton automatiquement — rien à configurer sur ces chemins. **Les anciennes installations externes de `ht` perdent les commandes de modification jusqu'à leur mise à jour** (leurs diagnostics en lecture seule continuent de fonctionner).
+
+Le jeton est écrit dans un fichier nommé `socket.token` (mode `0600`) à côté du socket. Définissez la variable d'environnement `HT_RPC_TOKEN_PATH` pour remplacer ce chemin.
+
+**Modèle de menace — soyons explicites :** il s'agit d'une *défense en profondeur* contre un processus opportuniste du même utilisateur qui parlerait JSON-RPC à un chemin de socket bien connu. Ce n'**est pas** une barrière de sécurité ferme — n'importe quel processus du même utilisateur peut aussi lire le fichier de jeton `0600`. Cela élève le niveau d'exigence ; cela ne scelle rien.
 
 ## Modèle de menace — ce qui n'est PAS couvert
 

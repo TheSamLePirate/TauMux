@@ -52,7 +52,8 @@ Schema: `AppSettings` in `src/shared/settings.ts`. Defaults: `DEFAULT_SETTINGS`.
 | `autoStartWebMirror` | boolean | `false` | Whether the mirror starts at app launch. |
 | `webMirrorPort` | number | `3000` | TCP port. **Restarts** a running mirror on change. |
 | `webMirrorBind` | string | `"0.0.0.0"` | Bind address. Set `"127.0.0.1"` to keep local-only. **Restarts** on change. |
-| `webMirrorAuthToken` | string | `""` | Shared secret. Empty = no auth. **Restarts** on change. |
+| `webMirrorAuthToken` | string | `""` | Shared secret. Empty = no auth. **Restarts** on change. As of **v0.3.161** this (and `webMirrorBind`) also applies when the mirror is auto-started at launch, not just on manual start. |
+| `rpcSocketRequireToken` | boolean | `false` | When on, the `ht` Unix socket requires a per-boot token for state-mutating commands (typing into panes, killing processes); read-only diagnostics stay open. The bundled `ht` + pi/Claude bridges present it automatically; older external `ht` installs lose mutating commands until updated. Defense-in-depth against opportunistic same-user processes, not a hard boundary. Settings → Network → "Require RPC socket token". *(added v0.3.163)* |
 
 ## Browser
 
@@ -70,6 +71,7 @@ Schema: `AppSettings` in `src/shared/settings.ts`. Defaults: `DEFAULT_SETTINGS`.
 | `botToken` | string | `""` | Token from BotFather. |
 | `accessPolicy` | enum | `"open"` | `open`, `dm-only`, `allowlist`. |
 | `allowedChats` | string[] | `[]` | Chat ids permitted under `allowlist`. |
+| `telegramAllowedUserIds` | string[] | `[]` | Numeric Telegram user ids allowed to reach the bot. As of **v0.3.161** this defaults to **empty**, and an empty list is **fail-closed** — it rejects *all* inbound. You must enter your own numeric Telegram id to receive messages. |
 | `forwardNotifications` | boolean | `false` | Forward `ht notify` to Telegram. |
 | `forwardChatId` | string | `""` | Target chat for forwarded notifications. |
 
@@ -87,8 +89,9 @@ Schema: `AppSettings` in `src/shared/settings.ts`. Defaults: `DEFAULT_SETTINGS`.
 Most fields apply live across all panes the moment they're saved. Exceptions:
 
 - `shellPath` — new surfaces only.
-- `webMirrorPort`, `webMirrorBind`, `webMirrorAuthToken` — restart a running mirror.
+- `webMirrorPort`, `webMirrorBind`, `webMirrorAuthToken` — restart a running mirror. As of v0.3.161, `webMirrorBind` and `webMirrorAuthToken` also take effect on auto-start at launch.
 - `autoStartWebMirror` — only at launch (toggle the mirror manually any time).
+- `rpcSocketRequireToken` — applies to new `ht` socket connections immediately.
 
 ## Editing the JSON
 

@@ -42,6 +42,8 @@ ht browser navigate https://example.org    # uses HT_SURFACE
 | `url` / `get-url` | Affiche l'URL actuelle. |
 | `identify` | Id de la surface, titre, URL. |
 
+`navigate` / `goto` acceptent les URLs `http://` et `https://` (y compris localhost / les serveurs de dev en LAN), `about:` (par ex. `about:blank`), `data:` et `chrome-extension://`. Les URLs `file://` sont volontairement rejetées pour des raisons de sécurité — elles permettraient à un panneau de navigateur de lire des fichiers locaux arbitraires via le socket.
+
 ## Attente
 
 ```bash
@@ -93,6 +95,8 @@ ht browser browser:1 eval "await fetch('/api/health').then(r => r.json())"
 ```
 
 `eval` renvoie le résultat sérialisé en JSON. Les expressions asynchrones sont attendues automatiquement.
+
+`addscript`, `addstyle` et `eval` rejettent les charges utiles supérieures à 256 KiB — cela ne concerne que les scripts ou feuilles de style anormalement volumineux.
 
 ## Console / erreurs
 

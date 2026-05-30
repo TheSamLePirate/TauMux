@@ -27,6 +27,8 @@ Methods on `browser.*` operate on a [browser pane](/features/browser-panes/). Mo
 | `browser.reload` | `{ surfaceId?: string }` | `{ ok: true }` |
 | `browser.url` | `{ surfaceId?: string }` | `{ url }` |
 
+`browser.navigate` accepts `http://` / `https://` (including localhost / LAN dev servers), `about:` (e.g. `about:blank`), `data:`, and `chrome-extension://` URLs. `file://` URLs are intentionally rejected for security — they would let a browser pane read arbitrary local files over the socket.
+
 ## Waiting
 
 | Method | Params | Result |
@@ -67,6 +69,8 @@ Supply at most one of `selector`, `text`, `loadState`. Default timeout 30 000 ms
 |---|---|---|
 | `browser.addscript` | `{ surfaceId?: string, source: string }` | `{ ok: true }` |
 | `browser.addstyle` | `{ surfaceId?: string, source: string }` | `{ ok: true }` |
+
+`browser.eval`, `browser.addscript`, and `browser.addstyle` reject payloads larger than 256 KiB — this only affects pathologically large scripts or stylesheets.
 
 ## Find / DevTools
 

@@ -7,6 +7,40 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.3.172 — Revue de sécurité & durcissement de l'architecture
+
+Une revue de code complète (`doc/full_app_review_2026-05.md`) a déclenché une vague de correctifs de sécurité bloquants, de nettoyages de dépendances/outillage et une décomposition de l'architecture. Du plus récent au plus ancien.
+
+### Sécurité (0.3.161 → 0.3.167)
+
+- **Le miroir web respecte votre bind + jeton d'authentification au démarrage automatique (0.3.161).** Auparavant, le jeton (`webMirrorAuthToken`) et le bind `127.0.0.1` n'étaient appliqués que via le bouton manuel des Réglages ; lors du démarrage automatique du miroir (ou d'un changement de port), il se liait silencieusement à `0.0.0.0` **sans authentification**. Corrigé — votre jeton / bind loopback configuré prennent désormais effet au démarrage automatique.
+- **La liste d'autorisation Telegram est vide par défaut et fonctionne en mode fermé (0.3.161).** `telegramAllowedUserIds` n'embarque plus d'identifiant codé en dur, et une liste vide **rejette désormais tous** les messages entrants + appuis sur les boutons de notification (auparavant : tout le monde était accepté). Saisissez votre identifiant Telegram numérique dans **Réglages → Telegram** pour activer le contrôle à distance.
+- **Le HTML/SVG sideband est mis en bac à sable dans le miroir web (0.3.161).** Le balisage `meta.data` inline des panneaux s'affiche désormais dans le même `<iframe>` en bac à sable (CSP `script-src 'none'`) que les trames binaires, fermant une faille XSS sur le réseau local.
+- **Rotation du jeton d'authentification à chaud (0.3.162).** Modifier le jeton / le bind du miroir dans les Réglages prend désormais effet sans redémarrage ; la rotation du jeton réinitialise aussi le verrou anti-force-brute.
+- **`ht browser navigate` rejette `file://` (0.3.162).** Empêche la lecture de fichiers locaux arbitraires via un panneau au travers du socket ; `http(s)://`, `about:`, `data:`, `chrome-extension://` fonctionnent toujours. `browser.eval` / `addscript` / `addstyle` partagent désormais un plafond de charge utile de 256 Kio.
+- **Durcissement supplémentaire (0.3.162).** Limiteur anti-force-brute indexé sur l'IP réelle du pair (et non un en-tête falsifiable) ; les fichiers de réglages + cookies sont créés en `0600` dès le premier octet (+ `fsync` pour la durabilité en cas de coupure) ; le journal sur disque masque les jetons Telegram / d'authentification.
+- **Jeton de socket RPC optionnel (0.3.163, désactivé par défaut).** **Réglages → Réseau → « Exiger un jeton de socket RPC »** protège les commandes `ht` modifiant l'état (saisie dans les panneaux, arrêt de processus) derrière un jeton généré à chaque démarrage ; les diagnostics en lecture seule restent ouverts. Défense en profondeur contre les processus opportunistes du même utilisateur — pas une frontière dure. Nouvelle variable `HT_RPC_TOKEN_PATH`.
+- **Toutes les vulnérabilités de l'audit de dépendances corrigées (0.3.167).** `bun audit` est passé de 7 à 0 via des `overrides` ciblés (ws, ip-address, brace-expansion, basic-ftp).
+
+### Architecture & outillage (0.3.164 → 0.3.172)
+
+- **Migration de xterm vers `@xterm/xterm@6` (0.3.164).** Le cœur de la webview est désormais aligné avec les addons + headless v6 qu'elle utilisait déjà (l'ancien `xterm@5.3.0` non scopé et déprécié a disparu). Aucun changement visible.
+- **Le modal ask-user obtient un style Haut Contraste (0.3.164).** L'invite de confirmation « This will execute on your machine » retombait auparavant sur le style par défaut en Haut Contraste Windows / `prefers-contrast` (le CSS visait une classe que le modal n'émet jamais). Corrigé.
+- **Versionnement du schéma de réglages (0.3.165).** `settings.json` porte désormais un `__schemaVersion` + un moteur de migrations ordonnées, afin qu'un futur renommage/suppression de champ ne perde pas silencieusement vos données.
+- **Hygiène de la chaîne d'approvisionnement (0.3.166).** Une configuration Renovate + un scan de vulnérabilités de dépendances non bloquant (`bun audit`) dans la CI.
+- **eslint corrigé + intégré à la CI (0.3.168).** Une configuration eslint plate limitée au TypeScript écrit par le projet (la précédente parcourait les arbres de travail git `.claude/` → ~22 k erreurs fictives et n'était jamais exécutée).
+- **Décomposition de `SurfaceManager` (0.3.169 → 0.3.171).** Les responsabilités des surfaces navigateur / Telegram / éditeur / agent ont été extraites dans des contrôleurs dédiés — ~285 lignes nettes en moins du module de 2 700 lignes. Refactorisation interne pure ; aucun changement de comportement.
+- **Consolidation de la marque (0.3.172).** Identifiants de marque centralisés dans un seul module ; la CLI `ht` affiche désormais « τ-mux » au lieu de « HyperTerm Canvas ». (Le dossier de config, l'identifiant de bundle et le nom du socket restent pour la rétrocompatibilité.)
+- **Garde-fous CI / release.** Le workflow de release exécute désormais typecheck + tests avant de publier les binaires ; la CI relance les specs e2e fonctionnelles (non-pixel) de sécurité du miroir web et le lint à chaque push.
+
+### 0.3.x antérieur (0.3.150 → 0.3.160)
+
+- **Complétude de la palette de commandes (0.3.150).** ~30 verbes supplémentaires accessibles via ⌘⇧P — opérations d'espace de travail, de panneau, de navigateur, de thème et d'éditeur.
+- **Verbes de renommage CLI à détection automatique (0.3.151).** `ht rename-workspace NOM` / `ht rename-surface NOM` résolvent la cible depuis `HT_SURFACE` lorsqu'ils sont lancés dans un panneau (pas besoin de `--workspace`).
+- **Positionnement des candidats IME (0.3.153).** Le terminal natif + le miroir web ne forcent plus le textarea auxiliaire de xterm hors écran, donc les fenêtres de candidats IME apparaissent au curseur.
+- **Opacité des invites ask/plan + fiabilité du premier plan (0.3.154 → 0.3.158).** Les invites s'affichent en superpositions bloquantes globales avec une feuille + un voile opaques ; cause racine : la webview native ne chargeait pas la feuille de tokens de design `--ht-*` (désormais liée dans `index.html`).
+- **Parité de dimensionnement du terminal du miroir web (0.3.160).** Le calcul des cellules web/natif est aligné (marge des panneaux, plomberie de redimensionnement, epsilon sous-pixel) pour que `clear` ne fasse plus apparaître un `%` parasite et que les longues lignes ne soient plus coupées d'une colonne.
+
 ## 0.3.x — Polissage Triple-A (Phases 6 → 9)
 
 La série 0.3 a déroulé une vague de polissage multi-phases en notant chaque fonctionnalité selon une grille S/A/B/C et en relevant des manques concrets à chaque session. Le travail est suivi dans `doc/feature_grades.json` + `doc/feature_grades.md` + les fichiers `doc/tracking_feature_upgrade_to_AAA_phase*.md` du dépôt.
