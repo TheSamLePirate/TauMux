@@ -1057,6 +1057,17 @@ export class SettingsPanel {
     // button + a regenerate action so users don't have to hand-edit
     // settings.json to rotate it.
     this.renderAuthTokenRow(c, s);
+
+    // W2 (full_app_review_2026-05.md §6.1) — opt-in RPC socket token.
+    this.toggleField(
+      c,
+      "Require RPC socket token",
+      s.rpcSocketRequireToken,
+      "rpcSocketRequireToken",
+      {
+        note: "Require the `ht` CLI to present a per-boot token for state-mutating commands (typing into panes, killing processes). Hardens against other same-user processes driving your terminal. The bundled `ht` and pi/Claude bridges read the token automatically; older external `ht` installs lose mutating commands until updated.",
+      },
+    );
   }
 
   /** P7 S8 / H.9 — auth-token row: shows the current token (masked

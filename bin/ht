@@ -6,8 +6,26 @@
 
 import { connect } from "net";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const SOCKET_PATH = process.env["HT_SOCKET_PATH"] || "/tmp/hyperterm.sock";
+
+// W2 (full_app_review_2026-05.md §6.1) — the app writes a per-boot RPC token
+// to `socket.token` beside the socket. We always present it; the app only
+// ENFORCES it when the user enables "Require RPC socket token". Reading it is
+// best-effort — if the file is absent (token disabled / old app), we send no
+// token and read-only verbs still work. `HT_RPC_TOKEN_PATH` overrides.
+const RPC_TOKEN_PATH =
+  process.env["HT_RPC_TOKEN_PATH"] ||
+  join(dirname(SOCKET_PATH), "socket.token");
+function readRpcToken(): string {
+  try {
+    return readFileSync(RPC_TOKEN_PATH, "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
+const RPC_TOKEN = readRpcToken();
 
 /** Shared browser-help block. Used by the global `ht --help` banner
  *  (interpolated into `printHelp`), by `ht browser help`, and by the
@@ -1111,7 +1129,9 @@ function runRpc(
   timeoutMs: number = 5000,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const payload = JSON.stringify({ id: "1", method, params }) + "\n";
+    const req: Record<string, unknown> = { id: "1", method, params };
+    if (RPC_TOKEN) req["__token"] = RPC_TOKEN;
+    const payload = JSON.stringify(req) + "\n";
     const sock = connect(SOCKET_PATH);
     let buf = "";
     let done = false;

@@ -1,9 +1,36 @@
 import { chmodSync, existsSync, unlinkSync } from "fs";
+import { timingSafeEqual } from "node:crypto";
+import {
+  RPC_TOKEN_FIELD,
+  UNAUTHENTICATED_RPC_METHODS,
+} from "../shared/rpc-token";
 
 type RpcHandler = (
   method: string,
   params: Record<string, unknown>,
 ) => unknown | Promise<unknown>;
+
+/** W2 (full_app_review_2026-05.md §6.1) — optional per-boot token gate.
+ *  When `requireToken()` is true, every state-mutating method must carry a
+ *  matching `__token`; read-only diagnostics (UNAUTHENTICATED_RPC_METHODS)
+ *  stay open. OFF by default — see settings.rpcSocketRequireToken. */
+export interface SocketAuthOptions {
+  /** The expected token (per-boot random). Empty = no token configured. */
+  token?: string;
+  /** Read live so toggling the setting takes effect without a restart. */
+  requireToken?: () => boolean;
+}
+
+/** Constant-time string compare that tolerates unequal lengths without
+ *  leaking which via an early return (length is masked by comparing to a
+ *  fixed-length digest is overkill here; we just guard the length check). */
+function tokenMatches(provided: unknown, expected: string): boolean {
+  if (typeof provided !== "string" || expected.length === 0) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 interface SocketData {
   buffer: string;
@@ -28,6 +55,7 @@ export class SocketServer {
   constructor(
     private socketPath: string,
     private handler: RpcHandler,
+    private auth: SocketAuthOptions = {},
   ) {}
 
   async start(): Promise<void> {
@@ -121,6 +149,27 @@ export class SocketServer {
                 id = req.id ?? 0;
                 const method = req.method as string;
                 const params = (req.params as Record<string, unknown>) ?? {};
+
+                // W2 — token gate. Enforced only when the setting is on.
+                // Read-only diagnostics stay open so `ht doctor` can still
+                // report a mismatch. The `__token` field is read here and
+                // never forwarded into handler params or the rpc audit.
+                if (
+                  this.auth.requireToken?.() &&
+                  !UNAUTHENTICATED_RPC_METHODS.has(method)
+                ) {
+                  const provided = req[RPC_TOKEN_FIELD];
+                  if (!tokenMatches(provided, this.auth.token ?? "")) {
+                    const response =
+                      JSON.stringify({
+                        id,
+                        error:
+                          "auth required: this τ-mux requires an RPC token for state-mutating methods. Update your `ht` / bridge (it reads the token automatically) or disable Settings → Network → 'Require RPC socket token'.",
+                      }) + "\n";
+                    socket.write(response);
+                    continue;
+                  }
+                }
 
                 const result = await this.handler(method, params);
                 const response = JSON.stringify({ id, result }) + "\n";

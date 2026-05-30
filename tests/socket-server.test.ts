@@ -9,10 +9,13 @@ async function sendRpc(
   socketPath: string,
   method: string,
   params: Record<string, unknown> = {},
+  token?: string,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const sock = connect(socketPath);
-    const payload = JSON.stringify({ id: "1", method, params }) + "\n";
+    const req: Record<string, unknown> = { id: "1", method, params };
+    if (token !== undefined) req["__token"] = token;
+    const payload = JSON.stringify(req) + "\n";
 
     sock.on("connect", () => sock.write(payload));
     sock.on("data", (d) => {
@@ -235,5 +238,107 @@ describe("SocketServer", () => {
     });
 
     expect(res.id).toBe("my-custom-id");
+  });
+});
+
+// W2 (full_app_review_2026-05.md §6.1) — opt-in RPC token gate. When
+// requireToken() is true, mutating methods need a matching `__token`;
+// read-only diagnostics (system.*) stay open. Default-off behaviour is
+// covered by all the tests above (they construct SocketServer with no auth).
+describe("SocketServer — RPC token gate (W2)", () => {
+  const TOKEN = "deadbeefdeadbeefdeadbeefdeadbeef";
+  let server: SocketServer | null = null;
+  let enforce = true;
+
+  afterEach(() => {
+    server?.stop();
+    server = null;
+    enforce = true;
+  });
+
+  function startGated(): void {
+    server = new SocketServer(TEST_SOCKET, (method) => `ok:${method}`, {
+      token: TOKEN,
+      requireToken: () => enforce,
+    });
+  }
+
+  test("mutating method without a token is rejected when enforcing", async () => {
+    startGated();
+    await server!.start();
+    const res = (await sendRpc(TEST_SOCKET, "surface.send_text")) as {
+      error?: string;
+      result?: string;
+    };
+    expect(res.result).toBeUndefined();
+    expect(res.error).toContain("auth required");
+  });
+
+  test("mutating method with the correct token is accepted", async () => {
+    startGated();
+    await server!.start();
+    const res = (await sendRpc(
+      TEST_SOCKET,
+      "surface.send_text",
+      {},
+      TOKEN,
+    )) as { result?: string };
+    expect(res.result).toBe("ok:surface.send_text");
+  });
+
+  test("mutating method with a wrong token is rejected", async () => {
+    startGated();
+    await server!.start();
+    const res = (await sendRpc(
+      TEST_SOCKET,
+      "surface.send_text",
+      {},
+      "wrong-token-wrong-token-wrong-tok",
+    )) as { error?: string };
+    expect(res.error).toContain("auth required");
+  });
+
+  test("read-only diagnostics work WITHOUT a token even when enforcing", async () => {
+    startGated();
+    await server!.start();
+    for (const m of ["system.version", "system.identify", "system.tree"]) {
+      const res = (await sendRpc(TEST_SOCKET, m)) as { result?: string };
+      expect(res.result).toBe(`ok:${m}`);
+    }
+  });
+
+  test("system.shutdown is NOT exempt — needs the token", async () => {
+    startGated();
+    await server!.start();
+    const res = (await sendRpc(TEST_SOCKET, "system.shutdown")) as {
+      error?: string;
+    };
+    expect(res.error).toContain("auth required");
+  });
+
+  test("when enforcement is off, a mutating method needs no token", async () => {
+    enforce = false;
+    startGated();
+    await server!.start();
+    const res = (await sendRpc(TEST_SOCKET, "surface.send_text")) as {
+      result?: string;
+    };
+    expect(res.result).toBe("ok:surface.send_text");
+  });
+
+  test("__token is not forwarded into handler params", async () => {
+    let seenParams: Record<string, unknown> = {};
+    server = new SocketServer(
+      TEST_SOCKET,
+      (_m, params) => {
+        seenParams = params;
+        return "ok";
+      },
+      { token: TOKEN, requireToken: () => true },
+    );
+    await server.start();
+    await sendRpc(TEST_SOCKET, "surface.send_text", { a: 1 }, TOKEN);
+    expect(seenParams).toEqual({ a: 1 });
+    expect("__token" in seenParams).toBe(false);
   });
 });

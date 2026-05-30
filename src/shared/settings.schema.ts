@@ -251,6 +251,11 @@ export const SETTINGS_FIELD_SCHEMAS = {
     "0.0.0.0",
   ]),
 
+  // W2 — opt-in RPC socket token enforcement. boolStrict so only a real
+  // boolean flips it (a stray truthy value can't silently enable a
+  // security mode).
+  rpcSocketRequireToken: boolStrict(false),
+
   // S15 string-trim batch
   webMirrorAuthToken: stringTrim(""),
   telegramBotToken: stringTrim(""),

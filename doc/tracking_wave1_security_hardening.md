@@ -71,4 +71,4 @@ Legend: ⬜ todo · 🔄 in progress · ✅ done · ⚠️ deviation
 - `tests/atomic-write.test.ts` (+1: forces 0600 on a reused loose .tmp), `tests/hardening.test.ts` (+2: addscript/addstyle cap), `tests/rpc-handler-browser.test.ts` (flipped file:// → rejected; about:/https:// accepted).
 
 ## Commit / release
-- (pending bump + commit — recorded below)
+- **Committed** on `main` as **`edd5869a`** (v0.3.162). `bun run bump:patch` ran first (0.3.161 → 0.3.162; synced electrobun.config.ts, rpc-handlers/system.ts, website-doc {en,fr}/{cli,api}/system.md). 23 files, +477/-55. Not pushed.

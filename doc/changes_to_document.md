@@ -15,6 +15,14 @@ _Backlog cleared 2026-05-18 — full sweep folded every M11–M18 web-mirror par
 
 _(Always add new items below the cleared line above. When folding into the website, bump the version notes in api/system.md + cli/system.md + their French mirrors, and clear the backlog by overwriting the "Pending —" entries with a fresh "Backlog cleared <date> — …" line.)_
 
+## Pending — 2026-05-30 (Wave 2 — opt-in RPC socket token)
+
+Source: `doc/full_app_review_2026-05.md` §6.1. Tracking: `doc/tracking_wave2_socket_token.md`.
+
+- **Optional RPC socket token (default OFF)** — new setting **Settings → Network → "Require RPC socket token"**. When enabled, the `ht` socket requires a per-boot token (`socket.token`, 0600, beside the socket) for state-mutating commands; read-only diagnostics stay open. The bundled `ht` and the pi/Claude bridges read+present it automatically; older external `ht` installs lose mutating commands until updated. New env override `HT_RPC_TOKEN_PATH`.
+  - Document the setting + threat model (defense-in-depth vs opportunistic same-user processes, not a hard boundary) on a security/config page (en + fr); add a changelog entry. Note `HT_RPC_TOKEN_PATH` in the `ht` env-var reference.
+  - **Deferred (noted):** OS-keystore encryption of cookies/secrets at rest — Electrobun has no persistent Keychain API; planned as a separate change.
+
 ## Pending — 2026-05-30 (Wave 1 security hardening)
 
 Source: `doc/full_app_review_2026-05.md` §1.1 Wave 1. Tracking: `doc/tracking_wave1_security_hardening.md`.

@@ -24,8 +24,12 @@ import {
   readFileSync,
   readlinkSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { writeFileAtomic } from "./atomic-write";
+import { rpcTokenPathForSocket } from "../shared/rpc-token";
 import type {
   TauMuxRPC,
   PersistedLayout,
@@ -2178,6 +2182,25 @@ if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
 // Expose path to child shells so the `ht` CLI can locate the server
 process.env["HT_SOCKET_PATH"] = socketPath;
 
+// W2 (full_app_review_2026-05.md §6.1) — per-boot RPC token. Always written
+// (0600, beside the socket) so the bundled `ht` + pi bridge can present it;
+// the SocketServer only ENFORCES it when settings.rpcSocketRequireToken is
+// on (opt-in). Regenerated each launch — a token never outlives the process
+// that owns the socket. Best-effort: a write failure just means enforcement
+// can't be satisfied, which the user only hits if they opt in.
+const rpcTokenPath = rpcTokenPathForSocket(socketPath);
+let rpcToken = "";
+try {
+  rpcToken = randomBytes(32).toString("hex");
+  writeFileAtomic(rpcTokenPath, rpcToken, { mode: 0o600 });
+} catch (err) {
+  rpcToken = "";
+  console.warn(
+    `[socket] could not write RPC token file (${rpcTokenPath}); token enforcement will reject all mutating calls if enabled:`,
+    err instanceof Error ? err.message : String(err),
+  );
+}
+
 // Audit registry — rebuilt from settings on demand so a flipped
 // `auditsGitUserNameExpected` adds / removes the audit without a
 // restart. The cached `lastAuditResults` powers `audit.list` so the
@@ -2406,7 +2429,10 @@ setWebviewHandlerLateBindings({
   domReadyDebounce,
 });
 
-const socketServer = new SocketServer(socketPath, socketHandler);
+const socketServer = new SocketServer(socketPath, socketHandler, {
+  token: rpcToken,
+  requireToken: () => settingsManager.get().rpcSocketRequireToken,
+});
 await socketServer.start();
 // Health: socket lifecycle. SocketServer no longer overwrites a live peer
 // (issue B4/B5 in doc/full_analysis.md) so the bind can fail when another
@@ -2866,6 +2892,13 @@ async function gracefulShutdown(): Promise<void> {
     socketServer.stop();
   } catch (err) {
     console.warn("[main] socketServer.stop failed:", err);
+  }
+  // W2 — remove the per-boot RPC token so it doesn't linger after the
+  // socket it authorised is gone. Best-effort; absence is harmless.
+  try {
+    if (rpcToken) unlinkSync(rpcTokenPath);
+  } catch {
+    /* file may already be gone */
   }
   try {
     sessions.destroy();

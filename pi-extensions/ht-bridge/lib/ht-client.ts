@@ -22,9 +22,27 @@
  */
 
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createConnection } from "node:net";
+import { dirname, join } from "node:path";
 import type { Config } from "./config";
 import { debugEnabled } from "./config";
+
+// W2 (full_app_review_2026-05.md §6.1) — present the per-boot RPC token the
+// app writes beside the socket (`socket.token`). Always sent; the app only
+// enforces it when the user enables "Require RPC socket token". Read per call
+// (cheap, local) so an app restart's new token is picked up without
+// restarting the bridge. Absent file ⇒ no token (back-compat). Env override.
+function readRpcToken(socketPath: string): string {
+  try {
+    const p =
+      process.env.HT_RPC_TOKEN_PATH ||
+      join(dirname(socketPath), "socket.token");
+    return readFileSync(p, "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
 
 export interface HtCallOptions {
   /** Reject if no reply arrives within this many ms. Default 5_000.
@@ -211,7 +229,10 @@ function callViaSocket<T>(
     }
 
     socket.once("connect", () => {
-      const payload = JSON.stringify({ id: 1, method, params }) + "\n";
+      const req: Record<string, unknown> = { id: 1, method, params };
+      const token = readRpcToken(socketPath);
+      if (token) req.__token = token;
+      const payload = JSON.stringify(req) + "\n";
       socket.write(payload);
     });
 

@@ -116,6 +116,14 @@ export interface AppSettings {
   /** Optional auth token. When set, GET / and WS upgrade require
    *  `?t=<token>`. Empty string disables auth (back-compat default). */
   webMirrorAuthToken: string;
+  /** W2 (full_app_review_2026-05.md §6.1): when true, the `ht` RPC socket
+   *  requires a per-boot token (written to `socket.token` beside the socket)
+   *  for state-mutating methods. Defense-in-depth against an opportunistic
+   *  same-user process speaking JSON-RPC to a well-known socket path. OFF by
+   *  default so existing `ht` / bridge installs keep working until opted in;
+   *  the bundled `ht` + pi bridge always present the token. Read-only
+   *  diagnostics stay open. */
+  rpcSocketRequireToken: boolean;
 
   // Scripts
   /** Command used to run `package.json` scripts from the sidebar. */
@@ -729,6 +737,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   autoStartWebMirror: false,
   webMirrorBind: "0.0.0.0",
   webMirrorAuthToken: "",
+  rpcSocketRequireToken: false,
 
   packageRunner: "bun",
 
@@ -859,6 +868,10 @@ export function validateSettings(s: AppSettings): AppSettings {
     webMirrorAuthToken: SETTINGS_FIELD_SCHEMAS.webMirrorAuthToken.validate(
       s.webMirrorAuthToken,
     ),
+    rpcSocketRequireToken:
+      SETTINGS_FIELD_SCHEMAS.rpcSocketRequireToken.validate(
+        s.rpcSocketRequireToken,
+      ),
     paneGap: SETTINGS_FIELD_SCHEMAS.paneGap.validate(s.paneGap),
     sidebarWidth: SETTINGS_FIELD_SCHEMAS.sidebarWidth.validate(s.sidebarWidth),
     notificationSoundEnabled:
