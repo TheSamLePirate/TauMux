@@ -1,6 +1,6 @@
 {
   "name": "tau-mux",
-  "version": "0.3.167",
+  "version": "0.3.168",
   "type": "module",
   "description": "A hybrid terminal emulator with structured rendering channels",
   "bin": {
@@ -44,6 +44,8 @@
     "test:all": "bun run test && bun run test:e2e",
     "test:full-suite": "bun run typecheck && bun run test && rm -rf .design-artifacts && bun run test:e2e && bun run test:native && bun scripts/build-design-report.ts --gate && bun run test:design:audit",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "bump:patch": "bun scripts/bump-version.ts patch",
     "bump:minor": "bun scripts/bump-version.ts minor",
     "bump:major": "bun scripts/bump-version.ts major",
@@ -79,6 +81,7 @@
     "@types/pngjs": "^6.0.5",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/parser": "^8.58.0",
+    "eslint": "^10.2.0",
     "happy-dom": "^20.9.0",
     "pixelmatch": "^7.1.0",
     "pngjs": "^7.0.0",

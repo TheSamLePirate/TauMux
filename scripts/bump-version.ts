@@ -176,7 +176,7 @@ function updateApiDoc(next: string, path: string): void {
 // ---------------------------------------------------------------------------
 
 /** Run a git command and return stdout (trimmed). Throws on non-zero exit. */
-function git(args: string[], opts: { silent?: boolean } = {}): string {
+function git(args: string[], _opts: { silent?: boolean } = {}): string {
   const r = Bun.spawnSync(["git", ...args], {
     cwd: ROOT,
     stdout: "pipe",

@@ -28,12 +28,6 @@ async function loadSidebar() {
   return await import("../src/views/terminal/sidebar");
 }
 
-type ShapedWorkspaceInfo = Awaited<
-  ReturnType<typeof loadSidebar>
->["WorkspaceInfo" extends never ? never : never] extends never
-  ? never
-  : never;
-
 interface WsSeed {
   id: string;
   name?: string;

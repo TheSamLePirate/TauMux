@@ -34,7 +34,6 @@ const indexCss = readFileSync(
 const T3_BLOCK_MARK = "/* Final alignment: exact t3code-style dark shell";
 const t3End = indexCss.indexOf(T3_BLOCK_MARK);
 if (t3End < 0) throw new Error("t3 block marker not found");
-const T3_BLOCK_START_MARK = "#titlebar {";
 // First #titlebar { in the file is the base, we want the one inside
 // the t3 override block — find the LAST occurrence before the marker.
 const t3Start = indexCss.lastIndexOf("#titlebar {", t3End);

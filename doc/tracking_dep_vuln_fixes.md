@@ -25,4 +25,4 @@ Surgical `overrides` in package.json (don't bump electrobun 1.16.0 → 1.18.1 �
 - `bun start`: ✅ boots cleanly — electrobun's internal server (which owns the proxy-agent/get-uri/basic-ftp chain) starts with no FTP/proxy/module-resolution errors, confirming the basic-ftp 6.x major override doesn't break the unused FTP path.
 
 ## Commit / release
-- (recorded below)
+- **Committed** on `main` as **`f987cff3`** (v0.3.167). 10 files, +51/-15. Not pushed.

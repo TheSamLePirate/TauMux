@@ -37,6 +37,12 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Lint
+        # eslint (flat config) over the project's authored TypeScript. The
+        # config scopes out worktrees / generated bundles so this is fast
+        # and meaningful; the tree is currently error- and warning-clean.
+        run: bun run lint
+
       - name: Unit + integration tests
         # Don't run with DEBUG=* etc. — the noisy [session] / [web]
         # logs are already captured by bun:test on failure.

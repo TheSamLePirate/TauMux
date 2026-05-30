@@ -99,7 +99,7 @@ function makeSandbox(opts: SandboxOpts): string {
   // Make a `scripts/` symlink-less copy: we run the real script via
   // an absolute path, so we just need the version-tracked files +
   // a git repo.
-  const paths = seedFiles(dir, opts.version);
+  seedFiles(dir, opts.version);
   sh(dir, "git", "init", "-q", "-b", "main");
   sh(dir, "git", "add", ".");
   sh(dir, "git", "commit", "-q", "-m", "initial");
