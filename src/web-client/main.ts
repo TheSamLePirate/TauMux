@@ -22,6 +22,7 @@ import { ICONS } from "./icons";
 import {
   createPanelRendererRegistry,
   releasePanelBlobUrl,
+  renderSandboxedMarkup,
 } from "./panel-renderers";
 import { createProtocolDispatcher } from "./protocol-dispatcher";
 import { createLayoutView } from "./layout";
@@ -1025,6 +1026,22 @@ function boot() {
     }
   }
 
+  /** C2 (full_app_review_2026-05.md): the inline `meta.data` path used to
+   *  do `contentEl.innerHTML = meta.data`, bypassing the iframe sandbox that
+   *  the binary-frame path uses — a LAN peer could inject script that ran in
+   *  the mirror origin (auth token + live stdin WebSocket). Route html/svg
+   *  through the same sandboxed renderer; never trust any other inline type
+   *  as HTML (use textContent). */
+  function applyInlinePanelData(contentEl: HTMLElement, meta: any) {
+    const type = meta.type;
+    const data = String(meta.data);
+    if (type === "html" || type === "svg") {
+      renderSandboxedMarkup(contentEl, data, type);
+    } else {
+      contentEl.textContent = data;
+    }
+  }
+
   function ensurePanelDom(id: string, ps: PanelState) {
     const existing = panelsDom[id];
     const meta: any = ps.meta;
@@ -1039,7 +1056,8 @@ function boot() {
         existing.el.style.height = meta.height + "px";
       if (meta.opacity !== undefined)
         existing.el.style.opacity = String(meta.opacity);
-      if (meta.data !== undefined) existing.contentEl.innerHTML = meta.data;
+      if (meta.data !== undefined)
+        applyInlinePanelData(existing.contentEl, meta);
       return;
     }
 
@@ -1090,7 +1108,7 @@ function boot() {
       setupPanelMouse(contentEl, id, ps.surfaceId, sendMsg);
     }
     panelsDom[id] = { el, contentEl, panelId: id };
-    if (meta.data !== undefined) contentEl.innerHTML = meta.data;
+    if (meta.data !== undefined) applyInlinePanelData(contentEl, meta);
 
     // Flush any binary frames that arrived before this DOM was created,
     // in arrival order.

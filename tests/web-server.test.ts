@@ -39,6 +39,9 @@ describe("WebServer", () => {
         activeWorkspaceId: null,
       }),
       () => surfaceId,
+      () => true,
+      "127.0.0.1",
+      "",
     );
     server.start();
     return server;
@@ -134,6 +137,9 @@ describe("WebServer", () => {
         activeWorkspaceId: "ws1",
       }),
       () => surfaceId,
+      () => true,
+      "127.0.0.1",
+      "",
     );
     server.start();
 

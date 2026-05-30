@@ -142,7 +142,7 @@ export function wrapped<T>(
 // (missing, undefined, empty string, non-string) falls back to the
 // documented default. Mirrors the prior inline `=== null ? null :
 // typeof X === "string" && X.length > 0 ? X : default` chain.
-export function nullableString(def: string): FieldSchema<string | null> {
+export function nullableString(def: string | null): FieldSchema<string | null> {
   return {
     default: def,
     validate(input) {
@@ -301,7 +301,8 @@ export const SETTINGS_FIELD_SCHEMAS = {
 
   // S16 nullable-string batch. auditsGitUserNameExpected: null opts out
   // of the audit, any non-empty string is the expected git user.
-  auditsGitUserNameExpected: nullableString("olivierveinand"),
+  // H0g: default null (opt-out) — never ship a specific person's username.
+  auditsGitUserNameExpected: nullableString(null),
 } as const;
 
 export type SchemaFieldName = keyof typeof SETTINGS_FIELD_SCHEMAS;

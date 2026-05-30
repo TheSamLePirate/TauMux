@@ -70,6 +70,9 @@ describe("web M7 — coalescing + dedup", () => {
         activeWorkspaceId: "ws1",
       }),
       () => surfaceId,
+      () => true,
+      "127.0.0.1",
+      "",
     );
     server.start();
     return { surfaceId, server };

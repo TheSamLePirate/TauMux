@@ -132,8 +132,14 @@ export class WebServer {
     private getAppState: () => AppState,
     private getFocusedSurfaceId: () => string | null,
     private getSidebarVisible: () => boolean = () => true,
-    private bind: "127.0.0.1" | "0.0.0.0" = "0.0.0.0",
-    private authToken: string = "",
+    // C1 (full_app_review_2026-05.md): bind + authToken are REQUIRED — no
+    // defaults. Defaulting security-sensitive params to the least-safe value
+    // (0.0.0.0 / no-auth) is the footgun that let the auto-start path silently
+    // ignore the user's configured bind/token. Making them required turns a
+    // forgotten arg into a typecheck error. All construction must go through
+    // the `createWebServer()` factory in index.ts.
+    private bind: "127.0.0.1" | "0.0.0.0",
+    private authToken: string,
   ) {}
 
   setOnHumanInput(fn: (surfaceId: string) => void): void {

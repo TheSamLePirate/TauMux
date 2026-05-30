@@ -73,10 +73,36 @@ jobs:
         # Exits 1 if any file regressed beyond the 0.5pp slack.
         run: bun run report:coverage:check
 
-  # Playwright e2e suites (web-mirror, native, packaged-app, screenshot-diff)
-  # were removed from CI on 2026-04-27. They were authored against pixel
-  # baselines that drift on the GitHub runner's font smoothing / accent
-  # rendering — green locally, red in CI. Re-introduce when the suites are
-  # robust against runner rendering differences. The scripts themselves
-  # remain on disk: `bun run test:e2e`, `bun run test:native`,
+  # H0c (full_app_review_2026-05.md) — the e2e suites were removed from CI
+  # on 2026-04-27 for pixel-baseline flake, but that also took the
+  # FUNCTIONAL web-mirror security specs (auth 401, cross-origin WS
+  # rejection, protocol framing) offline. Those carry no screenshots, so
+  # they're runner-stable. This job runs ONLY the top-level functional
+  # specs; the pixel/design suite under tests-e2e/design/ stays out of the
+  # PR path (run it nightly once thresholds + masking are tuned).
+  e2e-functional:
+    name: Functional e2e (web mirror)
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browser (chromium)
+        run: bunx playwright install --with-deps chromium
+
+      - name: Functional web-mirror e2e
+        run: bun run test:e2e:functional
+
+  # The PIXEL/design e2e suites (native, packaged-app, screenshot-diff)
+  # remain OFF the PR path: they were authored against pixel baselines that
+  # drift on the GitHub runner's font smoothing / accent rendering. The
+  # scripts remain on disk: `bun run test:native`,
   # `bun run test:native:packaged`, `bun run report:design`.

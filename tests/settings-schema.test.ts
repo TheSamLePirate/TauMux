@@ -415,11 +415,14 @@ describe("validateSettings uses the schema for S16 final-simple fields", () => {
     });
     expect(custom.auditsGitUserNameExpected).toBe("alice");
 
+    // H0g (full_app_review_2026-05.md): the schema default is now `null`
+    // (audit opt-out) — no specific person's git username ships in defaults.
+    // An empty string therefore falls back to null, not a hardcoded name.
     const empty = validateSettings({
       ...DEFAULT_SETTINGS,
       auditsGitUserNameExpected: "" as string,
     });
-    expect(empty.auditsGitUserNameExpected).toBe("olivierveinand");
+    expect(empty.auditsGitUserNameExpected).toBe(null);
   });
 
   test("shellPath / fontFamily pass through string input verbatim", () => {

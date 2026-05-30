@@ -168,6 +168,55 @@ describe("[S2/H.7] mirror sandbox — SVG payloads", () => {
   });
 });
 
+// C2 (full_app_review_2026-05.md): the inline `meta.data` path in main.ts
+// used to do `contentEl.innerHTML = meta.data`, a SECOND html/svg sink that
+// bypassed the iframe sandbox entirely. It now routes through the shared
+// `renderSandboxedMarkup` (the same shell renderHtml/renderSvg use). These
+// tests pin that the inline sink is sandboxed too. `renderSandboxedMarkup`
+// takes already-decoded raw markup (no base64), matching the inline path.
+describe("[C2] inline meta.data sink routes through the sandbox", () => {
+  test("renderSandboxedMarkup renders into the sandbox iframe, not innerHTML", async () => {
+    const { renderSandboxedMarkup } = await load();
+    const el = document.createElement("div");
+    renderSandboxedMarkup(
+      el,
+      "<div class='inline-not-iframe'>hi</div>",
+      "html",
+    );
+    const iframe = findIframe(el);
+    expect(el.children.length).toBe(1);
+    expect(el.firstElementChild).toBe(iframe);
+    // Raw markup must NOT have been pasted into the host element.
+    expect(el.querySelector(".inline-not-iframe")).toBeNull();
+  });
+
+  test("a malicious onerror/script in inline data is sandboxed, not live in the host", async () => {
+    const { renderSandboxedMarkup } = await load();
+    const el = document.createElement("div");
+    const payload = "<img src=x onerror='window.parent.__pwned=true'>";
+    renderSandboxedMarkup(el, payload, "html");
+    const iframe = findIframe(el);
+    // The bytes live inside the sandboxed srcdoc...
+    expect(iframe.srcdoc).toContain("__pwned");
+    // ...but no live <img> node was created in the mirror's own DOM, and
+    // the sandbox attribute denies script execution.
+    expect(el.querySelector("img")).toBeNull();
+    expect(iframe.getAttribute("sandbox")).toBe("");
+    expect(iframe.srcdoc).toContain("script-src 'none'");
+  });
+
+  test("renderHtml and the inline sink share one iframe shell", async () => {
+    const { renderHtml, renderSandboxedMarkup } = await load();
+    const elBinary = document.createElement("div");
+    renderHtml(elBinary, encodeB64("<p>binary</p>"), {});
+    const elInline = document.createElement("div");
+    renderSandboxedMarkup(elInline, "<p>inline</p>", "html");
+    // Both produce the same sandboxed-iframe structure (one sink).
+    expect(findIframe(elBinary).getAttribute("sandbox")).toBe("");
+    expect(findIframe(elInline).getAttribute("sandbox")).toBe("");
+  });
+});
+
 describe("[S2/H.7] mirror sandbox — innerHTML escape hatch is gone", () => {
   test("renderHtml never writes raw payload to contentEl.innerHTML", async () => {
     const { renderHtml } = await load();

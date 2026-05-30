@@ -15,7 +15,11 @@ function withAllowed(input: string): string {
 }
 
 describe("Telegram settings — allow-list normalization", () => {
-  test("empty string stays empty (allow-all)", () => {
+  // Normalization keeps "" as "". NOTE: an empty allow-list now fails
+  // CLOSED at the TelegramService layer (rejects everyone) — see
+  // tests/telegram-service.test.ts. This test only covers the string
+  // normalization, which is unchanged.
+  test("empty string stays empty", () => {
     expect(withAllowed("")).toBe("");
   });
 

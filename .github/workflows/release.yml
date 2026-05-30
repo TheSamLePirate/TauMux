@@ -62,12 +62,38 @@ jobs:
           fi
 
   # ──────────────────────────────────────────────────────────────────
+  # H0b (full_app_review_2026-05.md): gate the release on the SAME
+  # typecheck + unit tests CI runs. Without this, a tag pushed against a
+  # red / untested commit shipped binaries to users — the CI gate and the
+  # release gate were fully decoupled. `build-and-upload` now `needs` this.
+  # ──────────────────────────────────────────────────────────────────
+  verify:
+    name: Verify (typecheck + tests)
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Unit + integration tests
+        run: bun test
+
+  # ──────────────────────────────────────────────────────────────────
   # Build per-OS and upload artifacts to the release. fail-fast: false
   # so a Linux failure doesn't block macOS / Windows uploads.
   # ──────────────────────────────────────────────────────────────────
   build-and-upload:
     name: Build (${{ matrix.label }})
-    needs: create-release
+    needs: [create-release, verify]
     # fail-fast: false so a Windows breakage doesn't kill macOS + Linux.
     # continue-on-error: per-row so the run is "green if at least the
     # required platforms succeed". Windows is best-effort until the

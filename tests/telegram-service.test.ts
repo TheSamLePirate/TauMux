@@ -138,15 +138,23 @@ describe("TelegramService", () => {
     expect(db.countMessages("chat-rando")).toBe(0);
   });
 
-  test("empty allowed list accepts everyone", async () => {
+  // H0a (full_app_review_2026-05.md): an empty allow-list must FAIL CLOSED.
+  // Previously the guard was `allowed.size > 0 && !allowed.has(id)`, so an
+  // empty list skipped the check and accepted every inbound message — an
+  // open relay into a terminal-control channel. It now rejects everyone.
+  test("empty allowed list rejects everyone (fail-closed)", async () => {
     const stub = createStubTransport();
     const incoming: number[] = [];
+    const warnings: string[] = [];
     const service = new TelegramService({
       token: "t",
       allowedUserIds: "",
       db,
       transport: stub.transport,
       onIncoming: (m) => incoming.push(m.id),
+      onLog: (level, msg) => {
+        if (level === "warn") warnings.push(msg);
+      },
     });
     service.start();
 
@@ -166,7 +174,10 @@ describe("TelegramService", () => {
     await new Promise((r) => setTimeout(r, 30));
     await service.stop();
 
-    expect(incoming).toHaveLength(1);
+    // Dropped, not persisted, and the one-time warning fired.
+    expect(incoming).toHaveLength(0);
+    expect(db.countMessages("anyone")).toBe(0);
+    expect(warnings.some((w) => w.includes("allow-list is empty"))).toBe(true);
   });
 
   test("sendMessage persists outgoing rows even when API succeeds", async () => {

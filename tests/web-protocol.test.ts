@@ -82,6 +82,9 @@ describe("web protocol v2", () => {
         activeWorkspaceId: opts.activeWorkspaceId ?? null,
       }),
       () => surfaceId,
+      () => true,
+      "127.0.0.1",
+      "",
     );
     server.start();
     return { surfaceId, server };

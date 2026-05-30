@@ -707,7 +707,9 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   terminalBloom: false,
   bloomIntensity: 0,
   terminalOsc94Enabled: true,
-  auditsGitUserNameExpected: "olivierveinand",
+  // H0g (full_app_review_2026-05.md): null = audit opt-out. Must NOT ship a
+  // specific person's git username in the defaults every user inherits.
+  auditsGitUserNameExpected: null,
   notificationOverlayEnabled: true,
   notificationOverlayMs: 6000,
   workspaceCardDensity: "comfortable",
@@ -767,9 +769,13 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
 
   telegramEnabled: false,
   telegramBotToken: "",
-  // Pre-fill the user's own ID so the bot ignores DMs from random
-  // accounts the moment it goes live. Trim/edit in Settings → Telegram.
-  telegramAllowedUserIds: "8446656662",
+  // C4 (full_app_review_2026-05.md): MUST be empty by default. A hardcoded
+  // numeric id here is (a) a third party's account shipped to every install
+  // and (b) an account that can drive the terminal once Telegram buttons are
+  // enabled. Empty is now fail-CLOSED (TelegramService rejects all inbound),
+  // so the user must enter their own id in Settings → Telegram to enable
+  // remote control.
+  telegramAllowedUserIds: "",
   telegramNotificationsEnabled: false,
   telegramNotificationButtonsEnabled: false,
   telegramAskUserEnabled: false,

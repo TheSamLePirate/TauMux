@@ -68,6 +68,9 @@ describe("web resume flow", () => {
         activeWorkspaceId: null,
       }),
       () => surfaceId,
+      () => true,
+      "127.0.0.1",
+      "",
     );
     if (opts.bufferMaxBytes !== undefined)
       server.sessionBufferMaxBytes = opts.bufferMaxBytes;

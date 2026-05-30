@@ -241,6 +241,28 @@ export class TelegramService {
   /** Per-chat rate buckets — `{tokens, lastRefillMs}`. Lazily created
    *  on first send to a given chat. */
   private rateBuckets = new Map<string, { tokens: number; ts: number }>();
+  /** H0a (full_app_review_2026-05.md): warn-once latch so an empty
+   *  allow-list (which now rejects everyone — fail-closed) logs a single
+   *  actionable line instead of one per dropped update. */
+  private emptyAllowListWarned = false;
+
+  /** Fail-CLOSED allow-list check. An empty allow-list rejects every
+   *  sender (previously it fell open and accepted anyone — a terminal-
+   *  control channel must default to deny). Returns true only when the
+   *  sender's id is explicitly listed. */
+  private isSenderAllowed(userId: string): boolean {
+    if (this.allowed.size === 0) {
+      if (!this.emptyAllowListWarned) {
+        this.emptyAllowListWarned = true;
+        this.opts.onLog?.(
+          "warn",
+          "telegram: allow-list is empty — rejecting all inbound messages and button taps. Set telegramAllowedUserIds to your numeric Telegram id to enable remote control.",
+        );
+      }
+      return false;
+    }
+    return this.allowed.has(userId);
+  }
 
   constructor(private opts: TelegramServiceOptions) {
     this.allowed = parseAllowedTelegramIds(opts.allowedUserIds);
@@ -616,7 +638,7 @@ export class TelegramService {
   private async handleCallbackQuery(
     cq: NonNullable<TelegramUpdate["callbackQuery"]>,
   ): Promise<void> {
-    if (this.allowed.size > 0 && !this.allowed.has(cq.fromUserId)) {
+    if (!this.isSenderAllowed(cq.fromUserId)) {
       this.opts.onLog?.(
         "info",
         `telegram: dropped callback from non-allowed user ${cq.fromUserId}`,
@@ -655,7 +677,7 @@ export class TelegramService {
   private handleUpdate(update: TelegramUpdate): void {
     const msg = update.message;
     if (!msg) return;
-    if (this.allowed.size > 0 && !this.allowed.has(msg.fromUserId)) {
+    if (!this.isSenderAllowed(msg.fromUserId)) {
       this.opts.onLog?.(
         "info",
         `telegram: dropped message from non-allowed user ${msg.fromUserId}`,

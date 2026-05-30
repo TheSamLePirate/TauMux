@@ -175,16 +175,27 @@ function ensureSandboxIframe(contentEl: HTMLElement): HTMLIFrameElement {
   return iframe;
 }
 
-export const renderSvg: PanelRenderer = (contentEl, data, _meta, isBinary) => {
-  const payload = decodeB64Text(data, isBinary);
+/**
+ * C2 (full_app_review_2026-05.md): the ONE html/svg sink. Renders
+ * already-decoded raw markup into the sandboxed iframe. Both the binary
+ * renderers below AND the inline `meta.data` path in main.ts route through
+ * here, so there is no parallel `innerHTML` sink that bypasses the sandbox.
+ */
+export function renderSandboxedMarkup(
+  contentEl: HTMLElement,
+  markup: string,
+  kind: "html" | "svg",
+): void {
   const iframe = ensureSandboxIframe(contentEl);
-  iframe.srcdoc = wrapInSandboxedShell(payload, "svg");
+  iframe.srcdoc = wrapInSandboxedShell(markup, kind);
+}
+
+export const renderSvg: PanelRenderer = (contentEl, data, _meta, isBinary) => {
+  renderSandboxedMarkup(contentEl, decodeB64Text(data, isBinary), "svg");
 };
 
 export const renderHtml: PanelRenderer = (contentEl, data, _meta, isBinary) => {
-  const payload = decodeB64Text(data, isBinary);
-  const iframe = ensureSandboxIframe(contentEl);
-  iframe.srcdoc = wrapInSandboxedShell(payload, "html");
+  renderSandboxedMarkup(contentEl, decodeB64Text(data, isBinary), "html");
 };
 
 /** Render a PNG-encoded canvas frame into a <canvas> element inside

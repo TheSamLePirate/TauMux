@@ -1898,21 +1898,33 @@ function sendWebServerStatus(): void {
   }
 }
 
+/** C1 (full_app_review_2026-05.md): the ONE construction path for the web
+ *  mirror. Every call site — toggle, auto-start, port-change — must go
+ *  through here so the security-sensitive bind address + auth token are
+ *  always threaded from settings and can never be silently dropped to the
+ *  unsafe 0.0.0.0 / no-auth defaults. Callbacks are wired here too so a new
+ *  call site can't forget them either. */
+function createWebServer(): WebServer {
+  const settings = settingsManager.get();
+  const ws = new WebServer(
+    app.webServerPort,
+    sessions,
+    () => app.getAppState(),
+    () => app.focusedSurfaceId,
+    () => app.sidebarVisible,
+    settings.webMirrorBind,
+    settings.webMirrorAuthToken,
+  );
+  setupWebServerCallbacks(ws);
+  return ws;
+}
+
 function toggleWebServer(): void {
   if (app.webServer?.running) {
     app.webServer.stop();
   } else {
     if (!app.webServer) {
-      app.webServer = new WebServer(
-        app.webServerPort,
-        sessions,
-        () => app.getAppState(),
-        () => app.focusedSurfaceId,
-        () => app.sidebarVisible,
-        settingsManager.get().webMirrorBind,
-        settingsManager.get().webMirrorAuthToken,
-      );
-      setupWebServerCallbacks(app.webServer);
+      app.webServer = createWebServer();
     }
     app.webServer.start();
     // M11 — seed the state-store with the current settings + ht keys
@@ -2490,14 +2502,7 @@ const autoStartWebMirror = webServerPortEnv
   : settingsManager.get().autoStartWebMirror && app.webServerPort > 0;
 
 if (autoStartWebMirror) {
-  app.webServer = new WebServer(
-    app.webServerPort,
-    sessions,
-    () => app.getAppState(),
-    () => app.focusedSurfaceId,
-    () => app.sidebarVisible,
-  );
-  setupWebServerCallbacks(app.webServer);
+  app.webServer = createWebServer();
   app.webServer.start();
   // M11 — seed the state-store with the current settings + ht keys
   // before the first WS upgrade so a freshly-connected client's hello
@@ -2515,14 +2520,7 @@ function applyWebMirrorPort(newPort: number): void {
   app.webServer = null;
   app.webServerPort = newPort;
   if (wasRunning && newPort > 0) {
-    app.webServer = new WebServer(
-      app.webServerPort,
-      sessions,
-      () => app.getAppState(),
-      () => app.focusedSurfaceId,
-      () => app.sidebarVisible,
-    );
-    setupWebServerCallbacks(app.webServer);
+    app.webServer = createWebServer();
     app.webServer.start();
   }
   sendWebServerStatus();
