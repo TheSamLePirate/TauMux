@@ -101,6 +101,30 @@ jobs:
       - name: Functional web-mirror e2e
         run: bun run test:e2e:functional
 
+  # W4-2 (full_app_review_2026-05.md §18.3) — dependency vulnerability scan.
+  # Non-blocking (continue-on-error) so a freshly-disclosed CVE in a
+  # transitive dep INFORMS the PR without hard-failing it; pair with the
+  # committed renovate.json which keeps deps current. Promote to blocking
+  # once the dependency tree is known-clean.
+  vuln-scan:
+    name: Dependency vulnerability scan (non-blocking)
+    runs-on: macos-14
+    timeout-minutes: 8
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Audit dependencies (bun.lock)
+        run: bun audit
+
   # The PIXEL/design e2e suites (native, packaged-app, screenshot-diff)
   # remain OFF the PR path: they were authored against pixel baselines that
   # drift on the GitHub runner's font smoothing / accent rendering. The

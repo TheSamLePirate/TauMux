@@ -1,0 +1,32 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Group all non-major updates into one weekly PR to cut noise.",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "non-major dependencies"
+    },
+    {
+      "description": "Keep the modular CodeMirror 6 set version-aligned (mismatched @codemirror/* majors are a known breakage class).",
+      "matchPackageNames": ["@codemirror/**"],
+      "groupName": "codemirror"
+    },
+    {
+      "description": "Keep xterm core + addons + headless aligned (the v5/v6 split was a real footgun).",
+      "matchPackageNames": ["@xterm/**"],
+      "groupName": "xterm"
+    },
+    {
+      "description": "electrobun is the runtime — surface its majors as their own PR for deliberate review.",
+      "matchPackageNames": ["electrobun"],
+      "groupName": "electrobun"
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  }
+}

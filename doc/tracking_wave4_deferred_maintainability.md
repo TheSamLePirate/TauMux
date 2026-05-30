@@ -9,9 +9,17 @@ Picking up the lower-risk, high-value deferred items as focused commits.
 
 | ID | Item | Sev | Commit | Status |
 |----|------|-----|--------|--------|
-| W4-1 | Settings `schemaVersion` + ordered migration runner (§14.2) — enables future field rename/removal without silent data loss | medium | A | 🔄 |
-| W4-2 | Supply-chain: `renovate.json` (bun-aware) + non-blocking vuln-scan CI job (§18.3) | medium | B | ⬜ |
-| W4-3 | Remove dead devDeps `@ai-hero/sandcastle`, `@typescript-eslint/parser`, `typescript-eslint` (§18.4 — no eslint config uses them; `typescript-eslint` appears only in a disable-comment) | medium | B | ⬜ |
+| W4-1 | Settings `schemaVersion` + ordered migration runner (§14.2) — enables future field rename/removal without silent data loss | medium | A `f40a5bea` | ✅ |
+| W4-2 | Supply-chain: `renovate.json` (bun-aware) + non-blocking vuln-scan CI job (§18.3) | medium | B | ✅ |
+| W4-3 | ~~Remove dead devDeps~~ | — | — | ❌ **INVALID — withdrawn** |
+
+### ⚠️ Correction to the review (§18.4)
+The review claimed `@ai-hero/sandcastle` + the `@typescript-eslint` pair were **unused** ("no eslint config exists"). **This is wrong** — verified against the repo:
+- `eslint.config.js` EXISTS and imports `typescript-eslint` (+ `tseslint.parser` = `@typescript-eslint/parser`).
+- `.sandcastle/main.ts` (a multi-agent orchestration template) uses `@ai-hero/sandcastle`.
+The earlier "no eslint config" reading came from a `ls eslint.config.*` zsh glob that silently no-matched. **All three deps are in use — none removed.**
+
+The *real* gap is that eslint is **configured but never run and currently broken**: there's no `lint` script / CI step, `eslint` core isn't a direct devDep, and `eslint .` emits **22,023 errors over ~1.1M lines** because the config's `ignores` miss `.claude/worktrees/`, generated bundles, etc., plus a `tsconfigRootDir` parser error. Fixing the ignores + parser config + triaging real findings is a dedicated cleanup — **deferred** (a noisy lint rollout would drown this history). Not the "remove dead deps" the review suggested.
 
 Legend: ⬜ todo · 🔄 in progress · ✅ done · ⚠️ deviation
 
@@ -28,7 +36,13 @@ Legend: ⬜ todo · 🔄 in progress · ✅ done · ⚠️ deviation
 - Baseline `SETTINGS_SCHEMA_VERSION = 1`, registry empty (v1 is today's shape). The existing idempotent `applyBloomMigration` stays separate and unchanged.
 
 ## Verification
-- typecheck / bun test / bun start: (see log)
+- **W4-1**: typecheck clean; `bun test` 2989/0; `bun start` boots on the new load path. Committed `f40a5bea` (v0.3.165).
+- **W4-2**: `renovate.json` valid JSON; `bun audit` runs and **surfaced 7 vulnerabilities (4 high, 3 moderate)** — confirms the scan's value (fixing them is a separate dependency-update effort that renovate + the scan will drive; `bun audit` exits 0 so the job is informational, with `continue-on-error` as belt-and-suspenders). CI job added to `ci.yml`.
+
+## Follow-ups surfaced
+- **7 dependency vulnerabilities** (4 high) flagged by `bun audit` — triage + `bun update` in a dedicated dep-bump change (renovate will also open grouped PRs).
+- **Fix the broken eslint config** (ignores + tsconfigRootDir + `eslint` direct dep + `lint` script + CI), then triage src/ findings — dedicated cleanup.
 
 ## Commit / release
-- (pending)
+- Commit A (W4-1): `f40a5bea` (v0.3.165).
+- Commit B (W4-2): (recorded below)
