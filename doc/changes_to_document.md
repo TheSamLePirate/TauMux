@@ -16,66 +16,21 @@ _(Always add new items below the cleared line above. When folding into the websi
 
 ---
 
-## Pending — post-0.3.172 reliability & performance wave
+_Backlog cleared 2026-05-31 — folded the post-0.3.172 reliability/performance/
+security wave (C3 graceful-shutdown persistence, the H5/H6/H7 perf wave, H8
+auto-continue cost gates, H13 crashed-agent recovery, H12 dead-code removal, H14
+poller test coverage, §5.3 adaptive idle backoff, H11 web-mirror sidebar parity,
+H4 native sideband sandbox, §6.5 `bin/ht` split — v0.3.173 → v0.3.182) into:_
 
-- **Graceful persistence on macOS GUI quit (C3, v0.3.174).** Window-close, ⌘Q,
-  Dock-quit, and last-surface-exit go through Electrobun's `quit()` →
-  `forceExit(0)` and never deliver SIGINT/SIGTERM, so layout / settings /
-  cookies / browser-history saves were silently skipped on the common exit
-  paths. Now an idempotent `persistAndCloseSync()` runs from
-  `Electrobun.events.on("before-quit", …)` (and is shared by the existing
-  SIGINT/SIGTERM `gracefulShutdown`). No user-facing API/CLI change — fold into
-  the changelog only.
-- **Performance wave (v0.3.173).** Bloom/WebGL effects no longer re-render on
-  every cursor blink (H5) and pause for background (non-visible) workspaces
-  (H6); Process Manager CPU/RSS now refresh on small deltas instead of staying
-  frozen (H7). Changelog-only.
-- **Auto-continue cost gates (H8 + 10.2, v0.3.175).** The auto-continue engine
-  now runs its deterministic cooldown and runaway gates *before* any paid model
-  call, so a chatty or runaway/looped agent can no longer trigger an
-  Anthropic round-trip per turn-end notification. The "agent looped" audit
-  entry is now emitted once per loop episode instead of every notification.
-  Changelog-only (no API/CLI surface change).
-- **Crashed agent recovery (H13, v0.3.176).** When a pi agent subprocess exits
-  (crash / OOM / self-exit), the agent pane now disables its input + send
-  button, shows an "Agent process exited (code N)" banner, and offers a
-  one-click **Restart agent** button — previously the input stayed enabled and
-  silently swallowed every keystroke with no way to recover. Changelog-only.
-- **Dead-code removal in the pi-agent manager (H12, v0.3.177).** Deleted the
-  unused Promise-based `send()` + ~25 typed wrappers + `responseWaiters`
-  machinery from `PiAgentInstance` (−199 lines); the agent IPC has always used
-  the fire-and-forget `sendNoWait` path. Internal-only, no behavior change —
-  changelog-only if mentioned at all.
-- **Metadata poller test coverage (H14, v0.3.178).** Made the four subprocess
-  runners (`ps`/`lsof`/`git`) injectable on `SurfaceMetadataPoller` (defaulting
-  to the real impls) and added 11 orchestration tests for the previously
-  untested 1 Hz `tick()` (emit-on-change, cpu/rss delta gate, dead-surface
-  eviction, prune-on-empty, git TTL + multi-repo). Internal hardening, no
-  behavior change — not user-facing.
-- **Adaptive idle polling cuts idle CPU (§5.3, v0.3.179).** The 1 Hz process
-  metadata poller now backs off (1s → 2s → 4s, capped 5s) while a terminal is
-  idle and unchanging — instead of spawning `ps`/`lsof` every second forever —
-  snapping back to 1s the instant anything changes (output, a new/closed pane,
-  window focus). An idle-but-focused terminal drops from ~6–9% of a core to a
-  trickle; an active terminal is unchanged. Worth a one-line changelog mention
-  (perf), no config/API surface.
-- **Web-mirror sidebar parity fix (H11 leaf helpers, v0.3.180).** The workspace
-  card's cwd-shortening and RAM formatting are now shared between the native
-  sidebar and the web mirror, fixing drift where the web mirror showed a
-  different shortened path and rendered any sub-1 MB process as a bogus `0M`
-  (now `512K` etc.). Worth a one-line changelog mention (web-mirror parity bug
-  fix); the full card-DOM unification is deferred.
-- **Native sideband html/svg sandbox (H4, v0.3.181).** Display-only `html`/`svg`
-  panel content (inline or fd4) now renders inside a strict-CSP sandboxed
-  iframe on the **native** app too — not just the web mirror — closing a path
-  where a sideband producer's markup could run script with the native webview's
-  full (RPC-bridge) privilege. Interactive panels keep the direct path as a
-  documented opt-in trust boundary. Worth a short security/changelog note;
-  affects the sideband-protocol security docs (`doc/system-sideband-protocol.md`
-  is now partly stale re: §7.6).
-- **`bin/ht` CLI internals split (§6.5, v0.3.182).** Internal refactor — the
-  2,361-line `ht` CLI was split into `bin/ht` (thin entry) + testable
-  `src/cli/{types,flags,rpc-client,map-command}.ts`. No command, flag, or output
-  behavior change (the known `parseFlags` edge cases are intentionally preserved
-  and a fix deferred). Not user-facing; mention only if the docs describe the
-  CLI's internal structure.
+- `website-doc/src/content/docs/changelog.md` (en + fr) — new top section
+  **"0.3.182 — Reliability, performance & CLI hardening"**, grouped Security /
+  Performance & reliability / Architecture & tooling.
+- `website-doc/src/content/docs/api/system.md` + `cli/system.md` (en + fr) —
+  version 0.3.182 (auto-propagated by `bump-version.ts`).
+- `website-doc/src/content/docs/sideband/data-fd4.md` (en + fr) — new
+  **"Security: HTML & SVG are sandboxed"** section (H4): display-only html/svg
+  renders in a strict-CSP `<iframe sandbox>` on native + web; `interactive: true`
+  opts into the direct-DOM trust boundary.
+
+_(Site builds clean: `cd website-doc && bun run build` — 137 pages, no broken
+links.)_

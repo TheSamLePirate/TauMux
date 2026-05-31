@@ -7,6 +7,29 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.3.182 — Reliability, performance & CLI hardening
+
+A second pass over the code review (`doc/full_app_review_2026-05.md`) closed the remaining critical/high findings — graceful-shutdown data loss, idle CPU, agent-cost runaways, a native sideband-XSS gap — plus internal cleanups. Newest first.
+
+### Security
+
+- **Native sideband HTML/SVG is now sandboxed (0.3.181).** Display-only `html` / `svg` panel content (inline `meta.data` or fd 4 frames) renders inside a strict-CSP `<iframe sandbox>` on the native app too — not just the web mirror — so a careless or compromised sideband producer can't run script with the app's full IPC privilege. A panel that needs to forward DOM events still opts into the direct path by setting `interactive`. See [Binary data (fd 4)](/sideband/data-fd4/).
+
+### Performance & reliability
+
+- **No more silent data loss on quit (0.3.174).** Closing the window, ⌘Q, Dock-quit, or the last surface exiting now reliably persists your layout, settings, cookies, and browser history. (macOS GUI quits bypass the Unix signals the previous save path relied on, so those saves were being skipped on the common exit paths.)
+- **Idle CPU drops sharply (0.3.179).** The 1 Hz process-metadata poller now backs off (1s → 2s → 4s, capped 5s) while a terminal is idle and unchanging, snapping back to 1s the instant output, a pane open/close, or window focus changes. An idle-but-focused terminal goes from ~6–9% of a core to a trickle; an active one is unchanged.
+- **Effects stop burning idle cycles (0.3.173).** WebGL bloom no longer re-renders on every cursor blink and pauses for background (non-visible) workspaces; the Process Manager's CPU / RSS columns also stopped freezing.
+- **Auto-continue can't run up a bill (0.3.175).** The agent auto-continue engine now applies its cooldown and runaway gates *before* consulting the model, so a chatty or looping agent no longer triggers a paid round-trip per turn-end notification; the "agent looped" notice is logged once per episode instead of every time.
+- **Crashed agent panes are recoverable (0.3.176).** When a pi agent subprocess exits, its pane now disables input, shows "Agent process exited (code N)", and offers a one-click **Restart agent** — previously the input stayed live and silently swallowed everything you typed, with no way to recover.
+- **Web-mirror sidebar parity fix (0.3.180).** The workspace card's shortened cwd and RAM figure now match the native sidebar exactly (the mirror used to show a different path form and rendered any sub-1 MB process as a bogus `0M`).
+
+### Architecture & tooling
+
+- **`ht` CLI internals split (0.3.182).** The 2,361-line CLI entry was broken into a thin `bin/ht` plus testable `src/cli/` modules (flags, RPC transport, command mapping). No command, flag, or output change.
+- **pi-agent manager dead-code removal (0.3.177).** Dropped ~200 lines of an unused Promise-based agent IPC path; the live fire-and-forget path is unchanged.
+- **Metadata poller test coverage (0.3.178).** The previously-untested 1 Hz orchestration gained 11 tests via injectable subprocess runners. Pure internal hardening.
+
 ## 0.3.172 — Security review & architecture hardening
 
 A full code review (`doc/full_app_review_2026-05.md`) drove a wave of security ship-stoppers, dependency/tooling cleanups, and an architecture decomposition. Newest first.

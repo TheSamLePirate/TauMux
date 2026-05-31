@@ -36,6 +36,12 @@ Writes are blocking. If τ-mux is busy rendering, the script's next write to fd 
 
 Each panel's binary payload becomes an `ArrayBuffer` in the renderer. For images, the buffer is wrapped in a blob URL and assigned to an `<img>` element — when the panel is cleared, the URL is revoked and the buffer is released.
 
+## Security: HTML & SVG are sandboxed
+
+Panels of type `html` or `svg` — whether the markup arrives inline (`meta.data`) or as an fd 4 payload — render inside a locked-down `<iframe sandbox>` (no scripts, no same-origin) carrying a strict Content-Security-Policy (`script-src 'none'`). This holds on **both** the native app and the web mirror, so a careless or compromised producer can't run script in the host page (which on the native app holds the app's full IPC bridge). Inline styles and `data:`/`blob:` images are allowed; `<script>` and inline event handlers (`onerror=…`) never execute.
+
+If your panel needs to forward clicks/keys back to your script, set `interactive: true` in the metadata. That panel renders directly (no iframe) so its DOM events can be forwarded — an explicit, opt-in trust boundary. Only use it for markup you fully control.
+
 ## Limits
 
 There is no hard cap, but practical limits:

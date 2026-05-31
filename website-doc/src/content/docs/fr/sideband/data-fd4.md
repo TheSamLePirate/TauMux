@@ -36,6 +36,12 @@ Les écritures sont bloquantes. Si τ-mux est occupé à rendre, la prochaine é
 
 La charge utile binaire de chaque panneau devient un `ArrayBuffer` dans le moteur de rendu. Pour les images, le buffer est encapsulé dans une URL blob et affecté à un élément `<img>` — lorsque le panneau est effacé, l'URL est révoquée et le buffer est libéré.
 
+## Sécurité : le HTML & le SVG sont isolés
+
+Les panneaux de type `html` ou `svg` — que le balisage arrive en inline (`meta.data`) ou en charge utile fd 4 — sont rendus dans une `<iframe sandbox>` verrouillée (pas de scripts, pas de same-origin) portant une Content-Security-Policy stricte (`script-src 'none'`). C'est valable sur **l'application native comme sur le miroir web**, afin qu'un producteur négligent ou compromis ne puisse pas exécuter de script dans la page hôte (qui, côté natif, détient tout le pont IPC de l'application). Les styles inline et les images `data:`/`blob:` sont autorisés ; les `<script>` et gestionnaires d'événements inline (`onerror=…`) ne s'exécutent jamais.
+
+Si votre panneau doit transmettre des clics/touches à votre script, mettez `interactive: true` dans les métadonnées. Ce panneau est alors rendu directement (sans iframe) pour que ses événements DOM puissent être transmis — une frontière de confiance explicite, sur opt-in. À n'utiliser que pour du balisage que vous contrôlez entièrement.
+
 ## Limites
 
 Il n'y a pas de plafond strict, mais des limites pratiques :

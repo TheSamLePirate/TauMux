@@ -7,6 +7,29 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.3.182 — Fiabilité, performance & durcissement de la CLI
+
+Une seconde passe sur la revue de code (`doc/full_app_review_2026-05.md`) a clos les dernières anomalies critiques/élevées — perte de données à la fermeture, CPU au repos, emballement des coûts d'agent, une faille XSS sideband côté natif — plus des nettoyages internes. Du plus récent au plus ancien.
+
+### Sécurité
+
+- **Le HTML/SVG sideband est désormais isolé côté natif (0.3.181).** Le contenu de panneau `html` / `svg` en affichage seul (inline `meta.data` ou trames fd 4) est rendu dans une `<iframe sandbox>` à CSP stricte sur l'application native aussi — plus seulement le miroir web — afin qu'un producteur sideband négligent ou compromis ne puisse pas exécuter de script avec tous les privilèges IPC de l'application. Un panneau qui doit transmettre des événements DOM bascule explicitement sur le rendu direct via `interactive`. Voir [Données binaires (fd 4)](/fr/sideband/data-fd4/).
+
+### Performance & fiabilité
+
+- **Plus de perte de données silencieuse à la fermeture (0.3.174).** Fermer la fenêtre, ⌘Q, quitter depuis le Dock ou la sortie de la dernière surface persiste désormais de façon fiable votre disposition, vos réglages, vos cookies et l'historique du navigateur. (Les fermetures GUI macOS contournent les signaux Unix sur lesquels reposait l'ancien chemin de sauvegarde, qui était donc ignoré sur les sorties courantes.)
+- **Le CPU au repos chute nettement (0.3.179).** Le sondeur de métadonnées de processus (1 Hz) ralentit désormais (1s → 2s → 4s, plafonné à 5s) lorsqu'un terminal est inactif et inchangé, et revient à 1s dès qu'une sortie, l'ouverture/fermeture d'un panneau ou le focus de la fenêtre change. Un terminal inactif mais au premier plan passe de ~6–9 % d'un cœur à un filet ; un terminal actif est inchangé.
+- **Les effets cessent de brûler des cycles au repos (0.3.173).** Le bloom WebGL ne se re-rend plus à chaque clignotement du curseur et se met en pause pour les espaces de travail en arrière-plan (non visibles) ; les colonnes CPU / RSS du gestionnaire de processus ne se figent plus.
+- **L'auto-continuation ne peut plus faire grimper la facture (0.3.175).** Le moteur d'auto-continuation applique désormais ses garde-fous de refroidissement et d'emballement *avant* de consulter le modèle ; un agent bavard ou en boucle ne déclenche donc plus d'appel payant à chaque notification de fin de tour ; l'avis « agent en boucle » n'est journalisé qu'une fois par épisode.
+- **Les panneaux d'agent plantés sont récupérables (0.3.176).** Quand un sous-processus d'agent pi se termine, son panneau désactive désormais la saisie, affiche « Agent process exited (code N) » et propose un bouton **Restart agent** en un clic — auparavant la saisie restait active et avalait silencieusement tout ce que vous tapiez, sans moyen de récupérer.
+- **Correctif de parité de la barre latérale du miroir web (0.3.180).** Le cwd raccourci et la valeur de RAM de la carte d'espace de travail correspondent désormais exactement à la barre latérale native (le miroir affichait auparavant une forme de chemin différente et rendait tout processus de moins d'1 Mo comme un `0M` erroné).
+
+### Architecture & outillage
+
+- **Découpage des internes de la CLI `ht` (0.3.182).** Le point d'entrée de 2 361 lignes a été scindé en un `bin/ht` mince plus des modules `src/cli/` testables (drapeaux, transport RPC, mappage des commandes). Aucun changement de commande, de drapeau ou de sortie.
+- **Suppression de code mort dans le gestionnaire d'agents pi (0.3.177).** ~200 lignes d'un chemin IPC d'agent à Promesses inutilisé ont été retirées ; le chemin actif « envoyer sans attendre » est inchangé.
+- **Couverture de tests du sondeur de métadonnées (0.3.178).** L'orchestration 1 Hz, jusque-là non testée, a gagné 11 tests via des exécuteurs de sous-processus injectables. Durcissement interne pur.
+
 ## 0.3.172 — Revue de sécurité & durcissement de l'architecture
 
 Une revue de code complète (`doc/full_app_review_2026-05.md`) a déclenché une vague de correctifs de sécurité bloquants, de nettoyages de dépendances/outillage et une décomposition de l'architecture. Du plus récent au plus ancien.
