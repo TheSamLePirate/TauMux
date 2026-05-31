@@ -9,7 +9,6 @@
  */
 
 import { copyFileSync, existsSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const targetOS = process.env["ELECTROBUN_OS"];
@@ -42,7 +41,11 @@ const bunTarget = arch === "x64" ? "bun-darwin-x64" : "bun-darwin-arm64";
 const outfile = join(buildDir, bundleName, "Contents", "MacOS", "ht");
 
 // bun build --compile needs a .ts/.js extension; bin/ht is extensionless.
-const tmpEntry = join(tmpdir(), `ht-postbuild-${process.pid}.ts`);
+// The temp entry must live INSIDE bin/ so the CLI's `../src/cli/*` imports
+// (extracted from the monolith in §6.5) resolve from the same relative
+// position as the real bin/ht; Bun bundles them into the binary.
+// (`bin/.ht-build-*.ts` is gitignored.)
+const tmpEntry = join("bin", `.ht-postbuild-${process.pid}.ts`);
 copyFileSync("bin/ht", tmpEntry);
 
 console.log(`[post-build] Compiling bin/ht → ${outfile} (target=${bunTarget})`);

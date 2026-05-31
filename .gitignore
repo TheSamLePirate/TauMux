@@ -35,3 +35,6 @@ assets/web-client/
 
 # bun.lock is the single source of truth; npm lockfile drifts (W3-3)
 package-lock.json
+
+# ht standalone-binary build temp (scripts/build-cli.ts)
+bin/.ht-*build-*.ts

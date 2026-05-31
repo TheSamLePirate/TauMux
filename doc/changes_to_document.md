@@ -73,3 +73,9 @@ _(Always add new items below the cleared line above. When folding into the websi
   documented opt-in trust boundary. Worth a short security/changelog note;
   affects the sideband-protocol security docs (`doc/system-sideband-protocol.md`
   is now partly stale re: §7.6).
+- **`bin/ht` CLI internals split (§6.5, v0.3.182).** Internal refactor — the
+  2,361-line `ht` CLI was split into `bin/ht` (thin entry) + testable
+  `src/cli/{types,flags,rpc-client,map-command}.ts`. No command, flag, or output
+  behavior change (the known `parseFlags` edge cases are intentionally preserved
+  and a fix deferred). Not user-facing; mention only if the docs describe the
+  CLI's internal structure.
