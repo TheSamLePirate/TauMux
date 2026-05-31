@@ -1373,6 +1373,49 @@ export class SurfaceManager {
     };
   }
 
+  /** Bounding box (CSS px) of every visible pane in a workspace, for the
+   *  `ht screenshot workspace` crop. Defaults to the active workspace.
+   *  Only mounted/visible panes count — surfaces in a background workspace
+   *  are `display:none` (zero-size rect) and can't be captured, so a
+   *  non-active workspace yields null and the caller falls back to the raw
+   *  window grab. */
+  getWorkspaceRect(workspaceId?: string): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    devicePixelRatio: number;
+  } | null {
+    const ws = workspaceId
+      ? this.workspaces.find((w) => w.id === workspaceId)
+      : this.activeWorkspace();
+    if (!ws || ws.surfaceIds.size === 0) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let any = false;
+    for (const sid of ws.surfaceIds) {
+      const view = this.surfaces.get(sid);
+      if (!view) continue;
+      const r = view.container.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue; // hidden / unmounted
+      minX = Math.min(minX, r.left);
+      minY = Math.min(minY, r.top);
+      maxX = Math.max(maxX, r.right);
+      maxY = Math.max(maxY, r.bottom);
+      any = true;
+    }
+    if (!any) return null;
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      devicePixelRatio: window.devicePixelRatio || 1,
+    };
+  }
+
   closeWorkspaceById(id: string): void {
     const ws = this.workspaces.find((w) => w.id === id);
     if (!ws) return;

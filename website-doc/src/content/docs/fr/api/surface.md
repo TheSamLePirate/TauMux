@@ -23,7 +23,7 @@ Opérations au niveau d'une surface. Une surface est le contenu à l'intérieur 
 | `surface.send_text` | `{ surfaceId?: string, text: string }` | `{ bytes: number }` |
 | `surface.send_key` | `{ surfaceId?: string, key: string }` | `{ ok: true }` |
 | `surface.read_text` | `{ surfaceId?: string, lines?: number, scrollback?: boolean }` | `{ text: string }` |
-| `surface.screenshot` | `{ surfaceId?: string }` | `{ pngBase64: string }` |
+| `surface.screenshot` | `{ surface_id?, full_window?, workspace?, workspace_id?, output? }` | `{ path, window_id, surface_id?, workspace?, cropped, rect? }` |
 
 `key` accepte les mêmes formes symboliques que `ht send-key` — `enter`, `tab`, `escape`, `arrow-up`, `ctrl+c`, etc.
 
@@ -93,7 +93,7 @@ Forme de `SurfaceMetadata` :
 | `surface.send_text` | `ht send "<text>"` |
 | `surface.send_key` | `ht send-key <key>` |
 | `surface.read_text` | `ht read-screen --lines N` |
-| `surface.screenshot` | `ht screenshot --out <path>` |
+| `surface.screenshot` | `ht screenshot [workspace\|window] --output <path>` |
 | `surface.metadata` | `ht metadata --json` |
 | `surface.wait_ready` | `ht wait-ready [--timeout-ms N]` |
 | `surface.open_port` | `ht open <port>` |

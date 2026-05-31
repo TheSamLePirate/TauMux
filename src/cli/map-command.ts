@@ -496,25 +496,37 @@ export function mapCommand(ctx: CliContext): RpcCall {
 
     case "screenshot": {
       // `ht screenshot` captures the app window via macOS
-      // `screencapture -l <windowId>`. Without --full-window, the
-      // result is cropped to the target surface (focused by default,
-      // or --surface / HT_SURFACE). Output path is optional — when
-      // omitted, a timestamped PNG lands in the system tmpdir.
-      //
-      // `ht screenshot surface` is a long-form alias kept so the help
-      // text and the `ht screenshot <target>` form both parse: the
-      // token is consumed as a positional but has no effect beyond the
-      // command routing.
+      // `screencapture -l <windowId>`, then crops:
+      //   • (default) / `surface`  → the focused pane (or --surface / HT_SURFACE)
+      //   • `workspace` / --workspace [id] → all panes of a workspace
+      //                                      (default the active one)
+      //   • `window` / --full-window → the whole app, no crop
+      // Output path is optional — omitted ⇒ a timestamped PNG in tmpdir.
       const target = positional[0];
       const fullWindow = flags["full-window"] === "true" || target === "window";
+      const workspaceMode =
+        !fullWindow &&
+        (target === "workspace" ||
+          target === "ws" ||
+          flags["workspace"] !== undefined);
+      // `--workspace ws:2` carries an id; a bare `--workspace` parses to
+      // "true" (no id ⇒ active). `ht screenshot workspace ws:2` puts the id
+      // in positional[1].
+      const workspaceId =
+        flags["workspace"] && flags["workspace"] !== "true"
+          ? flags["workspace"]
+          : positional[1] || undefined;
       return {
         method: "surface.screenshot",
         params: {
-          surface_id: fullWindow
-            ? undefined
-            : flags["surface"] || process.env["HT_SURFACE"] || undefined,
+          surface_id:
+            fullWindow || workspaceMode
+              ? undefined
+              : flags["surface"] || process.env["HT_SURFACE"] || undefined,
           output: flags["output"] || flags["o"],
           full_window: fullWindow,
+          workspace: workspaceMode,
+          workspace_id: workspaceMode ? workspaceId : undefined,
         },
       };
     }

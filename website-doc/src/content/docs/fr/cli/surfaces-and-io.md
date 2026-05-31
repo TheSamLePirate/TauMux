@@ -100,11 +100,21 @@ Lit le tampon visible actuel du terminal. Utile pour les agents qui suivent la s
 ## screenshot
 
 ```bash
-ht screenshot --out ~/Desktop/τ.png
-ht screenshot --surface surface:3 --out /tmp/pane.png
+ht screenshot                                   # le panneau focalisé
+ht screenshot --surface surface:3               # un panneau précis
+ht screenshot workspace                         # tous les panneaux de l'espace actif
+ht screenshot workspace ws:2                    # tous les panneaux d'un espace précis
+ht screenshot window                            # toute la fenêtre de l'application
+ht screenshot workspace --output ~/Desktop/ws.png
 ```
 
-Capture d'écran PNG de la zone de rendu de la surface. Utile pour le QA design, la régression visuelle automatisée, ou le collage dans des rapports de bug. Capture le canvas xterm.js rendu plus toute superposition de panneaux.
+Capture un PNG, puis le rogne selon l'une de trois cibles :
+
+- **(par défaut)** le panneau focalisé — ou `--surface <id>` / `$HT_SURFACE`.
+- **`workspace`** — la boîte englobante de tous les panneaux visibles d'un espace de travail (exclut la barre de titre + la barre latérale). Cible l'espace actif, ou un espace précis via un id en position finale / `--workspace <id>`. Seuls les panneaux de l'espace actif sont visibles à la capture ; un espace en arrière-plan retombe sur la capture de la fenêtre entière.
+- **`window`** (ou `--full-window`) — toute la fenêtre de l'application, non rognée (barre de titre + barre latérale). Utile pour les rapports de bug.
+
+Le chemin de sortie est optionnel (`--output` / `-o`) ; s'il est omis, un PNG horodaté atterrit dans le tmpdir système. Le chemin résultant est affiché. macOS uniquement (utilise `screencapture`). Capture le canvas xterm.js rendu plus toute superposition de panneaux.
 
 ## Compatibilité tmux
 

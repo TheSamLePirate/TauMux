@@ -7,6 +7,10 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.3.183 — Workspace screenshots
+
+- **`ht screenshot workspace` (0.3.183).** The screenshot CLI now captures a whole **workspace** — the bounding box of every visible pane — alongside the existing single-pane (default) and whole-window (`window` / `--full-window`) targets. `ht screenshot workspace [id]` or `--workspace [id]` targets the active workspace (or a specific one). A hidden/background target now falls back to the full-window grab instead of an empty crop. See [Surfaces & I/O](/cli/surfaces-and-io/#screenshot).
+
 ## 0.3.182 — Reliability, performance & CLI hardening
 
 A second pass over the code review (`doc/full_app_review_2026-05.md`) closed the remaining critical/high findings — graceful-shutdown data loss, idle CPU, agent-cost runaways, a native sideband-XSS gap — plus internal cleanups. Newest first.

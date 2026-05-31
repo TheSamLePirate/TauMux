@@ -100,11 +100,21 @@ Reads the current visible terminal buffer. Useful for agents tailing log output 
 ## screenshot
 
 ```bash
-ht screenshot --out ~/Desktop/τ.png
-ht screenshot --surface surface:3 --out /tmp/pane.png
+ht screenshot                                   # the focused pane
+ht screenshot --surface surface:3               # a specific pane
+ht screenshot workspace                         # all panes of the active workspace
+ht screenshot workspace ws:2                    # all panes of a specific workspace
+ht screenshot window                            # the whole app window
+ht screenshot workspace --output ~/Desktop/ws.png
 ```
 
-PNG screenshot of the surface's render area. Useful for design QA, automated visual regression, or pasting into bug reports. Captures the rendered xterm.js canvas plus any overlay panels.
+Captures a PNG, then crops to one of three targets:
+
+- **(default)** the focused pane — or `--surface <id>` / `$HT_SURFACE`.
+- **`workspace`** — the bounding box of every visible pane in a workspace (excludes titlebar + sidebar). Targets the active workspace, or a specific one via a trailing id / `--workspace <id>`. Only the active workspace's panes are visible to the capture; a background workspace falls back to the whole-window grab.
+- **`window`** (or `--full-window`) — the whole app window, uncropped (titlebar + sidebar). Useful for bug reports.
+
+Output path is optional (`--output` / `-o`); omitted, a timestamped PNG lands in the system tmpdir. The resulting path is printed. macOS only (uses `screencapture`). Captures the rendered xterm.js canvas plus any overlay panels.
 
 ## tmux compat
 

@@ -301,13 +301,17 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
         );
       }
 
-      // Resolve target surface. `full_window: true` skips the crop
-      // entirely and returns the raw window capture — useful for
-      // grabbing titlebar + sidebar in bug reports.
+      // Three crop targets:
+      //   • full_window — raw window capture (titlebar + sidebar), no crop.
+      //   • workspace   — bounding box of every visible pane in a workspace
+      //                   (default active), excludes titlebar/sidebar.
+      //   • surface     — a single pane (default focused). The default.
       const fullWindow = params["full_window"] === true;
-      const surfaceId = fullWindow
-        ? null
-        : resolveSurfaceId(params, getState().focusedSurfaceId);
+      const workspaceMode = !fullWindow && params["workspace"] === true;
+      const surfaceId =
+        fullWindow || workspaceMode
+          ? null
+          : resolveSurfaceId(params, getState().focusedSurfaceId);
 
       // Output path: explicit > timestamped default in tmp. The caller
       // is responsible for directory creation on any parent they pass
@@ -319,7 +323,7 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
           : resolve(process.cwd(), outPathRaw)
         : join(
             tmpdir(),
-            `ht-screenshot-${surfaceId ?? "window"}-${Date.now()}.png`,
+            `ht-screenshot-${surfaceId ?? (workspaceMode ? "workspace" : "window")}-${Date.now()}.png`,
           );
       const parent = outPath.slice(0, outPath.lastIndexOf("/"));
       if (parent && !existsSync(parent)) {
@@ -328,7 +332,7 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
 
       // Capture to a staging path when we need to crop afterwards, so
       // we can drop the intermediate without touching the caller's file.
-      const needsCrop = surfaceId !== null;
+      const needsCrop = surfaceId !== null || workspaceMode;
       const capturePath = needsCrop
         ? join(tmpdir(), `ht-screenshot-raw-${Date.now()}.png`)
         : outPath;
@@ -358,12 +362,20 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
       if (!requestWebview) {
         throw new Error("webview bridge unavailable; cannot locate surface");
       }
-      const rect = (await requestWebview("getSurfaceRect", {
-        surfaceId: surfaceId ?? "",
-      })) as SurfaceRect | null;
-      if (!rect) {
-        // Surface isn't mounted — keep the raw capture so the caller
-        // still gets *something* rather than an empty failure.
+      const rect = (
+        workspaceMode
+          ? await requestWebview("getWorkspaceRect", {
+              workspaceId: (params["workspace_id"] as string) ?? "",
+            })
+          : await requestWebview("getSurfaceRect", {
+              surfaceId: surfaceId ?? "",
+            })
+      ) as SurfaceRect | null;
+      if (!rect || rect.width < 1 || rect.height < 1) {
+        // Surface/workspace isn't mounted, or its panes are hidden (a
+        // background workspace renders `display:none`, so the rect collapses
+        // to zero / sub-pixel). Cropping that would yield a 1×1 image — keep
+        // the raw window capture so the caller still gets *something* useful.
         try {
           if (capturePath !== outPath) {
             await execFileAsync("cp", [capturePath, outPath]);
@@ -413,6 +425,7 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
         path: outPath,
         window_id: windowId,
         surface_id: surfaceId,
+        workspace: workspaceMode || undefined,
         cropped: true,
         rect: { x: cropX, y: cropY, width: cropW, height: cropH },
       };

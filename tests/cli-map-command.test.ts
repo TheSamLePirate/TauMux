@@ -86,6 +86,59 @@ describe("mapBrowserSubcommand", () => {
   });
 });
 
+describe("mapCommand — screenshot targets", () => {
+  test("default (no target) crops to the focused/--surface pane", () => {
+    const call = mapCommand(ctx("screenshot", [], { surface: "surface:2" }));
+    expect(call.method).toBe("surface.screenshot");
+    expect(call.params).toMatchObject({
+      surface_id: "surface:2",
+      full_window: false,
+      workspace: false,
+    });
+  });
+
+  test("`window` / --full-window captures the whole app (no crop target)", () => {
+    expect(mapCommand(ctx("screenshot", ["window"])).params).toMatchObject({
+      full_window: true,
+      workspace: false,
+      surface_id: undefined,
+    });
+    expect(
+      mapCommand(ctx("screenshot", [], { "full-window": "true" })).params,
+    ).toMatchObject({ full_window: true });
+  });
+
+  test("`workspace` positional → workspace mode, active workspace", () => {
+    const call = mapCommand(ctx("screenshot", ["workspace"]));
+    expect(call.params).toMatchObject({
+      workspace: true,
+      full_window: false,
+      surface_id: undefined,
+      workspace_id: undefined,
+    });
+  });
+
+  test("`workspace <id>` and `--workspace <id>` target a specific workspace", () => {
+    expect(
+      mapCommand(ctx("screenshot", ["workspace", "ws:3"])).params[
+        "workspace_id"
+      ],
+    ).toBe("ws:3");
+    expect(
+      mapCommand(ctx("screenshot", [], { workspace: "ws:4" })).params,
+    ).toMatchObject({ workspace: true, workspace_id: "ws:4" });
+  });
+
+  test("bare --workspace (no id) is workspace mode with no id", () => {
+    // parseFlags turns a trailing `--workspace` into "true".
+    const call = mapCommand(ctx("screenshot", [], { workspace: "true" }));
+    expect(call.params).toMatchObject({
+      workspace: true,
+      workspace_id: undefined,
+    });
+  });
+});
+
 describe("mapCommand — browser dispatch + help block", () => {
   test("`browser` routes through the browser submapper", () => {
     expect(

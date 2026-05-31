@@ -250,6 +250,18 @@ const SOCKET_ACTION_HANDLERS: Record<string, Handler> = {
     });
   },
 
+  // Bounding box of every visible pane in a workspace (default: active),
+  // for `ht screenshot workspace`. Same DPR-aware crop contract as
+  // getSurfaceRect on the bun side.
+  getWorkspaceRect: (p, { surfaceManager, rpc }) => {
+    const wsId = (p["workspaceId"] as string) || undefined;
+    const rect = surfaceManager.getWorkspaceRect(wsId);
+    rpc.send("webviewResponse", {
+      reqId: p["reqId"] as string,
+      result: rect,
+    });
+  },
+
   // ── Screen read (async — requires rpc response) ──
   readScreen: (p, { surfaceManager, rpc }) => {
     const sid =
