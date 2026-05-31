@@ -42,6 +42,10 @@ type CardSlotKey =
 interface CardSlotCache {
   slots: Partial<Record<CardSlotKey, HTMLElement>>;
   sigs: Partial<Record<CardSlotKey, string>>;
+  /** The live `.workspace-status` grid inside the Status slot. Held so a
+   *  value change reconciles entries in place (no chart teardown) instead
+   *  of rebuilding the whole grid — see `reconcileStatusGrid`. */
+  statusGrid?: HTMLElement;
 }
 
 /** Stable JSON signature of a `WorkspaceInfo[]`. Used by
@@ -1205,27 +1209,39 @@ export class Sidebar {
       // status pills
       if (show.statusPills && ws.statusPills.length > 0) {
         const open = ui?.statusOpen ?? false;
-        const sig = [
+        // STRUCTURAL signature only — the set of keys (+ their layout) and
+        // the open state. Value changes do NOT rebuild the section; they
+        // reconcile into the existing grid below so charts don't flicker.
+        const structSig = [
           "sp",
           ws.statusPills
-            .map((p) => `${p.key}=${p.value}|${p.color ?? ""}|${p.icon ?? ""}`)
+            .map((p) => `${p.key}:${parseStatusKey(p.key).layout}`)
             .join("/"),
           open ? "1" : "0",
         ].join("|");
-        if (cache.sigs.status !== sig || !cache.slots.status) {
+        if (
+          cache.sigs.status !== structSig ||
+          !cache.slots.status ||
+          !cache.statusGrid
+        ) {
+          const grid = this.buildStatusGrid(ws);
+          cache.statusGrid = grid;
           cache.slots.status = this.buildCollapseSection({
             wsId: ws.id,
             key: "statusOpen",
             title: "Status",
             count: ws.statusPills.length,
-            build: () => this.buildStatusGrid(ws),
+            build: () => grid,
           });
-          cache.sigs.status = sig;
+          cache.sigs.status = structSig;
+        } else {
+          this.reconcileStatusGrid(ws, cache.statusGrid);
         }
         ordered.push(cache.slots.status);
       } else {
         delete cache.slots.status;
         delete cache.sigs.status;
+        delete cache.statusGrid;
       }
 
       // progress
@@ -1252,6 +1268,7 @@ export class Sidebar {
       delete cache.sigs.manifests;
       delete cache.sigs.status;
       delete cache.sigs.progress;
+      delete cache.statusGrid;
     }
 
     // Replace children with the ordered slot list. When the slots
@@ -1890,62 +1907,121 @@ export class Sidebar {
     const wrap = document.createElement("div");
     wrap.className = "workspace-status";
     for (const pill of ws.statusPills) {
-      const parsed = parseStatusKey(pill.key);
       // Hidden flag (leading `_`) opts the entry out of the sidebar
       // workspace card while keeping it available to the bottom
       // status bar. Lets scripts publish private metrics without
       // crowding the card.
-      if (parsed.hidden) continue;
-
-      const entry = document.createElement("div");
-      entry.className = `status-entry status-entry-${parsed.layout}`;
-
-      // Block-layout renderers (lineGraph, array, longtext) handle
-      // their own label + body, so we render them whole. Inline
-      // renderers slot inside the existing two-row chrome
-      // (label row + value row) to match the established density.
-      if (parsed.layout === "block") {
-        entry.appendChild(
-          renderStatusEntry({
-            parsed,
-            value: pill.value,
-            color: pill.color,
-            icon: pill.icon,
-            context: "card",
-          }),
-        );
-      } else {
-        const keyLine = document.createElement("div");
-        keyLine.className = "status-entry-key";
-        if (pill.icon && pill.icon in ICON_TEMPLATES) {
-          keyLine.append(createIcon(pill.icon as IconName, "", 10));
-        }
-        const keyText = document.createElement("span");
-        keyText.textContent = parsed.displayName;
-        keyLine.appendChild(keyText);
-        entry.appendChild(keyLine);
-
-        const valueLine = document.createElement("div");
-        valueLine.className = "status-entry-value";
-        valueLine.title = `${pill.key}: ${pill.value}`;
-        valueLine.appendChild(
-          renderStatusEntry({
-            parsed,
-            value: pill.value,
-            color: pill.color,
-            icon: pill.icon,
-            context: "card",
-            // keyLine above already renders icon SVG + displayName;
-            // skip them here so the value row doesn't repeat them.
-            valueOnly: true,
-          }),
-        );
-        entry.appendChild(valueLine);
-      }
-
-      wrap.appendChild(entry);
+      if (parseStatusKey(pill.key).hidden) continue;
+      wrap.appendChild(this.buildStatusEntry(pill));
     }
     return wrap;
+  }
+
+  /** One status entry, tagged with its key + a value signature so
+   *  `reconcileStatusGrid` can update it in place across refreshes. */
+  private buildStatusEntry(
+    pill: WorkspaceInfo["statusPills"][number],
+  ): HTMLElement {
+    const parsed = parseStatusKey(pill.key);
+    const entry = document.createElement("div");
+    entry.className = `status-entry status-entry-${parsed.layout}`;
+    entry.dataset["key"] = pill.key;
+
+    // Block-layout renderers (lineGraph, array, longtext) handle their
+    // own label + body, so we render them whole. Inline renderers slot
+    // inside the two-row chrome (a persistent label row + a value row
+    // that the reconciler swaps).
+    if (parsed.layout !== "block") {
+      const keyLine = document.createElement("div");
+      keyLine.className = "status-entry-key";
+      if (pill.icon && pill.icon in ICON_TEMPLATES) {
+        keyLine.append(createIcon(pill.icon as IconName, "", 10));
+      }
+      const keyText = document.createElement("span");
+      keyText.textContent = parsed.displayName;
+      keyLine.appendChild(keyText);
+      entry.appendChild(keyLine);
+
+      const valueLine = document.createElement("div");
+      valueLine.className = "status-entry-value";
+      entry.appendChild(valueLine);
+    }
+    this.fillStatusEntryValue(entry, pill, parsed);
+    return entry;
+  }
+
+  /** Render (or re-render) only an entry's value. No-ops when the value /
+   *  color / icon are unchanged, so an unchanged entry's chart SVG is
+   *  never recreated. */
+  private fillStatusEntryValue(
+    entry: HTMLElement,
+    pill: WorkspaceInfo["statusPills"][number],
+    parsed: ReturnType<typeof parseStatusKey>,
+  ): void {
+    const sig = `${pill.value}|${pill.color ?? ""}|${pill.icon ?? ""}`;
+    if (entry.dataset["sig"] === sig) return;
+    entry.dataset["sig"] = sig;
+    if (parsed.layout === "block") {
+      entry.replaceChildren(
+        renderStatusEntry({
+          parsed,
+          value: pill.value,
+          color: pill.color,
+          icon: pill.icon,
+          context: "card",
+        }),
+      );
+    } else {
+      const valueLine = entry.querySelector(
+        ".status-entry-value",
+      ) as HTMLElement | null;
+      if (!valueLine) return;
+      valueLine.title = `${pill.key}: ${pill.value}`;
+      valueLine.replaceChildren(
+        renderStatusEntry({
+          parsed,
+          value: pill.value,
+          color: pill.color,
+          icon: pill.icon,
+          context: "card",
+          // keyLine already renders icon SVG + displayName; skip them.
+          valueOnly: true,
+        }),
+      );
+    }
+  }
+
+  /** Update an existing `.workspace-status` grid in place: patch changed
+   *  entries, add new ones, drop stale ones, and reorder. Unchanged
+   *  entries (the common case on a 1 Hz `ht set-status` tick) are not
+   *  touched at all — this is what stops the whole-grid teardown that
+   *  flickered every chart on every update. */
+  private reconcileStatusGrid(ws: WorkspaceInfo, grid: HTMLElement): void {
+    const existing = new Map<string, HTMLElement>();
+    for (const child of Array.from(grid.children)) {
+      const k = (child as HTMLElement).dataset["key"];
+      if (k) existing.set(k, child as HTMLElement);
+    }
+    const seen = new Set<string>();
+    const ordered: HTMLElement[] = [];
+    for (const pill of ws.statusPills) {
+      const parsed = parseStatusKey(pill.key);
+      if (parsed.hidden) continue;
+      seen.add(pill.key);
+      let entry = existing.get(pill.key);
+      if (
+        entry &&
+        entry.className === `status-entry status-entry-${parsed.layout}`
+      ) {
+        this.fillStatusEntryValue(entry, pill, parsed);
+      } else {
+        // New key, or the renderer/layout changed — build fresh.
+        entry = this.buildStatusEntry(pill);
+      }
+      ordered.push(entry);
+    }
+    for (const [k, el] of existing) if (!seen.has(k)) el.remove();
+    grid.replaceChildren(...ordered);
   }
 
   private buildProgressBar(ws: WorkspaceInfo): HTMLElement {

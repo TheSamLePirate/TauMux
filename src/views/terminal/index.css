@@ -11451,15 +11451,34 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 .tau-ht-block {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   width: 100%;
   font-family: var(--tau-font-mono);
 }
 .tau-ht-block-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 9.5px;
   color: var(--tau-text-mute);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+.tau-ht-block-label-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Latest-value headline pinned to the right of the label row. */
+.tau-ht-block-headline {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--tau-text);
+  font-weight: 600;
 }
 .tau-ht-block-body {
   font-size: 11px;
@@ -11472,13 +11491,26 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   font-size: 9.5px;
   color: var(--tau-text-mute);
   letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
 }
 .tau-sparkline {
   color: var(--tau-cyan);
   display: block;
+  width: 100%;
 }
 .tau-ht-lineGraph .tau-sparkline {
-  color: currentColor;
+  color: var(--tau-cyan);
+}
+.tau-ht-block.tau-ht-area .tau-sparkline {
+  color: var(--tau-cyan);
+}
+/* Gauge readout text drawn inside the arc. */
+.tau-gauge-value {
+  fill: var(--tau-text);
+  font-family: var(--tau-font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Array list (e.g. `plan_array`) — single row per item, optional

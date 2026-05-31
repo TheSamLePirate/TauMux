@@ -69,10 +69,16 @@ const sigCwds = (ws: WorkspaceInfo) =>
   `${ws.cwds.join("|")}|${ws.selectedCwd ?? ""}`;
 const sigPanes = (ws: WorkspaceInfo) =>
   `${ws.surfaceTitles.join("|")}|${ws.focusedSurfaceTitle ?? ""}`;
+// STRUCTURAL only (keys + layout). Value changes reconcile into the
+// existing status grid (reconcileStatus) instead of rebuilding the whole
+// section — so charts don't flicker on every `ht set-status` tick.
 const sigStatus = (ws: WorkspaceInfo) =>
   ws.statusPills
-    .map((p) => `${p.key}=${p.value}|${p.color ?? ""}|${p.icon ?? ""}`)
+    .map((p) => `${p.key}:${parseStatusKey(p.key).layout}`)
     .join(";");
+
+const statusEntrySig = (p: WorkspaceInfo["statusPills"][number]) =>
+  `${p.value}|${p.color ?? ""}|${p.icon ?? ""}`;
 const sigProgress = (ws: WorkspaceInfo) =>
   ws.progress ? `${ws.progress.value}|${ws.progress.label ?? ""}` : "";
 const sigManifests = (ws: WorkspaceInfo, expandedSig: string) =>
@@ -166,7 +172,7 @@ export class WorkspaceCardBuilder {
           requestRerender: this.callbacks.onRequestRerender,
         }),
       );
-      this.section(card, "status", sigStatus(ws), () => buildStatus(ws));
+      this.statusSection(card, ws);
       this.section(card, "progress", sigProgress(ws), () => buildProgress(ws));
     } else {
       // Inactive cards collapse to stripe + header + meta only —
@@ -197,6 +203,23 @@ export class WorkspaceCardBuilder {
     if (slot) slot.el.replaceWith(el);
     else card.el.appendChild(el);
     card.slots[key] = { el, sig };
+  }
+
+  /** Status section is ALWAYS reconciled in place (never rebuilt while the
+   *  card lives): value changes, key add/remove, and reorder all patch the
+   *  existing grid, so an unchanged entry's chart SVG is never torn down.
+   *  This is what removes the flicker on a `ht set-status` tick. */
+  private statusSection(card: CardCache, ws: WorkspaceInfo): void {
+    const slot = card.slots["status"];
+    if (slot) {
+      reconcileStatus(slot.el, ws);
+      card.el.appendChild(slot.el); // keep DOM order
+      return;
+    }
+    const el = buildStatus(ws);
+    el.setAttribute("data-section", "status");
+    card.el.appendChild(el);
+    card.slots["status"] = { el, sig: sigStatus(ws) };
   }
 
   private removeSlot(card: CardCache, key: SectionKey): void {
@@ -399,6 +422,24 @@ function readManifestExpandedRaw(key: string): string {
   }
 }
 
+function makeStatusNode(
+  pill: WorkspaceInfo["statusPills"][number],
+): HTMLElement {
+  const parsed = parseStatusKey(pill.key);
+  const node = renderStatusEntry({
+    parsed,
+    value: pill.value,
+    color: pill.color,
+    icon: pill.icon,
+    context: "card",
+  });
+  node.title = `ht ${pill.key}: ${pill.value}`;
+  node.dataset["key"] = pill.key;
+  node.dataset["layout"] = parsed.layout;
+  node.dataset["sig"] = statusEntrySig(pill);
+  return node;
+}
+
 function buildStatus(ws: WorkspaceInfo): HTMLElement {
   const el = document.createElement("div");
   el.className = "workspace-section workspace-status";
@@ -406,19 +447,36 @@ function buildStatus(ws: WorkspaceInfo): HTMLElement {
     el.classList.add("empty");
     return el;
   }
-  for (const pill of ws.statusPills) {
-    const parsed = parseStatusKey(pill.key);
-    const node = renderStatusEntry({
-      parsed,
-      value: pill.value,
-      color: pill.color,
-      icon: pill.icon,
-      context: "card",
-    });
-    node.title = `ht ${pill.key}: ${pill.value}`;
-    el.appendChild(node);
-  }
+  for (const pill of ws.statusPills) el.appendChild(makeStatusNode(pill));
   return el;
+}
+
+/** In-place reconcile of a `.workspace-status` grid: reuse unchanged
+ *  nodes (no chart teardown), re-render changed ones, add/drop, reorder.
+ *  Mirrors the native sidebar's `reconcileStatusGrid`. */
+function reconcileStatus(el: HTMLElement, ws: WorkspaceInfo): void {
+  el.classList.toggle("empty", ws.statusPills.length === 0);
+  const existing = new Map<string, HTMLElement>();
+  for (const child of Array.from(el.children)) {
+    const k = (child as HTMLElement).dataset["key"];
+    if (k) existing.set(k, child as HTMLElement);
+  }
+  const seen = new Set<string>();
+  const ordered: HTMLElement[] = [];
+  for (const pill of ws.statusPills) {
+    seen.add(pill.key);
+    const prev = existing.get(pill.key);
+    const parsed = parseStatusKey(pill.key);
+    ordered.push(
+      prev &&
+        prev.dataset["layout"] === parsed.layout &&
+        prev.dataset["sig"] === statusEntrySig(pill)
+        ? prev
+        : makeStatusNode(pill),
+    );
+  }
+  for (const [k, n] of existing) if (!seen.has(k)) n.remove();
+  el.replaceChildren(...ordered);
 }
 
 function buildProgress(ws: WorkspaceInfo): HTMLElement {

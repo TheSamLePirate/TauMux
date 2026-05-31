@@ -18,9 +18,11 @@
  *   2. the bottom status bar via `ht-all` (always inline)
  *   3. the Settings → Layout → Discovered ht keys list
  *
- * Pass `--clear` to remove every demo key. Pass `--live` to keep the
- * line-graph / vbar / area renderers ticking with random samples
- * until you Ctrl-C — useful for visual smoke-testing.
+ * Pass `--clear` to remove every demo key. Pass `--live` to keep every
+ * chart renderer (bar · vbar · gauge · lineGraph · sparkline · area ·
+ * histogram · heatmap · dotGraph · pie) ticking with random samples until
+ * you Ctrl-C — a visual smoke-test that unchanged entries stay steady
+ * while these redraw (per-entry reconciliation, no flicker).
  *
  * Usage:
  *   shareBin/demo_status_keys
@@ -415,15 +417,30 @@ const DEMOS: DemoEntry[] = [
   { key: "agent_dot_warn", value: "running" },
   { key: "version_badge", value: "v0.2.4", icon: "⚙" },
 
-  // charts
-  { key: "disk_bar", value: "30|60|GB" },
+  // charts — every chart renderer ticks under `--live` so the demo
+  // doubles as a flicker stress-test (per-entry reconciliation should
+  // keep unchanged entries rock-steady while these redraw).
+  {
+    key: "disk_bar",
+    value: "30|60|GB",
+    tick: () => `${Math.round(10 + Math.random() * 50)}|60|GB`,
+  },
   {
     key: "hits_vbar",
     value: "12,18,9,21,14,11,5,17,22,16,4,9",
     tick: () =>
       Array.from({ length: 12 }, () => Math.round(Math.random() * 24)).join(","),
   },
-  { key: "battery_gauge_warn", value: "25|100|%" },
+  {
+    key: "battery_gauge_warn",
+    value: "25|100|%",
+    tick: () => `${Math.round(Math.random() * 100)}|100|%`,
+  },
+  {
+    key: "cpu_gauge_warn",
+    value: "72|100|%",
+    tick: () => `${Math.round(Math.random() * 100)}|100|%`,
+  },
   {
     key: "latency_hist_lineGraph",
     value: "23,55,77,55,44,22,77,88,66,40,28,30",
@@ -432,23 +449,44 @@ const DEMOS: DemoEntry[] = [
         Math.round(20 + Math.random() * 80),
       ).join(","),
   },
-  { key: "rps_sparkline", value: "1,3,2,5,8,3,5,4,2,7" },
+  {
+    key: "rps_sparkline",
+    value: "1,3,2,5,8,3,5,4,2,7",
+    tick: () =>
+      Array.from({ length: 16 }, () => Math.round(1 + Math.random() * 12)).join(
+        ",",
+      ),
+  },
   {
     key: "traffic_area",
     value: "1,5,3,9,7,12,10,15,9,13",
     tick: () =>
       Array.from({ length: 16 }, () => Math.round(Math.random() * 20)).join(","),
   },
-  { key: "build_histogram", value: "12,8,15,9,21,14,11" },
+  {
+    key: "build_histogram",
+    value: "12,8,15,9,21,14,11",
+    tick: () =>
+      Array.from({ length: 8 }, () => Math.round(Math.random() * 24)).join(","),
+  },
   {
     key: "activity_heatmap",
     value: "0.05,0.2,0.4,0.6,0.8,1.0,0.7,0.3,0.1,0.5,0.9,0.6",
+    tick: () =>
+      Array.from({ length: 12 }, () => Math.random().toFixed(2)).join(","),
   },
   {
     key: "commits_dotGraph",
     value: "0,0.2,0.5,0.8,1,0.4,0.1,0,0.6,0.9,0.3",
+    tick: () =>
+      Array.from({ length: 11 }, () => Math.random().toFixed(2)).join(","),
   },
-  { key: "traffic_pie", value: "search:60,direct:25,referral:15" },
+  {
+    key: "traffic_pie",
+    value: "search:60,direct:25,referral:15",
+    tick: () =>
+      `search:${10 + Math.round(Math.random() * 70)},direct:${5 + Math.round(Math.random() * 40)},referral:${5 + Math.round(Math.random() * 25)}`,
+  },
   { key: "share_donut", value: "human:42,agent:38,mixed:20" },
 
   // data

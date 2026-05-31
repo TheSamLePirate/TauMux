@@ -34,3 +34,17 @@ H4 native sideband sandbox, §6.5 `bin/ht` split — v0.3.173 → v0.3.182) into
 
 _(Site builds clean: `cd website-doc && bun run build` — 137 pages, no broken
 links.)_
+
+---
+
+## Pending — status-key UI polish
+
+- **Status-key charts redesign + flicker fix (v0.3.184).** The `ht set-status`
+  chart renderers got a visual overhaul (smooth curved line/area graphs with
+  gradient fills + baseline grid + latest-value headline; gauges show the value
+  centered in the arc; rounded bars/heatmap cells) and the sidebar workspace
+  card now reconciles status entries **in place** on each update instead of
+  rebuilding the whole grid — so a 1 Hz `ht set-status` tick no longer flickers
+  every chart. Native + web mirror both updated. Worth a changelog line; the
+  CLI/`set-status` surface is unchanged (`shareBin/demo_status_keys --live` is a
+  good showcase).

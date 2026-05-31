@@ -450,7 +450,15 @@ function inlineSparkline(
   l.textContent = label;
   wrap.appendChild(l);
   wrap.appendChild(document.createTextNode(" "));
-  wrap.appendChild(buildSparklineSvg(samples, { width: 80, height: 14, area }));
+  wrap.appendChild(
+    buildSparklineSvg(samples, {
+      width: 84,
+      height: 16,
+      area,
+      curve: true,
+      dot: true,
+    }),
+  );
   return wrap;
 }
 
@@ -802,16 +810,25 @@ function blockLineGraph(
 ): HTMLDivElement {
   const wrap = document.createElement("div");
   wrap.className = "tau-ht-block tau-ht-lineGraph";
-  appendBlockLabel(wrap, label);
+  const last = samples[samples.length - 1];
+  // Headline the latest value next to the label so the chart reads at a
+  // glance; the min/max footer gives the range context.
+  appendBlockLabel(wrap, label, samples.length ? formatNum(last) : undefined);
   wrap.appendChild(
-    buildSparklineSvg(samples, { width: 220, height: 36, area }),
+    buildSparklineSvg(samples, {
+      width: 240,
+      height: 46,
+      area,
+      curve: true,
+      grid: true,
+      dot: true,
+    }),
   );
   const min = Math.min(...samples);
   const max = Math.max(...samples);
-  const last = samples[samples.length - 1];
   const meta = document.createElement("div");
   meta.className = "tau-ht-block-meta";
-  meta.textContent = `min ${formatNum(min)} · max ${formatNum(max)} · last ${formatNum(last)}`;
+  meta.textContent = `${formatNum(min)} – ${formatNum(max)} · ${samples.length} pts`;
   wrap.appendChild(meta);
   return wrap;
 }
@@ -846,7 +863,14 @@ function blockGauge(
   wrap.className = "tau-ht-block tau-ht-gauge";
   appendBlockLabel(wrap, label);
   const sem = meterSemantic(semantic, value, max);
-  const svg = buildGaugeSvg(value, max, { width: 120, height: 70 });
+  // Headline percentage centered in the arc; the precise value/unit sits
+  // in the small footer so we don't waste the dead space under the dial.
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
+  const svg = buildGaugeSvg(value, max, {
+    width: 132,
+    height: 66,
+    valueText: `${pct}%`,
+  });
   svg.classList.add(`tau-ht-gauge-${sem}`);
   wrap.appendChild(svg);
   const meta = document.createElement("div");
@@ -1009,10 +1033,23 @@ function blockMd(label: string, value: string): HTMLDivElement {
   return wrap;
 }
 
-function appendBlockLabel(wrap: HTMLElement, label: string): void {
+function appendBlockLabel(
+  wrap: HTMLElement,
+  label: string,
+  headline?: string,
+): void {
   const l = document.createElement("div");
   l.className = "tau-ht-block-label";
-  l.textContent = label;
+  const name = document.createElement("span");
+  name.className = "tau-ht-block-label-name";
+  name.textContent = label;
+  l.appendChild(name);
+  if (headline !== undefined) {
+    const v = document.createElement("span");
+    v.className = "tau-ht-block-headline";
+    v.textContent = headline;
+    l.appendChild(v);
+  }
   wrap.appendChild(l);
 }
 
@@ -1319,46 +1356,146 @@ function appendIcon(wrap: HTMLElement, icon: string): void {
 
 /* ── SVG primitives ──────────────────────────────────────────── */
 
+/** Monotone-ish smooth path through points via Catmull-Rom → cubic Bézier.
+ *  Keeps a graph reading as a continuous trend instead of jagged segments,
+ *  without the overshoot a naive spline can introduce on spiky data. */
+function smoothLinePath(pts: ReadonlyArray<readonly [number, number]>): string {
+  if (pts.length === 0) return "";
+  if (pts.length === 1)
+    return `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  let d = `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const t = 1 / 6;
+    const c1x = p1[0] + (p2[0] - p0[0]) * t;
+    const c1y = p1[1] + (p2[1] - p0[1]) * t;
+    const c2x = p2[0] - (p3[0] - p1[0]) * t;
+    const c2y = p2[1] - (p3[1] - p1[1]) * t;
+    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
+/** Per-instance id source for SVG gradient defs (ids must be unique in the
+ *  document or two area charts would share one gradient). */
+let _svgGradUid = 0;
+
 function buildSparklineSvg(
   samples: number[],
-  opts: { width: number; height: number; area?: boolean },
+  opts: {
+    width: number;
+    height: number;
+    area?: boolean;
+    /** Smooth the line into a curve (default true). */
+    curve?: boolean;
+    /** Faint min/mid/max guide lines (block context). */
+    grid?: boolean;
+    /** Emphasise the latest sample with a dot + halo. */
+    dot?: boolean;
+  },
 ): SVGElement {
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("class", "tau-sparkline");
   svg.setAttribute("width", String(opts.width));
   svg.setAttribute("height", String(opts.height));
   svg.setAttribute("viewBox", `0 0 ${opts.width} ${opts.height}`);
+  svg.setAttribute("preserveAspectRatio", "none");
   if (samples.length === 0) return svg;
 
+  const w = opts.width;
+  const h = opts.height;
+  const padY = 3; // keep the stroke + dot off the top/bottom edges
   const min = Math.min(...samples);
   const max = Math.max(...samples);
   const range = max - min || 1;
-  const dx = samples.length > 1 ? opts.width / (samples.length - 1) : 0;
+  const n = samples.length;
+  const dx = n > 1 ? w / (n - 1) : 0;
   const yFor = (v: number): number =>
-    opts.height - ((v - min) / range) * (opts.height - 2) - 1;
-  const points = samples
-    .map((v, i) => `${(i * dx).toFixed(1)},${yFor(v).toFixed(1)}`)
-    .join(" ");
+    h - padY - ((v - min) / range) * (h - padY * 2);
+  const pts: Array<[number, number]> = samples.map((v, i) => [
+    n > 1 ? i * dx : w / 2,
+    yFor(v),
+  ]);
+
+  if (opts.grid) {
+    for (const gy of [padY, h / 2, h - padY]) {
+      const line = document.createElementNS(SVG_NS, "line");
+      line.setAttribute("x1", "0");
+      line.setAttribute("x2", String(w));
+      line.setAttribute("y1", gy.toFixed(1));
+      line.setAttribute("y2", gy.toFixed(1));
+      line.setAttribute("stroke", "currentColor");
+      line.setAttribute("stroke-opacity", "0.09");
+      line.setAttribute("stroke-width", "1");
+      svg.appendChild(line);
+    }
+  }
+
+  const linePath =
+    opts.curve === false
+      ? "M " +
+        pts.map((p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" L ")
+      : smoothLinePath(pts);
 
   if (opts.area) {
-    const polygon = document.createElementNS(SVG_NS, "polygon");
-    polygon.setAttribute(
-      "points",
-      `0,${opts.height} ${points} ${opts.width},${opts.height}`,
+    const uid = `tau-area-${_svgGradUid++}`;
+    const defs = document.createElementNS(SVG_NS, "defs");
+    const grad = document.createElementNS(SVG_NS, "linearGradient");
+    grad.setAttribute("id", uid);
+    grad.setAttribute("x1", "0");
+    grad.setAttribute("y1", "0");
+    grad.setAttribute("x2", "0");
+    grad.setAttribute("y2", "1");
+    for (const [off, op] of [
+      ["0%", "0.34"],
+      ["100%", "0.02"],
+    ] as const) {
+      const stop = document.createElementNS(SVG_NS, "stop");
+      stop.setAttribute("offset", off);
+      stop.setAttribute("stop-color", "currentColor");
+      stop.setAttribute("stop-opacity", op);
+      grad.appendChild(stop);
+    }
+    defs.appendChild(grad);
+    svg.appendChild(defs);
+    const fill = document.createElementNS(SVG_NS, "path");
+    fill.setAttribute(
+      "d",
+      `${linePath} L ${pts[n - 1][0].toFixed(1)} ${h} L ${pts[0][0].toFixed(1)} ${h} Z`,
     );
-    polygon.setAttribute("fill", "currentColor");
-    polygon.setAttribute("fill-opacity", "0.2");
-    polygon.setAttribute("stroke", "none");
-    svg.appendChild(polygon);
+    fill.setAttribute("fill", `url(#${uid})`);
+    fill.setAttribute("stroke", "none");
+    svg.appendChild(fill);
   }
-  const polyline = document.createElementNS(SVG_NS, "polyline");
-  polyline.setAttribute("points", points);
-  polyline.setAttribute("fill", "none");
-  polyline.setAttribute("stroke", "currentColor");
-  polyline.setAttribute("stroke-width", "1.25");
-  polyline.setAttribute("stroke-linejoin", "round");
-  polyline.setAttribute("stroke-linecap", "round");
-  svg.appendChild(polyline);
+
+  const line = document.createElementNS(SVG_NS, "path");
+  line.setAttribute("d", linePath);
+  line.setAttribute("fill", "none");
+  line.setAttribute("stroke", "currentColor");
+  line.setAttribute("stroke-width", "1.5");
+  line.setAttribute("stroke-linejoin", "round");
+  line.setAttribute("stroke-linecap", "round");
+  svg.appendChild(line);
+
+  if (opts.dot) {
+    const [lx, ly] = pts[n - 1];
+    const halo = document.createElementNS(SVG_NS, "circle");
+    halo.setAttribute("cx", lx.toFixed(1));
+    halo.setAttribute("cy", ly.toFixed(1));
+    halo.setAttribute("r", "3.6");
+    halo.setAttribute("fill", "currentColor");
+    halo.setAttribute("fill-opacity", "0.2");
+    svg.appendChild(halo);
+    const dot = document.createElementNS(SVG_NS, "circle");
+    dot.setAttribute("cx", lx.toFixed(1));
+    dot.setAttribute("cy", ly.toFixed(1));
+    dot.setAttribute("r", "2");
+    dot.setAttribute("fill", "currentColor");
+    svg.appendChild(dot);
+  }
   return svg;
 }
 
@@ -1376,7 +1513,9 @@ function buildVbarSvg(
   const min = Math.min(...samples, 0);
   const range = max - min || 1;
   const slot = opts.width / samples.length;
-  const barW = Math.max(1, slot - 1.5);
+  const gap = slot > 6 ? 2 : slot > 3 ? 1 : 0.5;
+  const barW = Math.max(1, slot - gap);
+  const radius = Math.min(2, barW / 2);
   samples.forEach((v, i) => {
     const h = ((v - min) / range) * (opts.height - 2);
     const x = i * slot + (slot - barW) / 2;
@@ -1385,9 +1524,12 @@ function buildVbarSvg(
     r.setAttribute("x", x.toFixed(1));
     r.setAttribute("y", y.toFixed(1));
     r.setAttribute("width", barW.toFixed(1));
-    r.setAttribute("height", Math.max(0.5, h).toFixed(1));
+    r.setAttribute("height", Math.max(1, h).toFixed(1));
+    r.setAttribute("rx", radius.toFixed(1));
     r.setAttribute("fill", "currentColor");
-    r.setAttribute("opacity", String(0.55 + 0.45 * ((v - min) / range)));
+    // Taller bars read as "hotter" — ramp opacity with value so the
+    // series has depth instead of a flat block of one tint.
+    r.setAttribute("opacity", String(0.5 + 0.5 * ((v - min) / range)));
     svg.appendChild(r);
   });
   return svg;
@@ -1396,7 +1538,7 @@ function buildVbarSvg(
 function buildGaugeSvg(
   value: number,
   max: number,
-  opts: { width: number; height: number },
+  opts: { width: number; height: number; valueText?: string },
 ): SVGElement {
   // Half-circle arc from 180° (left) to 0° (right). Gauge axis runs
   // along the bottom edge of the bbox so it reads naturally.
@@ -1406,16 +1548,16 @@ function buildGaugeSvg(
   svg.setAttribute("height", String(opts.height));
   svg.setAttribute("viewBox", `0 0 ${opts.width} ${opts.height}`);
   const cx = opts.width / 2;
-  const cy = opts.height - 2;
-  const r = Math.min(opts.width / 2 - 2, opts.height - 4);
-  const stroke = Math.max(2, r * 0.18);
+  const cy = opts.height - 3;
+  const r = Math.min(opts.width / 2 - 3, opts.height - 5);
+  const stroke = Math.max(3, r * 0.2);
 
   // Track (full half-circle).
   const track = document.createElementNS(SVG_NS, "path");
   track.setAttribute("d", arcPath(cx, cy, r, 180, 0));
   track.setAttribute("fill", "none");
   track.setAttribute("stroke", "currentColor");
-  track.setAttribute("stroke-opacity", "0.18");
+  track.setAttribute("stroke-opacity", "0.15");
   track.setAttribute("stroke-width", String(stroke));
   track.setAttribute("stroke-linecap", "round");
   svg.appendChild(track);
@@ -1430,6 +1572,26 @@ function buildGaugeSvg(
   arc.setAttribute("stroke-width", String(stroke));
   arc.setAttribute("stroke-linecap", "round");
   svg.appendChild(arc);
+
+  // Value tick at the arc head — a small accent cap that anchors the eye.
+  const rad = (endAngle * Math.PI) / 180;
+  const tip = document.createElementNS(SVG_NS, "circle");
+  tip.setAttribute("cx", (cx + r * Math.cos(rad)).toFixed(2));
+  tip.setAttribute("cy", (cy - r * Math.sin(rad)).toFixed(2));
+  tip.setAttribute("r", (stroke * 0.62).toFixed(2));
+  tip.setAttribute("fill", "currentColor");
+  svg.appendChild(tip);
+
+  // Centered readout inside the arc.
+  if (opts.valueText !== undefined) {
+    const t = document.createElementNS(SVG_NS, "text");
+    t.setAttribute("class", "tau-gauge-value");
+    t.setAttribute("x", cx.toFixed(1));
+    t.setAttribute("y", (cy - r * 0.18).toFixed(1));
+    t.setAttribute("text-anchor", "middle");
+    t.textContent = opts.valueText;
+    svg.appendChild(t);
+  }
 
   return svg;
 }
@@ -1465,16 +1627,17 @@ function buildHeatmapStrip(
   const min = Math.min(...samples);
   const range = max - min || 1;
   const slot = opts.width / samples.length;
+  const gap = opts.gridded ? Math.min(2, slot * 0.18) : 0;
+  const cellW = Math.max(1, slot - gap);
+  const radius = Math.min(2.5, cellW / 3, opts.height / 3);
   samples.forEach((v, i) => {
     const t = (v - min) / range;
     const r = document.createElementNS(SVG_NS, "rect");
-    r.setAttribute("x", (i * slot).toFixed(2));
+    r.setAttribute("x", (i * slot + gap / 2).toFixed(2));
     r.setAttribute("y", "0");
-    r.setAttribute(
-      "width",
-      Math.max(1, slot - (opts.gridded ? 1 : 0)).toFixed(2),
-    );
+    r.setAttribute("width", cellW.toFixed(2));
     r.setAttribute("height", String(opts.height));
+    r.setAttribute("rx", radius.toFixed(2));
     r.setAttribute("fill", heatColor(t));
     svg.appendChild(r);
   });

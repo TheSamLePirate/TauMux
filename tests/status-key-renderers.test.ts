@@ -117,7 +117,8 @@ describe("renderStatusEntry — bar (inline) context", () => {
     expect(el.classList.contains("tau-status-kv")).toBe(true);
     const svg = el.querySelector("svg.tau-sparkline");
     expect(svg).not.toBeNull();
-    expect(svg!.querySelector("polyline")).not.toBeNull();
+    // The line is now a smoothed <path> (was <polyline>).
+    expect(svg!.querySelector("path")).not.toBeNull();
   });
 
   test("malformed body falls back to text without throwing", async () => {
@@ -175,10 +176,14 @@ describe("renderStatusEntry — card (block) context", () => {
     });
     expect(el.classList.contains("tau-ht-lineGraph")).toBe(true);
     expect(el.querySelector("svg.tau-sparkline")).not.toBeNull();
+    // Latest value is the headline next to the label; the footer carries
+    // the min–max range + point count.
+    const headline = el.querySelector(".tau-ht-block-headline");
+    expect(headline?.textContent).toBe("2");
     const meta = el.querySelector(".tau-ht-block-meta");
-    expect(meta?.textContent).toContain("min 1");
-    expect(meta?.textContent).toContain("max 9");
-    expect(meta?.textContent).toContain("last 2");
+    expect(meta?.textContent).toContain("1");
+    expect(meta?.textContent).toContain("9");
+    expect(meta?.textContent).toContain("pts");
   });
 
   test("longtext (card) wraps in a block container", async () => {
@@ -478,7 +483,7 @@ describe("renderStatusEntry — v2 chart renderers", () => {
     expect(svg?.classList.contains("is-donut")).toBe(true);
   });
 
-  test("area sparkline renders polygon + polyline", async () => {
+  test("area sparkline renders a gradient fill + line path", async () => {
     const { parseStatusKey, renderStatusEntry } = await loadDeps();
     const el = renderStatusEntry({
       parsed: parseStatusKey("traffic_area"),
@@ -486,8 +491,10 @@ describe("renderStatusEntry — v2 chart renderers", () => {
       context: "card",
     });
     const svg = el.querySelector("svg.tau-sparkline")!;
-    expect(svg.querySelector("polygon")).not.toBeNull();
-    expect(svg.querySelector("polyline")).not.toBeNull();
+    // Area fill is a gradient-filled <path> (was a flat <polygon>); the
+    // line is a smoothed <path> (was <polyline>).
+    expect(svg.querySelector("linearGradient")).not.toBeNull();
+    expect(svg.querySelectorAll("path").length).toBeGreaterThanOrEqual(2);
   });
 });
 
