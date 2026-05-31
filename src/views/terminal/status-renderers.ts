@@ -6,5 +6,6 @@
 
 export {
   renderStatusEntry,
+  reconcileChildren,
   type RenderEntryInput,
 } from "../../shared/status-render";

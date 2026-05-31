@@ -14,7 +14,7 @@ import {
   type ManifestAction,
   type ManifestActionState,
 } from "./sidebar-manifest-card";
-import { renderStatusEntry } from "./status-renderers";
+import { renderStatusEntry, reconcileChildren } from "./status-renderers";
 import type { WorkspaceInfo as SharedWorkspaceInfo } from "../../shared/sidebar-state";
 import { htEvents } from "../../shared/event-bus";
 
@@ -1271,12 +1271,11 @@ export class Sidebar {
       delete cache.statusGrid;
     }
 
-    // Replace children with the ordered slot list. When the slots
-    // are the same nodes in the same order as the current children
-    // (the common case post-Phase-3), the browser reuses them in
-    // place — no destruction or re-layout. When sections were
-    // rebuilt, only those nodes are new.
-    item.replaceChildren(...ordered);
+    // Apply the ordered slot list with minimal DOM mutation: a section
+    // already in its target position is left untouched. `replaceChildren`
+    // would detach + re-attach every section (incl. the live status grid)
+    // on each 1 Hz refresh — `reconcileChildren` only moves what changed.
+    reconcileChildren(item, ordered);
   }
 
   private orderedWorkspaces(): WorkspaceInfo[] {
@@ -2021,7 +2020,9 @@ export class Sidebar {
       ordered.push(entry);
     }
     for (const [k, el] of existing) if (!seen.has(k)) el.remove();
-    grid.replaceChildren(...ordered);
+    // Minimal DOM mutation — unchanged entries are NOT detached (which is
+    // what `replaceChildren` would do, repainting every chart each tick).
+    reconcileChildren(grid, ordered);
   }
 
   private buildProgressBar(ws: WorkspaceInfo): HTMLElement {

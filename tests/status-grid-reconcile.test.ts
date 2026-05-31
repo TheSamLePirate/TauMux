@@ -58,6 +58,62 @@ function entry(host: HTMLElement, key: string): HTMLElement {
   return grid(host).querySelector(`[data-key="${key}"]`) as HTMLElement;
 }
 
+describe("reconcileChildren — minimal DOM mutation (the flicker fix)", () => {
+  async function rc() {
+    return (await import("../src/shared/status-render")).reconcileChildren;
+  }
+  function parentWith(n: number): { parent: HTMLElement; kids: HTMLElement[] } {
+    const parent = document.createElement("div");
+    const kids = Array.from({ length: n }, (_, i) => {
+      const el = document.createElement("span");
+      el.textContent = String(i);
+      parent.appendChild(el);
+      return el;
+    });
+    return { parent, kids };
+  }
+
+  test("an unchanged order does NOT touch the DOM (no insertBefore)", async () => {
+    const reconcileChildren = await rc();
+    const { parent, kids } = parentWith(3);
+    let inserts = 0;
+    const orig = parent.insertBefore.bind(parent);
+    parent.insertBefore = ((node: Node, ref: Node | null) => {
+      inserts++;
+      return orig(node, ref);
+    }) as typeof parent.insertBefore;
+    reconcileChildren(parent, kids);
+    // This is the whole point — reused nodes already in place are never
+    // detached/re-inserted, so charts don't repaint.
+    expect(inserts).toBe(0);
+    expect(Array.from(parent.children)).toEqual(kids);
+  });
+
+  test("only the moved node is re-inserted on reorder", async () => {
+    const reconcileChildren = await rc();
+    const { parent, kids } = parentWith(3); // [0,1,2]
+    let inserts = 0;
+    const orig = parent.insertBefore.bind(parent);
+    parent.insertBefore = ((node: Node, ref: Node | null) => {
+      inserts++;
+      return orig(node, ref);
+    }) as typeof parent.insertBefore;
+    reconcileChildren(parent, [kids[2], kids[0], kids[1]]); // [2,0,1]
+    expect(parent.children[0]).toBe(kids[2]);
+    expect(parent.children[1]).toBe(kids[0]);
+    expect(parent.children[2]).toBe(kids[1]);
+    expect(inserts).toBe(1); // just pulling kids[2] to the front
+  });
+
+  test("removes trailing stragglers and appends new nodes", async () => {
+    const reconcileChildren = await rc();
+    const { parent, kids } = parentWith(3);
+    const fresh = document.createElement("span");
+    reconcileChildren(parent, [kids[0], fresh]); // drop 1 & 2, add fresh
+    expect(Array.from(parent.children)).toEqual([kids[0], fresh]);
+  });
+});
+
 describe("workspace-card status reconciliation", () => {
   test("a value change keeps unchanged sibling nodes (no teardown)", async () => {
     const { WorkspaceCardBuilder } = await load();

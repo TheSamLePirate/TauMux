@@ -21,7 +21,10 @@
 //
 // Manifest action buttons (run / build / dev / …) ship in M14.
 
-import { renderStatusEntry } from "../../shared/status-render";
+import {
+  renderStatusEntry,
+  reconcileChildren,
+} from "../../shared/status-render";
 import { parseStatusKey } from "../../shared/status-key";
 import type { WorkspaceInfo } from "../../shared/sidebar-state";
 import { shortenCwd, formatRss } from "../../shared/sidebar-format";
@@ -476,7 +479,9 @@ function reconcileStatus(el: HTMLElement, ws: WorkspaceInfo): void {
     );
   }
   for (const [k, n] of existing) if (!seen.has(k)) n.remove();
-  el.replaceChildren(...ordered);
+  // Minimal DOM mutation — unchanged entries stay put (no detach/repaint),
+  // unlike `replaceChildren` which tears down + re-attaches the whole grid.
+  reconcileChildren(el, ordered);
 }
 
 function buildProgress(ws: WorkspaceInfo): HTMLElement {

@@ -85,6 +85,34 @@ export function renderStatusEntry(input: RenderEntryInput): HTMLElement {
 }
 
 /**
+ * Apply an ordered child list to `parent` with the MINIMUM DOM mutation:
+ * a node already sitting in its target position is left completely
+ * untouched (never detached), so an unchanged chart SVG doesn't repaint.
+ *
+ * `parent.replaceChildren(...ordered)` looks equivalent but is NOT — it
+ * removes every existing child and re-inserts them, so even reused nodes
+ * are detached + re-attached and the browser repaints the whole list on
+ * every update. That was the residual status-grid flicker: node identity
+ * was preserved, but `replaceChildren` still tore the grid down each tick.
+ *
+ * Handles reorder, insert, and remove (trailing stragglers are trimmed),
+ * so callers only need to build the desired `ordered` list.
+ */
+export function reconcileChildren(
+  parent: Element,
+  ordered: ReadonlyArray<Node>,
+): void {
+  for (let i = 0; i < ordered.length; i++) {
+    const desired = ordered[i];
+    const current = parent.childNodes[i] ?? null;
+    if (current !== desired) parent.insertBefore(desired, current);
+  }
+  while (parent.childNodes.length > ordered.length) {
+    parent.removeChild(parent.childNodes[parent.childNodes.length - 1]!);
+  }
+}
+
+/**
  * Remove the leading `.tau-status-label`, `.tau-ht-icon`, and the
  * separator text node that `inlineKv` / `inlineCode` / `inlineStatus`
  * insert between them. Leaves the value child(ren) intact. Used by the

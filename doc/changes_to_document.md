@@ -48,3 +48,10 @@ links.)_
   every chart. Native + web mirror both updated. Worth a changelog line; the
   CLI/`set-status` surface is unchanged (`shareBin/demo_status_keys --live` is a
   good showcase).
+- **Status-grid flicker fully fixed (v0.3.185).** The first pass reused entry
+  nodes but still called `replaceChildren(...)`, which detaches + re-attaches
+  every node (the browser repaints the whole grid each tick). Added a shared
+  `reconcileChildren` that mutates the DOM minimally — a node already in its
+  target position is never touched — and routed the status grid, the web card
+  grid, and the native card's section list through it. Now only the entries
+  whose value actually changed repaint. Changelog-only.
