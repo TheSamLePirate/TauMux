@@ -112,13 +112,23 @@ The repo ships a small starter set of scripts under `shareBin/` so a fresh check
 | Script              | Purpose                                                                        |
 | ------------------- | ------------------------------------------------------------------------------ |
 | `show_chart`        | CSV/TSV column → line / bar / scatter chart in a sideband panel.               |
+| `show_csv_profile`  | CSV/TSV → data-quality/profile report with inferred types and histograms.      |
 | `show_diff` / `show_gitdiff` | Coloured diff overlay (file diff or `git diff` of the current repo).  |
+| `show_env`          | Environment/project diagnostics dashboard with conservative secret redaction.  |
 | `show_gitlog`       | `git log` graph rendered as an HTML overlay.                                   |
 | `show_html`         | Raw HTML body → sideband html panel.                                           |
+| `show_http`         | `curl -i` / file / URL → HTTP status, headers, and JSON/HTML/text inspector.   |
+| `show_image_diff`   | Compare two screenshots/images with split, onion-skin, and heatmap modes.      |
 | `show_img`          | Display an image (path / URL) in a floating panel.                             |
 | `show_json`         | Stdin or `<path>` → pretty-printed JSON viewer.                                |
+| `show_logs`         | File/stdin log viewer with level colours, search, counts, and bounded buffer.  |
 | `show_md`           | Markdown body → rendered overlay (subset: bold / italic / code / links).      |
+| `show_mermaid`      | Mermaid diagram source → rendered full-pane diagram (CDN-backed initially).   |
+| `show_openapi`      | OpenAPI/Swagger JSON/YAML → searchable endpoint explorer.                      |
+| `show_ports`        | Live listening-port dashboard using `lsof` / `ss`.                             |
+| `show_proc`         | Live process tree/resource inspector using `ps`.                               |
 | `show_qr`           | Encode a string as a QR code SVG.                                              |
+| `show_sqlite`       | Read-only SQLite browser with schema, previews, and safe query mode.           |
 | `show_sysmon`       | Live CPU / memory / process panel, refreshed via metadata RPC.                 |
 | `show_table`        | CSV/TSV → sortable HTML table.                                                 |
 | `show_webcam`       | AVFoundation webcam stream into a panel (macOS — needs entitlement).           |

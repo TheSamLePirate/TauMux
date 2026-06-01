@@ -1,0 +1,143 @@
+#!/usr/bin/env bun
+/**
+ * τ-mux — show_http
+ *
+ * Inspect an HTTP response from `curl -i`, a saved response file,
+ * stdin, or a direct `--url` fetch. Shows status, headers, redirects,
+ * and JSON/HTML/text bodies.
+ *
+ * Usage:
+ *   curl -i https://api.example.com/users | show_http
+ *   show_http response.txt
+ *   show_http --url https://api.example.com/users
+ *   show_http --body-only response.json
+ */
+
+import { CATPPUCCIN, fullScreenHtml, fullScreenPage } from "./lib/full-screen";
+import { parseArgs, readInput } from "./lib/cli";
+import { escapeAttr, escapeHtml } from "./lib/escape";
+import { renderJsonTree } from "./lib/json-tree";
+import { detectBodyMode, headerValue, parseHttpResponse, responseFromFetch, statusClass, type ParsedHttpResponse } from "./lib/http";
+
+let parsed;
+try {
+  parsed = parseArgs(process.argv.slice(2), {
+    schema: [
+      { name: "url", long: "url", kind: "string", default: "" },
+      { name: "bodyOnly", long: "body-only", kind: "boolean", default: false },
+    ] as const,
+  });
+} catch (err) {
+  console.error(`show_http: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+const { positional, flags } = parsed;
+let response: ParsedHttpResponse;
+let title = "HTTP response";
+
+if (flags.url) {
+  try {
+    const fetched = await fetch(flags.url);
+    const body = await fetched.text();
+    response = responseFromFetch(fetched, body);
+    title = flags.url;
+  } catch (err) {
+    console.error(`show_http: fetch failed: ${(err as Error).message}`);
+    process.exit(1);
+  }
+} else {
+  const path = positional[0] ?? "";
+  const raw = readInput(path, { utility: "show_http", expecting: "an HTTP response" });
+  response = flags.bodyOnly ? { history: [], final: null, body: raw } : parseHttpResponse(raw);
+  title = path || "stdin";
+}
+
+fullScreenHtml({
+  render: () => fullScreenPage({
+    tag: { label: "HTTP", color: statusColor() },
+    title: escapeHtml(title),
+    subtitle: response.final ? `${response.final.statusCode} ${escapeHtml(response.final.reason)}` : "body only",
+    body: `${statusPanel()}${headersPanel()}${bodyPanel()}`,
+    extraCss: css(),
+  }),
+});
+
+function statusColor(): string {
+  const cls = statusClass(response.final?.statusCode ?? 0);
+  return cls === "success" ? CATPPUCCIN.green : cls === "redirect" ? CATPPUCCIN.yellow : cls === "client" || cls === "server" ? CATPPUCCIN.red : CATPPUCCIN.blue;
+}
+
+function statusPanel(): string {
+  if (!response.final) {
+    return `<section class="hero"><div><span class="code body">BODY</span><h1>Body-only input</h1><p>No HTTP status line was parsed.</p></div></section>`;
+  }
+  const final = response.final;
+  const cls = statusClass(final.statusCode);
+  const contentType = headerValue(final.headers, "content-type") || "unknown";
+  const length = headerValue(final.headers, "content-length") || `${response.body.length} chars`;
+  const history = response.history.length > 1 ? `<div class="redirects">${response.history.map((block) => `<span>${block.statusCode}</span>`).join(" → ")}</div>` : "";
+  return `<section class="hero"><div><span class="code ${cls}">${final.statusCode}</span><h1>${escapeHtml(final.reason || cls)}</h1><p>${escapeHtml(contentType)} · ${escapeHtml(length)}</p>${history}</div></section>`;
+}
+
+function headersPanel(): string {
+  if (!response.final) return "";
+  const rows = response.final.headers.map((header) => `<tr><td>${escapeHtml(header.name)}</td><td>${escapeHtml(header.value)}</td></tr>`).join("");
+  return `<section class="panel"><h2>Headers <input class="header-filter" placeholder="filter…"></h2><div class="table-scroll"><table class="headers"><tbody>${rows || `<tr><td colspan="2" class="muted">No headers</td></tr>`}</tbody></table></div></section><script>(function(){const input=document.querySelector('.header-filter');input?.addEventListener('input',()=>{const q=input.value.toLowerCase();for(const tr of document.querySelectorAll('table.headers tr'))tr.hidden=!(tr.textContent||'').toLowerCase().includes(q);});})();</script>`;
+}
+
+function bodyPanel(): string {
+  const mode = detectBodyMode(response);
+  let body = "";
+  if (mode === "empty") body = `<div class="empty">Empty response body.</div>`;
+  else if (mode === "json") body = renderJsonBody();
+  else if (mode === "html") body = `<div class="tabs"><button data-tab="source" class="active">source</button><button data-tab="preview">preview</button></div><pre class="body-source tab-source">${escapeHtml(response.body)}</pre><iframe class="html-preview tab-preview hidden" sandbox srcdoc="${escapeAttr(response.body)}"></iframe>${tabScript()}`;
+  else body = `<pre class="body-source">${escapeHtml(response.body)}</pre>`;
+  return `<section class="panel body-panel"><h2>Body <span>${mode}</span></h2>${body}</section>`;
+}
+
+function renderJsonBody(): string {
+  try {
+    return renderJsonTree(JSON.parse(response.body), { openDepth: 2 });
+  } catch (err) {
+    return `<div class="warn">Detected JSON but parse failed: ${escapeHtml((err as Error).message)}</div><pre class="body-source">${escapeHtml(response.body)}</pre>`;
+  }
+}
+
+function tabScript(): string {
+  return `<script>(function(){const buttons=[...document.querySelectorAll('.tabs button')];buttons.forEach(btn=>btn.addEventListener('click',()=>{buttons.forEach(b=>b.classList.toggle('active',b===btn));document.querySelector('.tab-source')?.classList.toggle('hidden',btn.dataset.tab!=='source');document.querySelector('.tab-preview')?.classList.toggle('hidden',btn.dataset.tab!=='preview');}));})();</script>`;
+}
+
+function css(): string {
+  return `
+.fs-body { padding: 16px; }
+.hero { border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 16px; padding: 18px; background: linear-gradient(135deg, rgba(137,180,250,0.12), rgba(203,166,247,0.08)); margin-bottom: 16px; }
+.hero h1 { margin: 6px 0 4px; font-size: 26px; }
+.hero p { margin: 0; color: ${CATPPUCCIN.overlay1}; }
+.code { display: inline-flex; padding: 4px 10px; border-radius: 999px; background: ${CATPPUCCIN.surface0}; font-weight: 800; }
+.code.success { color: ${CATPPUCCIN.green}; }.code.redirect { color: ${CATPPUCCIN.yellow}; }.code.client,.code.server { color: ${CATPPUCCIN.red}; }.code.info,.code.unknown,.code.body { color: ${CATPPUCCIN.blue}; }
+.redirects { margin-top: 10px; color: ${CATPPUCCIN.subtext0}; }
+.redirects span { color: ${CATPPUCCIN.yellow}; }
+.panel { border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 14px; overflow: hidden; background: rgba(24,24,37,0.72); margin-top: 16px; }
+.panel h2 { margin: 0; padding: 11px 14px; display: flex; gap: 12px; align-items: center; justify-content: space-between; color: ${CATPPUCCIN.subtext1}; font-size: 12px; text-transform: uppercase; border-bottom: 1px solid ${CATPPUCCIN.surface0}; }
+.panel h2 span { color: ${CATPPUCCIN.overlay1}; }
+.header-filter { border: 1px solid ${CATPPUCCIN.surface1}; background: ${CATPPUCCIN.crust}; color: ${CATPPUCCIN.text}; border-radius: 8px; padding: 5px 8px; font: inherit; text-transform: none; }
+.table-scroll { overflow: auto; max-height: 260px; }
+table { width: 100%; border-collapse: collapse; }
+td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.035); vertical-align: top; overflow-wrap: anywhere; }
+td:first-child { color: ${CATPPUCCIN.pink}; width: 240px; font-weight: 700; }
+.body-panel { min-height: 260px; }
+.body-source { margin: 0; padding: 14px; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.empty,.warn { padding: 18px; color: ${CATPPUCCIN.overlay1}; }
+.warn { color: ${CATPPUCCIN.yellow}; }
+.html-preview { width: 100%; height: 420px; border: 0; background: white; }
+.tabs { display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid ${CATPPUCCIN.surface0}; }
+.tabs button { border: 1px solid ${CATPPUCCIN.surface1}; background: ${CATPPUCCIN.surface0}; color: ${CATPPUCCIN.subtext1}; border-radius: 999px; padding: 5px 10px; font: inherit; cursor: pointer; }
+.tabs button.active { border-color: ${CATPPUCCIN.blue}; color: ${CATPPUCCIN.text}; }
+.hidden { display: none; }
+.muted { color: ${CATPPUCCIN.overlay0}; }
+.jt-root { padding: 14px; }
+.jt-key { color: ${CATPPUCCIN.pink}; }.jt-val[data-type="string"] { color: ${CATPPUCCIN.green}; }.jt-val[data-type="number"] { color: ${CATPPUCCIN.peach}; }.jt-val[data-type="boolean"] { color: ${CATPPUCCIN.mauve}; }.jt-val[data-type="null"] { color: ${CATPPUCCIN.overlay0}; font-style: italic; }.jt-bracket { color: ${CATPPUCCIN.overlay0}; }
+details summary { cursor: pointer; list-style: none; } details summary::-webkit-details-marker { display: none; } details summary::before { content: "▸"; display: inline-block; width: 14px; color: ${CATPPUCCIN.overlay0}; } details[open] summary::before { transform: rotate(90deg); } details > .jt-children { padding-left: 18px; border-left: 1px solid ${CATPPUCCIN.surface0}; margin-left: 6px; }
+`;
+}

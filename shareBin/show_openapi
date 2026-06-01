@@ -1,0 +1,81 @@
+#!/usr/bin/env bun
+/**
+ * τ-mux — show_openapi
+ *
+ * Interactive read-only explorer for OpenAPI/Swagger JSON or YAML.
+ *
+ * Usage:
+ *   show_openapi openapi.json
+ *   show_openapi openapi.yaml
+ *   curl https://example.com/openapi.json | show_openapi
+ */
+
+import { CATPPUCCIN, fullScreenHtml, fullScreenPage } from "./lib/full-screen";
+import { readInput } from "./lib/cli";
+import { escapeHtml } from "./lib/escape";
+import { parseYaml } from "./lib/yaml";
+import { extractOpenApiSummary, type OpenApiSummary } from "./lib/openapi";
+
+const path = process.argv.slice(2).find((arg) => !arg.startsWith("--")) ?? "";
+const raw = readInput(path, { utility: "show_openapi", expecting: "OpenAPI JSON/YAML" });
+let value: unknown;
+try {
+  value = JSON.parse(raw);
+} catch {
+  try {
+    value = parseYaml(raw);
+  } catch (err) {
+    console.error(`show_openapi: input is not valid JSON and the minimal YAML parser failed: ${(err as Error).message}`);
+    process.exit(1);
+  }
+}
+
+const summary = extractOpenApiSummary(value);
+
+fullScreenHtml({
+  render: () => fullScreenPage({
+    tag: { label: "OPENAPI", color: CATPPUCCIN.green },
+    title: escapeHtml(summary.title),
+    subtitle: `${escapeHtml(summary.version)} · ${summary.endpointCount} endpoints`,
+    body: `${cards(summary)}<div class="explorer"><aside><input class="search" placeholder="search endpoints…"><div class="tag-row"><button data-tag="all" class="active">all</button>${summary.tags.map((tag) => `<button data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`).join("")}</div><div class="endpoints"></div></aside><main class="details"><div class="empty">Select an endpoint.</div></main></div>${SCRIPT(summary)}`,
+    extraCss: css(),
+  }),
+});
+
+function cards(data: OpenApiSummary): string {
+  return `<section class="cards"><div class="card"><strong>${data.endpointCount}</strong><span>endpoints</span></div><div class="card"><strong>${data.tags.length}</strong><span>tags</span></div><div class="card wide"><strong>${escapeHtml(data.description || "No description")}</strong><span>description</span></div></section>`;
+}
+
+function SCRIPT(data: OpenApiSummary): string {
+  const json = JSON.stringify(data).replace(/</g, "\\u003c");
+  return `<script>(function(){
+    const data = ${json};
+    const list = document.querySelector('.endpoints');
+    const detail = document.querySelector('.details');
+    const search = document.querySelector('.search');
+    const tagButtons = [...document.querySelectorAll('.tag-row button')];
+    let activeTag = 'all';
+    let selected = data.endpoints[0]?.id || '';
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    function methodClass(m){ return 'method method-' + String(m).toLowerCase(); }
+    function visible(){ const q=(search.value||'').toLowerCase(); return data.endpoints.filter(ep => (activeTag==='all'||ep.tags.includes(activeTag)) && (!q || (ep.method+' '+ep.path+' '+ep.summary+' '+ep.tags.join(' ')).toLowerCase().includes(q))); }
+    function renderList(){ const eps=visible(); if(!eps.some(ep=>ep.id===selected)) selected=eps[0]?.id||''; list.innerHTML = eps.map(ep => '<button class="endpoint '+(ep.id===selected?'active':'')+'" data-id="'+esc(ep.id)+'"><span class="'+methodClass(ep.method)+'">'+esc(ep.method)+'</span><span class="path">'+esc(ep.path)+'</span><small>'+esc(ep.summary||ep.tags.join(', '))+'</small></button>').join('') || '<div class="nope">No matching endpoints.</div>'; list.querySelectorAll('.endpoint').forEach(btn => btn.addEventListener('click',()=>{selected=btn.dataset.id; renderList(); renderDetail();})); renderDetail(); }
+    function renderDetail(){ const ep=data.endpoints.find(e=>e.id===selected); if(!ep){ detail.innerHTML='<div class="empty">No endpoint selected.</div>'; return; } detail.innerHTML = '<header><span class="'+methodClass(ep.method)+'">'+esc(ep.method)+'</span><h2>'+esc(ep.path)+'</h2></header><p class="summary">'+esc(ep.summary||'No summary')+'</p>'+(ep.description?'<p>'+esc(ep.description)+'</p>':'')+'<div class="grid"><div><b>Tags</b><span>'+ep.tags.map(esc).join(', ')+'</span></div><div><b>Parameters</b><span>'+ep.parameters+'</span></div><div><b>Request body</b><span>'+(ep.requestBody?'yes':'no')+'</span></div><div><b>Responses</b><span>'+ep.responses.map(r=>'<code>'+esc(r)+'</code>').join(' ')+'</span></div></div><pre class="curl">curl -X '+esc(ep.method)+' "'+esc(ep.path)+'"</pre>'; }
+    search.addEventListener('input', renderList);
+    tagButtons.forEach(btn=>btn.addEventListener('click',()=>{activeTag=btn.dataset.tag||'all'; tagButtons.forEach(b=>b.classList.toggle('active',b===btn)); renderList();}));
+    renderList();
+  })();</script>`;
+}
+
+function css(): string {
+  return `
+.fs-body { padding: 16px; display: flex; flex-direction: column; }
+.cards { display: grid; grid-template-columns: 150px 150px minmax(220px,1fr); gap: 12px; margin-bottom: 16px; flex: 0 0 auto; }.card { padding: 13px; border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 14px; background: ${CATPPUCCIN.mantle}; }.card strong { display: block; font-size: 18px; overflow-wrap: anywhere; }.card span { color: ${CATPPUCCIN.overlay1}; text-transform: uppercase; font-size: 10px; }
+.explorer { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(280px, 38%) minmax(0, 1fr); border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 16px; overflow: hidden; background: rgba(24,24,37,0.72); }
+aside { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid ${CATPPUCCIN.surface0}; } .search { margin: 12px; border: 1px solid ${CATPPUCCIN.surface1}; background: ${CATPPUCCIN.crust}; color: ${CATPPUCCIN.text}; border-radius: 8px; padding: 8px 10px; font: inherit; }.tag-row { display: flex; gap: 6px; overflow: auto; padding: 0 12px 12px; }.tag-row button { border: 1px solid ${CATPPUCCIN.surface1}; background: ${CATPPUCCIN.surface0}; color: ${CATPPUCCIN.subtext1}; border-radius: 999px; padding: 4px 8px; font: inherit; cursor: pointer; white-space: nowrap; }.tag-row button.active { border-color: ${CATPPUCCIN.green}; color: ${CATPPUCCIN.text}; }
+.endpoints { overflow: auto; padding: 0 8px 12px; }.endpoint { width: 100%; display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 6px 8px; text-align: left; border: 1px solid transparent; background: transparent; color: ${CATPPUCCIN.text}; border-radius: 10px; padding: 8px; font: inherit; cursor: pointer; }.endpoint:hover,.endpoint.active { background: rgba(137,180,250,0.08); border-color: ${CATPPUCCIN.surface1}; }.endpoint small { grid-column: 2; color: ${CATPPUCCIN.overlay1}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.method { display: inline-flex; justify-content: center; border-radius: 6px; padding: 2px 6px; font-weight: 800; font-size: 10px; color: ${CATPPUCCIN.crust}; }.method-get { background: ${CATPPUCCIN.green}; }.method-post { background: ${CATPPUCCIN.blue}; }.method-put,.method-patch { background: ${CATPPUCCIN.yellow}; }.method-delete { background: ${CATPPUCCIN.red}; }.method-options,.method-head,.method-trace { background: ${CATPPUCCIN.mauve}; }
+.details { overflow: auto; padding: 18px; }.details header { display: flex; gap: 12px; align-items: center; }.details h2 { margin: 0; font-size: 22px; overflow-wrap: anywhere; }.summary { color: ${CATPPUCCIN.subtext1}; font-size: 15px; }.grid { display: grid; grid-template-columns: repeat(2, minmax(180px,1fr)); gap: 12px; margin-top: 16px; }.grid div { border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 12px; padding: 12px; background: ${CATPPUCCIN.mantle}; }.grid b { display: block; color: ${CATPPUCCIN.pink}; margin-bottom: 4px; } code { color: ${CATPPUCCIN.sky}; margin-right: 6px; }.curl { margin-top: 16px; padding: 12px; border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 12px; background: ${CATPPUCCIN.crust}; color: ${CATPPUCCIN.green}; white-space: pre-wrap; overflow-wrap: anywhere; }.empty,.nope { padding: 18px; color: ${CATPPUCCIN.overlay1}; }
+@media (max-width: 850px) { .explorer { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid ${CATPPUCCIN.surface0}; max-height: 45vh; } .grid { grid-template-columns: 1fr; } }
+`;
+}

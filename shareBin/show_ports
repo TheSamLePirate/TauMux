@@ -1,0 +1,130 @@
+#!/usr/bin/env bun
+/**
+ * τ-mux — show_ports
+ *
+ * Live dashboard of listening TCP ports and owning processes.
+ *
+ * Usage:
+ *   show_ports
+ *   show_ports --interval 1000
+ *   show_ports --json
+ */
+
+import { CATPPUCCIN, fullScreenHtml, fullScreenPage, type FullScreenHtml } from "./lib/full-screen";
+import { parseArgs } from "./lib/cli";
+import { escapeHtml } from "./lib/escape";
+import { parseLsofListeningPorts, parseSsListeningPorts, type PortRecord } from "./lib/ports";
+import { runText } from "./lib/subprocess";
+
+let parsed;
+try {
+  parsed = parseArgs(process.argv.slice(2), {
+    schema: [
+      { name: "interval", long: "interval", kind: "number", default: 1000 },
+      { name: "json", long: "json", kind: "boolean", default: false },
+    ] as const,
+  });
+} catch (err) {
+  console.error(`show_ports: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+const intervalMs = Math.max(500, Math.floor(parsed.flags.interval));
+let ports: PortRecord[] = [];
+let previous = new Map<string, PortRecord>();
+let opened = new Set<string>();
+let closed: PortRecord[] = [];
+let lastError = "";
+let updatedAt = "never";
+let panel: FullScreenHtml | null = null;
+
+await refresh();
+
+if (parsed.flags.json) {
+  console.log(JSON.stringify({ ports, error: lastError }, null, 2));
+  process.exit(0);
+}
+
+panel = fullScreenHtml({
+  render: () => fullScreenPage({
+    tag: { label: "PORTS", color: CATPPUCCIN.blue },
+    title: "Listening ports",
+    subtitle: `${ports.length} open · updated ${escapeHtml(updatedAt)}`,
+    body: `${toolbar()}${portTable()}${closedTable()}${lastError ? `<div class="error">${escapeHtml(lastError)}</div>` : ""}${filterScript()}`,
+    extraCss: css(),
+  }),
+});
+
+const timer = setInterval(async () => {
+  await refresh();
+  panel?.rerender();
+}, intervalMs);
+
+process.on("exit", () => clearInterval(timer));
+
+async function refresh(): Promise<void> {
+  const result = await runText(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"], { timeoutMs: 3000 });
+  let next: PortRecord[] = [];
+  if (result.exitCode === 0 && result.stdout.trim()) {
+    next = parseLsofListeningPorts(result.stdout);
+    lastError = "";
+  } else {
+    const ss = await runText(["ss", "-ltnp"], { timeoutMs: 3000 });
+    if (ss.exitCode === 0 && ss.stdout.trim()) {
+      next = parseSsListeningPorts(ss.stdout);
+      lastError = "";
+    } else {
+      lastError = result.stderr.trim() || result.error || ss.stderr.trim() || ss.error || "could not read listening ports";
+    }
+  }
+
+  const prev = previous;
+  const nextMap = new Map(next.map((port) => [port.key, port]));
+  opened = new Set(next.filter((port) => !prev.has(port.key)).map((port) => port.key));
+  closed = [...prev.entries()].filter(([key]) => !nextMap.has(key)).map(([, port]) => port).slice(0, 12);
+  previous = nextMap;
+  ports = next;
+  updatedAt = new Date().toLocaleTimeString();
+}
+
+function toolbar(): string {
+  const localhost = ports.filter((port) => isLocal(port.address)).length;
+  return `<section class="cards"><div class="card"><strong>${ports.length}</strong><span>listening</span></div><div class="card"><strong>${localhost}</strong><span>localhost-like</span></div><div class="card wide"><input class="filter" placeholder="filter by port, command, address…"></div></section>`;
+}
+
+function portTable(): string {
+  const rows = ports.map((port) => {
+    const state = opened.has(port.key) ? "opened" : "";
+    const url = isLocal(port.address) ? `http://localhost:${port.port}` : "";
+    return `<tr class="${state}" data-text="${escapeHtml(`${port.port} ${port.address} ${port.command} ${port.pid ?? ""}`.toLowerCase())}">
+      <td><span class="port">${port.port}</span></td><td>${escapeHtml(port.address)}</td><td>${escapeHtml(port.proto)}</td><td>${escapeHtml(port.command || "?")}</td><td>${port.pid ?? "?"}</td><td>${url ? `<code>${escapeHtml(url)}</code>` : `<span class="muted">—</span>`}</td><td>${state ? `<span class="pill new">new</span>` : ""}</td>
+    </tr>`;
+  }).join("");
+  return `<section class="panel"><h2>Open listeners</h2><div class="table-scroll"><table><thead><tr><th>Port</th><th>Address</th><th>Proto</th><th>Command</th><th>PID</th><th>Local URL</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="7" class="muted">No listening TCP ports found.</td></tr>`}</tbody></table></div></section>`;
+}
+
+function closedTable(): string {
+  if (closed.length === 0) return "";
+  const rows = closed.map((port) => `<tr class="closed"><td>${port.port}</td><td>${escapeHtml(port.address)}</td><td>${escapeHtml(port.command || "?")}</td><td>${port.pid ?? "?"}</td></tr>`).join("");
+  return `<section class="panel compact"><h2>Recently closed</h2><table><tbody>${rows}</tbody></table></section>`;
+}
+
+function isLocal(address: string): boolean {
+  return address === "*" || address === "localhost" || address === "127.0.0.1" || address === "::1" || address === "[::1]" || address === "0.0.0.0";
+}
+
+function filterScript(): string {
+  return `<script>(function(){const input=document.querySelector('.filter');input?.addEventListener('input',()=>{const q=input.value.toLowerCase();for(const tr of document.querySelectorAll('tbody tr[data-text]'))tr.hidden=!(tr.dataset.text||'').includes(q);});})();</script>`;
+}
+
+function css(): string {
+  return `
+.fs-body { padding: 16px; }
+.cards { display: grid; grid-template-columns: 140px 160px minmax(220px,1fr); gap: 12px; margin-bottom: 16px; }
+.card { padding: 13px; border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 14px; background: ${CATPPUCCIN.mantle}; }.card strong { display: block; font-size: 22px; }.card span { color: ${CATPPUCCIN.overlay1}; text-transform: uppercase; font-size: 10px; }.card.wide { display: flex; align-items: center; }
+.filter { width: 100%; border: 1px solid ${CATPPUCCIN.surface1}; background: ${CATPPUCCIN.crust}; color: ${CATPPUCCIN.text}; border-radius: 8px; padding: 8px 10px; font: inherit; }
+.panel { border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 14px; overflow: hidden; background: rgba(24,24,37,0.72); margin-top: 16px; }.panel h2 { margin: 0; padding: 11px 14px; color: ${CATPPUCCIN.subtext1}; font-size: 12px; text-transform: uppercase; border-bottom: 1px solid ${CATPPUCCIN.surface0}; }.compact table { width: 100%; }
+.table-scroll { overflow: auto; } table { width: 100%; border-collapse: collapse; } th { text-align: left; color: ${CATPPUCCIN.subtext1}; background: ${CATPPUCCIN.mantle}; position: sticky; top: 0; padding: 8px 10px; } td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.035); vertical-align: top; overflow-wrap: anywhere; }
+.port { color: ${CATPPUCCIN.green}; font-weight: 800; font-size: 14px; } code { color: ${CATPPUCCIN.sky}; } .muted { color: ${CATPPUCCIN.overlay0}; }.pill { border-radius: 999px; padding: 2px 7px; background: ${CATPPUCCIN.surface0}; }.pill.new { color: ${CATPPUCCIN.green}; }.opened td { background: rgba(166,227,161,0.08); }.closed td { color: ${CATPPUCCIN.red}; }.error { margin-top: 16px; color: ${CATPPUCCIN.red}; border: 1px solid rgba(243,139,168,0.35); border-radius: 12px; padding: 12px; }
+`;
+}

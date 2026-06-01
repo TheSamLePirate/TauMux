@@ -1,0 +1,137 @@
+#!/usr/bin/env bun
+/**
+ * τ-mux — show_csv_profile
+ *
+ * Profile a CSV/TSV file or stdin: inferred column types, nulls,
+ * distinct counts, top values, numeric summaries, histograms, and
+ * sample rows.
+ *
+ * Usage:
+ *   show_csv_profile data.csv
+ *   cat data.tsv | show_csv_profile --tsv --sample 10000
+ *   show_csv_profile --no-header data.csv
+ */
+
+import { CATPPUCCIN, fullScreenHtml, fullScreenPage } from "./lib/full-screen";
+import { parseArgs, readInput } from "./lib/cli";
+import { parseCsv } from "./lib/csv";
+import { escapeHtml } from "./lib/escape";
+import { profileCsv, type ColumnProfile } from "./lib/csv-profile";
+
+let parsed;
+try {
+  parsed = parseArgs(process.argv.slice(2), {
+    schema: [
+      { name: "tsv", long: "tsv", kind: "boolean", default: false },
+      { name: "csv", long: "csv", kind: "boolean", default: false },
+      { name: "noHeader", long: "no-header", kind: "boolean", default: false },
+      { name: "sample", long: "sample", kind: "number", default: 50000 },
+    ] as const,
+  });
+} catch (err) {
+  console.error(`show_csv_profile: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+const { positional, flags } = parsed;
+const path = positional[0] ?? "";
+const raw = readInput(path, { utility: "show_csv_profile", expecting: "CSV/TSV" });
+const sep: "," | "\t" | "auto" = flags.tsv ? "\t" : flags.csv ? "," : "auto";
+const rows = parseCsv(raw, { sep });
+const profile = profileCsv(rows, { hasHeader: !flags.noHeader, sampleLimit: flags.sample });
+const title = path ? escapeHtml(path) : "stdin";
+
+fullScreenHtml({
+  render: () => fullScreenPage({
+    tag: { label: "CSV PROFILE", color: CATPPUCCIN.teal },
+    title,
+    subtitle: `${profile.rowCount} rows · ${profile.columnCount} cols${profile.truncated ? ` · sampled ${profile.sampledRowCount}` : ""}`,
+    body: `${summaryCards()}${columnsTable()}${sampleTable()}`,
+    extraCss: css(),
+  }),
+});
+
+function summaryCards(): string {
+  const emptyCells = profile.columns.reduce((sum, col) => sum + col.empty, 0);
+  const totalCells = profile.rowCount * profile.columnCount;
+  const types = new Map<string, number>();
+  for (const col of profile.columns) types.set(col.kind, (types.get(col.kind) ?? 0) + 1);
+  const typeSummary = [...types.entries()].map(([k, v]) => `${k}: ${v}`).join(" · ");
+  return `<section class="cards">
+    <div class="card"><strong>${profile.rowCount}</strong><span>rows</span></div>
+    <div class="card"><strong>${profile.columnCount}</strong><span>columns</span></div>
+    <div class="card"><strong>${totalCells ? ((emptyCells / totalCells) * 100).toFixed(1) : "0.0"}%</strong><span>empty cells</span></div>
+    <div class="card wide"><strong>${escapeHtml(typeSummary || "empty")}</strong><span>inferred types</span></div>
+  </section>`;
+}
+
+function columnsTable(): string {
+  return `<section class="panel"><h2>Columns</h2><div class="table-scroll"><table><thead><tr>
+    <th>#</th><th>Name</th><th>Type</th><th>Empty</th><th>Distinct</th><th>Min</th><th>Max</th><th>Mean</th><th>Median</th><th>Top values</th><th>Histogram</th>
+  </tr></thead><tbody>${profile.columns.map(columnRow).join("")}</tbody></table></div></section>`;
+}
+
+function columnRow(col: ColumnProfile): string {
+  const emptyPct = col.total ? (col.empty / col.total) * 100 : 0;
+  const top = col.topValues.map((item) => `<span class="top">${escapeHtml(item.value)} <em>${item.count}</em></span>`).join(" ");
+  return `<tr>
+    <td>${col.index + 1}</td>
+    <td class="name">${escapeHtml(col.name)}</td>
+    <td><span class="kind kind-${col.kind}">${col.kind}</span></td>
+    <td>${col.empty} <span class="muted">${emptyPct.toFixed(1)}%</span></td>
+    <td>${col.distinct}</td>
+    <td>${num(col.min)}</td><td>${num(col.max)}</td><td>${num(col.mean)}</td><td>${num(col.median)}</td>
+    <td class="tops">${top || "—"}</td>
+    <td>${histogram(col)}</td>
+  </tr>`;
+}
+
+function histogram(col: ColumnProfile): string {
+  if (col.histogram.length === 0) return `<span class="muted">—</span>`;
+  const max = Math.max(1, ...col.histogram.map((bucket) => bucket.count));
+  return `<div class="hist">${col.histogram.map((bucket) => `<span style="height:${Math.max(2, (bucket.count / max) * 34)}px" title="${bucket.count} values"></span>`).join("")}</div>`;
+}
+
+function sampleTable(): string {
+  if (profile.sampleRows.length === 0) return "";
+  return `<section class="panel"><h2>Sample rows</h2><div class="table-scroll"><table><thead><tr>${profile.headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${profile.sampleRows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`;
+}
+
+function num(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return `<span class="muted">—</span>`;
+  const abs = Math.abs(value);
+  return abs >= 1000 || (abs > 0 && abs < 0.01) ? value.toExponential(3) : value.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+}
+
+function css(): string {
+  return `
+.fs-body { padding: 16px; }
+.cards { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.card { padding: 14px; border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 14px; background: ${CATPPUCCIN.mantle}; }
+.card.wide { grid-column: span 1; }
+.card strong { display: block; color: ${CATPPUCCIN.text}; font-size: 20px; overflow-wrap: anywhere; }
+.card span { color: ${CATPPUCCIN.overlay1}; text-transform: uppercase; font-size: 10px; letter-spacing: 0.08em; }
+.panel { margin-top: 16px; border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 14px; background: rgba(24,24,37,0.72); overflow: hidden; }
+.panel h2 { margin: 0; padding: 12px 14px; color: ${CATPPUCCIN.subtext1}; font-size: 12px; text-transform: uppercase; border-bottom: 1px solid ${CATPPUCCIN.surface0}; }
+.table-scroll { overflow: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { position: sticky; top: 0; background: ${CATPPUCCIN.mantle}; color: ${CATPPUCCIN.subtext1}; text-align: left; padding: 8px 10px; border-bottom: 1px solid ${CATPPUCCIN.surface1}; white-space: nowrap; }
+td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.035); vertical-align: top; overflow-wrap: anywhere; }
+tr:hover td { background: rgba(137,180,250,0.06); }
+.name { color: ${CATPPUCCIN.pink}; font-weight: 700; }
+.muted { color: ${CATPPUCCIN.overlay0}; }
+.kind { border-radius: 999px; padding: 2px 7px; background: ${CATPPUCCIN.surface0}; color: ${CATPPUCCIN.text}; text-transform: uppercase; font-size: 10px; }
+.kind-number, .kind-integer { color: ${CATPPUCCIN.peach}; }
+.kind-boolean { color: ${CATPPUCCIN.mauve}; }
+.kind-date { color: ${CATPPUCCIN.sky}; }
+.kind-string { color: ${CATPPUCCIN.green}; }
+.kind-mixed { color: ${CATPPUCCIN.yellow}; }
+.kind-empty { color: ${CATPPUCCIN.overlay0}; }
+.tops { min-width: 220px; }
+.top { display: inline-flex; gap: 4px; margin: 1px 4px 1px 0; padding: 2px 6px; border-radius: 999px; background: ${CATPPUCCIN.surface0}; }
+.top em { color: ${CATPPUCCIN.overlay1}; font-style: normal; }
+.hist { width: 120px; height: 38px; display: flex; align-items: end; gap: 2px; }
+.hist span { flex: 1; min-width: 3px; background: linear-gradient(180deg, ${CATPPUCCIN.sky}, ${CATPPUCCIN.blue}); border-radius: 3px 3px 0 0; opacity: 0.88; }
+@media (max-width: 900px) { .cards { grid-template-columns: repeat(2, minmax(150px, 1fr)); } }
+`;
+}

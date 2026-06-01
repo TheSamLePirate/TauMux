@@ -1,0 +1,173 @@
+#!/usr/bin/env bun
+/**
+ * τ-mux — show_sqlite
+ *
+ * Read-only SQLite database browser: table list, schema, row counts,
+ * previews, and optional read-only query result.
+ *
+ * Usage:
+ *   show_sqlite app.db
+ *   show_sqlite app.db --table messages --limit 50
+ *   show_sqlite app.db --query 'select * from messages limit 20'
+ */
+
+import { Database } from "bun:sqlite";
+import { CATPPUCCIN, fullScreenHtml, fullScreenPage } from "./lib/full-screen";
+import { parseArgs } from "./lib/cli";
+import { escapeHtml } from "./lib/escape";
+
+let parsed;
+try {
+  parsed = parseArgs(process.argv.slice(2), {
+    schema: [
+      { name: "table", long: "table", kind: "string", default: "" },
+      { name: "query", long: "query", kind: "string", default: "" },
+      { name: "limit", long: "limit", kind: "number", default: 100 },
+    ] as const,
+  });
+} catch (err) {
+  console.error(`show_sqlite: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+const path = parsed.positional[0] ?? "";
+if (!path) {
+  console.error("show_sqlite: pass a .db file path");
+  process.exit(1);
+}
+const limit = Math.max(1, Math.min(1000, Math.floor(parsed.flags.limit)));
+let body = "";
+let subtitle = "";
+
+try {
+  const db = new Database(path, { readonly: true, create: false });
+  const tables = listTables(db);
+  if (parsed.flags.query) {
+    if (!isReadOnlySql(parsed.flags.query)) {
+      throw new Error("refusing to run non-read-only SQL; only SELECT/WITH/PRAGMA queries are allowed");
+    }
+    const rows = db.query(parsed.flags.query).all() as Record<string, unknown>[];
+    body = `${summary(tables)}${queryPanel(parsed.flags.query, rows.slice(0, limit), rows.length)}`;
+    subtitle = `${tables.length} tables/views · query ${rows.length} rows`;
+  } else {
+    const selected = parsed.flags.table;
+    const filtered = selected ? tables.filter((table) => table.name === selected) : tables;
+    if (selected && filtered.length === 0) throw new Error(`table not found: ${selected}`);
+    body = `${summary(tables)}${tabs(filtered.length ? filtered : tables, db)}`;
+    subtitle = `${tables.length} tables/views · preview limit ${limit}`;
+  }
+  db.close();
+} catch (err) {
+  body = `<section class="error">${escapeHtml((err as Error).message)}</section>`;
+  subtitle = "error";
+}
+
+fullScreenHtml({
+  render: () => fullScreenPage({
+    tag: { label: "SQLITE", color: CATPPUCCIN.peach },
+    title: escapeHtml(path),
+    subtitle,
+    body,
+    extraCss: css(),
+  }),
+});
+
+interface TableInfo {
+  name: string;
+  type: string;
+  rows: number | null;
+}
+
+function listTables(db: Database): TableInfo[] {
+  const rows = db.query("select name, type from sqlite_master where type in ('table','view') and name not like 'sqlite_%' order by name").all() as { name: string; type: string }[];
+  return rows.map((row) => ({ ...row, rows: countRows(db, row.name) }));
+}
+
+function countRows(db: Database, table: string): number | null {
+  try {
+    const row = db.query(`select count(*) as n from ${quoteIdent(table)}`).get() as { n?: number } | null;
+    return typeof row?.n === "number" ? row.n : null;
+  } catch {
+    return null;
+  }
+}
+
+function summary(tables: readonly TableInfo[]): string {
+  const totalRows = tables.reduce((sum, table) => sum + (table.rows ?? 0), 0);
+  return `<section class="cards">
+    <div class="card"><strong>${tables.length}</strong><span>tables/views</span></div>
+    <div class="card"><strong>${totalRows}</strong><span>known rows</span></div>
+    <div class="card wide"><strong>${tables.map((table) => escapeHtml(table.name)).join(" · ") || "empty database"}</strong><span>objects</span></div>
+  </section>`;
+}
+
+function tabs(tables: readonly TableInfo[], db: Database): string {
+  if (tables.length === 0) return `<section class="panel"><h2>No user tables/views</h2></section>`;
+  const buttons = tables.map((table, i) => `<button class="${i === 0 ? "active" : ""}" data-tab="${i}">${escapeHtml(table.name)}</button>`).join("");
+  const panels = tables.map((table, i) => `<article class="tab ${i === 0 ? "" : "hidden"}" data-tab-panel="${i}">${tablePanel(table, db)}</article>`).join("");
+  return `<section class="panel tabs"><h2>Tables</h2><div class="tab-buttons">${buttons}</div>${panels}</section>${tabScript()}`;
+}
+
+function tablePanel(table: TableInfo, db: Database): string {
+  const schema = db.query(`pragma table_info(${quoteString(table.name)})`).all() as Record<string, unknown>[];
+  const rows = db.query(`select * from ${quoteIdent(table.name)} limit ${limit}`).all() as Record<string, unknown>[];
+  return `<div class="table-head"><h3>${escapeHtml(table.name)}</h3><span>${escapeHtml(table.type)} · ${table.rows ?? "?"} rows</span></div>
+    <h4>Schema</h4>${rowsTable(schema)}
+    <h4>Preview</h4>${rowsTable(rows)}`;
+}
+
+function queryPanel(sql: string, rows: readonly Record<string, unknown>[], total: number): string {
+  return `<section class="panel"><h2>Read-only query</h2><pre class="sql">${escapeHtml(sql)}</pre><p class="note">Showing ${rows.length} of ${total} rows.</p>${rowsTable(rows)}</section>`;
+}
+
+function rowsTable(rows: readonly Record<string, unknown>[]): string {
+  if (rows.length === 0) return `<div class="empty">No rows.</div>`;
+  const headers = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  return `<div class="table-scroll"><table><thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((h) => `<td>${formatCell(row[h])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) return `<span class="null">NULL</span>`;
+  if (value instanceof Uint8Array) return `<span class="blob">BLOB ${value.byteLength} bytes</span>`;
+  if (typeof value === "object") return escapeHtml(JSON.stringify(value));
+  return escapeHtml(String(value));
+}
+
+function isReadOnlySql(sql: string): boolean {
+  const stripped = sql.trim().replace(/;+\s*$/, "");
+  if (!/^(select|with|pragma)\b/i.test(stripped)) return false;
+  if (/;\s*\S/.test(stripped)) return false;
+  return !/\b(insert|update|delete|drop|alter|create|replace|attach|detach|vacuum|reindex|begin|commit|rollback)\b/i.test(stripped);
+}
+
+function quoteIdent(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function quoteString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function tabScript(): string {
+  return `<script>(function(){const buttons=[...document.querySelectorAll('.tab-buttons button')];buttons.forEach(btn=>btn.addEventListener('click',()=>{buttons.forEach(b=>b.classList.toggle('active',b===btn));document.querySelectorAll('[data-tab-panel]').forEach(panel=>panel.classList.toggle('hidden',panel.dataset.tabPanel!==btn.dataset.tab));}));})();</script>`;
+}
+
+function css(): string {
+  return `
+.fs-body { padding: 16px; }
+.cards { display: grid; grid-template-columns: 150px 150px minmax(220px,1fr); gap: 12px; margin-bottom: 16px; }
+.card { padding: 13px; border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 14px; background: ${CATPPUCCIN.mantle}; }
+.card strong { display: block; font-size: 18px; overflow-wrap: anywhere; }.card span { color: ${CATPPUCCIN.overlay1}; text-transform: uppercase; font-size: 10px; }
+.panel { border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 14px; overflow: hidden; background: rgba(24,24,37,0.72); margin-top: 16px; }
+.panel h2 { margin: 0; padding: 11px 14px; color: ${CATPPUCCIN.subtext1}; font-size: 12px; text-transform: uppercase; border-bottom: 1px solid ${CATPPUCCIN.surface0}; }
+.tab-buttons { display: flex; gap: 8px; padding: 10px 14px; overflow: auto; border-bottom: 1px solid ${CATPPUCCIN.surface0}; }
+.tab-buttons button { border: 1px solid ${CATPPUCCIN.surface1}; background: ${CATPPUCCIN.surface0}; color: ${CATPPUCCIN.subtext1}; border-radius: 999px; padding: 5px 10px; font: inherit; cursor: pointer; white-space: nowrap; }
+.tab-buttons button.active { border-color: ${CATPPUCCIN.peach}; color: ${CATPPUCCIN.text}; }
+.tab { padding: 14px; }.hidden { display: none; }
+.table-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }.table-head h3 { margin: 0; color: ${CATPPUCCIN.pink}; }.table-head span,.note { color: ${CATPPUCCIN.overlay1}; }
+h4 { margin: 16px 0 8px; color: ${CATPPUCCIN.blue}; }
+.table-scroll { overflow: auto; max-height: 360px; border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; } th { text-align: left; color: ${CATPPUCCIN.subtext1}; background: ${CATPPUCCIN.mantle}; position: sticky; top: 0; padding: 8px 10px; } td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.035); vertical-align: top; overflow-wrap: anywhere; max-width: 420px; }
+.null { color: ${CATPPUCCIN.overlay0}; font-style: italic; }.blob { color: ${CATPPUCCIN.yellow}; }.empty { padding: 12px; color: ${CATPPUCCIN.overlay1}; }.sql { margin: 0; padding: 12px 14px; color: ${CATPPUCCIN.green}; white-space: pre-wrap; border-bottom: 1px solid ${CATPPUCCIN.surface0}; }.error { color: ${CATPPUCCIN.red}; padding: 18px; }
+`;
+}

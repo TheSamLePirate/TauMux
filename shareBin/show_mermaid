@@ -1,0 +1,70 @@
+#!/usr/bin/env bun
+/**
+ * τ-mux — show_mermaid
+ *
+ * Render Mermaid diagrams from a file or stdin in a full-pane panel.
+ * The first implementation loads Mermaid from jsDelivr, so network
+ * access is required unless τ-mux/webview has it cached.
+ *
+ * Usage:
+ *   show_mermaid diagram.mmd
+ *   cat diagram.mmd | show_mermaid --theme dark
+ */
+
+import { CATPPUCCIN, fullScreenHtml, fullScreenPage } from "./lib/full-screen";
+import { parseArgs, readInput } from "./lib/cli";
+import { escapeHtml } from "./lib/escape";
+
+let parsed;
+try {
+  parsed = parseArgs(process.argv.slice(2), {
+    schema: [
+      { name: "theme", long: "theme", kind: "string", default: "dark" },
+      { name: "title", long: "title", kind: "string", default: "" },
+    ] as const,
+  });
+} catch (err) {
+  console.error(`show_mermaid: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+const { positional, flags } = parsed;
+const path = positional[0] ?? "";
+const source = readInput(path, { utility: "show_mermaid", expecting: "Mermaid source" });
+const title = flags.title || path || "stdin";
+
+fullScreenHtml({
+  render: () => fullScreenPage({
+    tag: { label: "MERMAID", color: CATPPUCCIN.mauve },
+    title: escapeHtml(title),
+    subtitle: `theme ${escapeHtml(flags.theme)} · CDN renderer`,
+    body: `<div class="mermaid-wrap"><pre class="mermaid">${escapeHtml(source)}</pre></div><details class="src"><summary>source</summary><pre>${escapeHtml(source)}</pre></details>${SCRIPT(flags.theme)}`,
+    extraCss: css(),
+  }),
+});
+
+function css(): string {
+  return `
+.fs-body { display: flex; flex-direction: column; gap: 14px; }
+.mermaid-wrap { flex: 1 1 auto; min-height: 280px; display: grid; place-items: center; overflow: auto; border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 16px; background: ${CATPPUCCIN.mantle}; padding: 18px; }
+.mermaid { width: max-content; max-width: 100%; color: ${CATPPUCCIN.text}; }
+.mermaid svg { max-width: 100%; height: auto; }
+.src { flex: 0 0 auto; border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 12px; background: rgba(24,24,37,0.72); }
+.src summary { cursor: pointer; padding: 10px 12px; color: ${CATPPUCCIN.blue}; }
+.src pre { margin: 0; padding: 12px; border-top: 1px solid ${CATPPUCCIN.surface0}; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mermaid-error { color: ${CATPPUCCIN.red}; padding: 16px; white-space: pre-wrap; }
+`;
+}
+
+function SCRIPT(theme: string): string {
+  return `<script type="module">
+    const holder = document.querySelector('.mermaid-wrap');
+    try {
+      const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
+      mermaid.initialize({ startOnLoad: true, theme: ${JSON.stringify(theme)}, securityLevel: 'strict' });
+      await mermaid.run({ querySelector: '.mermaid' });
+    } catch (err) {
+      if (holder) holder.innerHTML = '<pre class="mermaid-error">Mermaid render failed: ' + String(err).replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch])) + '</pre>';
+    }
+  </script>`;
+}

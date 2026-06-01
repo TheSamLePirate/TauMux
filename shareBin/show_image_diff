@@ -1,0 +1,145 @@
+#!/usr/bin/env bun
+/**
+ * τ-mux — show_image_diff
+ *
+ * Visual image comparison for screenshots/design artifacts. Provides
+ * split, onion-skin, and diff heatmap modes in a canvas panel.
+ *
+ * Usage:
+ *   show_image_diff before.png after.png
+ *   show_image_diff --threshold 24 before.png after.png
+ */
+
+import { readFileSync } from "node:fs";
+import { extname, basename } from "node:path";
+import { CATPPUCCIN, fullScreenHtml, fullScreenPage } from "./lib/full-screen";
+import { parseArgs } from "./lib/cli";
+import { escapeHtml } from "./lib/escape";
+
+let parsed;
+try {
+  parsed = parseArgs(process.argv.slice(2), {
+    schema: [
+      { name: "threshold", long: "threshold", kind: "number", default: 16 },
+    ] as const,
+  });
+} catch (err) {
+  console.error(`show_image_diff: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+const beforePath = parsed.positional[0] ?? "";
+const afterPath = parsed.positional[1] ?? "";
+if (!beforePath || !afterPath) {
+  console.error("show_image_diff: pass two image paths: before and after");
+  process.exit(1);
+}
+
+let beforeUrl = "";
+let afterUrl = "";
+try {
+  beforeUrl = dataUrl(beforePath);
+  afterUrl = dataUrl(afterPath);
+} catch (err) {
+  console.error(`show_image_diff: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+fullScreenHtml({
+  render: () => fullScreenPage({
+    tag: { label: "IMAGE DIFF", color: CATPPUCCIN.red },
+    title: `${escapeHtml(basename(beforePath))} ↔ ${escapeHtml(basename(afterPath))}`,
+    subtitle: `threshold ${parsed.flags.threshold}`,
+    body: `<div class="viewer"><canvas id="diff"></canvas><div class="loading">loading images…</div></div><div class="controls"><div class="modes"><button data-mode="split" class="active">split</button><button data-mode="onion">onion</button><button data-mode="diff">diff</button></div><label>mix/split <input id="mix" type="range" min="0" max="100" value="50"></label><label>threshold <input id="threshold" type="range" min="0" max="255" value="${Math.max(0, Math.min(255, parsed.flags.threshold))}"></label><span id="stats">—</span></div>${SCRIPT(beforeUrl, afterUrl)}`,
+    extraCss: css(),
+  }),
+});
+
+function dataUrl(path: string): string {
+  const bytes = readFileSync(path);
+  return `data:${mimeFor(path)};base64,${bytes.toString("base64")}`;
+}
+
+function mimeFor(path: string): string {
+  const ext = extname(path).toLowerCase();
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".svg") return "image/svg+xml";
+  return "image/png";
+}
+
+function SCRIPT(before: string, after: string): string {
+  return `<script>(function(){
+    const beforeSrc = ${JSON.stringify(before)};
+    const afterSrc = ${JSON.stringify(after)};
+    const canvas = document.getElementById('diff');
+    const ctx = canvas.getContext('2d');
+    const mix = document.getElementById('mix');
+    const threshold = document.getElementById('threshold');
+    const stats = document.getElementById('stats');
+    const loading = document.querySelector('.loading');
+    let mode = 'split';
+    const a = new Image();
+    const b = new Image();
+    let loaded = 0;
+    a.onload = b.onload = () => { if (++loaded === 2) { loading?.remove(); draw(); } };
+    a.onerror = b.onerror = () => { if (loading) loading.textContent = 'failed to load image'; };
+    a.src = beforeSrc; b.src = afterSrc;
+    document.querySelectorAll('.modes button').forEach(btn => btn.addEventListener('click', () => {
+      mode = btn.dataset.mode || 'split';
+      document.querySelectorAll('.modes button').forEach(bn => bn.classList.toggle('active', bn === btn));
+      draw();
+    }));
+    mix.addEventListener('input', draw); threshold.addEventListener('input', draw); window.addEventListener('resize', draw);
+    function naturalSize(){ return { w: Math.max(a.naturalWidth, b.naturalWidth), h: Math.max(a.naturalHeight, b.naturalHeight) }; }
+    function setCanvasSize(){
+      const size = naturalSize();
+      const box = canvas.parentElement.getBoundingClientRect();
+      const scale = Math.min(box.width / size.w, box.height / size.h, 1) || 1;
+      canvas.width = Math.max(1, Math.round(size.w));
+      canvas.height = Math.max(1, Math.round(size.h));
+      canvas.style.width = Math.round(size.w * scale) + 'px';
+      canvas.style.height = Math.round(size.h * scale) + 'px';
+    }
+    function draw(){
+      if (loaded < 2) return;
+      setCanvasSize();
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0,0,w,h);
+      if (mode === 'split') {
+        ctx.drawImage(a,0,0);
+        ctx.save(); ctx.beginPath(); ctx.rect(0,0,w*(Number(mix.value)/100),h); ctx.clip(); ctx.drawImage(b,0,0); ctx.restore();
+        ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fillRect(w*(Number(mix.value)/100)-1,0,2,h);
+      } else if (mode === 'onion') {
+        ctx.drawImage(a,0,0); ctx.globalAlpha = Number(mix.value)/100; ctx.drawImage(b,0,0); ctx.globalAlpha = 1;
+      } else {
+        drawDiff(w,h,Number(threshold.value));
+      }
+      updateStats(w,h,Number(threshold.value));
+    }
+    function imageData(img,w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h; const x=c.getContext('2d'); x.drawImage(img,0,0); return x.getImageData(0,0,w,h); }
+    function drawDiff(w,h,t){
+      const da=imageData(a,w,h).data, db=imageData(b,w,h).data, out=ctx.createImageData(w,h); let diff=0;
+      for(let i=0;i<da.length;i+=4){ const d=Math.abs(da[i]-db[i])+Math.abs(da[i+1]-db[i+1])+Math.abs(da[i+2]-db[i+2])+Math.abs(da[i+3]-db[i+3]); if(d>t){ diff++; out.data[i]=255; out.data[i+1]=Math.min(255,d); out.data[i+2]=80; out.data[i+3]=230; } else { out.data[i]=17; out.data[i+1]=17; out.data[i+2]=27; out.data[i+3]=255; }}
+      ctx.putImageData(out,0,0); canvas.dataset.diffPixels=String(diff);
+    }
+    function updateStats(w,h,t){
+      const diff = Number(canvas.dataset.diffPixels || 0);
+      const pct = mode === 'diff' ? ((diff/(w*h))*100).toFixed(3) + '%' : 'switch to diff for pixel count';
+      stats.textContent = a.naturalWidth+'×'+a.naturalHeight+' ↔ '+b.naturalWidth+'×'+b.naturalHeight+' · threshold '+t+' · '+pct;
+    }
+  })();</script>`;
+}
+
+function css(): string {
+  return `
+.fs-body { padding: 0; display: flex; flex-direction: column; }
+.viewer { flex: 1 1 auto; min-height: 0; display: grid; place-items: center; position: relative; background: repeating-conic-gradient(${CATPPUCCIN.crust} 0% 25%, ${CATPPUCCIN.mantle} 0% 50%) 50% / 28px 28px; overflow: auto; }
+canvas { image-rendering: auto; box-shadow: 0 18px 60px rgba(0,0,0,.45); background: transparent; }
+.loading { color: ${CATPPUCCIN.overlay1}; }
+.controls { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 11px 16px; border-top: 1px solid ${CATPPUCCIN.surface0}; background: ${CATPPUCCIN.mantle}; }
+.modes { display: flex; gap: 8px; }.modes button { border: 1px solid ${CATPPUCCIN.surface1}; background: ${CATPPUCCIN.surface0}; color: ${CATPPUCCIN.subtext1}; border-radius: 999px; padding: 5px 10px; font: inherit; cursor: pointer; }.modes button.active { border-color: ${CATPPUCCIN.red}; color: ${CATPPUCCIN.text}; }
+label { display: inline-flex; gap: 8px; align-items: center; color: ${CATPPUCCIN.overlay1}; } input[type=range] { accent-color: ${CATPPUCCIN.red}; } #stats { margin-left: auto; color: ${CATPPUCCIN.subtext0}; }
+`;
+}

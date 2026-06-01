@@ -1,0 +1,118 @@
+#!/usr/bin/env bun
+/**
+ * τ-mux — show_proc
+ *
+ * Live process tree/resource inspector using `ps`.
+ *
+ * Usage:
+ *   show_proc
+ *   show_proc --sort cpu
+ *   show_proc --pid 12345 --interval 1000
+ *   show_proc --json
+ */
+
+import { CATPPUCCIN, fullScreenHtml, fullScreenPage, type FullScreenHtml } from "./lib/full-screen";
+import { parseArgs } from "./lib/cli";
+import { escapeHtml } from "./lib/escape";
+import { buildProcessTreeRows, formatRss, parsePsProcesses, type ProcessRecord, type ProcessTreeRow } from "./lib/processes";
+import { runText } from "./lib/subprocess";
+
+let parsed;
+try {
+  parsed = parseArgs(process.argv.slice(2), {
+    schema: [
+      { name: "interval", long: "interval", kind: "number", default: 1000 },
+      { name: "sort", long: "sort", kind: "string", default: "tree" },
+      { name: "pid", long: "pid", kind: "number", default: 0 },
+      { name: "json", long: "json", kind: "boolean", default: false },
+    ] as const,
+  });
+} catch (err) {
+  console.error(`show_proc: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+const intervalMs = Math.max(500, Math.floor(parsed.flags.interval));
+const sortBy = normalizeSort(parsed.flags.sort);
+const rootPid = parsed.flags.pid > 0 ? Math.floor(parsed.flags.pid) : undefined;
+let processes: ProcessRecord[] = [];
+let rows: ProcessTreeRow[] = [];
+let lastError = "";
+let updatedAt = "never";
+let panel: FullScreenHtml | null = null;
+
+await refresh();
+
+if (parsed.flags.json) {
+  console.log(JSON.stringify({ processes, rows, error: lastError }, null, 2));
+  process.exit(0);
+}
+
+panel = fullScreenHtml({
+  render: () => fullScreenPage({
+    tag: { label: "PROC", color: CATPPUCCIN.mauve },
+    title: rootPid ? `Process tree rooted at ${rootPid}` : "Process tree",
+    subtitle: `${processes.length} processes · updated ${escapeHtml(updatedAt)}`,
+    body: `${summary()}${procTable()}${lastError ? `<div class="error">${escapeHtml(lastError)}</div>` : ""}${filterScript()}`,
+    extraCss: css(),
+  }),
+});
+
+const timer = setInterval(async () => {
+  await refresh();
+  panel?.rerender();
+}, intervalMs);
+process.on("exit", () => clearInterval(timer));
+
+async function refresh(): Promise<void> {
+  const result = await runText(["ps", "-axo", "pid=,ppid=,pcpu=,rss=,comm=,args="], { timeoutMs: 3000 });
+  if (result.exitCode !== 0) {
+    lastError = result.stderr.trim() || result.error || "ps failed";
+    return;
+  }
+  processes = parsePsProcesses(result.stdout);
+  rows = buildProcessTreeRows(processes, { rootPid, sortBy });
+  lastError = "";
+  updatedAt = new Date().toLocaleTimeString();
+}
+
+function summary(): string {
+  const totalCpu = processes.reduce((sum, proc) => sum + proc.cpu, 0);
+  const totalRss = processes.reduce((sum, proc) => sum + proc.rssKb, 0);
+  const topCpu = [...processes].sort((a, b) => b.cpu - a.cpu)[0];
+  return `<section class="cards">
+    <div class="card"><strong>${processes.length}</strong><span>processes</span></div>
+    <div class="card"><strong>${totalCpu.toFixed(1)}%</strong><span>summed cpu</span></div>
+    <div class="card"><strong>${formatRss(totalRss)}</strong><span>summed rss</span></div>
+    <div class="card wide"><strong>${topCpu ? `${escapeHtml(topCpu.comm)} ${topCpu.cpu.toFixed(1)}%` : "—"}</strong><span>top cpu</span></div>
+    <div class="card wide"><input class="filter" placeholder="filter by pid, command, args…"></div>
+  </section>`;
+}
+
+function procTable(): string {
+  const body = rows.map((row) => `<tr data-text="${escapeHtml(`${row.pid} ${row.ppid} ${row.comm} ${row.args}`.toLowerCase())}">
+    <td class="pid">${row.pid}</td><td>${row.ppid}</td><td class="cpu">${row.cpu.toFixed(1)}%</td><td>${formatRss(row.rssKb)}</td>
+    <td class="name" style="padding-left:${8 + row.depth * 18}px">${row.depth > 0 ? `<span class="branch">└</span>` : ""}${escapeHtml(row.comm)}${row.childCount ? `<span class="kids">${row.childCount}</span>` : ""}</td>
+    <td class="args">${escapeHtml(row.args)}</td>
+  </tr>`).join("");
+  return `<section class="panel"><h2>Processes — sort ${escapeHtml(sortBy)}</h2><div class="table-scroll"><table><thead><tr><th>PID</th><th>PPID</th><th>CPU</th><th>RSS</th><th>Name</th><th>Args</th></tr></thead><tbody>${body || `<tr><td colspan="6" class="muted">No processes found.</td></tr>`}</tbody></table></div></section>`;
+}
+
+function normalizeSort(value: string): "tree" | "cpu" | "rss" | "name" {
+  return value === "cpu" || value === "rss" || value === "name" || value === "tree" ? value : "tree";
+}
+
+function filterScript(): string {
+  return `<script>(function(){const input=document.querySelector('.filter');input?.addEventListener('input',()=>{const q=input.value.toLowerCase();for(const tr of document.querySelectorAll('tbody tr[data-text]'))tr.hidden=!(tr.dataset.text||'').includes(q);});})();</script>`;
+}
+
+function css(): string {
+  return `
+.fs-body { padding: 16px; }
+.cards { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 12px; margin-bottom: 16px; }.card { padding: 13px; border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 14px; background: ${CATPPUCCIN.mantle}; }.card strong { display: block; font-size: 18px; overflow-wrap: anywhere; }.card span { color: ${CATPPUCCIN.overlay1}; text-transform: uppercase; font-size: 10px; }.card.wide { grid-column: span 2; }.filter { width: 100%; border: 1px solid ${CATPPUCCIN.surface1}; background: ${CATPPUCCIN.crust}; color: ${CATPPUCCIN.text}; border-radius: 8px; padding: 8px 10px; font: inherit; }
+.panel { border: 1px solid ${CATPPUCCIN.surface0}; border-radius: 14px; overflow: hidden; background: rgba(24,24,37,0.72); }.panel h2 { margin: 0; padding: 11px 14px; color: ${CATPPUCCIN.subtext1}; font-size: 12px; text-transform: uppercase; border-bottom: 1px solid ${CATPPUCCIN.surface0}; }
+.table-scroll { overflow: auto; max-height: calc(100vh - 210px); } table { width: 100%; border-collapse: collapse; } th { text-align: left; color: ${CATPPUCCIN.subtext1}; background: ${CATPPUCCIN.mantle}; position: sticky; top: 0; padding: 8px 10px; z-index: 2; } td { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.035); vertical-align: top; white-space: nowrap; } tr:hover td { background: rgba(137,180,250,0.06); }
+.pid { color: ${CATPPUCCIN.sky}; font-weight: 700; }.cpu { color: ${CATPPUCCIN.peach}; }.name { color: ${CATPPUCCIN.green}; font-weight: 700; }.args { color: ${CATPPUCCIN.subtext0}; white-space: nowrap; max-width: 760px; overflow: hidden; text-overflow: ellipsis; }.branch { color: ${CATPPUCCIN.overlay0}; margin-right: 5px; }.kids { margin-left: 6px; border-radius: 999px; padding: 1px 5px; background: ${CATPPUCCIN.surface0}; color: ${CATPPUCCIN.overlay1}; font-size: 10px; }.muted { color: ${CATPPUCCIN.overlay0}; }.error { margin-top: 16px; color: ${CATPPUCCIN.red}; border: 1px solid rgba(243,139,168,0.35); border-radius: 12px; padding: 12px; }
+@media (max-width: 900px) { .cards { grid-template-columns: repeat(2, minmax(130px, 1fr)); } .card.wide { grid-column: span 2; } }
+`;
+}

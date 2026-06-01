@@ -55,3 +55,16 @@ links.)_
   target position is never touched — and routed the status grid, the web card
   grid, and the native card's section list through it. Now only the entries
   whose value actually changed repaint. Changelog-only.
+
+## Pending — shareBin utility expansion
+
+- **New shareBin visual utilities (v0.3.186).** Add documentation/changelog
+  coverage for ten bundled commands: `show_logs` (live log viewer),
+  `show_csv_profile` (CSV/TSV data profiling), `show_http` (HTTP response
+  inspector), `show_mermaid` (Mermaid diagram renderer), `show_env`
+  (environment diagnostics), `show_sqlite` (read-only SQLite browser),
+  `show_ports` (live listening-port dashboard), `show_proc` (live process
+  tree), `show_image_diff` (screenshot/image comparison), and `show_openapi`
+  (OpenAPI/Swagger explorer). Include usage examples, stdin/file support notes,
+  and limitations such as the first `show_mermaid` implementation using a CDN
+  bundle.

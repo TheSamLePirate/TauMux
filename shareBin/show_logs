@@ -1,0 +1,223 @@
+#!/usr/bin/env bun
+/**
+ * τ-mux — show_logs
+ *
+ * Live/full-pane log viewer with level colours, counts, search, and
+ * bounded buffering. Reads a file once or streams stdin live.
+ *
+ * Usage:
+ *   tail -f app.log | show_logs
+ *   bun run dev 2>&1 | show_logs --json --max-lines 5000
+ *   show_logs app.log --grep error
+ */
+
+import {
+  CATPPUCCIN,
+  fullScreenHtml,
+  fullScreenPage,
+  type FullScreenHtml,
+} from "./lib/full-screen";
+import { parseArgs } from "./lib/cli";
+import { escapeHtml } from "./lib/escape";
+import { countLevels, parseLogLine, type LogLevel, type ParsedLogLine } from "./lib/logs";
+import { readFileSync } from "node:fs";
+
+let parsed;
+try {
+  parsed = parseArgs(process.argv.slice(2), {
+    schema: [
+      { name: "json", long: "json", kind: "boolean", default: false },
+      { name: "maxLines", long: "max-lines", kind: "number", default: 2000 },
+      { name: "grep", long: "grep", kind: "string", default: "" },
+      { name: "title", long: "title", kind: "string", default: "" },
+    ] as const,
+  });
+} catch (err) {
+  console.error(`show_logs: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+const { positional, flags } = parsed;
+const path = positional[0] ?? "";
+const maxLines = Math.max(100, Math.floor(flags.maxLines));
+const lines: ParsedLogLine[] = [];
+let nextIndex = 1;
+let sourceDone = false;
+let renderTimer: ReturnType<typeof setTimeout> | null = null;
+let panel: FullScreenHtml | null = null;
+
+function appendLine(raw: string): void {
+  const parsedLine = parseLogLine(raw, {
+    index: nextIndex++,
+    json: flags.json ? true : "auto",
+  });
+  lines.push(parsedLine);
+  if (lines.length > maxLines) lines.splice(0, lines.length - maxLines);
+  scheduleRender();
+}
+
+function appendText(text: string): string {
+  const normalized = text.replace(/\r\n/g, "\n");
+  const parts = normalized.split("\n");
+  const carry = parts.pop() ?? "";
+  for (const line of parts) appendLine(line);
+  return carry;
+}
+
+function scheduleRender(): void {
+  if (!panel || renderTimer) return;
+  renderTimer = setTimeout(() => {
+    renderTimer = null;
+    panel?.rerender();
+  }, 120);
+}
+
+function render(): string {
+  const counts = countLevels(lines);
+  const title = flags.title || (path ? path : "stdin stream");
+  const subtitle = `${lines.length}/${maxLines} buffered${sourceDone ? " · source closed" : " · live"}`;
+  return fullScreenPage({
+    tag: { label: "LOGS", color: CATPPUCCIN.green },
+    title: escapeHtml(title),
+    subtitle,
+    body: `${toolbar(counts)}${timeline()}<div class="log-list">${lines.map(renderLine).join("") || emptyState()}</div>${SCRIPT(flags.grep)}`,
+    extraCss: css(),
+  });
+}
+
+function toolbar(counts: Record<LogLevel, number>): string {
+  const chips = (["trace", "debug", "info", "warn", "error", "fatal", "unknown"] as LogLevel[])
+    .map((level) => `<button class="level-chip level-${level}" data-level="${level}">${level}<span>${counts[level]}</span></button>`)
+    .join("");
+  return `<div class="log-toolbar">
+    <input class="log-search" placeholder="filter logs…" value="${escapeHtml(flags.grep)}" autofocus>
+    <button class="level-chip all active" data-level="all">all<span>${lines.length}</span></button>
+    ${chips}
+    <label class="auto"><input type="checkbox" class="auto-scroll" checked> autoscroll</label>
+  </div>`;
+}
+
+function timeline(): string {
+  const recent = lines.slice(-160);
+  const bars = recent
+    .map((line) => `<span class="tick level-${line.level}" title="#${line.index} ${escapeHtml(line.level)}"></span>`)
+    .join("");
+  return `<div class="timeline">${bars}</div>`;
+}
+
+function renderLine(line: ParsedLogLine): string {
+  const json = line.json
+    ? `<details class="json"><summary>payload</summary><pre>${escapeHtml(JSON.stringify(line.json, null, 2))}</pre></details>`
+    : "";
+  return `<article class="log-row level-${line.level}" data-level="${line.level}" data-text="${escapeHtml(line.raw.toLowerCase())}">
+    <div class="meta"><span class="idx">#${line.index}</span><span class="badge">${line.level}</span><span class="time">${escapeHtml(line.timestamp)}</span></div>
+    <pre class="msg">${escapeHtml(line.message)}</pre>${json}
+  </article>`;
+}
+
+function emptyState(): string {
+  return `<div class="empty">Waiting for log lines. Pipe a command into <code>show_logs</code> or pass a file path.</div>`;
+}
+
+panel = fullScreenHtml({ render });
+
+if (path) {
+  try {
+    const text = readFileSync(path, "utf8");
+    const carry = appendText(text);
+    if (carry.length > 0) appendLine(carry);
+    sourceDone = true;
+    panel.rerender();
+  } catch (err) {
+    appendLine(`ERROR show_logs: cannot read ${path}: ${(err as Error).message}`);
+    sourceDone = true;
+    panel.rerender();
+  }
+} else if (!process.stdin.isTTY) {
+  let carry = "";
+  const decoder = new TextDecoder();
+  (async () => {
+    for await (const chunk of process.stdin) {
+      carry += decoder.decode(chunk as BufferSource, { stream: true });
+      carry = appendText(carry);
+    }
+    const rest = decoder.decode();
+    if (rest) carry += rest;
+    if (carry.length > 0) appendLine(carry);
+    sourceDone = true;
+    panel?.rerender();
+  })().catch((err) => {
+    appendLine(`ERROR show_logs: stdin failed: ${(err as Error).message}`);
+    sourceDone = true;
+    panel?.rerender();
+  });
+}
+
+function css(): string {
+  return `
+.fs-body { padding: 0; display: flex; flex-direction: column; }
+.log-toolbar { position: sticky; top: 0; z-index: 4; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid ${CATPPUCCIN.surface0}; background: rgba(24,24,37,0.96); backdrop-filter: blur(8px); }
+.log-search { flex: 1 1 220px; min-width: 160px; border: 1px solid ${CATPPUCCIN.surface1}; background: ${CATPPUCCIN.crust}; color: ${CATPPUCCIN.text}; border-radius: 8px; padding: 7px 10px; font: inherit; }
+.level-chip { border: 1px solid ${CATPPUCCIN.surface1}; background: ${CATPPUCCIN.surface0}; color: ${CATPPUCCIN.subtext1}; border-radius: 999px; padding: 4px 8px; font: inherit; cursor: pointer; text-transform: uppercase; font-size: 10px; display: inline-flex; gap: 6px; }
+.level-chip span { color: ${CATPPUCCIN.overlay1}; }
+.level-chip.active { border-color: ${CATPPUCCIN.blue}; color: ${CATPPUCCIN.text}; }
+.auto { color: ${CATPPUCCIN.overlay1}; display: inline-flex; gap: 6px; align-items: center; }
+.timeline { height: 12px; display: flex; gap: 1px; padding: 4px 14px; background: ${CATPPUCCIN.crust}; border-bottom: 1px solid ${CATPPUCCIN.surface0}; }
+.tick { flex: 1 1 auto; min-width: 2px; border-radius: 2px; opacity: 0.8; background: ${CATPPUCCIN.surface1}; }
+.log-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px 14px 18px; }
+.log-row { display: grid; grid-template-columns: 220px minmax(0,1fr); gap: 12px; padding: 6px 8px; border-left: 3px solid ${CATPPUCCIN.surface1}; border-bottom: 1px solid rgba(255,255,255,0.035); }
+.log-row.hidden { display: none; }
+.log-row:hover { background: rgba(255,255,255,0.035); }
+.meta { color: ${CATPPUCCIN.overlay1}; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.idx { color: ${CATPPUCCIN.surface2}; }
+.badge { text-transform: uppercase; font-weight: 700; }
+.time { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: ${CATPPUCCIN.text}; font: inherit; }
+.json { grid-column: 2; color: ${CATPPUCCIN.subtext0}; }
+.json summary { cursor: pointer; color: ${CATPPUCCIN.blue}; }
+.json pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px; border-radius: 8px; background: ${CATPPUCCIN.crust}; border: 1px solid ${CATPPUCCIN.surface0}; }
+.empty { margin: 24px; color: ${CATPPUCCIN.overlay1}; font-style: italic; }
+.level-trace { --level-color: ${CATPPUCCIN.overlay0}; }
+.level-debug { --level-color: ${CATPPUCCIN.sky}; }
+.level-info { --level-color: ${CATPPUCCIN.green}; }
+.level-warn { --level-color: ${CATPPUCCIN.yellow}; }
+.level-error { --level-color: ${CATPPUCCIN.red}; }
+.level-fatal { --level-color: ${CATPPUCCIN.mauve}; }
+.level-unknown { --level-color: ${CATPPUCCIN.surface2}; }
+.log-row.level-trace, .tick.level-trace { border-left-color: var(--level-color); background-color: rgba(108,112,134,0.05); }
+.log-row.level-debug, .tick.level-debug { border-left-color: var(--level-color); background-color: rgba(137,220,235,0.05); }
+.log-row.level-info, .tick.level-info { border-left-color: var(--level-color); background-color: rgba(166,227,161,0.05); }
+.log-row.level-warn, .tick.level-warn { border-left-color: var(--level-color); background-color: rgba(249,226,175,0.08); }
+.log-row.level-error, .tick.level-error { border-left-color: var(--level-color); background-color: rgba(243,139,168,0.08); }
+.log-row.level-fatal, .tick.level-fatal { border-left-color: var(--level-color); background-color: rgba(203,166,247,0.10); }
+.log-row .badge, .tick { color: var(--level-color); background-color: var(--level-color); }
+@media (max-width: 760px) { .log-row { grid-template-columns: 1fr; } .json { grid-column: 1; } }
+`;
+}
+
+function SCRIPT(initialFilter: string): string {
+  return `<script>(function(){
+    const search = document.querySelector('.log-search');
+    const list = document.querySelector('.log-list');
+    const chips = [...document.querySelectorAll('.level-chip')];
+    const auto = document.querySelector('.auto-scroll');
+    let level = 'all';
+    function apply(){
+      const q = (search?.value || '').toLowerCase();
+      for (const row of document.querySelectorAll('.log-row')) {
+        const okLevel = level === 'all' || row.dataset.level === level;
+        const okText = !q || (row.dataset.text || '').includes(q);
+        row.classList.toggle('hidden', !(okLevel && okText));
+      }
+      if (auto?.checked && list) list.scrollTop = list.scrollHeight;
+    }
+    search?.addEventListener('input', apply);
+    chips.forEach(chip => chip.addEventListener('click', () => {
+      level = chip.dataset.level || 'all';
+      chips.forEach(c => c.classList.toggle('active', c === chip));
+      apply();
+    }));
+    if (search && ${JSON.stringify(initialFilter)} && !search.value) search.value = ${JSON.stringify(initialFilter)};
+    apply();
+  })();</script>`;
+}
