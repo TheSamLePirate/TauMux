@@ -74,13 +74,11 @@
     "electrobun": "1.16.0"
   },
   "devDependencies": {
-    "@ai-hero/sandcastle": "^0.5.7",
     "@happy-dom/global-registrator": "^20.9.0",
     "@playwright/test": "^1.59.1",
     "@types/bun": "latest",
     "@types/pngjs": "^6.0.5",
     "@types/ws": "^8.18.1",
-    "@typescript-eslint/parser": "^8.58.0",
     "eslint": "^10.2.0",
     "happy-dom": "^20.9.0",
     "pixelmatch": "^7.1.0",

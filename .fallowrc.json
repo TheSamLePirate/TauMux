@@ -1,0 +1,51 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+
+  // Starter config — see doc/fallow-report.md for the full analysis this came from.
+  // Note: fallow auto-loads `.fallowrc.json` (not `fallow.json`); pass with
+  // `-c` only if you rename it.
+
+  // Dependencies fallow can't see being used statically but that ARE needed:
+  //  - @mariozechner/* + typebox: resolved by the upstream `pi` host (report §1.5)
+  //  - sharp: used implicitly by Astro's <Image> build-time service in
+  //    website-doc/src/content/docs/index.mdx — removing it breaks `astro build`.
+  "ignoreDependencies": [
+    "@mariozechner/pi-coding-agent",
+    "@mariozechner/pi-ai",
+    "typebox",
+    "sharp"
+  ],
+
+  // Trees owned by *other* runtime hosts or excluded from the build — fallow's
+  // static import graph can't see their entry points, so don't analyze them.
+  // See report §1.1.
+  "ignorePatterns": [
+    "pi-extensions/**",
+    "claude-integration/**",
+    "design_guidelines/**"
+  ],
+
+  // Intentional cross-tier mirrors: the same symbol lives in the shared layer
+  // and is re-implemented per render target (native webview vs web mirror).
+  // See report §1.7.
+  "ignoreExports": [
+    { "file": "src/shared/web-protocol.ts", "exports": ["PanelState"] },
+    { "file": "src/web-client/store.ts", "exports": ["PanelState"] },
+    { "file": "src/shared/sidebar-state.ts", "exports": ["WorkspaceInfo"] },
+    { "file": "src/views/terminal/sidebar.ts", "exports": ["WorkspaceInfo", "WorkspaceCardOptions"] },
+    { "file": "src/views/terminal/tau-primitives.ts", "exports": ["WorkspaceCardOptions"] },
+    { "file": "src/shared/pane-layout-math.ts", "exports": ["computeRects"] },
+    { "file": "src/web-client/layout.ts", "exports": ["computeRects"] },
+    { "file": "src/shared/sounds.ts", "exports": ["playNotificationSound"] },
+    { "file": "src/views/terminal/sounds.ts", "exports": ["playNotificationSound"] },
+    { "file": "src/web-client/sounds.ts", "exports": ["playNotificationSound"] }
+  ],
+
+  // Hide pair-only clones; focus on widespread copy-paste worth refactoring.
+  // Lower to 2 to report every duplicate pair.
+  "duplicates": {
+    "minOccurrences": 3
+  },
+
+  "rules": {}
+}
