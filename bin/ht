@@ -1194,7 +1194,9 @@ Aliases:
   capture-pane                          Alias for read-screen (tmux compat)
 
 Environment:
-  HT_SOCKET_PATH    Override socket path (default: /tmp/hyperterm.sock)
+  HT_SOCKET_PATH    Override socket path (default: the app's bound socket
+                    under its config dir, e.g.
+                    ~/Library/Application Support/hyperterm-canvas/hyperterm.sock)
   HT_SURFACE        Auto-set in τ-mux panes — used as default --surface,
                     and the server resolves the owning workspace from it
   HT_WORKSPACE_ID   Optional override for --workspace (not auto-set)

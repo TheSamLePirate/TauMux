@@ -36,6 +36,8 @@
 // button still renders (for unit tests / fallback) — just without
 // the chevron glyph.
 
+import { reconcileChildren } from "./status-render";
+
 export type CreateIconFn = (
   name: "close",
   cls: string,
@@ -168,7 +170,14 @@ class OverlayStack {
     // Render the visible window in newest-first order. Oldest visible
     // stays on top, newest at the bottom — the user reads downward
     // toward the freshly-arrived card.
-    this.root.innerHTML = "";
+    //
+    // W1-NOTIFOVERLAY — reconcile in place instead of `innerHTML=""` + full
+    // re-append. The old teardown detached + re-attached EVERY card on each
+    // push/remove, which restarted the slide-in animation and reset every
+    // auto-dismiss meter — a visible strobe whenever a notification arrived.
+    // Surviving cards now keep their DOM nodes (and their running meters);
+    // only genuinely new/removed cards mutate the DOM.
+    const ordered: Node[] = [];
     for (const payload of visible) {
       let ctrl = this.nodes.get(payload.id);
       if (!ctrl) {
@@ -180,7 +189,7 @@ class OverlayStack {
         );
         this.nodes.set(payload.id, ctrl);
       }
-      this.root.appendChild(ctrl.element);
+      ordered.push(ctrl.element);
     }
 
     // Overflow pill — single element regardless of count.
@@ -193,11 +202,13 @@ class OverlayStack {
         this.overflowPill = btn;
       }
       this.overflowPill.textContent = `+${overflow} more`;
-      this.root.appendChild(this.overflowPill);
+      ordered.push(this.overflowPill);
     } else if (this.overflowPill) {
       this.overflowPill.remove();
       this.overflowPill = null;
     }
+
+    reconcileChildren(this.root, ordered);
   }
 }
 
@@ -245,10 +256,19 @@ class OverlayCardController {
 
   private build(): HTMLElement {
     const card = document.createElement("div");
-    card.className = "tau-notif-overlay-card";
+    // W1-NOTIFOVERLAY — `--enter` plays the slide-in exactly ONCE (on first
+    // mount), then is stripped so a later reconcile-driven reorder of this
+    // same node never replays the entrance.
+    card.className = "tau-notif-overlay-card tau-notif-overlay-card--enter";
     card.dataset["notifId"] = this.payload.id;
     card.setAttribute("role", "alert");
     card.setAttribute("aria-live", "polite");
+    const stripEnter = () =>
+      card.classList.remove("tau-notif-overlay-card--enter");
+    card.addEventListener("animationend", stripEnter, { once: true });
+    // Fallback for environments where animationend may not fire (reduced
+    // motion disables the animation; backgrounded windows throttle events).
+    setTimeout(stripEnter, 400);
 
     // Hover pauses the auto-dismiss; mouseleave resumes from where
     // we left off so a long-hover doesn't reset the clock.

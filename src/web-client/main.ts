@@ -197,6 +197,11 @@ function boot() {
      *  does not fire — CSS box is unchanged, only the transform scale
      *  is). Defined for `kind === "term"` panes only. */
     proposeResize?: () => void;
+    /** W2-WEB-RO-LEAK — tears down per-pane observers/timers (ResizeObserver,
+     *  pending resize timeout) so disposing a pane on workspace switch does
+     *  not orphan an observer whose closure pins term/fitAddon/store and the
+     *  detached DOM. */
+    cleanup?: () => void;
     /** Telegram-only handle on the chat DOM and its update fn. */
     telegram?: {
       messagesEl: HTMLElement;
@@ -382,7 +387,9 @@ function boot() {
           "--ht-sidebar-width",
           `${width}px`,
         );
-        layoutView.applyLayout(store.getState());
+        // W1-RESIZE — rect-only during the drag (skip the per-frame xterm
+        // refit); the authoritative fit runs on commit below.
+        layoutView.applyLayout(store.getState(), { fit: false });
       },
       onCommit: (width) => {
         document.documentElement.style.setProperty(
@@ -409,7 +416,14 @@ function boot() {
       state.sidebar !== prev.sidebar ||
       state.workspaces !== prev.workspaces ||
       state.activeWorkspaceId !== prev.activeWorkspaceId ||
-      state.focusedSurfaceId !== prev.focusedSurfaceId
+      state.focusedSurfaceId !== prev.focusedSurfaceId ||
+      // W1-STATGATE — surfaces slice carries per-surface metadata (cpu/mem/
+      // procs) that feeds the workspace-card stat row + sparkline. It is
+      // re-referenced only on surface created/renamed/closed/resized/
+      // metadata (NOT on terminal output), so this tracks the ~1 Hz
+      // metadata cadence without churning on output frames. Cards
+      // reconcile in place (W1-STATROW), so a stat-only tick is cheap.
+      state.surfaces !== prev.surfaces
     ) {
       sidebarView.render(state);
     }
@@ -679,6 +693,11 @@ function boot() {
       chipsEl,
       dictation: dictation ?? undefined,
       proposeResize: scheduleProposal,
+      cleanup: () => {
+        ro.disconnect();
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = null;
+      },
     };
 
     // Paint chips from existing metadata, if any.
@@ -693,6 +712,15 @@ function boot() {
   function disposePane(surfaceId: string) {
     const ref = terms[surfaceId];
     if (!ref) return;
+    // W2-WEB-RO-LEAK — disconnect the ResizeObserver + clear the pending
+    // resize timer before detaching, so reconcilePanes (which disposes every
+    // pane not in the active workspace on each switch) can't leak an observer
+    // per switch. Telegram panes have no cleanup (no RO) — `?.` handles that.
+    try {
+      ref.cleanup?.();
+    } catch {
+      /* ignore */
+    }
     if (ref.dictation) {
       try {
         ref.dictation.dispose();

@@ -735,6 +735,21 @@ export class WebServer {
       focusedSurfaceId: w.focusedSurfaceId,
       layout: w.layout,
     }));
+    // W2c (W2-DISK-LEAKS) — the store's per-workspace status/progress maps are
+    // keyed by workspace id and were never pruned (forgetWorkspace was dead
+    // code), so a long session that creates + destroys many workspaces leaked
+    // stale entries into EVERY new client's snapshot. Prune dead workspaces
+    // from the store here (self-heals on each snapshot build) and only emit
+    // live ids — defense even if a future explicit forget call is missed.
+    const liveIds = new Set(workspaces.map((w) => w.id));
+    const rawStatus = this.store.getStatus();
+    const rawProgress = this.store.getProgress();
+    for (const id of Object.keys(rawStatus)) {
+      if (!liveIds.has(id)) this.store.forgetWorkspace(id);
+    }
+    for (const id of Object.keys(rawProgress)) {
+      if (!liveIds.has(id)) this.store.forgetWorkspace(id);
+    }
     return {
       nativeViewport: this.nativeViewport,
       surfaces,

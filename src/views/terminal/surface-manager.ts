@@ -36,6 +36,7 @@ import { PaneDragController } from "./pane-drag";
 import { type AppSettings, hexToRgb } from "../../shared/settings";
 import { attachSidebarResize } from "../../shared/sidebar-resize";
 import { focusXtermPreservingScroll } from "../../shared/xterm-focus";
+import { resizePreservingScroll } from "../../shared/xterm-fit";
 import { htEvents } from "../../shared/event-bus";
 import { setNotificationSoundSettings } from "./sounds";
 import type { AgentPaneView } from "./agent-panel";
@@ -307,7 +308,13 @@ export class SurfaceManager {
           "--sidebar-width",
           `${width}px`,
         );
-        this.requestLayout("full");
+        // W1-RESIZE — during the live drag only reposition pane containers
+        // (cheap rect writes); skip the per-frame xterm refit that read
+        // getComputedStyle + cleared the render service + reflowed the grid
+        // every frame (the "line-height on sidebar resize" jank). The
+        // authoritative fit runs once on commit. Mirrors the pane-divider
+        // drag (positions-on-move, full-on-up).
+        this.requestLayout("positions");
       },
       onCommit: (width) => {
         document.documentElement.style.setProperty(
@@ -657,6 +664,17 @@ export class SurfaceManager {
     const ws = this.workspaces[wsIndex];
     ws.surfaceIds.delete(surfaceId);
 
+    // W3-REMOVESURFACE-ORDER — drop the dead surface from the registry BEFORE
+    // the workspace branch. When this was the workspace's last surface,
+    // `removeWorkspace` → `switchToWorkspace` iterates `this.surfaces`; leaving
+    // the corpse in the map meant the switch briefly observed a surface that's
+    // mid-teardown. (Every touch on it was an idempotent no-op, so this is
+    // latent-hazard hardening, not a live bug.) The teardown below operates on
+    // the already-captured local `view`, so removing it from the map early is
+    // safe.
+    this.surfaces.delete(surfaceId);
+    this.metadata.delete(surfaceId);
+
     if (ws.surfaceIds.size === 0) {
       this.removeWorkspace(wsIndex);
     } else {
@@ -683,8 +701,6 @@ export class SurfaceManager {
     if (view.telegramView) this.telegram.destroyView(view.telegramView);
     if (view.editorView) this.editor.destroyView(view.editorView);
     view.container.remove();
-    this.surfaces.delete(surfaceId);
-    this.metadata.delete(surfaceId);
     this.updateSidebar();
   }
 
@@ -931,12 +947,37 @@ export class SurfaceManager {
       (prev?.packageJson?.path ?? null) !==
       (metadata.packageJson?.path ?? null);
     const treeLenChanged = (prev?.tree.length ?? -1) !== metadata.tree.length;
+    // W1-STATGATE — also refresh on live CPU/MEM movement so the workspace
+    // card's stat row + sparkline track activity at ~1 Hz instead of only
+    // updating when some structural field happens to move. Summing the
+    // tree means a *truly idle* workspace (every process at 0.0% CPU and
+    // stable RSS) still triggers nothing, so idle CPU stays ~0; any real
+    // movement refreshes. Safe to fire often now: updateSidebar() is
+    // rAF-coalesced, setWorkspaces short-circuits on a byte-identical
+    // signature, and the card stat row reconciles in place (W1-STATROW).
+    let cpuMemChanged = !prev;
+    if (prev) {
+      let prevCpu = 0;
+      let prevRss = 0;
+      let curCpu = 0;
+      let curRss = 0;
+      for (const n of prev.tree) {
+        prevCpu += n.cpu;
+        prevRss += n.rssKb;
+      }
+      for (const n of metadata.tree) {
+        curCpu += n.cpu;
+        curRss += n.rssKb;
+      }
+      cpuMemChanged = prevCpu !== curCpu || prevRss !== curRss;
+    }
     if (
       portsChanged ||
       fgChanged ||
       cwdChanged ||
       pkgChanged ||
-      treeLenChanged
+      treeLenChanged ||
+      cpuMemChanged
     ) {
       this.updateSidebar();
     }
@@ -2486,8 +2527,9 @@ function fitSurfaceTerminal(view: {
   const cols = Math.max(2, Math.floor((w - padX + 0.5) / cell.width));
   const rows = Math.max(1, Math.floor((h - padY + 0.5) / cell.height));
   if (term.cols === cols && term.rows === rows) return;
-  core._renderService?.clear();
-  term.resize(cols, rows);
+  // W1-SCROLL — keep the user's scroll position across the reflow (clear()
+  // runs between the snapshot and the resize). Shared with the web fit.
+  resizePreservingScroll(term, cols, rows, () => core._renderService?.clear());
 }
 
 function focusSurfaceTerminal(

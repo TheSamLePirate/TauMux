@@ -97,7 +97,12 @@ export interface LayoutDeps {
 }
 
 export interface LayoutView {
-  applyLayout(state: AppState): void;
+  /** W1-RESIZE — `opts.fit === false` writes pane rects only and skips the
+   *  per-call xterm refit (getComputedStyle + render-service clear + grid
+   *  reflow). Used during a live sidebar drag so the panes track the handle
+   *  cheaply; the authoritative fit runs once on commit (default fit=true).
+   *  Mirrors the native positions-vs-full layout split. */
+  applyLayout(state: AppState, opts?: { fit?: boolean }): void;
   scaleTerminals(state: AppState): void;
 }
 
@@ -153,7 +158,8 @@ export function createLayoutView(deps: LayoutDeps): LayoutView {
       Math.round(toolbarHeight + (availH - scaledH) / 2) + "px";
   }
 
-  function applyLayout(state: AppState) {
+  function applyLayout(state: AppState, opts?: { fit?: boolean }) {
+    const doFit = opts?.fit !== false;
     applyMirrorScale(state);
     const ws = state.workspaces.find((w) => w.id === state.activeWorkspaceId);
     if (!ws) return;
@@ -186,15 +192,19 @@ export function createLayoutView(deps: LayoutDeps): LayoutView {
     // "b"'s ResizeObserver fired before its `.pane-term` had been
     // measured by CSS, poisoning xterm's render-service cache with
     // a 0-cell resize).
-    for (const sid in rects) {
-      const ref = terms[sid];
-      if (!ref || !ref.term) continue;
-      // Read forces CSS layout flush — value is intentionally
-      // unused; the side effect is what matters.
-      void ref.termEl.offsetHeight;
-      fitTerminal(ref.term, ref.termEl);
+    // W1-RESIZE — skipped during a live sidebar drag (fit=false); the
+    // rect writes above still track the handle, the fit lands on commit.
+    if (doFit) {
+      for (const sid in rects) {
+        const ref = terms[sid];
+        if (!ref || !ref.term) continue;
+        // Read forces CSS layout flush — value is intentionally
+        // unused; the side effect is what matters.
+        void ref.termEl.offsetHeight;
+        fitTerminal(ref.term, ref.termEl);
+      }
+      scaleTerminals(state);
     }
-    scaleTerminals(state);
   }
 
   // Must run after `applyMirrorScale` has already set the container's

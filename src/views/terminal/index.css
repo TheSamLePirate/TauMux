@@ -2657,6 +2657,26 @@ body.sidebar-resizing {
     filter var(--transition-fast);
 }
 
+/* W1-SIDEBAND — cosmetic entrance fade. The panel's RESTING opacity is set
+ * synchronously to the target by `applyMeta` (never via a rAF, which
+ * WKWebView suspends when the window is backgrounded — that stranded panels
+ * at opacity:0). This keyframe only animates the entrance; it resumes
+ * correctly on foreground, and if it never runs the resting opacity wins, so
+ * a panel can never be left invisible. */
+@keyframes panel-enter-fade {
+  from {
+    opacity: 0;
+  }
+}
+.panel.panel-enter {
+  animation: panel-enter-fade var(--transition-medium) ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel.panel-enter {
+    animation: none;
+  }
+}
+
 .panel::before,
 .panel::after {
   content: "";
@@ -7943,8 +7963,8 @@ body::after {
 .agent-dead-banner {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 12px; flex-shrink: 0;
-  border-top: 0.5px solid color-mix(in srgb, #f87171 38%, transparent);
-  background: color-mix(in srgb, #f87171 12%, transparent);
+  border-top: 0.5px solid color-mix(in srgb, var(--ht-sem-error) 38%, transparent);
+  background: color-mix(in srgb, var(--ht-sem-error) 12%, transparent);
   color: var(--text-strong);
   font: 12px/1.4 inherit;
 }
@@ -11319,10 +11339,15 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   box-shadow:
     0 4px 12px var(--ht-notif-card-shadow),
     0 0 0 1px color-mix(in srgb, var(--window-primary) 14%, transparent);
-  /* Slide-in from the right + fade. Honours
-   * `prefers-reduced-motion` below. */
-  animation: tau-notif-overlay-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
   overflow: hidden;
+}
+/* W1-NOTIFOVERLAY — entrance is a ONE-SHOT class, not baked into the base
+ * card. The stack now reconciles in place (reconcileChildren) instead of
+ * `innerHTML=""`+re-append, so a card that stays visible keeps its node and
+ * must NOT replay the slide-in on every push/remove. The class is stripped
+ * after the animation ends. Honours `prefers-reduced-motion` below. */
+.tau-notif-overlay-card.tau-notif-overlay-card--enter {
+  animation: tau-notif-overlay-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .tau-notif-overlay-card:hover {
   background: color-mix(in srgb, var(--window-primary) 12%, var(--ht-notif-card-bg-hover-mix));
@@ -11436,7 +11461,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tau-notif-overlay-card {
+  .tau-notif-overlay-card.tau-notif-overlay-card--enter {
     animation: none;
   }
   .tau-notif-overlay-meter {

@@ -149,6 +149,16 @@ export class AutoContinueEngine {
     }
   }
 
+  /** W2b (W2-DISK-LEAKS) — forget a closed surface so its per-surface counter
+   *  and paused flag don't accumulate for the life of the process. Wired from
+   *  every surface-close route (PTY exit, agent/browser removal). Dropping the
+   *  paused flag also stops `auto-continue-paused.json` re-hydrating dead ids
+   *  at next boot. */
+  forgetSurface(surfaceId: string): void {
+    this.state.delete(surfaceId);
+    if (this.pausedSurfaces.delete(surfaceId)) this.notifyPausedChange();
+  }
+
   isPaused(surfaceId: string): boolean {
     return this.pausedSurfaces.has(surfaceId);
   }

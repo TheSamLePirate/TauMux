@@ -64,9 +64,23 @@ export function registerViewportWebviewHandlers(
       });
     },
     windowVisibility: (payload) => {
-      // Slow down metadata polling while the window is hidden — still
-      // useful (ht CLI + web mirror clients may be live) but not critical.
-      ctx.metadataPoller.setPollRate(payload.visible ? 1000 : 3000);
+      // Metadata poll cadence follows window state (W2-METADATA-BLUR):
+      //   hidden/occluded            → 3000 ms (minimized; nobody watching
+      //                                 the native window — ht/web may be live
+      //                                 but staleness there is acceptable)
+      //   visible but unfocused      → 1800 ms (user tabbed to another app but
+      //                                 τ-mux is still on screen / mirrored —
+      //                                 back off to save idle CPU without
+      //                                 going as stale as the hidden case)
+      //   visible + focused          → 1000 ms (full rate, user is looking)
+      // `focused` is optional: older webviews omit it, collapsing to the
+      // prior visible→1000 / hidden→3000 behaviour.
+      const rate = !payload.visible
+        ? 3000
+        : payload.focused === false
+          ? 1800
+          : 1000;
+      ctx.metadataPoller.setPollRate(rate);
     },
     toggleMaximize: () => {
       if (ctx.mainWindow.isMaximized()) {

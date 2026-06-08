@@ -59,6 +59,72 @@ export interface FitResult {
   skipped: boolean;
 }
 
+/** Public xterm buffer/scroll subset read by `resizePreservingScroll`.
+ *  (`buffer.active.*` and `scrollToLine` are stable public API, unlike the
+ *  `_core` internals the fit math pokes at.) */
+interface XtermScrollable {
+  cols: number;
+  rows: number;
+  resize(cols: number, rows: number): void;
+  scrollToLine(line: number): void;
+  buffer?: {
+    active?: { type?: string; viewportY: number; baseY: number };
+  };
+}
+
+/**
+ * W1-SCROLL — resize an xterm terminal WITHOUT snapping the viewport to the
+ * top of the scrollback.
+ *
+ * Plain `term.resize()` reflows the buffer and recomputes the displayed
+ * scroll offset from the new geometry; when the user is scrolled up reading
+ * history, the viewport jumps to row 0. This fires on every refit (sidebar /
+ * pane-divider resize) and — the reason it bit pi harder than Claude Code —
+ * whenever a sideband panel forces a refit (panel-manager nulls the cached
+ * size and re-fits), so an agent that paints panels yanked the scroll
+ * position out from under the user.
+ *
+ * We snapshot the distance from the bottom before the resize and restore it
+ * after. If the user was already pinned to the bottom we leave xterm's own
+ * follow-the-bottom behaviour alone. Restricted to the NORMAL buffer so a
+ * fullscreen/alt-screen TUI (vim, htop, less) that manages its own viewport
+ * is never fought. `clear` runs between snapshot and resize (the render-
+ * service cache flush the fit math needs).
+ */
+export function resizePreservingScroll(
+  term: unknown,
+  cols: number,
+  rows: number,
+  clear?: () => void,
+): void {
+  const t = term as XtermScrollable;
+  const before = t.buffer?.active;
+  const isNormal = (before?.type ?? "normal") === "normal";
+  // No buffer (headless mock / not-yet-opened) → nothing to preserve.
+  const wasAtBottom = before ? before.viewportY >= before.baseY : true;
+  const distFromBottom = before ? before.baseY - before.viewportY : 0;
+
+  clear?.();
+  t.resize(cols, rows);
+
+  if (before && !wasAtBottom && isNormal) {
+    const after = t.buffer?.active;
+    if (after) {
+      const target = Math.max(
+        0,
+        Math.min(after.baseY, after.baseY - distFromBottom),
+      );
+      if (target !== after.viewportY) {
+        try {
+          t.scrollToLine(target);
+        } catch {
+          /* scrollToLine is public API; guard for odd builds/mocks */
+        }
+      }
+    }
+  }
+}
+
 export function fitTerminal(
   term: unknown,
   parent: HTMLElement | null | undefined,
@@ -106,14 +172,17 @@ export function fitTerminal(
   }
   // Clear render-service cache so freshly computed metrics replace
   // cached ones. Without this, xterm 5.x silently keeps its old
-  // grid even after `term.resize` returns successfully.
+  // grid even after `term.resize` returns successfully — so the clear()
+  // runs (best-effort) inside resizePreservingScroll, between the scroll
+  // snapshot and the resize.
   try {
-    core?._renderService?.clear();
-  } catch {
-    /* internal API — best-effort */
-  }
-  try {
-    t.resize(cols, rows);
+    resizePreservingScroll(t, cols, rows, () => {
+      try {
+        core?._renderService?.clear();
+      } catch {
+        /* internal API — best-effort */
+      }
+    });
   } catch {
     return { cols: t.cols, rows: t.rows, skipped: true };
   }

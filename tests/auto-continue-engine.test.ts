@@ -455,6 +455,32 @@ describe("AutoContinueEngine — model + hybrid", () => {
 
 // ── shouldEscalate ───────────────────────────────────────────
 
+describe("AutoContinueEngine — forgetSurface (W2b)", () => {
+  test("drops a surface's paused flag + per-surface state, notifying once", () => {
+    const changes: string[][] = [];
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings(),
+      sendText: () => {},
+      onPausedChange: (ids) => changes.push(ids),
+    });
+    engine.pause("s1");
+    engine.pause("s2");
+    expect(engine.isPaused("s1")).toBe(true);
+    const before = changes.length;
+
+    engine.forgetSurface("s1");
+    expect(engine.isPaused("s1")).toBe(false);
+    expect(engine.isPaused("s2")).toBe(true);
+    expect(changes.length).toBe(before + 1); // dropped paused id → notified
+
+    // Forgetting an unpaused / unknown surface must NOT notify (no churn of
+    // the paused-surfaces persister).
+    const after = changes.length;
+    engine.forgetSurface("never-seen");
+    expect(changes.length).toBe(after);
+  });
+});
+
 describe("shouldEscalate", () => {
   function decide(reason: string): AutoContinueDecision {
     return { action: "wait", reason };

@@ -39,6 +39,22 @@ type CardSlotKey =
   | "manifests"
   | "status"
   | "progress";
+/** Live child refs inside the workspace-card stat row, held so a pure
+ *  cpu/mem/proc tick mutates the SAME nodes in place (W1-STATROW) instead
+ *  of rebuilding the row. Rebuilding mounted a fresh `.workspace-cpu-bar-fill`
+ *  every tick, which defeated its `transition: transform 220ms` and was a
+ *  residual contributor to the "flicker on refresh" bug. */
+interface StatRowRefs {
+  barWrap: HTMLButtonElement;
+  fill: HTMLSpanElement;
+  pctText: HTMLSpanElement;
+  cpu: HTMLSpanElement;
+  mem: HTMLSpanElement;
+  procs: HTMLSpanElement;
+  sparkSvg?: SVGSVGElement;
+  sparkPoly?: SVGPolylineElement;
+  sparkFill?: SVGPolygonElement;
+}
 interface CardSlotCache {
   slots: Partial<Record<CardSlotKey, HTMLElement>>;
   sigs: Partial<Record<CardSlotKey, string>>;
@@ -46,6 +62,12 @@ interface CardSlotCache {
    *  value change reconciles entries in place (no chart teardown) instead
    *  of rebuilding the whole grid — see `reconcileStatusGrid`. */
   statusGrid?: HTMLElement;
+  /** Live stat-row child nodes (W1-STATROW). `sigs.stats` holds the
+   *  STRUCTURAL signature (active / sparkline-presence / accent); a
+   *  rebuild fires only when those change. `statsValueSig` holds the
+   *  per-tick VALUE signature — a mismatch patches the cached nodes. */
+  statRefs?: StatRowRefs;
+  statsValueSig?: string;
 }
 
 /** Stable JSON signature of a `WorkspaceInfo[]`. Used by
@@ -167,6 +189,41 @@ const DEFAULT_WS_UI: WorkspaceUiState = {
 
 const DEFAULT_ACCENT = "#89b4fa";
 
+/** Map a workspace CPU% (0..400, i.e. up to 4 cores) onto the 0..1 scaleX
+ *  of the cpu-bar fill. Pure so build + patch (W1-STATROW) always agree. */
+function cpuBarScale(cpuPercent: number): number {
+  const capped = Math.min(cpuPercent, 400);
+  return Math.min(1, Math.max(0, capped / 400));
+}
+
+/** Native workspace-card sparkline geometry (60×10 viewBox). Returns the
+ *  polyline `points` and the closed-area polygon `points`. Pure so the
+ *  builder and the in-place patch produce byte-identical coordinates. */
+function computeSparkline(history: readonly number[]): {
+  linePts: string;
+  areaPts: string;
+} {
+  const hist = history.length > 0 ? history : [0];
+  const max = Math.max(100, ...hist);
+  const w = 60;
+  const h = 10;
+  const stride = hist.length > 1 ? w / (hist.length - 1) : w;
+  const linePts = hist
+    .map((v, i) => {
+      const x = (i * stride).toFixed(2);
+      const y = (h - (Math.min(v, max) / max) * h).toFixed(2);
+      return `${x},${y}`;
+    })
+    .join(" ");
+  return { linePts, areaPts: `0,${h} ${linePts} ${w},${h}` };
+}
+
+function sparkAriaLabel(ws: WorkspaceInfo): string {
+  return `CPU ${Math.round(ws.cpuPercent)}% across ${ws.processCount} process${
+    ws.processCount === 1 ? "" : "es"
+  }`;
+}
+
 /** Subfield visibility + density configuration for the workspace
  *  cards. Pushed in by surface-manager from `AppSettings`. */
 export interface WorkspaceCardOptions {
@@ -209,6 +266,18 @@ export class Sidebar {
   private searchInputEl!: HTMLInputElement;
   private filterBarEl!: HTMLElement;
   private globalStatsEl!: HTMLElement;
+  /** W2-NS-GLOBALSTATS — cached spans for the always-visible cpu/mem/proc/
+   *  port strip. Built once; each render patches textContent in place
+   *  instead of `innerHTML=""` + rebuild (which re-parsed 3-4 SVG icons
+   *  every workspace refresh). */
+  private globalStatRefs?: {
+    cpu: HTMLElement;
+    cpuVal: HTMLElement;
+    memVal: HTMLElement;
+    procVal: HTMLElement;
+    port: HTMLElement;
+    portVal: HTMLElement;
+  };
   private notificationsEl: HTMLElement;
   private listSectionEl!: HTMLElement;
   private listEl: HTMLElement;
@@ -234,6 +303,14 @@ export class Sidebar {
   private notificationListEl: HTMLElement | null = null;
   private notificationCountEl: HTMLElement | null = null;
   private notificationItemEls: Map<string, HTMLElement> = new Map();
+  /** W2-NS-LOGS — cached logs-section shell + per-entry row cache. Logs are
+   *  append-only with a sliding cap and stable object identity (surface-
+   *  manager `splice`s in place), so rows are keyed by the `LogEntry` object:
+   *  an entry still in the visible window keeps its node across appends
+   *  instead of the whole section being torn down (`innerHTML=""`) per log. */
+  private logsListEl: HTMLElement | null = null;
+  private logsCountEl: HTMLElement | null = null;
+  private logsRowEls: Map<LogEntry, HTMLElement> = new Map();
 
   // UI state (local, persisted via localStorage)
   private searchTerm = "";
@@ -707,45 +784,68 @@ export class Sidebar {
     for (const w of this.workspaces)
       for (const p of w.listeningPorts) totalPorts.add(p);
 
-    this.globalStatsEl.innerHTML = "";
-    const cpu = document.createElement("span");
-    cpu.className = "sidebar-global-stat stat-cpu";
-    cpu.title = `Total CPU across ${totalProc} process${totalProc === 1 ? "" : "es"}`;
-    cpu.append(createIcon("cpu", "", 10));
-    const cpuVal = document.createElement("span");
-    cpuVal.textContent = `${Math.round(totalCpu)}%`;
-    cpu.appendChild(cpuVal);
-
-    const mem = document.createElement("span");
-    mem.className = "sidebar-global-stat stat-mem";
-    mem.title = `Total resident memory`;
-    mem.append(createIcon("memory", "", 10));
-    const memVal = document.createElement("span");
-    memVal.textContent = formatRss(totalMem);
-    mem.appendChild(memVal);
-
-    const proc = document.createElement("span");
-    proc.className = "sidebar-global-stat stat-proc";
-    proc.title = `Total processes under τ-mux`;
-    proc.append(createIcon("activity", "", 10));
-    const procVal = document.createElement("span");
-    procVal.textContent = String(totalProc);
-    proc.appendChild(procVal);
-
-    if (totalPorts.size > 0) {
-      const portEl = document.createElement("span");
-      portEl.className = "sidebar-global-stat stat-port";
-      portEl.title = `Listening ports across all workspaces`;
-      portEl.append(createIcon("network", "", 10));
-      const v = document.createElement("span");
-      v.textContent = String(totalPorts.size);
-      portEl.appendChild(v);
-      this.globalStatsEl.appendChild(portEl);
+    // W2-NS-GLOBALSTATS — build the strip ONCE; thereafter patch values in
+    // place. The old `innerHTML=""`+rebuild ran on every workspace refresh
+    // (the signature includes cpu/mem floats that move each tick), re-parsing
+    // 3-4 SVG icons each time in the always-visible search bar. Stable DOM
+    // order (cpu, mem, proc, then port) so toggling ports never reflows the
+    // others.
+    let refs = this.globalStatRefs;
+    if (!refs) {
+      const mk = (cls: string, icon: IconName, title: string) => {
+        const el = document.createElement("span");
+        el.className = `sidebar-global-stat ${cls}`;
+        el.title = title;
+        el.append(createIcon(icon, "", 10));
+        const val = document.createElement("span");
+        el.appendChild(val);
+        return { el, val };
+      };
+      const cpu = mk(
+        "stat-cpu",
+        "cpu",
+        `Total CPU across ${totalProc} process${totalProc === 1 ? "" : "es"}`,
+      );
+      const mem = mk("stat-mem", "memory", "Total resident memory");
+      const proc = mk("stat-proc", "activity", "Total processes under τ-mux");
+      const port = mk(
+        "stat-port",
+        "network",
+        "Listening ports across all workspaces",
+      );
+      refs = {
+        cpu: cpu.el,
+        cpuVal: cpu.val,
+        memVal: mem.val,
+        procVal: proc.val,
+        port: port.el,
+        portVal: port.val,
+      };
+      this.globalStatRefs = refs;
+      this.globalStatsEl.append(cpu.el, mem.el, proc.el);
     }
 
-    this.globalStatsEl.appendChild(cpu);
-    this.globalStatsEl.appendChild(mem);
-    this.globalStatsEl.appendChild(proc);
+    const cpuStr = `${Math.round(totalCpu)}%`;
+    if (refs.cpuVal.textContent !== cpuStr) refs.cpuVal.textContent = cpuStr;
+    const cpuTitle = `Total CPU across ${totalProc} process${totalProc === 1 ? "" : "es"}`;
+    if (refs.cpu.title !== cpuTitle) refs.cpu.title = cpuTitle;
+    const memStr = formatRss(totalMem);
+    if (refs.memVal.textContent !== memStr) refs.memVal.textContent = memStr;
+    const procStr = String(totalProc);
+    if (refs.procVal.textContent !== procStr)
+      refs.procVal.textContent = procStr;
+
+    if (totalPorts.size > 0) {
+      const portStr = String(totalPorts.size);
+      if (refs.portVal.textContent !== portStr) {
+        refs.portVal.textContent = portStr;
+      }
+      if (refs.port.parentElement !== this.globalStatsEl) {
+        this.globalStatsEl.appendChild(refs.port);
+      }
+    } else if (refs.port.parentElement === this.globalStatsEl) {
+      this.globalStatsEl.removeChild(refs.port);
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -1064,24 +1164,44 @@ export class Sidebar {
     }
 
     // ── stat row (the hot one — moves on every metadata tick) ───
+    // W1-STATROW: split STRUCTURAL (rebuild) from VALUE (patch in place).
+    // Only active/sparkline-presence/accent force a rebuild; cpu/mem/proc
+    // and sparkline samples mutate the cached nodes so the cpu-bar fill
+    // keeps its node identity (and its 220 ms transform transition).
     if (show.stats) {
-      const sig = [
+      const hasSparkline = ws.active && ws.cpuHistory.length > 1;
+      const structSig = [
         "st",
+        ws.active ? "1" : "0",
+        hasSparkline ? "spark" : "nospark",
+        accent,
+      ].join("|");
+      const valueSig = [
         ws.cpuPercent.toFixed(1),
         ws.memRssKb,
         ws.processCount,
         ws.cpuHistory.join(","),
-        ws.active ? "1" : "0",
-        accent,
-      ].join("|");
-      if (cache.sigs.stats !== sig || !cache.slots.stats) {
-        cache.slots.stats = this.buildCardStatRow(ws, accent);
-        cache.sigs.stats = sig;
+      ].join(",");
+      if (
+        cache.sigs.stats !== structSig ||
+        !cache.slots.stats ||
+        !cache.statRefs
+      ) {
+        const built = this.buildCardStatRow(ws, accent);
+        cache.slots.stats = built.row;
+        cache.statRefs = built.refs;
+        cache.sigs.stats = structSig;
+        cache.statsValueSig = valueSig; // builder already reflects current values
+      } else if (cache.statsValueSig !== valueSig) {
+        this.patchCardStatRow(cache.statRefs, ws);
+        cache.statsValueSig = valueSig;
       }
       ordered.push(cache.slots.stats);
     } else {
       delete cache.slots.stats;
       delete cache.sigs.stats;
+      delete cache.statRefs;
+      delete cache.statsValueSig;
     }
 
     // ── CWD row: always visible on every workspace card ─────────
@@ -1467,7 +1587,10 @@ export class Sidebar {
     return row;
   }
 
-  private buildCardStatRow(ws: WorkspaceInfo, accent: string): HTMLElement {
+  private buildCardStatRow(
+    ws: WorkspaceInfo,
+    accent: string,
+  ): { row: HTMLElement; refs: StatRowRefs } {
     const row = document.createElement("div");
     row.className = "workspace-stat-row";
 
@@ -1483,24 +1606,26 @@ export class Sidebar {
       e.stopPropagation();
       htEvents.emit("ht-open-process-manager", { workspaceId: ws.id });
     });
-    // Fill width = cpu% clamped to 400% (4 cores)
-    const capped = Math.min(ws.cpuPercent, 400);
-    const pct = Math.min(100, (capped / 100) * 25 + (capped > 100 ? 0 : 0)); // simple mapping
-    // Actually: map 0..400 → 0..100% width, but emphasize low values.
-    const widthPct = Math.min(100, Math.max(0, (capped / 400) * 100));
     const fill = document.createElement("span");
     fill.className = "workspace-cpu-bar-fill";
     // Phase 4 perf pass: set transform: scaleX(...) instead of width%
     // so the 1 Hz cpu-bar update is GPU-composited rather than
     // layout-triggering. Matches the new CSS rule's transform anim.
-    fill.style.transform = `scaleX(${(widthPct / 100).toFixed(3)})`;
+    fill.style.transform = `scaleX(${cpuBarScale(ws.cpuPercent).toFixed(3)})`;
     fill.style.background = accent;
     barWrap.appendChild(fill);
 
     // Sparkline overlay on active card, using accent color.
+    let sparkSvg: SVGSVGElement | undefined;
+    let sparkPoly: SVGPolylineElement | undefined;
+    let sparkFill: SVGPolygonElement | undefined;
     if (ws.active && ws.cpuHistory.length > 1) {
-      barWrap.appendChild(this.buildSparkline(ws));
+      const built = this.buildSparkline(ws);
+      barWrap.appendChild(built.svg);
       barWrap.classList.add("with-sparkline");
+      sparkSvg = built.svg;
+      sparkPoly = built.poly;
+      sparkFill = built.fill;
     }
 
     // Hidden % text that shows on hover.
@@ -1509,7 +1634,6 @@ export class Sidebar {
     pctText.textContent = `${Math.round(ws.cpuPercent)}%`;
     pctText.setAttribute("aria-hidden", "true");
     barWrap.appendChild(pctText);
-    void pct;
     row.appendChild(barWrap);
 
     // Numeric chips: CPU%, MEM, procs.
@@ -1545,10 +1669,73 @@ export class Sidebar {
     metrics.appendChild(procs);
 
     row.appendChild(metrics);
-    return row;
+    return {
+      row,
+      refs: {
+        barWrap,
+        fill,
+        pctText,
+        cpu,
+        mem,
+        procs,
+        sparkSvg,
+        sparkPoly,
+        sparkFill,
+      },
+    };
   }
 
-  private buildSparkline(ws: WorkspaceInfo): SVGSVGElement {
+  /** W1-STATROW: mutate the cached stat-row nodes for a pure value tick.
+   *  Each write is change-guarded so an unchanged field never touches the
+   *  DOM (no style recalc / layout). The cpu-bar fill keeps its identity so
+   *  its `transform` transition animates smoothly instead of snapping. */
+  private patchCardStatRow(refs: StatRowRefs, ws: WorkspaceInfo): void {
+    const nextTransform = `scaleX(${cpuBarScale(ws.cpuPercent).toFixed(3)})`;
+    if (refs.fill.style.transform !== nextTransform) {
+      refs.fill.style.transform = nextTransform;
+    }
+    const barTitle =
+      ws.processCount > 0
+        ? `CPU ${ws.cpuPercent.toFixed(1)}% · click for process manager`
+        : "No processes";
+    if (refs.barWrap.title !== barTitle) refs.barWrap.title = barTitle;
+
+    const pctStr = `${Math.round(ws.cpuPercent)}%`;
+    if (refs.pctText.textContent !== pctStr) refs.pctText.textContent = pctStr;
+    if (refs.cpu.textContent !== pctStr) refs.cpu.textContent = pctStr;
+    const cpuTitle = `CPU ${ws.cpuPercent.toFixed(1)}%`;
+    if (refs.cpu.title !== cpuTitle) refs.cpu.title = cpuTitle;
+
+    const memStr = formatRss(ws.memRssKb);
+    if (refs.mem.textContent !== memStr) refs.mem.textContent = memStr;
+    const memTitle = `Resident ${memStr}`;
+    if (refs.mem.title !== memTitle) refs.mem.title = memTitle;
+
+    const procStr = `${ws.processCount}p`;
+    if (refs.procs.textContent !== procStr) refs.procs.textContent = procStr;
+    const procTitle = `${ws.processCount} process${ws.processCount === 1 ? "" : "es"}`;
+    if (refs.procs.title !== procTitle) refs.procs.title = procTitle;
+
+    if (refs.sparkSvg && refs.sparkPoly && refs.sparkFill) {
+      const geo = computeSparkline(ws.cpuHistory);
+      if (refs.sparkPoly.getAttribute("points") !== geo.linePts) {
+        refs.sparkPoly.setAttribute("points", geo.linePts);
+      }
+      if (refs.sparkFill.getAttribute("points") !== geo.areaPts) {
+        refs.sparkFill.setAttribute("points", geo.areaPts);
+      }
+      const aria = sparkAriaLabel(ws);
+      if (refs.sparkSvg.getAttribute("aria-label") !== aria) {
+        refs.sparkSvg.setAttribute("aria-label", aria);
+      }
+    }
+  }
+
+  private buildSparkline(ws: WorkspaceInfo): {
+    svg: SVGSVGElement;
+    poly: SVGPolylineElement;
+    fill: SVGPolygonElement;
+  } {
     const NS = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(NS, "svg");
     svg.classList.add("workspace-sparkline");
@@ -1556,27 +1743,16 @@ export class Sidebar {
     svg.setAttribute("aria-hidden", "true");
     svg.setAttribute("preserveAspectRatio", "none");
 
-    const hist = ws.cpuHistory.length > 0 ? ws.cpuHistory : [0];
-    const max = Math.max(100, ...hist);
-    const w = 60;
-    const h = 10;
-    const stride = hist.length > 1 ? w / (hist.length - 1) : w;
-    const pts = hist
-      .map((v, i) => {
-        const x = (i * stride).toFixed(2);
-        const y = (h - (Math.min(v, max) / max) * h).toFixed(2);
-        return `${x},${y}`;
-      })
-      .join(" ");
+    const geo = computeSparkline(ws.cpuHistory);
 
     const fill = document.createElementNS(NS, "polygon");
-    fill.setAttribute("points", `0,${h} ${pts} ${w},${h}`);
+    fill.setAttribute("points", geo.areaPts);
     fill.setAttribute("fill", "currentColor");
     fill.setAttribute("opacity", "0.28");
     svg.appendChild(fill);
 
     const poly = document.createElementNS(NS, "polyline");
-    poly.setAttribute("points", pts);
+    poly.setAttribute("points", geo.linePts);
     poly.setAttribute("fill", "none");
     poly.setAttribute("stroke", "currentColor");
     poly.setAttribute("stroke-width", "1");
@@ -1584,11 +1760,8 @@ export class Sidebar {
     poly.setAttribute("stroke-linecap", "round");
     svg.appendChild(poly);
 
-    svg.setAttribute(
-      "aria-label",
-      `CPU ${Math.round(ws.cpuPercent)}% across ${ws.processCount} process${ws.processCount === 1 ? "" : "es"}`,
-    );
-    return svg;
+    svg.setAttribute("aria-label", sparkAriaLabel(ws));
+    return { svg, poly, fill };
   }
 
   private buildCwdRow(ws: WorkspaceInfo): HTMLElement {
@@ -2641,15 +2814,9 @@ export class Sidebar {
   // Logs
   // ──────────────────────────────────────────────────────────────────
 
-  private renderLogs(): void {
-    const logs = this.logs;
-    this.logsEl.innerHTML = "";
-    if (logs.length === 0) return;
-
-    const unread = logs.filter(
-      (l) => l.level === "error" || l.level === "warning",
-    ).length;
-
+  /** W2-NS-LOGS — build the persistent logs shell (header + list) once.
+   *  Returns the list container + the count span that gets patched. */
+  private buildLogsShell(): { listEl: HTMLElement; countEl: HTMLElement } {
     const header = document.createElement("div");
     header.className = "sidebar-section-header";
 
@@ -2676,7 +2843,6 @@ export class Sidebar {
     title.className = "sidebar-section-title";
     title.append(createIcon("logs", "", 11));
     const countEl = document.createElement("span");
-    countEl.textContent = `Logs (${logs.length}${unread ? ` · ${unread}!` : ""})`;
     title.append(countEl);
     toggle.appendChild(title);
     header.appendChild(toggle);
@@ -2697,46 +2863,115 @@ export class Sidebar {
       this.sectionOpen.logs = !this.sectionOpen.logs;
       saveJson(LS_SECTIONS, this.sectionOpen);
       this.applySectionOpenClasses();
+      caret.innerHTML = "";
+      caret.append(
+        createIcon(
+          this.sectionOpen.logs ? "chevronDown" : "chevronRight",
+          "",
+          10,
+        ),
+      );
+      toggle.setAttribute(
+        "aria-expanded",
+        this.sectionOpen.logs ? "true" : "false",
+      );
       this.renderLogs();
     });
 
     this.logsEl.appendChild(header);
 
-    if (!this.sectionOpen.logs) return;
+    const listEl = document.createElement("div");
+    listEl.className = "sidebar-section-list";
+    this.logsEl.appendChild(listEl);
 
-    const list = document.createElement("div");
-    list.className = "sidebar-section-list";
-    this.logsEl.appendChild(list);
+    this.applySectionOpenClasses();
+    return { listEl, countEl };
+  }
+
+  private buildLogRow(log: LogEntry): HTMLElement {
+    const el = document.createElement("div");
+    el.className = `log-item ${log.level}`;
+    const levelTag = document.createElement("span");
+    levelTag.className = "log-level";
+    levelTag.textContent = log.level.toUpperCase().slice(0, 4);
+    el.appendChild(levelTag);
+    if (log.source) {
+      const srcTag = document.createElement("span");
+      srcTag.className = "log-source";
+      srcTag.textContent = log.source;
+      el.appendChild(srcTag);
+    }
+    const msg = document.createElement("span");
+    msg.className = "log-message";
+    msg.textContent = log.message;
+    el.appendChild(msg);
+    return el;
+  }
+
+  private renderLogs(): void {
+    const logs = this.logs;
+    if (logs.length === 0) {
+      this.logsEl.innerHTML = "";
+      this.logsListEl = null;
+      this.logsCountEl = null;
+      this.logsRowEls.clear();
+      return;
+    }
+
+    const unread = logs.filter(
+      (l) => l.level === "error" || l.level === "warning",
+    ).length;
+
+    if (!this.logsListEl || !this.logsCountEl) {
+      this.logsEl.innerHTML = "";
+      const { listEl, countEl } = this.buildLogsShell();
+      this.logsListEl = listEl;
+      this.logsCountEl = countEl;
+    }
+
+    const countStr = `Logs (${logs.length}${unread ? ` · ${unread}!` : ""})`;
+    if (this.logsCountEl.textContent !== countStr) {
+      this.logsCountEl.textContent = countStr;
+    }
+
+    if (!this.sectionOpen.logs) {
+      this.logsListEl.innerHTML = "";
+      this.logsRowEls.clear();
+      return;
+    }
 
     const scroller = this.container;
     const wasNearBottom =
       scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
 
-    let lastItem: HTMLDivElement | null = null;
-    for (const log of logs.slice(-12)) {
-      const el = document.createElement("div");
-      el.className = `log-item ${log.level}`;
-      const levelTag = document.createElement("span");
-      levelTag.className = "log-level";
-      levelTag.textContent = log.level.toUpperCase().slice(0, 4);
-      el.appendChild(levelTag);
-      if (log.source) {
-        const srcTag = document.createElement("span");
-        srcTag.className = "log-source";
-        srcTag.textContent = log.source;
-        el.appendChild(srcTag);
+    // Incremental reconcile by stable LogEntry identity: drop rows whose
+    // entry fell out of the visible window, reuse the rest, insert new ones.
+    const visible = logs.slice(-12);
+    const visibleSet = new Set(visible);
+    for (const [entry, el] of [...this.logsRowEls]) {
+      if (!visibleSet.has(entry)) {
+        el.remove();
+        this.logsRowEls.delete(entry);
       }
-      const msg = document.createElement("span");
-      msg.className = "log-message";
-      msg.textContent = log.message;
-      el.appendChild(msg);
-      list.appendChild(el);
+    }
+
+    let cursor: ChildNode | null = this.logsListEl.firstChild;
+    let lastItem: HTMLElement | null = null;
+    for (const log of visible) {
+      let el = this.logsRowEls.get(log);
+      if (el) {
+        cursor = el.nextSibling;
+      } else {
+        el = this.buildLogRow(log);
+        this.logsRowEls.set(log, el);
+        this.logsListEl.insertBefore(el, cursor);
+      }
       lastItem = el;
     }
+
     if (lastItem && wasNearBottom) {
-      requestAnimationFrame(() =>
-        lastItem?.scrollIntoView({ block: "nearest" }),
-      );
+      const target = lastItem;
+      requestAnimationFrame(() => target.scrollIntoView({ block: "nearest" }));
     }
   }
 

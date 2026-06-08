@@ -2462,8 +2462,12 @@ body.sidebar-hidden .tau-status-bar {
   box-shadow:
     0 4px 12px var(--ht-notif-card-shadow),
     0 0 0 1px var(--ht-accent-soft);
-  animation: ht-notif-overlay-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
   overflow: hidden;
+}
+/* W1-NOTIFOVERLAY — one-shot entrance (see native index.css). The stack
+ * reconciles in place, so a kept card must not replay the slide-in. */
+.tau-notif-overlay-card.tau-notif-overlay-card--enter {
+  animation: ht-notif-overlay-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .tau-notif-overlay-card:hover {
   background: var(--ht-notif-card-bg-hover-mix);
@@ -2563,7 +2567,7 @@ body.sidebar-hidden .tau-status-bar {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tau-notif-overlay-card {
+  .tau-notif-overlay-card.tau-notif-overlay-card--enter {
     animation: none;
   }
   .tau-notif-overlay-meter {

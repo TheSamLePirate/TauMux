@@ -210,6 +210,16 @@ export interface BrowserPaneView {
    *  put (perf-pass merge — codex). Cleared by `browserPaneSetHidden`
    *  when the pane returns to view so the next layout force-syncs. */
   _lastSyncedRectSig: string | null;
+  /** W2-BROWSER-RETRY — set true by `destroyBrowserPaneView` so the
+   *  `applyHiddenState` retry loop stops re-arming once the pane is closed
+   *  (the webview is detached during removeSurface while the timer may still
+   *  be pending). */
+  _destroyed?: boolean;
+  /** Pending `applyHiddenState` retry timer (cleared on destroy / success). */
+  _hiddenRetryTimer?: ReturnType<typeof setTimeout> | null;
+  /** Retry attempt counter — caps the poll so a webview that never resolves
+   *  its `webviewId` can't spin forever (~2 s at 50 ms). */
+  _hiddenRetryAttempts?: number;
 }
 
 export interface BrowserPaneCallbacks {
@@ -711,6 +721,14 @@ export function createBrowserPaneView(
  *  the DOM — otherwise the electrobun webview tag keeps our callbacks
  *  (and their surfaceId/callbacks closures) alive indefinitely. */
 export function destroyBrowserPaneView(view: BrowserPaneView): void {
+  // W2-BROWSER-RETRY — kill the hidden-state retry loop deterministically on
+  // close (regardless of the attempt cap): mark destroyed so an in-flight
+  // callback bails, and clear the pending timer.
+  view._destroyed = true;
+  if (view._hiddenRetryTimer) {
+    clearTimeout(view._hiddenRetryTimer);
+    view._hiddenRetryTimer = null;
+  }
   for (const fn of view._cleanup) {
     try {
       fn();
@@ -904,7 +922,12 @@ export function browserPaneSetHidden(view: BrowserPaneView, hidden: boolean) {
   applyHiddenState(view);
 }
 
+const HIDDEN_RETRY_MAX = 40; // ~2 s at 50 ms
+
 function applyHiddenState(view: BrowserPaneView): void {
+  // W2-BROWSER-RETRY — bail if the pane was torn down between retries; the
+  // webview is detached during removeSurface and there is nothing to toggle.
+  if (view._destroyed) return;
   // `toggleHidden` / `togglePassthrough` silently no-op if the OOPIF
   // isn't initialized yet (webviewId === null). When a browser pane is
   // created in an inactive workspace the first hide call lands before
@@ -922,8 +945,26 @@ function applyHiddenState(view: BrowserPaneView): void {
   } catch {
     /* ignore */
   }
+  // Clear any prior pending retry before deciding whether to re-arm.
+  if (view._hiddenRetryTimer) {
+    clearTimeout(view._hiddenRetryTimer);
+    view._hiddenRetryTimer = null;
+  }
   if (w.webviewId === null || w.webviewId === undefined) {
-    setTimeout(() => applyHiddenState(view), 50);
+    const attempts = (view._hiddenRetryAttempts ?? 0) + 1;
+    view._hiddenRetryAttempts = attempts;
+    if (attempts <= HIDDEN_RETRY_MAX) {
+      view._hiddenRetryTimer = setTimeout(() => {
+        view._hiddenRetryTimer = null;
+        applyHiddenState(view);
+      }, 50);
+    }
+    // Over the cap: give up silently. The OOPIF never resolved its id
+    // (webviewTagInit rejected/never settled) — re-arming forever just
+    // leaks a timer.
+  } else {
+    // Succeeded — reset the counter so a future hide/show starts fresh.
+    view._hiddenRetryAttempts = 0;
   }
 }
 

@@ -664,14 +664,23 @@ export class TelegramService {
         `telegram: answerCallbackQuery failed: ${(err as Error).message}`,
       );
     }
-    this.opts.onCallback?.({
-      callbackQueryId: cq.id,
-      fromUserId: cq.fromUserId,
-      fromName: cq.fromName,
-      chatId: cq.chatId,
-      messageId: cq.messageId,
-      data: cq.data,
-    });
+    // W3-TELEGRAM-ISOLATE — same isolation as onIncoming: a throwing
+    // host callback must not demote the poll loop.
+    try {
+      this.opts.onCallback?.({
+        callbackQueryId: cq.id,
+        fromUserId: cq.fromUserId,
+        fromName: cq.fromName,
+        chatId: cq.chatId,
+        messageId: cq.messageId,
+        data: cq.data,
+      });
+    } catch (err) {
+      this.opts.onLog?.(
+        "warn",
+        `telegram: onCallback handler threw: ${(err as Error).message}`,
+      );
+    }
   }
 
   private handleUpdate(update: TelegramUpdate): void {
@@ -704,9 +713,22 @@ export class TelegramService {
       name: msg.chatTitle || msg.fromName || msg.chatId,
       ts: persisted.ts,
     });
-    this.opts.onIncoming?.(persisted, {
-      replyToMessageId: msg.replyToMessageId,
-    });
+    // W3-TELEGRAM-ISOLATE — isolate the host handler. `handleUpdate` runs
+    // synchronously inside the long-poll loop; an unguarded throw here (a
+    // downstream ask_answer/broadcast/DB op, or a future handler) would unwind
+    // into `runLoop`'s catch, flip the service to an error status and trigger
+    // backoff — which is how a Telegram-side hiccup could take notifications +
+    // the ht socket down with it. Swallow + log instead.
+    try {
+      this.opts.onIncoming?.(persisted, {
+        replyToMessageId: msg.replyToMessageId,
+      });
+    } catch (err) {
+      this.opts.onLog?.(
+        "warn",
+        `telegram: onIncoming handler threw: ${(err as Error).message}`,
+      );
+    }
   }
 }
 

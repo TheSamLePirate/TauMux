@@ -259,6 +259,9 @@ const piAgentManager = new PiAgentManager();
 // `send()` would throw "Agent process is not running".
 piAgentManager.onExit = (agentId) => {
   piAgentManager.removeAgent(agentId);
+  // W2b (W2-DISK-LEAKS) — drop the agent surface's auto-continue state so it
+  // doesn't linger (and doesn't re-hydrate from auto-continue-paused.json).
+  autoContinue.forgetSurface(agentId);
 };
 const browserSurfaces = new BrowserSurfaceManager();
 const browserHistory = new BrowserHistoryStore(configDir);
@@ -721,6 +724,7 @@ sessions.onSidebandDataFailed = (surfaceId, id, reason) => {
 sessions.onSurfaceClosed = (surfaceId) => {
   nativeStdout.flushSurface(surfaceId);
   panelRegistry.clearSurface(surfaceId);
+  autoContinue.forgetSurface(surfaceId); // W2b — bound per-surface state
   rpc.send("surfaceClosed", { surfaceId });
   app.webServer?.broadcast({ type: "surfaceClosed", surfaceId });
   if (
@@ -744,6 +748,7 @@ browserSurfaces.onSurfaceClosed = (surfaceId) => {
     clearTimeout(pending);
     domReadyDebounce.delete(surfaceId);
   }
+  autoContinue.forgetSurface(surfaceId); // W2b — bound per-surface state
   rpc.send("browserSurfaceClosed", { surfaceId });
   app.webServer?.broadcast({ type: "browserSurfaceClosed", surfaceId });
   if (
@@ -1149,6 +1154,14 @@ async function fanoutAskUserToTelegram(
   // Cache the title so the resolution edit can re-stamp it without
   // a SQLite round-trip. Cleared on resolve.
   requestTitleCache.set(request.request_id, request.title);
+  // W2d (W2-DISK-LEAKS) — bound the cache. The resolve/timeout paths delete
+  // entries, but a request abandoned without either (e.g. the asking
+  // connection drops before answering) would otherwise linger forever. Evict
+  // the oldest beyond the cap (Map preserves insertion order).
+  if (requestTitleCache.size > REQUEST_TITLE_CACHE_MAX) {
+    const oldest = requestTitleCache.keys().next().value;
+    if (oldest !== undefined) requestTitleCache.delete(oldest);
+  }
 
   for (const chatId of allowed) {
     try {
@@ -1250,6 +1263,10 @@ async function editAskUserResolutionToTelegram(
  *  tripping through SQLite for a one-line string we already have
  *  in hand at fan-out time. */
 const requestTitleCache = new Map<string, string>();
+/** W2d (W2-DISK-LEAKS) — hard cap on the ask-user title cache so abandoned
+ *  requests (connection dropped before resolve/timeout) can't grow it without
+ *  bound. */
+const REQUEST_TITLE_CACHE_MAX = 200;
 
 /** Plan #10 commit B — dispatch a parsed `ask|<id>|<value>`
  *  callback. Looks up the request kind from the link row, applies
@@ -1559,9 +1576,14 @@ function createAgentWorkspaceSurface(
     surfaceId: agent.id,
     agentId: agent.id,
   });
-  void agent
-    .start()
-    .catch((err) => console.error("[agent] start failed:", err));
+  // W3-AGENT-SPLIT-CATCH — a spawn-throw returns before the exit-event path,
+  // so without surfacing it the pane stays inert (it was already announced via
+  // agentSurfaceCreated). Route through the same onExit(1) the runtime uses on
+  // real exit so the user sees an `agent_exit` banner instead of a dead pane.
+  void agent.start().catch((err) => {
+    console.error("[agent] start failed:", err);
+    agent.onExit?.(1);
+  });
 }
 
 function splitAgentSurface(
@@ -1607,7 +1629,13 @@ function splitAgentSurface(
     splitFrom: splitFrom ?? undefined,
     direction,
   });
-  void agent.start();
+  // W3-AGENT-SPLIT-CATCH — surface a spawn-throw via onExit(1) (parity with
+  // createAgentSurface) so a failed split shows an `agent_exit` banner rather
+  // than an inert pane.
+  void agent.start().catch((err) => {
+    console.error("[agent] split start failed:", err);
+    agent.onExit?.(1);
+  });
 }
 
 function renameActiveWorkspace(): void {

@@ -122,8 +122,27 @@ function ok(msg: string): void {
     ok("bun main applies dual-fact gate");
   }
 
-  if (!/if \(HT_TEST_MODE\) \{\s*rpc\.send\("enableTestMode"/.test(bunIndex)) {
-    fail("src/bun/index.ts: enableTestMode is not conditioned on HT_TEST_MODE");
+  // Post-F.10 the webview handlers were decomposed out of index.ts into
+  // src/bun/webview-handlers/*. The `enableTestMode` send now lives in
+  // viewport.ts, gated on `ctx.htTestMode`, and index.ts wires that context
+  // field straight from the dual-fact `HT_TEST_MODE` const. Verify BOTH facts
+  // so the gate is provably still `enableTestMode ⇐ HT_TEST_MODE`.
+  const ctxWiresGate = /htTestMode:\s*HT_TEST_MODE/.test(bunIndex);
+  const viewport = readFileSync(
+    join(REPO_ROOT, "src/bun/webview-handlers/viewport.ts"),
+    "utf8",
+  );
+  const sendGated =
+    /if \(ctx\.htTestMode\) \{\s*ctx\.rpc\.send\("enableTestMode"/.test(
+      viewport,
+    );
+  if (!ctxWiresGate || !sendGated) {
+    fail(
+      "enableTestMode is not conditioned on HT_TEST_MODE — expected " +
+        "`htTestMode: HT_TEST_MODE` in src/bun/index.ts AND " +
+        '`if (ctx.htTestMode) ctx.rpc.send("enableTestMode"` in ' +
+        "src/bun/webview-handlers/viewport.ts.",
+    );
   } else {
     ok("enableTestMode only sent when HT_TEST_MODE passes");
   }

@@ -56,6 +56,55 @@ links.)_
   grid, and the native card's section list through it. Now only the entries
   whose value actually changed repaint. Changelog-only.
 
+## Pending — AAA polish pass Wave 1 (flicker / scroll / resize)
+
+- **Zero-flicker sidebar workspace cards (v0.3.187).** The workspace-card CPU
+  bar, % / RAM / process chips, and sparkline now reconcile **in place** on
+  each ~1 Hz metadata tick — only the values that actually changed are written,
+  and the CPU-bar fill keeps its node identity so its transform transition
+  animates smoothly instead of snapping. Cards also now refresh on live
+  CPU/MEM movement (previously they only updated when a structural field like
+  cwd/ports moved), while a *truly idle* workspace still triggers nothing
+  (idle CPU stays ~0). Native webview + web mirror both updated.
+- **Smooth sidebar resize (v0.3.187).** Dragging the sidebar divider no longer
+  reflows every terminal grid on every frame (the "line-height jank"): the live
+  drag now only repositions panes, and the authoritative terminal refit runs
+  once on release — matching the existing pane-divider drag behaviour.
+- **Terminal no longer jumps to the top on resize (v0.3.187).** Refits
+  (sidebar/pane resize, and sideband-panel-triggered refits — which is why it
+  bit pi-style agents harder) now preserve the user's scroll position in the
+  scrollback. Alt-screen/fullscreen TUIs (vim, htop, less) are never touched.
+- **Sideband panels never strand transparent (v0.3.187).** A panel created while
+  the window was backgrounded could stay invisible (its fade-in depended on a
+  rAF that WKWebView suspends). Panels now set their resting opacity
+  synchronously; the entrance fade is a self-healing CSS animation.
+- **No notification-overlay strobe (v0.3.187).** The on-terminal notification
+  stack reconciles in place instead of tearing down + rebuilding every card on
+  each arrival/dismiss, so existing cards keep their slide-in state and
+  auto-dismiss countdown.
+
+## Pending — AAA polish pass Waves 2–3 (memory / resilience / CLI)
+
+- **Lower idle CPU + memory (v0.3.187).** Web-mirror bottom status bar now
+  rAF-coalesces and skips repaints when nothing changed; native sidebar logs +
+  global-stats strips reconcile in place instead of full rebuilds; metadata
+  polling now backs off to an intermediate cadence when the window loses focus
+  (not just when hidden). Several long-session leaks plugged: per-pane
+  ResizeObserver/timers on the web mirror, the browser-pane hidden-state retry
+  timer, auto-continue per-surface state on close, dead-workspace status/
+  progress in the web state store, and the ask-user title cache (now capped).
+- **More resilient services (v0.3.187).** A crash inside a Telegram inbound/
+  callback handler can no longer demote the long-poll loop (so notifications +
+  the `ht` socket keep working); a failed agent spawn/split now surfaces an
+  `agent_exit` banner instead of an inert pane; the PTY stdout pipeline is
+  guarded so a misbehaving output sink can't crash the terminal.
+- **`ht` works from any shell (v0.3.187).** The `ht` CLI default socket path is
+  now derived from the app's real config dir
+  (`~/Library/Application Support/hyperterm-canvas/hyperterm.sock`) instead of
+  the legacy `/tmp/hyperterm.sock`, so `ht` run from a terminal the app didn't
+  spawn connects without an explicit `export HT_SOCKET_PATH`. `HT_SOCKET_PATH`
+  still overrides; `ht doctor` still self-diagnoses drift.
+
 ## Pending — shareBin utility expansion
 
 - **New shareBin visual utilities (v0.3.186).** Add documentation/changelog

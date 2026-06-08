@@ -6,9 +6,33 @@
 import { connect } from "net";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { homedir, platform } from "node:os";
+import { CONFIG_DIR_NAME, SOCKET_BASENAME } from "../shared/brand";
 
+/** Default config dir, mirroring how the app places its socket
+ *  (`HT_CONFIG_DIR ?? Electrobun Utils.paths.config / CONFIG_DIR_NAME`). The
+ *  CLI can't import Electrobun, so we replicate the per-OS config base. */
+function defaultConfigDir(): string {
+  const explicit = process.env["HT_CONFIG_DIR"];
+  if (explicit) return explicit;
+  const home = homedir();
+  if (platform() === "darwin") {
+    return join(home, "Library", "Application Support", CONFIG_DIR_NAME);
+  }
+  // Linux / other: XDG base dir (Electrobun resolves config there too).
+  return join(
+    process.env["XDG_CONFIG_HOME"] || join(home, ".config"),
+    CONFIG_DIR_NAME,
+  );
+}
+
+// W4-SOCKET-PATH — the default is now the REAL socket the app binds
+// (`<config>/hyperterm.sock`), not the legacy `/tmp/hyperterm.sock`. Without
+// this, `ht` run from a shell the app didn't spawn (a separate Terminal.app
+// that never inherited `HT_SOCKET_PATH`) failed to connect. `HT_SOCKET_PATH`
+// still overrides; `ht doctor` self-diagnoses any remaining drift.
 export const SOCKET_PATH =
-  process.env["HT_SOCKET_PATH"] || "/tmp/hyperterm.sock";
+  process.env["HT_SOCKET_PATH"] || join(defaultConfigDir(), SOCKET_BASENAME);
 
 // W2 (full_app_review_2026-05.md §6.1) — the app writes a per-boot RPC token
 // to `socket.token` beside the socket. We always present it; the app only

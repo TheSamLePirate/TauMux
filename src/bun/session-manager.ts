@@ -147,7 +147,16 @@ export class SessionManager {
           /* headless terminal bugs must never crash the PTY pipeline */
         }
       }
-      this.onStdout?.(id, data);
+      // W3-PTY-GUARD — defense-in-depth: a throwing stdout sink (the native
+      // coalescer's inline ≥8 KB soft-cap branch can hit the Electrobun
+      // bridge synchronously) must never unwind into the PTY read loop and
+      // kill the terminal. Mirrors the headless guard above + the CLAUDE.md
+      // "never crash the PTY pipeline" rule.
+      try {
+        this.onStdout?.(id, data);
+      } catch (err) {
+        console.error("[session] onStdout sink threw:", err);
+      }
     };
 
     // Wire exit — surface closes when shell exits

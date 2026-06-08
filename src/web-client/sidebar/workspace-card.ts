@@ -28,7 +28,7 @@ import {
 import { parseStatusKey } from "../../shared/status-key";
 import type { WorkspaceInfo } from "../../shared/sidebar-state";
 import { shortenCwd, formatRss } from "../../shared/sidebar-format";
-import { buildCpuSparkline } from "./cpu-sparkline";
+import { buildCpuSparkline, computeCpuSparklinePoints } from "./cpu-sparkline";
 import { getWorkspaceUi, setWorkspaceUi } from "./local-ui-state";
 import { buildManifestsSection } from "./card-manifests";
 
@@ -52,10 +52,25 @@ type SectionKey =
   | "status"
   | "progress";
 
+/** Live child refs inside the stats section, so a pure cpu/mem/proc tick
+ *  patches the SAME nodes in place (W1-STATROW) rather than rebuilding the
+ *  section (which tore down + re-animated the sparkline every tick). */
+interface StatRefs {
+  cpuValue: HTMLElement;
+  spark: SVGSVGElement;
+  /** "flat" (<2 samples) vs "line" (≥2). A flip rebuilds the sparkline;
+   *  within a kind we patch the polyline `points`. */
+  sparkKind: "flat" | "line";
+  ram: HTMLElement;
+  procs: HTMLElement;
+}
+
 interface CardCache {
   el: HTMLElement;
   /** Per-section DOM + signature. Hit → reuse element, skip rebuild. */
   slots: Partial<Record<SectionKey, { el: HTMLElement; sig: string }>>;
+  /** Live stats-section refs (W1-STATROW). */
+  statRefs?: StatRefs;
 }
 
 /** Section signature builders — small functions that summarise the
@@ -66,8 +81,9 @@ const sigHeader = (ws: WorkspaceInfo) =>
   `${ws.id}|${ws.name}|${ws.color ?? ""}|${ws.active}|${ws.surfaceTitles.length}`;
 const sigMeta = (ws: WorkspaceInfo) =>
   `${ws.focusedSurfaceCommand ?? ""}|${ws.listeningPorts.join(",")}`;
-const sigStats = (ws: WorkspaceInfo) =>
-  `${ws.cpuPercent.toFixed(1)}|${ws.memRssKb}|${ws.processCount}|${ws.cpuHistory.join(",")}`;
+// Stats use a structural-only cache key (sparkline kind) handled inline by
+// statsSection; value changes (cpu/mem/proc/history) reconcile in place
+// rather than rebuilding — see reconcileStats (W1-STATROW).
 const sigCwds = (ws: WorkspaceInfo) =>
   `${ws.cwds.join("|")}|${ws.selectedCwd ?? ""}`;
 const sigPanes = (ws: WorkspaceInfo) =>
@@ -160,7 +176,7 @@ export class WorkspaceCardBuilder {
     this.section(card, "header", sigHeader(ws), () => buildHeader(ws));
     this.section(card, "meta", sigMeta(ws), () => buildMeta(ws));
     if (ws.active) {
-      this.section(card, "stats", sigStats(ws), () => buildStats(ws));
+      this.statsSection(card, ws);
       this.section(card, "cwds", sigCwds(ws), () =>
         buildCwds(ws, this.callbacks.onSelectCwd),
       );
@@ -181,6 +197,7 @@ export class WorkspaceCardBuilder {
       // Inactive cards collapse to stripe + header + meta only —
       // matches the native sidebar density.
       this.removeSlot(card, "stats");
+      card.statRefs = undefined;
       this.removeSlot(card, "cwds");
       this.removeSlot(card, "panes");
       this.removeSlot(card, "manifests");
@@ -223,6 +240,28 @@ export class WorkspaceCardBuilder {
     el.setAttribute("data-section", "status");
     card.el.appendChild(el);
     card.slots["status"] = { el, sig: sigStatus(ws) };
+  }
+
+  /** Stats section reconciles in place like the status grid: a pure
+   *  cpu/mem/proc/history tick patches the cached value nodes + sparkline
+   *  `points` instead of rebuilding (which re-mounted the sparkline SVG
+   *  every tick and re-ran its entrance). The section is only rebuilt when
+   *  the sparkline KIND flips (flat <2 samples → line ≥2). W1-STATROW. */
+  private statsSection(card: CardCache, ws: WorkspaceInfo): void {
+    const kind: StatRefs["sparkKind"] =
+      ws.cpuHistory.length < 2 ? "flat" : "line";
+    const slot = card.slots["stats"];
+    if (slot && card.statRefs && card.statRefs.sparkKind === kind) {
+      reconcileStats(card.statRefs, ws);
+      card.el.appendChild(slot.el); // keep DOM order
+      return;
+    }
+    const built = buildStats(ws);
+    built.el.setAttribute("data-section", "stats");
+    if (slot) slot.el.replaceWith(built.el);
+    else card.el.appendChild(built.el);
+    card.slots["stats"] = { el: built.el, sig: kind };
+    card.statRefs = built.refs;
   }
 
   private removeSlot(card: CardCache, key: SectionKey): void {
@@ -296,7 +335,7 @@ function buildMeta(ws: WorkspaceInfo): HTMLElement {
   return el;
 }
 
-function buildStats(ws: WorkspaceInfo): HTMLElement {
+function buildStats(ws: WorkspaceInfo): { el: HTMLElement; refs: StatRefs } {
   const el = document.createElement("div");
   el.className = "workspace-stats";
 
@@ -310,15 +349,48 @@ function buildStats(ws: WorkspaceInfo): HTMLElement {
   cpuValue.className = "workspace-cpu-value tau-mono";
   cpuValue.textContent = `${Math.round(ws.cpuPercent)}%`;
   cpuRow.appendChild(cpuValue);
-  cpuRow.appendChild(buildCpuSparkline(ws.cpuHistory));
+  const spark = buildCpuSparkline(ws.cpuHistory);
+  cpuRow.appendChild(spark);
   el.appendChild(cpuRow);
 
   const chips = document.createElement("div");
   chips.className = "workspace-stat-chips";
-  chips.appendChild(makeChip("ram", formatRss(ws.memRssKb)));
-  chips.appendChild(makeChip("procs", String(ws.processCount)));
+  const ram = makeChip("ram", formatRss(ws.memRssKb));
+  const procs = makeChip("procs", String(ws.processCount));
+  chips.appendChild(ram);
+  chips.appendChild(procs);
   el.appendChild(chips);
-  return el;
+
+  return {
+    el,
+    refs: {
+      cpuValue,
+      spark,
+      sparkKind: ws.cpuHistory.length < 2 ? "flat" : "line",
+      ram: ram.querySelector(".chip-value") as HTMLElement,
+      procs: procs.querySelector(".chip-value") as HTMLElement,
+    },
+  };
+}
+
+/** W1-STATROW: patch the cached stats nodes for a pure value tick. Each
+ *  write is change-guarded; the sparkline polyline `points` is re-pointed
+ *  in place (only when the "line" variant is mounted — the flat baseline
+ *  is static). */
+function reconcileStats(refs: StatRefs, ws: WorkspaceInfo): void {
+  const cpuStr = `${Math.round(ws.cpuPercent)}%`;
+  if (refs.cpuValue.textContent !== cpuStr) refs.cpuValue.textContent = cpuStr;
+  const ramStr = formatRss(ws.memRssKb);
+  if (refs.ram.textContent !== ramStr) refs.ram.textContent = ramStr;
+  const procStr = String(ws.processCount);
+  if (refs.procs.textContent !== procStr) refs.procs.textContent = procStr;
+  if (refs.sparkKind === "line") {
+    const poly = refs.spark.querySelector("polyline");
+    if (poly) {
+      const pts = computeCpuSparklinePoints(ws.cpuHistory);
+      if (poly.getAttribute("points") !== pts) poly.setAttribute("points", pts);
+    }
+  }
 }
 
 function makeChip(label: string, value: string): HTMLElement {

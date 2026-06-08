@@ -90,10 +90,20 @@ export class Panel {
 
     container.appendChild(this.el);
 
-    this.el.style.opacity = "0";
-    requestAnimationFrame(() => {
-      this.el.style.opacity = String(meta.opacity ?? 1);
-    });
+    // W1-SIDEBAND — the resting opacity is already set to the target by
+    // `applyMeta` above (line 82), synchronously. We do NOT gate visibility
+    // on a rAF: WKWebView suspends rAF when the window is backgrounded, and
+    // the old `opacity=0; rAF(() => opacity=target)` stranded panels fully
+    // transparent until something else happened to re-render them. The
+    // entrance fade is now a CSS keyframe (`.panel-enter`) whose resting
+    // state is the target opacity, so it can never leave the panel invisible.
+    // Strip the class via several idempotent nets — first to fire wins; if
+    // all are suspended the resting opacity still shows the panel.
+    this.el.classList.add("panel-enter");
+    const reveal = () => this.el.classList.remove("panel-enter");
+    requestAnimationFrame(reveal);
+    setTimeout(reveal, 200);
+    this.el.addEventListener("animationend", reveal, { once: true });
   }
 
   updateMeta(msg: SidebandContentMessage): void {
@@ -217,7 +227,12 @@ export class Panel {
     if (m.height !== undefined && m.height !== "auto")
       s.height = `${m.height}px`;
     if (m.zIndex !== undefined) s.zIndex = String(m.zIndex);
-    if (m.opacity !== undefined) s.opacity = String(m.opacity);
+    // W1-SIDEBAND — always assert the resting opacity (default 1). `m` is
+    // `this.meta` on updates, so an explicitly-set opacity persists; an
+    // unset one resolves to fully opaque. This makes every meta update
+    // self-heal a panel that somehow ended up transparent, matching the
+    // web mirror's opaque-by-default behaviour.
+    s.opacity = String(m.opacity ?? 1);
     if (m.borderRadius !== undefined) s.borderRadius = `${m.borderRadius}px`;
     if (this.isInline && m.x === undefined) s.left = "12px";
 

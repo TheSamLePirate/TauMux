@@ -512,8 +512,16 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
   // the header shows `Logs (count) (showing 10)` so the cap is
   // explicit.
 
+  // W2-WEB-LOGS — `render()` fires whenever `state.sidebar` changes, which
+  // happens on every setStatus/progress tick (a fresh sidebar object, same
+  // logs array). The store mints a NEW logs array only on the `log` and
+  // clear-logs actions, so a reference compare skips the innerHTML rebuild on
+  // every unrelated tick (native already does this — only setLogs calls it).
+  let lastRenderedLogs: AppState["sidebar"]["logs"] | null = null;
   function renderLogs(state: AppState) {
     const logs = state.sidebar.logs;
+    if (logs === lastRenderedLogs) return;
+    lastRenderedLogs = logs;
     if (logs.length === 0) {
       logZoneEl.innerHTML = "";
       return;

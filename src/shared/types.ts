@@ -660,8 +660,12 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       // top-level "Reveal Log File in Finder" menu item.
       revealLogFile: void;
 
-      // Window visibility (drives metadata polling rate on the bun side)
-      windowVisibility: { visible: boolean };
+      // Window visibility (drives metadata polling rate on the bun side).
+      // `focused` (W2-METADATA-BLUR) is optional for back-compat: when the
+      // window is visible but not focused the poller uses an intermediate
+      // cadence rather than the full hidden backoff, so the web mirror / ht
+      // snapshot doesn't go as stale as it would if blur == hidden.
+      windowVisibility: { visible: boolean; focused?: boolean };
 
       // Kill an arbitrary pid (used by the process manager panel)
       killPid: { pid: number; signal?: string };

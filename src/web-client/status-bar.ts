@@ -67,11 +67,12 @@ export function createStatusBarView(opts: StatusBarOptions): StatusBarView {
   const meters = zones?.meters ?? METERS_KEYS;
   const focus = zones?.focus ?? FOCUS_KEYS;
 
-  // Three sibling zone elements; rebuilt on every render. The shared
-  // renderers each return a fresh DOM node, so a full rebuild is
-  // cheaper than tracking which key produced which element. Render
-  // is gated to ~1 Hz from the clock interval and to the dispatch
-  // wakeup count from the store, both small.
+  // Three sibling zone elements. Each zone keeps a per-zone signature
+  // (W2-STATUSBAR-WEB): a render builds into an off-DOM scratch, hashes its
+  // innerHTML, and only swaps the live zone when the markup actually changed
+  // — so an unchanged zone never repaints (and an unchanged chart SVG is
+  // never torn down). This brings the web bar to parity with the native
+  // bar's sig-skip (index.ts) + the v0.3.185 status-grid reconcile.
   hostEl.classList.add("tau-status-bar");
   const identityEl = document.createElement("div");
   identityEl.className = "tau-status-zone tau-status-zone-identity";
@@ -83,39 +84,61 @@ export function createStatusBarView(opts: StatusBarOptions): StatusBarView {
   hostEl.appendChild(metersEl);
   hostEl.appendChild(focusEl);
 
-  function paintZone(zoneEl: HTMLElement, keys: readonly string[]): void {
-    zoneEl.replaceChildren();
-    const ctx = buildContext(store, now());
+  function paintZone(
+    zoneEl: HTMLElement,
+    keys: readonly string[],
+    ctx: StatusContext,
+  ): void {
+    const scratch = document.createElement("div");
     keys.forEach((id, i) => {
       const node = renderStatusKey(id, ctx);
       if (!node) return;
-      if (i > 0 && zoneEl.childElementCount > 0) {
+      if (i > 0 && scratch.childElementCount > 0) {
         const sep = document.createElement("span");
         sep.className = "tau-hud-sep";
         sep.textContent = "·";
-        zoneEl.appendChild(sep);
+        scratch.appendChild(sep);
       }
-      zoneEl.appendChild(node);
+      scratch.appendChild(node);
     });
+    const sig = scratch.innerHTML;
+    if (zoneEl.dataset["sig"] === sig) return; // unchanged — skip the swap
+    zoneEl.dataset["sig"] = sig;
+    zoneEl.replaceChildren(...scratch.childNodes);
   }
 
   function render(): void {
-    paintZone(identityEl, identity);
-    paintZone(metersEl, meters);
-    paintZone(focusEl, focus);
+    // Build the context ONCE per render (was 3×, once per zone).
+    const ctx = buildContext(store, now());
+    paintZone(identityEl, identity, ctx);
+    paintZone(metersEl, meters, ctx);
+    paintZone(focusEl, focus, ctx);
   }
 
-  // Wake up on every store change (workspace switch, focus, metadata
-  // tick, ht-keys-seen update, settings/apply…). The store dispatches
-  // are coalesced upstream (rAF), so this is one call per frame max.
-  const unsubscribe = store.subscribe(() => {
-    render();
-  });
+  // rAF-coalesce the store + clock wakeups. `connection`/`seq` mint a new
+  // top-level state object on EVERY inbound WS frame (including terminal
+  // output), so a raw subscribe would rebuild the bar at terminal-output
+  // rate; the rAF collapse caps that to one render per frame, and the
+  // per-zone sig-skip makes a no-movement frame free. The public `render()`
+  // stays synchronous so tests (and the initial paint) repaint immediately.
+  let scheduled = false;
+  let disposed = false;
+  let rafId: number | null = null;
+  const schedule = (): void => {
+    if (scheduled || disposed) return;
+    scheduled = true;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      scheduled = false;
+      if (!disposed) render();
+    });
+  };
 
-  // 1 Hz tick keeps the clock + uptime keys honest even during idle
-  // periods when no metadata broadcast lands. Cheap because the zone
-  // paints clear + rebuild a handful of inline spans.
-  const tickHandle = setInterval(render, 1000);
+  const unsubscribe = store.subscribe(schedule);
+
+  // 1 Hz tick keeps the clock + uptime keys honest even during idle periods
+  // when no metadata broadcast lands. Routed through the same coalescer.
+  const tickHandle = setInterval(schedule, 1000);
   if (typeof (tickHandle as { unref?: () => void }).unref === "function") {
     (tickHandle as { unref?: () => void }).unref!();
   }
@@ -123,8 +146,13 @@ export function createStatusBarView(opts: StatusBarOptions): StatusBarView {
   return {
     render,
     dispose() {
+      disposed = true;
       unsubscribe();
       clearInterval(tickHandle);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       hostEl.replaceChildren();
       hostEl.classList.remove("tau-status-bar");
     },

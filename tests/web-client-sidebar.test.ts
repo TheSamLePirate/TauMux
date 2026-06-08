@@ -298,6 +298,52 @@ describe("createSidebarView.render", () => {
     expect(sidebarEl.querySelector(".workspace-sparkline-line")).not.toBeNull();
   });
 
+  test("W1-STATROW (web parity) — a pure cpu tick patches the same stats nodes in place", async () => {
+    const { view, sidebarEl, store } = await setup({
+      workspaces: [{ id: "ws1", surfaceIds: ["s1"] }],
+      activeWorkspaceId: "ws1",
+    });
+    const meta = (cpu: number, rssKb: number) => ({
+      kind: "surface/metadata" as const,
+      surfaceId: "s1",
+      metadata: {
+        pid: 1,
+        foregroundPid: 1,
+        cwd: "/tmp",
+        tree: [{ pid: 1, ppid: 0, command: "node", cpu, rssKb }],
+        listeningPorts: [],
+        git: null,
+        packageJson: null,
+        updatedAt: 0,
+      },
+    });
+    // Seed two samples so the sparkline is in the "line" regime (a
+    // flat→line flip is a structural rebuild; we want the reconcile path).
+    store.dispatch(meta(5, 1000));
+    view.render(store.getState());
+    store.dispatch(meta(10, 1200));
+    view.render(store.getState());
+    const cpuValue = sidebarEl.querySelector(
+      ".workspace-cpu-value",
+    ) as HTMLElement;
+    const spark = sidebarEl.querySelector(".workspace-sparkline-line");
+    const ram = sidebarEl.querySelector(
+      ".workspace-stat-chip .chip-value",
+    ) as HTMLElement;
+    expect(cpuValue).not.toBeNull();
+    expect(spark).not.toBeNull();
+
+    // Pure value tick (still line regime) → reconcile in place.
+    store.dispatch(meta(80, 4096));
+    view.render(store.getState());
+    expect(sidebarEl.querySelector(".workspace-cpu-value")).toBe(cpuValue);
+    expect(sidebarEl.querySelector(".workspace-sparkline-line")).toBe(spark);
+    expect(sidebarEl.querySelector(".workspace-stat-chip .chip-value")).toBe(
+      ram,
+    );
+    expect(cpuValue.textContent).toBe("80%");
+  });
+
   test("ports row collapses to +N pill past 3 entries", async () => {
     const { view, sidebarEl, store } = await setup({
       workspaces: [{ id: "ws1", surfaceIds: ["s1"] }],

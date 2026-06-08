@@ -2513,9 +2513,15 @@ window.addEventListener("ht-rename-workspace", (e: Event) => {
   surfaceManager.renameWorkspace(detail.workspaceId, detail.name);
 });
 
-// Metadata poll rate follows window visibility: full rate visible, slow hidden.
+// Metadata poll rate follows window visibility AND focus (W2-METADATA-BLUR):
+// full rate when focused, intermediate when visible-but-unfocused, slow when
+// hidden. Folding focus in lets the poller back off when the user tabs away to
+// another app while τ-mux stays on screen, without going fully stale.
 function reportVisibility(): void {
-  rpc.send("windowVisibility", { visible: !document.hidden });
+  rpc.send("windowVisibility", {
+    visible: !document.hidden,
+    focused: document.hasFocus(),
+  });
 }
 document.addEventListener("visibilitychange", () => {
   hideSurfaceContextMenu();
@@ -2525,6 +2531,11 @@ reportVisibility();
 
 window.addEventListener("blur", () => {
   hideSurfaceContextMenu();
+  reportVisibility();
+});
+
+window.addEventListener("focus", () => {
+  reportVisibility();
 });
 
 window.addEventListener("resize", () => {

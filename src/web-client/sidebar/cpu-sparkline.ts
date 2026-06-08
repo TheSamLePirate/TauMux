@@ -11,6 +11,23 @@
 const WIDTH = 100;
 const HEIGHT = 16;
 
+/** Pure: polyline `points` for a ≥2-sample history, scaled so the peak
+ *  sample fills the height. (<2 samples render a flat baseline instead.)
+ *  Shared by the builder and the in-place patch (W1-STATROW) so the two
+ *  never drift. */
+export function computeCpuSparklinePoints(history: readonly number[]): string {
+  let max = 1;
+  for (const v of history) if (v > max) max = v;
+  const stepX = WIDTH / (history.length - 1);
+  const points: string[] = [];
+  for (let i = 0; i < history.length; i++) {
+    const x = (i * stepX).toFixed(1);
+    const y = (HEIGHT - (history[i]! / max) * HEIGHT).toFixed(1);
+    points.push(`${x},${y}`);
+  }
+  return points.join(" ");
+}
+
 export function buildCpuSparkline(history: readonly number[]): SVGSVGElement {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "workspace-sparkline");
@@ -34,20 +51,11 @@ export function buildCpuSparkline(history: readonly number[]): SVGSVGElement {
   // Scale by the highest sample so a workspace doing 5% CPU still
   // fills its sparkline (relative motion matters more than absolute
   // value at this size).
-  let max = 1;
-  for (const v of history) if (v > max) max = v;
-  const stepX = WIDTH / (history.length - 1);
-  const points: string[] = [];
-  for (let i = 0; i < history.length; i++) {
-    const x = (i * stepX).toFixed(1);
-    const y = (HEIGHT - (history[i]! / max) * HEIGHT).toFixed(1);
-    points.push(`${x},${y}`);
-  }
   const polyline = document.createElementNS(
     "http://www.w3.org/2000/svg",
     "polyline",
   );
-  polyline.setAttribute("points", points.join(" "));
+  polyline.setAttribute("points", computeCpuSparklinePoints(history));
   polyline.setAttribute("fill", "none");
   polyline.setAttribute("class", "workspace-sparkline-line");
   svg.appendChild(polyline);

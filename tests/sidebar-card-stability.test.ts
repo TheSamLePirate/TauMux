@@ -35,6 +35,9 @@ interface WsSeed {
   active?: boolean;
   surfaceTitles?: string[];
   cpuPercent?: number;
+  memRssKb?: number;
+  processCount?: number;
+  cpuHistory?: number[];
 }
 
 /** Build a minimal WorkspaceInfo good enough for the cards-render
@@ -63,9 +66,9 @@ function ws(
     cwds: [],
     selectedCwd: null,
     cpuPercent: seed.cpuPercent ?? 0,
-    memRssKb: 0,
-    processCount: 0,
-    cpuHistory: [],
+    memRssKb: seed.memRssKb ?? 0,
+    processCount: seed.processCount ?? 0,
+    cpuHistory: seed.cpuHistory ?? [],
   };
 }
 
@@ -287,6 +290,65 @@ describe("Sidebar — keyed card reconciliation (Plan #06 §A)", () => {
       ".sidebar-group-rule .sidebar-group-rule-count",
     );
     expect(after).toBe(before);
+  });
+
+  test("W1-STATROW — a pure cpu/mem tick patches the SAME stat-row nodes (no rebuild)", async () => {
+    const { sidebar, container } = await makeSidebar();
+    sidebar.setWorkspaces([
+      ws({
+        id: "ws:1",
+        active: true,
+        cpuPercent: 5,
+        memRssKb: 1024,
+        processCount: 2,
+        cpuHistory: [4, 5],
+      }),
+    ]);
+    const card = cardForId(container, "ws:1")!;
+    const fill = card.querySelector(".workspace-cpu-bar-fill") as HTMLElement;
+    const cpuChip = card.querySelector(".workspace-metric-cpu") as HTMLElement;
+    const spark = card.querySelector(".workspace-sparkline");
+    expect(fill).not.toBeNull();
+    expect(cpuChip).not.toBeNull();
+    expect(spark).not.toBeNull();
+    const fillTransformBefore = fill.style.transform;
+
+    // Pure value tick: only cpu/mem/proc/history move. Structural shape
+    // (active, sparkline-present, accent) is identical → must reconcile.
+    sidebar.setWorkspaces([
+      ws({
+        id: "ws:1",
+        active: true,
+        cpuPercent: 80,
+        memRssKb: 4096,
+        processCount: 3,
+        cpuHistory: [4, 5, 80],
+      }),
+    ]);
+
+    // Node identity preserved — the SAME fill span (so its CSS transform
+    // transition animates instead of snapping with a fresh node).
+    expect(card.querySelector(".workspace-cpu-bar-fill")).toBe(fill);
+    expect(card.querySelector(".workspace-metric-cpu")).toBe(cpuChip);
+    expect(card.querySelector(".workspace-sparkline")).toBe(spark);
+    // …but the values are patched in place.
+    expect(cpuChip.textContent).toBe("80%");
+    expect(fill.style.transform).not.toBe(fillTransformBefore);
+  });
+
+  test("W1-STATROW — flipping the sparkline presence rebuilds the stat row", async () => {
+    const { sidebar, container } = await makeSidebar();
+    // Inactive card → no sparkline (presence is part of the structural sig).
+    sidebar.setWorkspaces([ws({ id: "ws:1", active: false, cpuPercent: 5 })]);
+    const card = cardForId(container, "ws:1")!;
+    expect(card.querySelector(".workspace-sparkline")).toBeNull();
+
+    // Activate with ≥2 history samples → sparkline appears (structural flip).
+    sidebar.setWorkspaces([
+      ws({ id: "ws:1", active: true, cpuPercent: 5, cpuHistory: [4, 5] }),
+    ]);
+    expect(cardForId(container, "ws:1")).toBe(card); // outer node still stable
+    expect(card.querySelector(".workspace-sparkline")).not.toBeNull();
   });
 
   test("notify glow pulse class on the inner stripe survives a refresh", async () => {

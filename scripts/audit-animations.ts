@@ -82,6 +82,8 @@ const STATE_EXCEPTIONS: Record<string, string> = {
   "section-body-in": "Sidebar section body expansion. State: section unfolded.",
   "tau-notif-overlay-in":
     "Notification-overlay card entrance (slide+fade). State: notification arrived.",
+  "panel-enter-fade":
+    "Sideband panel entrance fade (W1-SIDEBAND). State: panel just mounted. Resting opacity is the target set synchronously, so a suspended rAF can't strand the panel transparent.",
   "tau-notif-overlay-meter-drain":
     "Notification-overlay auto-dismiss progress meter. State: countdown to dismiss.",
 

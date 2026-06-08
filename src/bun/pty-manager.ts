@@ -149,7 +149,12 @@ export class PtyManager {
       HYPERTERM_EVENT_FD: "5",
       // New structured channel map
       HYPERTERM_CHANNELS: JSON.stringify(channelMap),
-      HT_SOCKET_PATH: process.env["HT_SOCKET_PATH"] || "/tmp/hyperterm.sock",
+      // W4-SOCKET-PATH — index.ts sets process.env HT_SOCKET_PATH to the real
+      // bound socket before any shell spawns, so this is effectively always
+      // the correct path. The empty-string fallback (never hit in practice)
+      // lets the child `ht` fall back to ITS brand-derived default rather than
+      // the old, misleading `/tmp/hyperterm.sock`.
+      HT_SOCKET_PATH: process.env["HT_SOCKET_PATH"] || "",
     };
 
     this.proc = Bun.spawn([opts.shell, ...(opts.args ?? [])], {
