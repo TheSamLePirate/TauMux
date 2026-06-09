@@ -20,6 +20,7 @@
  */
 
 import { join } from "node:path";
+import { connect } from "node:net";
 import {
   cpSync,
   existsSync,
@@ -106,6 +107,37 @@ function loginShellPath(): string {
     /* keep existing PATH */
   }
   return (_loginPath = shellPath);
+}
+
+/** Resolve once a TCP port is accepting connections on `host`, or `false` on
+ *  timeout. Used to hold the iframe back until a freshly-spawned Vite dev
+ *  server is actually listening (otherwise the first load races the spawn and
+ *  shows a blank pane). Polls every 200 ms. */
+function waitForPort(
+  port: number,
+  host = "127.0.0.1",
+  timeoutMs = 20000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const attempt = () => {
+      const sock = connect({ port, host });
+      const cleanup = () => {
+        sock.removeAllListeners();
+        sock.destroy();
+      };
+      sock.once("connect", () => {
+        cleanup();
+        resolve(true);
+      });
+      sock.once("error", () => {
+        cleanup();
+        if (Date.now() >= deadline) resolve(false);
+        else setTimeout(attempt, 200);
+      });
+    };
+    attempt();
+  });
 }
 
 export interface ExtensionManagerDeps {
@@ -339,9 +371,17 @@ export class ExtensionManager {
       this.spawnBackend(inst, desc, backendEntry);
     }
 
-    // Dev mode → spawn the Vite dev server; built mode → static host.
+    // Dev mode → spawn the Vite dev server and wait for it to listen before
+    // the iframe loads its URL (otherwise the first load races the spawn and
+    // the pane shows blank). Built mode → start the static bundle host.
     if (mode === "dev" && desc.manifest.frontend?.dev) {
       this.spawnDevServer(inst, desc);
+      const port = desc.manifest.frontend?.devPort ?? 5173;
+      const ready = await waitForPort(port);
+      if (!ready)
+        this.log(
+          `dev server for ${desc.manifest.id} not listening on :${port} yet — the pane may need a reload`,
+        );
     } else if (mode === "installed") {
       this.ensureStaticServer();
     }
