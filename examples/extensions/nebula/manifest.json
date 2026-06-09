@@ -1,0 +1,10 @@
+{
+  "id": "com.taumux.nebula",
+  "name": "Nebula",
+  "version": "0.1.0",
+  "icon": "🌌",
+  "description": "A 3D HTTP API explorer that knows your running servers. Fire requests through a living scene, auto-discover the dev servers in your terminals, and drive τ-mux from your API workflow.",
+  "backend": { "entry": "src/index.ts" },
+  "frontend": { "dev": "vite", "devPort": 5193, "dist": "dist", "entry": "index.html" },
+  "permissions": ["notification", "sidebar", "surface", "browser", "workspace"]
+}

@@ -126,6 +126,20 @@ _Extension App Platform folded into website-doc 2026-06-09 (v0.4.0 / v0.4.1):_
 - `website-doc/.../api/extensions.md` (en + fr) — the `extension.*` JSON-RPC methods.
 - `api/system.md` + `cli/system.md` (en + fr) — version 0.4.1 (auto-bumped). The palette uses Open/Edit/Remove/New rather than a ⌘⌥E overlay (deviation from the original note). See `doc/design_extension_platform.md`.
 
+## Pending — Nebula flagship extension + SDK fix
+
+- **Nebula extension (`examples/extensions/nebula`).** A flagship example: a 3D
+  HTTP API explorer (three.js + glassmorphism HUD) that discovers the dev
+  servers running in your terminals (via `surface.metadata` → `listeningPorts`),
+  fires requests through a living scene, and drives τ-mux (open-in-browser,
+  send-as-curl-to-a-new-terminal, live latency sparkline in the sidebar,
+  failure notifications). Add it to the examples table in
+  `features/extensions.md` (en + fr).
+- **SDK fix.** `@tau-mux/sdk` `sidebar.setStatus` previously called the
+  non-existent RPC `sidebar.setStatus`; corrected to `sidebar.set_status`
+  (+ added `clearStatus`). The SDK *method* name is unchanged, so the docs'
+  code samples stay valid — no doc change required, just noting the fix.
+
 ## Pending — shareBin utility expansion
 
 - **New shareBin visual utilities (v0.3.186).** Add documentation/changelog

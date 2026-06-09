@@ -46,12 +46,17 @@ export interface TauMuxApi {
     }): Promise<unknown>;
   };
   sidebar: {
+    /** Set a sidebar status chip / chart. Encode a chart renderer in the key
+     *  suffix (e.g. `mykey_sparkline`) and pass comma-separated samples as
+     *  `value` to draw a live graph. */
     setStatus(opts: {
       key: string;
       value: unknown;
+      icon?: string;
+      color?: string;
       workspaceId?: string;
-      surfaceId?: string;
     }): Promise<unknown>;
+    clearStatus(opts: { key: string; workspaceId?: string }): Promise<unknown>;
     log(opts: { message: string; level?: string }): Promise<unknown>;
   };
   surface: {
@@ -81,7 +86,8 @@ export function makeApi(
       create: (o) => call("notification.create", o),
     },
     sidebar: {
-      setStatus: (o) => call("sidebar.setStatus", o),
+      setStatus: (o) => call("sidebar.set_status", o),
+      clearStatus: (o) => call("sidebar.clear_status", o),
       log: (o) => call("sidebar.log", o),
     },
     surface: {
