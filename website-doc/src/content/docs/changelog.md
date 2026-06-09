@@ -7,6 +7,18 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.4.0 — Extension apps
+
+A new surface type: **extension apps**. An extension is a **Bun backend** (a real child process that can `bun install` its own deps) + a **Vite frontend** rendered in an `<iframe>` (hot-module reload while editing, built static once installed) + a typed **`@tau-mux/sdk`** that drives every τ-mux control surface — create panes, open browser surfaces, push notifications, set sidebar status, and more. Extensions are saved on disk, restored with your layout, and created / edited / removed from inside the app.
+
+- **`extension` surface (0.4.0).** Open one in a pane like any other surface. Each running surface gets its own Bun backend (started fresh, stopped on close) and an iframe pointed at the Vite dev URL (HMR) or a built bundle served over a tiny loopback host. Saved with the workspace by extension id; on restart the surface + a fresh backend are restored (the extension reloads its own `state.json`), or the slot degrades to a terminal if the extension was uninstalled. See [Extension apps](/features/extensions/).
+- **`@tau-mux/sdk` (0.4.0).** One typed surface from both halves of an extension — `notification`, `sidebar`, `surface`, `workspace`, `browser`, `system`, plus a raw `call(method, params)` to reach any [JSON-RPC method](/api/overview/). The backend talks over the unix socket; the frontend over a `postMessage` bridge the host dispatches through the same RPC the CLI uses.
+- **`ht extension` CLI + `extension.*` API (0.4.0).** `list`, `templates`, `open`, `split`, `new`, `install`, `remove`, `reload`, `stop`. See [`ht extension`](/cli/extensions/) and the [`extension.*` API](/api/extensions/).
+- **Bundled examples (0.4.0).** `hello` (zero-dependency static app — the fastest way to see the bridge), `three-demo` (Vite + three.js with HMR; backend drives the sidebar + notifications), and `http-client` (a Postman-style request builder whose backend runs `fetch` with no CORS and persists history). They double as scaffold templates.
+- **In-app editor (0.4.1).** The command palette (`⌘⇧P`, "Extensions") now offers, per installed extension, **Open**, **Edit** (opens its backend source — or `manifest.json` — in the [editor surface](/features/file-explorer-and-editor/), the live edit → HMR loop), and **Remove**, plus **New Extension…** to scaffold from a template.
+
+Extensions are **fully trusted** — there is no sandbox; manifest `permissions` are advisory. Install only what you trust, exactly as you would a shell script.
+
 ## 0.3.183 — Workspace screenshots
 
 - **`ht screenshot workspace` (0.3.183).** The screenshot CLI now captures a whole **workspace** — the bounding box of every visible pane — alongside the existing single-pane (default) and whole-window (`window` / `--full-window`) targets. `ht screenshot workspace [id]` or `--workspace [id]` targets the active workspace (or a specific one). A hidden/background target now falls back to the full-window grab instead of an empty crop. See [Surfaces & I/O](/cli/surfaces-and-io/#screenshot).
