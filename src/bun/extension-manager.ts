@@ -147,6 +147,11 @@ export interface ExtensionManagerDeps {
   /** Absolute path to the bundled scaffold templates dir (each subdir is a
    *  template the manage overlay / `ht extension new` can clone). */
   templatesDir?: string;
+  /** Absolute path to the in-repo `@tau-mux/sdk` package. Extensions declare
+   *  it as a relative `file:` dependency that breaks once they are copied out
+   *  of the repo into the config dir, so before `bun install` we rewrite that
+   *  dependency to this absolute path. */
+  sdkDir?: string;
   /** Push a host→frontend payload to the webview (relayed into the iframe). */
   onHostPayload?: (surfaceId: string, payload: ExtensionHostPayload) => void;
   /** Log sink (stderr lines + manager diagnostics). */
@@ -409,10 +414,71 @@ export class ExtensionManager {
     return handle;
   }
 
+  /** Point the extension's `@tau-mux/sdk` dependency at the absolute SDK path.
+   *  Extensions ship a relative `file:../../../packages/tau-mux-sdk` that only
+   *  resolves inside the repo; once copied into the config dir it breaks and
+   *  `bun install` fails. Rewrite it in place before installing. */
+  private repairSdkDependency(dir: string): void {
+    const sdkDir = this.deps.sdkDir;
+    if (!sdkDir || !existsSync(sdkDir)) return;
+    const pkgPath = join(dir, "package.json");
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      let changed = false;
+      for (const field of ["dependencies", "devDependencies"] as const) {
+        const deps = pkg[field];
+        const cur = deps?.["@tau-mux/sdk"];
+        if (
+          deps &&
+          typeof cur === "string" &&
+          /^(file:|link:|workspace:)/.test(cur) &&
+          cur !== `file:${sdkDir}`
+        ) {
+          deps["@tau-mux/sdk"] = `file:${sdkDir}`;
+          changed = true;
+        }
+      }
+      if (changed) {
+        writeFileAtomic(pkgPath, JSON.stringify(pkg, null, 2));
+        this.log(`rewired @tau-mux/sdk → file:${sdkDir} for install`);
+      }
+    } catch (err) {
+      this.log(`sdk dependency repair failed: ${String(err)}`);
+    }
+  }
+
   private async ensureDeps(dir: string): Promise<void> {
     try {
       if (!existsSync(join(dir, "package.json"))) return;
-      if (existsSync(join(dir, "node_modules"))) return;
+      // Skip only when node_modules looks COMPLETE. A prior failed install can
+      // leave a partial tree; re-run if the declared @tau-mux/sdk link is
+      // missing (bun install is idempotent, so a no-op when already complete).
+      if (existsSync(join(dir, "node_modules"))) {
+        const declaresSdk = (() => {
+          try {
+            const pkg = JSON.parse(
+              readFileSync(join(dir, "package.json"), "utf-8"),
+            ) as {
+              dependencies?: Record<string, string>;
+              devDependencies?: Record<string, string>;
+            };
+            return !!(
+              pkg.dependencies?.["@tau-mux/sdk"] ??
+              pkg.devDependencies?.["@tau-mux/sdk"]
+            );
+          } catch {
+            return false;
+          }
+        })();
+        const sdkLinked = existsSync(
+          join(dir, "node_modules", "@tau-mux", "sdk"),
+        );
+        if (!declaresSdk || sdkLinked) return;
+      }
+      this.repairSdkDependency(dir);
       this.log(`bun install in ${dir}…`);
       const proc = Bun.spawn([resolveBunBinary(), "install"], {
         cwd: dir,
@@ -420,7 +486,18 @@ export class ExtensionManager {
         stderr: "pipe",
         env: { ...process.env, PATH: loginShellPath() },
       });
-      await proc.exited;
+      const code = await proc.exited;
+      if (code !== 0) {
+        // Surface the failure so a broken install doesn't silently leave the
+        // pane blank. Read stderr best-effort for the diagnostic.
+        let err = "";
+        try {
+          err = await new Response(proc.stderr as ReadableStream).text();
+        } catch {
+          /* ignore */
+        }
+        this.log(`bun install exited ${code}: ${err.trim().slice(0, 500)}`);
+      }
     } catch (err) {
       this.log(`bun install failed: ${String(err)}`);
     }
@@ -486,26 +563,36 @@ export class ExtensionManager {
     const devCmd = desc.manifest.frontend?.dev;
     if (!devCmd) return;
     const port = desc.manifest.frontend?.devPort ?? 5173;
-    try {
-      // Run the dev command through the resolved bun so `vite` from the
-      // extension's node_modules resolves. `bun run <script-or-bin>`.
-      inst.devProc = Bun.spawn(
-        [
+    const [bin, ...rest] = devCmd.split(" ");
+    // Prefer the locally-installed binary (node_modules/.bin/<bin>) run via
+    // bun — reliable and offline. Fall back to `bun x <bin>` only if it isn't
+    // installed locally (which would fetch it).
+    const localBin = join(desc.path, "node_modules", ".bin", bin);
+    const argv = existsSync(localBin)
+      ? [
           resolveBunBinary(),
-          "x",
-          "--",
-          ...devCmd.split(" "),
+          localBin,
+          ...rest,
           "--port",
           String(port),
           "--strictPort",
-        ],
-        {
-          cwd: desc.path,
-          stdout: "pipe",
-          stderr: "pipe",
-          env: { ...process.env, PATH: loginShellPath(), NO_COLOR: "1" },
-        },
-      );
+        ]
+      : [
+          resolveBunBinary(),
+          "x",
+          bin,
+          ...rest,
+          "--port",
+          String(port),
+          "--strictPort",
+        ];
+    try {
+      inst.devProc = Bun.spawn(argv, {
+        cwd: desc.path,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env, PATH: loginShellPath(), NO_COLOR: "1" },
+      });
       this.pipeLog(inst.devProc, `dev:${desc.manifest.id}`);
     } catch (err) {
       this.log(`dev server spawn failed (${desc.manifest.id}): ${String(err)}`);

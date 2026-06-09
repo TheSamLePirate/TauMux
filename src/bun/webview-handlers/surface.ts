@@ -32,6 +32,16 @@ export function registerSurfaceWebviewHandlers(
         });
       } else if (ctx.browserSurfaces.isBrowserSurface(payload.surfaceId)) {
         ctx.browserSurfaces.closeSurface(payload.surfaceId);
+      } else if (payload.surfaceId.startsWith("ext:")) {
+        // Extension panes own a Bun backend (+ maybe a Vite dev server) —
+        // stop them so they don't leak, then echo the close so the webview
+        // layout removes the pane.
+        ctx.extensionManager.stop(payload.surfaceId);
+        ctx.rpc.send("surfaceClosed", { surfaceId: payload.surfaceId });
+        ctx.app.webServer?.broadcast({
+          type: "surfaceClosed",
+          surfaceId: payload.surfaceId,
+        });
       } else if (
         payload.surfaceId.startsWith("tg:") ||
         payload.surfaceId.startsWith("editor:")

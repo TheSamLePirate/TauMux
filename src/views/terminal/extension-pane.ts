@@ -187,6 +187,16 @@ export function createExtensionPaneView(
     container.removeEventListener("mousedown", onMouseDown),
   );
 
+  // The pane mounts only after the backend is up, but the host's "ready"
+  // lifecycle is emitted before this pane exists (so it's dropped). The
+  // reliable "content is live" signal is the iframe actually loading its
+  // document — flip the status pill to "running" then.
+  const onLoad = () => {
+    if (view.url !== "about:blank") setStatus(view, "ready");
+  };
+  iframe.addEventListener("load", onLoad);
+  view._cleanup.push(() => iframe.removeEventListener("load", onLoad));
+
   // Frontend → host: the SDK posts `{ source: EXT_BRIDGE_TAG, payload }` to
   // its parent. Filter to THIS iframe so panes don't cross-talk.
   const onMessage = (e: MessageEvent) => {

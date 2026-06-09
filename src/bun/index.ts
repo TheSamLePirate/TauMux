@@ -274,14 +274,40 @@ const panelRegistry = new PanelRegistry();
 // backend (+ Vite dev server in dev mode) and serves built bundles. The
 // host→frontend payload sink references `rpc` (declared below); it is only
 // invoked at runtime once a backend emits, well after `rpc` is initialised.
+// Resolve an in-repo subdir (examples/, packages/…) at runtime. Tries the
+// process cwd first (the repo root in `bun start` / dev), then a couple of
+// import.meta-relative anchors, returning the first that exists. Lets the
+// extension host find the bundled SDK + templates without hard-coding a path.
+function resolveRepoSubdir(sub: string): string | undefined {
+  const candidates: string[] = [];
+  const envRoot = process.env["HT_REPO_DIR"];
+  if (envRoot) candidates.push(join(envRoot, sub));
+  candidates.push(join(process.cwd(), sub));
+  for (const up of ["../../", "../../../", "../"]) {
+    try {
+      candidates.push(fileURLToPath(new URL(up + sub, import.meta.url)));
+    } catch {
+      /* ignore bad URL */
+    }
+  }
+  for (const c of candidates) {
+    try {
+      if (existsSync(c)) return c;
+    } catch {
+      /* ignore */
+    }
+  }
+  return undefined;
+}
+
 const extensionManager = new ExtensionManager({
   configDir,
   socketPath: join(configDir, SOCKET_BASENAME),
-  // Bundled scaffold templates ship under examples/extensions in dev; absolute
-  // template paths also work (install/scaffold). Packaged builds copy these in.
-  templatesDir: fileURLToPath(
-    new URL("../../examples/extensions", import.meta.url),
-  ),
+  // Bundled scaffold templates + the in-repo @tau-mux/sdk. Resolved robustly
+  // so `ht extension install/new` works and copied-out extensions can rewire
+  // their relative SDK dependency to this absolute path before `bun install`.
+  templatesDir: resolveRepoSubdir("examples/extensions"),
+  sdkDir: resolveRepoSubdir("packages/tau-mux-sdk"),
   onHostPayload: (surfaceId, payload) =>
     sendExtensionHostPayload(surfaceId, payload),
   onLog: (line) => console.log(line),
