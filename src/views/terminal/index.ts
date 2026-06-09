@@ -964,9 +964,33 @@ function syncCheatsheetBindings(): void {
     ...HIGH_PRIORITY_BINDINGS,
   ]);
 }
+
+/** Installed extensions, pushed by bun via `extensionList`. Drives the
+ *  command-palette "Extensions: Open / Edit / Remove …" entries. Declared
+ *  ABOVE the module-init `syncPaletteCommands()` call below — `buildPaletteCommands`
+ *  reads these, so a later `let` would TDZ-throw during init and break every
+ *  handler wired after this point. */
+let availableExtensions: {
+  id: string;
+  name: string;
+  icon?: string;
+  hasBuild: boolean;
+  hasBackend: boolean;
+  path: string;
+  backendEntry?: string;
+}[] = [];
+/** Bundled scaffold templates (for "Extensions: New …"). */
+let extensionTemplates: string[] = [];
+
 syncPaletteCommands();
 // Ask bun for the installed-extension list so the palette has them at boot.
-rpc.send("requestExtensionList");
+// Guarded so a transport hiccup can never abort the rest of module init
+// (the list is re-requested every time the palette opens anyway).
+try {
+  rpc.send("requestExtensionList");
+} catch {
+  /* non-fatal — palette open will retry */
+}
 
 function loadTerminalEffectsEnabled(): boolean {
   try {
@@ -1026,20 +1050,6 @@ function resetFontSize(): void {
   surfaceManager.setFontSize(DEFAULT_FONT_SIZE);
   persistFontSize(DEFAULT_FONT_SIZE);
 }
-
-/** Installed extensions, pushed by bun via `extensionList`. Drives the
- *  command-palette "Extensions: Open / Edit / Remove …" entries. */
-let availableExtensions: {
-  id: string;
-  name: string;
-  icon?: string;
-  hasBuild: boolean;
-  hasBackend: boolean;
-  path: string;
-  backendEntry?: string;
-}[] = [];
-/** Bundled scaffold templates (for "Extensions: New …"). */
-let extensionTemplates: string[] = [];
 
 function buildPaletteCommands(): PaletteCommand[] {
   const terminalEffectsEnabled = surfaceManager.areTerminalEffectsEnabled();

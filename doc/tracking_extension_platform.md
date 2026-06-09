@@ -76,3 +76,4 @@ Legend: ☐ todo · ◐ in progress · ☑ done · ⚠ deviation/issue
 
 ## Deviations / issues
 - Worktree was branched from `origin/main` (v0.3.182); reset to `aaa-polish` (v0.3.188) so the feature builds on the user's latest work.
+- **v0.4.2 regression fix.** The Phase-5 palette change declared `let availableExtensions`/`extensionTemplates` BELOW the module-init `syncPaletteCommands()` call in `src/views/terminal/index.ts`. `buildPaletteCommands()` reads them, so init hit the temporal dead zone and threw a `ReferenceError`, aborting the rest of webview module evaluation — the command palette (button + shortcut) and the title-bar double-click maximize (both wired later in the file) silently stopped working. Fixed by hoisting the two `let`s above the init call; guarded the boot `rpc.send("requestExtensionList")` in try/catch; added `tests/extension-palette-init-order.test.ts` as a structural regression guard (tsc + the unit suite can't see this class of bug).
