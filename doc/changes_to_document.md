@@ -105,6 +105,20 @@ links.)_
   spawn connects without an explicit `export HT_SOCKET_PATH`. `HT_SOCKET_PATH`
   still overrides; `ht doctor` still self-diagnoses drift.
 
+## Pending — Settings panel live-apply UX (v0.3.188)
+
+- **Smooth Settings sliders (v0.3.188).** Dragging a slider (or any control) in
+  Settings no longer stalls a second per step. Root causes fixed: the panel's
+  change-equality guard did a reference compare on nested fields
+  (`statusBarKeys`, `autoContinue`, …) that validation always returns as fresh
+  instances, so it re-rendered the section on every echo and destroyed the live
+  slider mid-drag — now compared by value. The heavy "apply to every pane" work
+  is also deferred off the input event (rAF-coalesced) and the persist write is
+  debounced, and `applySettings` now skips the per-pane terminal refit/repaint,
+  chrome-CSS, and layout passes when none of those fields actually changed
+  (e.g. dragging bloom intensity, pane gap, or the overlay timeout). Settings
+  apply live and instantly with no Apply button needed.
+
 ## Pending — shareBin utility expansion
 
 - **New shareBin visual utilities (v0.3.186).** Add documentation/changelog

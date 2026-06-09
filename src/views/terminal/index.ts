@@ -453,19 +453,60 @@ try {
 let currentSettings: AppSettings | null = null;
 let variantController: VariantController | null = null;
 
+// Settings-change pipeline. A slider drag fires `input` many times per
+// frame; applying the full (heavy, O(panes)) `applySettings` synchronously on
+// every event — plus a per-event persist RPC whose echo re-applied AGAIN —
+// stalled the drag to one step at a time. We instead:
+//   • coalesce the local apply to ONE per animation frame (smooth preview), and
+//   • debounce the persist RPC so bun isn't flooded and the echo storm stops.
+// `mergeSettings` clamps identically to bun, so the panel + currentSettings
+// stay in lockstep with what gets persisted.
+let pendingMerged: AppSettings | null = null;
+let applyFrame: number | null = null;
+let pendingPartial: Partial<AppSettings> = {};
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+const flushSettingsPersist = () => {
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  if (Object.keys(pendingPartial).length === 0) return;
+  const toSend = pendingPartial;
+  pendingPartial = {};
+  rpc.send("updateSettings", { settings: toSend });
+};
 const settingsPanel = new SettingsPanel(
   (partial) => {
-    // Apply eagerly on the webview side — don't wait for bun roundtrip
-    const base = currentSettings ?? DEFAULT_SETTINGS;
-    const merged = mergeSettings(base, partial);
-    applySettings(merged);
-    // Send to bun for persistence
-    rpc.send("updateSettings", { settings: partial });
+    // Eager LOCAL apply (no bun round-trip needed for preview), coalesced.
+    const base = pendingMerged ?? currentSettings ?? DEFAULT_SETTINGS;
+    pendingMerged = mergeSettings(base, partial);
+    currentSettings = pendingMerged; // keep base current for the next tick
+    if (applyFrame === null) {
+      applyFrame = requestAnimationFrame(() => {
+        applyFrame = null;
+        if (pendingMerged) applySettings(pendingMerged);
+      });
+    }
+    // Accumulate the partial and debounce the persist (settles ~200 ms after
+    // the last change). The eager local apply already reflects it on screen.
+    Object.assign(pendingPartial, partial);
+    if (partial.ansiColors) {
+      pendingPartial.ansiColors = {
+        ...(pendingPartial.ansiColors ?? {}),
+        ...partial.ansiColors,
+      };
+    }
+    if (persistTimer !== null) clearTimeout(persistTimer);
+    persistTimer = setTimeout(flushSettingsPersist, 200);
   },
   {
     onRevealLogFile: () => rpc.send("revealLogFile"),
   },
 );
+// Flush any pending settings persist when the panel closes or the window is
+// hidden, so a quick close right after a drag can't drop the last change.
+lifecycleDisposers.push(() => flushSettingsPersist());
+window.addEventListener("blur", flushSettingsPersist);
 
 // Plan #09 commit B — sidebar plan widget. Mounted directly into
 // the sidebar's host element so it renders before the workspace

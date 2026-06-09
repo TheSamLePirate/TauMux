@@ -185,6 +185,11 @@ export class SurfaceManager {
   private wsCounter = 0;
   private paneDrag: PaneDragController;
   private fontSize: number;
+  /** Last settings `applySettings` ran against — lets a rapid settings
+   *  change (slider drag) skip the heavy per-pane xterm refit/refresh, chrome
+   *  CSS, and layout pass when none of THOSE fields actually changed (e.g.
+   *  dragging bloom intensity, pane gap, or an overlay timeout). */
+  private lastAppliedSettings: AppSettings | null = null;
   private searchBar: TerminalSearchBar;
   private metadata = new Map<string, SurfaceMetadata>();
   /** Layout coalescer (perf-pass merge — codex). Multiple calls into
@@ -1145,7 +1150,46 @@ export class SurfaceManager {
     const secRgb = hexToRgb(s.secondaryColor);
     const accRgb = hexToRgb(s.accentColor);
 
-    // Build xterm theme from settings
+    // Diff against the last applied settings so a rapid change (slider drag)
+    // only pays for the work whose inputs actually moved. First call (prev
+    // null) does everything — identical to the prior behaviour.
+    const prev = this.lastAppliedSettings;
+    const termVisualChanged =
+      !prev ||
+      prev.fontSize !== s.fontSize ||
+      prev.fontFamily !== s.fontFamily ||
+      prev.lineHeight !== s.lineHeight ||
+      prev.cursorBlink !== s.cursorBlink ||
+      prev.cursorStyle !== s.cursorStyle ||
+      prev.scrollbackLines !== s.scrollbackLines ||
+      prev.bgBase !== s.bgBase ||
+      prev.foregroundColor !== s.foregroundColor ||
+      prev.accentColor !== s.accentColor ||
+      prev.secondaryColor !== s.secondaryColor ||
+      JSON.stringify(prev.ansiColors) !== JSON.stringify(s.ansiColors);
+    const bloomChanged =
+      !prev ||
+      prev.terminalBloom !== s.terminalBloom ||
+      prev.bloomIntensity !== s.bloomIntensity;
+    const layoutChanged =
+      !prev ||
+      prev.fontSize !== s.fontSize ||
+      prev.fontFamily !== s.fontFamily ||
+      prev.lineHeight !== s.lineHeight ||
+      prev.paneGap !== s.paneGap ||
+      prev.sidebarWidth !== s.sidebarWidth;
+    const chromeChanged =
+      !prev ||
+      prev.accentColor !== s.accentColor ||
+      prev.secondaryColor !== s.secondaryColor ||
+      prev.foregroundColor !== s.foregroundColor ||
+      prev.bgBase !== s.bgBase ||
+      prev.terminalBgOpacity !== s.terminalBgOpacity ||
+      prev.sidebarWidth !== s.sidebarWidth;
+    const browserDarkChanged =
+      !prev || prev.browserForceDarkMode !== s.browserForceDarkMode;
+
+    // Build xterm theme from settings (only used when terminal visuals moved)
     const theme = {
       background: `rgba(${bg}, 0)`,
       foreground: s.foregroundColor,
@@ -1158,67 +1202,92 @@ export class SurfaceManager {
 
     setPaneGap(s.paneGap);
 
-    for (const view of this.surfaces.values()) {
-      if (view.surfaceType === "browser" || view.surfaceType === "telegram")
-        continue;
-      const t = view.term;
-      if (!t) continue;
-      t.options.fontSize = s.fontSize;
-      t.options.fontFamily = s.fontFamily;
-      t.options.lineHeight = s.lineHeight;
-      t.options.cursorBlink = s.cursorBlink;
-      t.options.cursorStyle = s.cursorStyle;
-      t.options.scrollback = s.scrollbackLines;
-      t.options.theme = theme;
-      // Force xterm to re-render with new colors
-      t.refresh(0, t.rows - 1);
-      fitSurfaceTerminal(view);
-      if (view.effects) {
-        // H6: respect workspace visibility — don't light hidden panes.
-        view.effects.setEnabled(s.terminalBloom && this.isSurfaceVisible(view));
-        view.effects.setIntensity(s.bloomIntensity);
-        view.effects.setFocused(view.id === this.focusedSurfaceId);
+    if (termVisualChanged || bloomChanged) {
+      for (const view of this.surfaces.values()) {
+        if (view.surfaceType === "browser" || view.surfaceType === "telegram")
+          continue;
+        const t = view.term;
+        if (!t) continue;
+        if (termVisualChanged) {
+          t.options.fontSize = s.fontSize;
+          t.options.fontFamily = s.fontFamily;
+          t.options.lineHeight = s.lineHeight;
+          t.options.cursorBlink = s.cursorBlink;
+          t.options.cursorStyle = s.cursorStyle;
+          t.options.scrollback = s.scrollbackLines;
+          t.options.theme = theme;
+          // Force xterm to re-render with new colors
+          t.refresh(0, t.rows - 1);
+          fitSurfaceTerminal(view);
+        }
+        if (view.effects) {
+          // H6: respect workspace visibility — don't light hidden panes.
+          view.effects.setEnabled(
+            s.terminalBloom && this.isSurfaceVisible(view),
+          );
+          view.effects.setIntensity(s.bloomIntensity);
+          view.effects.setFocused(view.id === this.focusedSurfaceId);
+        }
       }
     }
 
-    // Update CSS custom properties — bgBase drives the entire UI chrome
-    const root = document.documentElement;
-    root.style.setProperty("--accent-primary", s.accentColor);
-    root.style.setProperty("--accent-primary-soft", `rgba(${accRgb}, 0.18)`);
-    root.style.setProperty("--accent-primary-strong", `rgba(${accRgb}, 0.52)`);
-    root.style.setProperty("--accent-secondary", s.secondaryColor);
-    root.style.setProperty("--accent-secondary-soft", `rgba(${secRgb}, 0.22)`);
-    root.style.setProperty("--accent-secondary-strong", `rgba(${secRgb}, 0.5)`);
-    root.style.setProperty("--glow-gold", `rgba(${accRgb}, 0.42)`);
-    root.style.setProperty("--glow-gold-strong", `rgba(${accRgb}, 0.72)`);
-    root.style.setProperty("--glow-purple", `rgba(${secRgb}, 0.42)`);
-    root.style.setProperty("--glow-purple-strong", `rgba(${secRgb}, 0.68)`);
-    root.style.setProperty("--text-strong", s.foregroundColor);
-    root.style.setProperty("--sidebar-width", `${s.sidebarWidth}px`);
-    root.style.setProperty("--bg-shell", `rgba(${bg}, ${s.terminalBgOpacity})`);
-    root.style.setProperty("--bg-title", `rgba(${bg}, 0.44)`);
-    root.style.setProperty("--bg-sidebar", `rgba(${bg}, 0.66)`);
-    root.style.setProperty("--bg-terminal", `rgb(${bg})`);
-    root.style.setProperty("--bg-terminal-muted", `rgba(${bg}, 0.94)`);
-    root.style.setProperty("--bg-glass", `rgba(${bg}, 0.7)`);
-    root.style.setProperty("--bg-glass-strong", `rgba(${bg}, 0.9)`);
+    // Update CSS custom properties — bgBase drives the entire UI chrome.
+    if (chromeChanged) {
+      const root = document.documentElement;
+      root.style.setProperty("--accent-primary", s.accentColor);
+      root.style.setProperty("--accent-primary-soft", `rgba(${accRgb}, 0.18)`);
+      root.style.setProperty(
+        "--accent-primary-strong",
+        `rgba(${accRgb}, 0.52)`,
+      );
+      root.style.setProperty("--accent-secondary", s.secondaryColor);
+      root.style.setProperty(
+        "--accent-secondary-soft",
+        `rgba(${secRgb}, 0.22)`,
+      );
+      root.style.setProperty(
+        "--accent-secondary-strong",
+        `rgba(${secRgb}, 0.5)`,
+      );
+      root.style.setProperty("--glow-gold", `rgba(${accRgb}, 0.42)`);
+      root.style.setProperty("--glow-gold-strong", `rgba(${accRgb}, 0.72)`);
+      root.style.setProperty("--glow-purple", `rgba(${secRgb}, 0.42)`);
+      root.style.setProperty("--glow-purple-strong", `rgba(${secRgb}, 0.68)`);
+      root.style.setProperty("--text-strong", s.foregroundColor);
+      root.style.setProperty("--sidebar-width", `${s.sidebarWidth}px`);
+      root.style.setProperty(
+        "--bg-shell",
+        `rgba(${bg}, ${s.terminalBgOpacity})`,
+      );
+      root.style.setProperty("--bg-title", `rgba(${bg}, 0.44)`);
+      root.style.setProperty("--bg-sidebar", `rgba(${bg}, 0.66)`);
+      root.style.setProperty("--bg-terminal", `rgb(${bg})`);
+      root.style.setProperty("--bg-terminal-muted", `rgba(${bg}, 0.94)`);
+      root.style.setProperty("--bg-glass", `rgba(${bg}, 0.7)`);
+      root.style.setProperty("--bg-glass-strong", `rgba(${bg}, 0.9)`);
+    }
 
-    // Apply dark mode to all browser panes
-    for (const view of this.surfaces.values()) {
-      if (view.surfaceType === "browser" && view.browserView) {
-        this.browser.applyDarkMode(view.browserView, s.browserForceDarkMode);
+    // Apply dark mode to all browser panes (only when the toggle moved).
+    if (browserDarkChanged) {
+      for (const view of this.surfaces.values()) {
+        if (view.surfaceType === "browser" && view.browserView) {
+          this.browser.applyDarkMode(view.browserView, s.browserForceDarkMode);
+        }
       }
     }
 
-    // Re-report size for active surface
-    const active = this.focusedSurfaceId
-      ? this.surfaces.get(this.focusedSurfaceId)
-      : null;
-    if (active?.term) {
-      this.onResize(active.id, active.term.cols, active.term.rows);
+    // Re-report size + relayout only when a layout-affecting field moved.
+    if (layoutChanged) {
+      const active = this.focusedSurfaceId
+        ? this.surfaces.get(this.focusedSurfaceId)
+        : null;
+      if (active?.term) {
+        this.onResize(active.id, active.term.cols, active.term.rows);
+      }
+      this.requestLayout("full");
     }
 
-    this.requestLayout("full");
+    this.lastAppliedSettings = s;
   }
 
   // ── Font size ──

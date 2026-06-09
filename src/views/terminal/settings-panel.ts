@@ -3,6 +3,7 @@ import {
   DEFAULT_SETTINGS,
   THEME_PRESETS,
   presetToPartial,
+  mergeSettings,
 } from "../../shared/settings";
 import { ModalHost } from "./a11y/modal-host";
 import { createIcon } from "./icons";
@@ -1909,14 +1910,14 @@ export class SettingsPanel {
   }
 
   private emit(partial: Partial<AppSettings>): void {
-    // Eagerly update local copy
-    Object.assign(this.settings, partial);
-    if (partial.ansiColors) {
-      this.settings.ansiColors = {
-        ...this.settings.ansiColors,
-        ...partial.ansiColors,
-      };
-    }
+    // Eagerly update local copy THROUGH THE SAME VALIDATION the host applies
+    // (`mergeSettings` → `validateSettings`, identical to the bun side). This
+    // is what makes `updateSettings`'s `settingsEqual` guard work: a slider at
+    // 15.3 is clamped to 15 here, so when `applySettings` (and later the bun
+    // echo) feed back the clamped 15 the panel sees a no-op and does NOT
+    // re-render — otherwise `renderActiveSection()` would destroy the live
+    // <input type="range"> mid-drag and the gesture advanced one step at a time.
+    this.settings = mergeSettings(this.settings, partial);
     this.onChange(partial);
   }
 }
@@ -1927,10 +1928,29 @@ function settingsEqual(a: AppSettings, b: AppSettings): boolean {
   const kb = Object.keys(b) as (keyof AppSettings)[];
   if (ka.length !== kb.length) return false;
   for (const k of ka) {
-    if (k === "ansiColors") continue;
-    if (a[k] !== b[k]) return false;
+    const av = a[k];
+    const bv = b[k];
+    if (av === bv) continue;
+    // The non-primitive fields (`ansiColors`, `statusBarKeys`,
+    // `htStatusKeyOrder`, `htStatusKeyHidden`, `autoContinue`, …) come back
+    // from `validateSettings` as FRESH instances on every call, so a raw
+    // reference compare (`av !== bv`) reported them as different even when the
+    // contents were identical. That made this guard always return false and
+    // re-render the panel on every settings echo — destroying a live
+    // <input type="range"> mid-drag (the "one step at a time" slider bug).
+    // Compare arrays/objects by value instead.
+    if (
+      typeof av === "object" &&
+      av !== null &&
+      typeof bv === "object" &&
+      bv !== null
+    ) {
+      if (JSON.stringify(av) !== JSON.stringify(bv)) return false;
+    } else {
+      return false;
+    }
   }
-  return JSON.stringify(a.ansiColors) === JSON.stringify(b.ansiColors);
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────
