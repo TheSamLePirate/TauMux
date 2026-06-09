@@ -34,6 +34,8 @@ export interface WorkspaceSnapshot {
   surfaceUrls?: Record<string, string>;
   /** Persisted file path per editor surface id for restore. */
   surfaceEditorFiles?: Record<string, string>;
+  /** Persisted extension id per extension surface id for restore. */
+  surfaceExtensionIds?: Record<string, string>;
   /** Surface type per surface id (only stored for non-terminal kinds). */
   surfaceTypes?: Record<string, SurfaceKind>;
 }
@@ -92,6 +94,10 @@ export interface HandlerDeps {
    *  and external clients can observe agent state without reaching into
    *  the webview. */
   piAgentManager?: PiAgentManager;
+  /** Extension-app manager — exposed for `extension.*` registry handlers
+   *  (list/new/install/remove/stop/reload). Omitted in test fixtures that
+   *  don't exercise extensions. */
+  extensionManager?: import("../extension-manager").ExtensionManager;
   /** Initiate a graceful shutdown. Wired to `system.shutdown`. */
   shutdown?: () => void;
   /** Live accessor for the long-poll Telegram bot service. Returns the

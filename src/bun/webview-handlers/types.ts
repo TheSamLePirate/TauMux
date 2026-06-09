@@ -49,6 +49,7 @@ import type { BrowserHistoryStore } from "../browser-history";
 import type { BrowserSurfaceManager } from "../browser-surface-manager";
 import type { CookieStore } from "../cookie-store";
 import type { PiAgentManager } from "../pi-agent-manager";
+import type { ExtensionManager } from "../extension-manager";
 import type { SessionManager } from "../session-manager";
 import type { SettingsManager } from "../settings-manager";
 import type { SurfaceMetadataPoller } from "../surface-metadata";
@@ -90,6 +91,7 @@ export interface WebviewHandlerContext {
   browserHistory: BrowserHistoryStore;
   cookieStore: CookieStore;
   metadataPoller: SurfaceMetadataPoller;
+  extensionManager: ExtensionManager;
   telegramDb: TelegramDatabase;
   askUser: AskUserQueue;
   configDir: string;
@@ -157,6 +159,11 @@ export interface WebviewHandlerContext {
     path?: string,
     cwd?: string,
     create?: boolean,
+  ) => void;
+  createExtensionWorkspaceSurface: (extensionId: string) => void;
+  splitExtensionSurface: (
+    direction: "horizontal" | "vertical",
+    extensionId: string,
   ) => void;
   sendTelegramAndBroadcast: (
     chatId: string,

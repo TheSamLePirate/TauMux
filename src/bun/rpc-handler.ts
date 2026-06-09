@@ -37,6 +37,8 @@ import { registerBrowserCookies } from "./rpc-handlers/browser-cookies";
 import { registerBrowserDom } from "./rpc-handlers/browser-dom";
 import { registerTelegram } from "./rpc-handlers/telegram";
 import { registerEditor } from "./rpc-handlers/editor";
+import { registerExtension } from "./rpc-handlers/extension";
+import type { ExtensionManager } from "./extension-manager";
 import type { TelegramService } from "./telegram-service";
 import type { TelegramDatabase } from "./telegram-db";
 
@@ -59,6 +61,8 @@ export interface RpcHandlerOptions {
   /** Pi agent manager, passed through to `agent.*` handlers for list/close
    *  observability. Omitted in processes that don't own agents. */
   piAgentManager?: PiAgentManager;
+  /** Extension-app manager, passed through to `extension.*` handlers. */
+  extensionManager?: ExtensionManager;
   /** Callback to trigger a graceful shutdown (wired to `system.shutdown`). */
   shutdown?: () => void;
   /** Tier 2 gate. When true, `__test.*` handlers are registered; when false
@@ -146,6 +150,7 @@ export function createRpcHandler(
     ),
     panelRegistry: options.panelRegistry,
     piAgentManager: options.piAgentManager,
+    extensionManager: options.extensionManager,
     shutdown: options.shutdown,
     getTelegramService: options.getTelegramService,
     restartTelegramService: options.restartTelegramService,
@@ -179,6 +184,7 @@ export function createRpcHandler(
     registerBrowserDom(deps),
     registerTelegram(deps),
     registerEditor(deps),
+    registerExtension(deps),
     options.audits ? registerAudit(deps, options.audits) : {},
     options.plans ? registerPlan(deps, options.plans) : {},
     options.askUser ? registerAskUser(deps, options.askUser) : {},

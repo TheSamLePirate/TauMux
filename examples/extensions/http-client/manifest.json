@@ -1,0 +1,10 @@
+{
+  "id": "com.taumux.http-client",
+  "name": "HTTP Client",
+  "version": "0.1.0",
+  "icon": "🛰️",
+  "description": "A Postman-style HTTP request builder. The Vite frontend builds requests; the Bun backend performs the fetch (no CORS) and persists history.",
+  "backend": { "entry": "src/index.ts" },
+  "frontend": { "dev": "vite", "devPort": 5192, "dist": "dist", "entry": "index.html" },
+  "permissions": ["notification", "sidebar", "browser"]
+}

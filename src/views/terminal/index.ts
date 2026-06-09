@@ -199,6 +199,35 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
         if (payload.ok) showToast("File saved", "success");
         else showToast(payload.error ?? "Save failed", "error");
       },
+      extensionSurfaceCreated: (payload) => {
+        const handle = {
+          extensionId: payload.extensionId,
+          title: payload.title,
+          icon: payload.icon,
+          devUrl: payload.devUrl,
+          bundleUrl: payload.bundleUrl,
+        };
+        if (payload.splitFrom && payload.direction) {
+          surfaceManager.addExtensionSurfaceAsSplit(
+            payload.surfaceId,
+            handle,
+            payload.splitFrom,
+            payload.direction,
+          );
+        } else {
+          surfaceManager.addExtensionSurface(payload.surfaceId, handle);
+        }
+      },
+      extensionBackendMessage: (payload) => {
+        surfaceManager.applyExtensionBackendMessage(
+          payload.surfaceId,
+          payload.payload as import("../../shared/extension-types").ExtensionHostPayload,
+        );
+      },
+      extensionList: (payload) => {
+        availableExtensions = payload.extensions;
+        syncPaletteCommands();
+      },
       // Agent surface messages are routed via socketAction (proven channel)
       // rather than dedicated RPC message types.
       sidebandMeta: (payload) => {
@@ -935,6 +964,8 @@ function syncCheatsheetBindings(): void {
   ]);
 }
 syncPaletteCommands();
+// Ask bun for the installed-extension list so the palette has them at boot.
+rpc.send("requestExtensionList");
 
 function loadTerminalEffectsEnabled(): boolean {
   try {
@@ -994,6 +1025,15 @@ function resetFontSize(): void {
   surfaceManager.setFontSize(DEFAULT_FONT_SIZE);
   persistFontSize(DEFAULT_FONT_SIZE);
 }
+
+/** Installed extensions, pushed by bun via `extensionList`. Drives the
+ *  command-palette "Extensions: Open …" entries. */
+let availableExtensions: {
+  id: string;
+  name: string;
+  icon?: string;
+  hasBuild: boolean;
+}[] = [];
 
 function buildPaletteCommands(): PaletteCommand[] {
   const terminalEffectsEnabled = surfaceManager.areTerminalEffectsEnabled();
@@ -1594,6 +1634,18 @@ function buildPaletteCommands(): PaletteCommand[] {
       shortcut: "\u2318I",
       action: () => toggleFocusedSurfaceInfo(),
     },
+    // Extension apps \u2014 one "Open" entry per installed extension. The list is
+    // pushed by bun (`extensionList`) on startup and palette open.
+    ...availableExtensions.map(
+      (ext): PaletteCommand => ({
+        id: `extension-open-${ext.id}`,
+        category: "Extensions",
+        label: `Open ${ext.icon ? ext.icon + " " : ""}${ext.name}`,
+        description: `Launch the "${ext.name}" extension app in a new pane.`,
+        action: () =>
+          rpc.send("createExtensionSurface", { extensionId: ext.id }),
+      }),
+    ),
   ];
 }
 
@@ -1669,6 +1721,9 @@ function openCommandPalette() {
   clearTypingFocusMode();
   if (!palette.isVisible()) {
     surfaceManager.hideBrowserWebviews();
+    // Refresh the installed-extension list so newly scaffolded/installed
+    // extensions appear (the response re-runs syncPaletteCommands).
+    rpc.send("requestExtensionList");
   }
   syncPaletteCommands();
   palette.toggle();
@@ -2679,6 +2734,28 @@ window.addEventListener("ht-split-editor", (e: Event) => {
   rpc.send("splitEditorSurface", {
     direction: detail?.direction ?? "horizontal",
     path: detail?.path,
+  });
+});
+
+window.addEventListener("ht-split-extension", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    | { extensionId?: string; direction?: "horizontal" | "vertical" }
+    | undefined;
+  if (!detail?.extensionId) return;
+  rpc.send("splitExtensionSurface", {
+    direction: detail.direction ?? "horizontal",
+    extensionId: detail.extensionId,
+  });
+});
+
+window.addEventListener("ht-extension-frontend-message", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    | { surfaceId?: string; payload?: unknown }
+    | undefined;
+  if (!detail?.surfaceId) return;
+  rpc.send("extensionFrontendMessage", {
+    surfaceId: detail.surfaceId,
+    payload: detail.payload,
   });
 });
 

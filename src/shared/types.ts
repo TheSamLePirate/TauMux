@@ -18,6 +18,7 @@ export interface PaneLeaf {
    *  "agent" = pi coding agent pane.
    *  "telegram" = telegram chat pane.
    *  "editor" = CodeMirror file editor pane.
+   *  "extension" = extension-app pane (Bun backend + Vite frontend iframe).
    *  See `SurfaceKind` for the canonical literal-string union. */
   surfaceType?: SurfaceKind;
 }
@@ -28,7 +29,8 @@ export type SurfaceKind =
   | "browser"
   | "agent"
   | "telegram"
-  | "editor";
+  | "editor"
+  | "extension";
 
 export type PaneNode = PaneSplit | PaneLeaf;
 
@@ -58,6 +60,10 @@ export interface PersistedWorkspace {
   surfaceUrls?: Record<string, string>;
   /** Persisted file path per editor surface id for restore. */
   surfaceEditorFiles?: Record<string, string>;
+  /** Persisted extension id per extension surface id for restore. The bundle
+   *  path resolves through the extensions registry, so an uninstalled
+   *  extension degrades gracefully (terminal placeholder on restore). */
+  surfaceExtensionIds?: Record<string, string>;
   /** Surface type per surface id (only stored for non-terminal kinds; terminal is the default). */
   surfaceTypes?: Record<string, SurfaceKind>;
 }
@@ -618,6 +624,8 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
           surfaceUrls?: Record<string, string>;
           /** Persisted file path per editor surface id for restore. */
           surfaceEditorFiles?: Record<string, string>;
+          /** Persisted extension id per extension surface id for restore. */
+          surfaceExtensionIds?: Record<string, string>;
           /** Surface type per surface id (only stored for non-terminal kinds). */
           surfaceTypes?: Record<string, SurfaceKind>;
         }[];
@@ -837,6 +845,22 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
         expectedMtimeMs?: number | null;
       };
       editorReloadFile: { surfaceId: string; path: string };
+
+      // ── Extension surface lifecycle (webview → bun) ──
+      /** Open a new extension pane in the active workspace. */
+      createExtensionSurface: { extensionId: string };
+      /** Split the focused pane and place a new extension pane there. */
+      splitExtensionSurface: {
+        direction: "horizontal" | "vertical";
+        extensionId: string;
+      };
+      /** Frontend (iframe) → host bridge. `payload` is an opaque
+       *  `ExtensionFrontendPayload` (rpc-request / backend-message /
+       *  frontend-ready); the bun handler narrows + routes it. */
+      extensionFrontendMessage: { surfaceId: string; payload: unknown };
+      /** Ask bun for the installed-extension list (drives the palette). */
+      requestExtensionList: void;
+
       /** Send a message via the bot. */
       telegramSend: { chatId: string; text: string };
       /** Request history for a chat (used on pane open + scroll-up). */
@@ -1037,6 +1061,34 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       };
       editorFileSnapshot: EditorFileSnapshot;
       editorSaveResult: EditorSaveResult;
+
+      // ── Extension (bun → webview) ──
+      /** Mount an extension pane. The webview points an iframe at `devUrl`
+       *  (Vite HMR) or `bundleUrl` (built static). */
+      extensionSurfaceCreated: {
+        surfaceId: string;
+        extensionId: string;
+        title: string;
+        icon?: string;
+        devUrl?: string;
+        bundleUrl?: string;
+        splitFrom?: string;
+        direction?: "horizontal" | "vertical";
+      };
+      /** Host → frontend (iframe) bridge. `payload` is an opaque
+       *  `ExtensionHostPayload` (rpc-response / backend-message / lifecycle /
+       *  resize); the pane relay posts it into the iframe. */
+      extensionBackendMessage: { surfaceId: string; payload: unknown };
+      /** Installed-extension list (reply to `requestExtensionList`); drives
+       *  the command-palette "Extensions: Open …" entries. */
+      extensionList: {
+        extensions: {
+          id: string;
+          name: string;
+          icon?: string;
+          hasBuild: boolean;
+        }[];
+      };
 
       // ── Telegram (bun → webview) ──
       /** Open the Telegram pane in the webview. The pane manages its

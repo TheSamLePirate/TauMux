@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hello Extension</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: radial-gradient(120% 120% at 50% 0%, #11161d 0%, #0b0e13 60%);
+        color: #d7e0ea;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .card {
+        max-width: 520px; padding: 28px 30px; border-radius: 14px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(120,180,255,0.18);
+        box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+      }
+      h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: 0.3px; }
+      .sub { color: #7b8aa0; font-size: 12px; margin-bottom: 18px; }
+      .row { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+      button {
+        font: inherit; cursor: pointer; color: #0b0e13;
+        background: linear-gradient(180deg, #7fd1ff, #41a9f0);
+        border: none; border-radius: 8px; padding: 8px 14px; font-weight: 600;
+      }
+      button.secondary { background: #1b2430; color: #cfe0f2; border: 1px solid #2a3a4d; }
+      pre {
+        background: #0a0d12; border: 1px solid #1d2a38; border-radius: 8px;
+        padding: 12px; font-size: 12px; max-height: 220px; overflow: auto;
+        white-space: pre-wrap; word-break: break-word;
+      }
+      .tag { color: #41a9f0; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>👋 Hello from a τ-mux extension</h1>
+      <div class="sub">
+        This iframe is talking to the host over the
+        <span class="tag">@tau-mux/sdk</span> postMessage bridge — no backend,
+        no build.
+      </div>
+      <div class="row">
+        <button id="ver">Call system.version</button>
+        <button id="surfaces" class="secondary">List surfaces</button>
+        <button id="notify" class="secondary">Send notification</button>
+      </div>
+      <pre id="out">Ready. Click a button to drive a τ-mux control surface.</pre>
+    </div>
+
+    <script>
+      // Minimal inline bridge — mirrors @tau-mux/sdk/frontend, no bundler.
+      const TAG = "taumux-ext";
+      const pending = new Map();
+      let nextId = 1;
+      const out = document.getElementById("out");
+
+      function show(label, value) {
+        out.textContent =
+          label + "\n" + (typeof value === "string" ? value : JSON.stringify(value, null, 2));
+      }
+
+      function post(payload) {
+        window.parent.postMessage({ source: TAG, payload }, "*");
+      }
+
+      function call(method, params) {
+        const id = String(nextId++);
+        return new Promise((resolve, reject) => {
+          pending.set(id, { resolve, reject });
+          post({ kind: "rpc-request", id, method, params: params || {} });
+        });
+      }
+
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent) return;
+        const data = e.data;
+        if (!data || data.source !== TAG) return;
+        const p = data.payload;
+        if (p.kind === "rpc-response") {
+          const entry = pending.get(p.id);
+          if (!entry) return;
+          pending.delete(p.id);
+          if (p.error) entry.reject(new Error(p.error));
+          else entry.resolve(p.result);
+        }
+      });
+
+      document.getElementById("ver").onclick = async () => {
+        try { show("system.version →", await call("system.version")); }
+        catch (err) { show("error", String(err)); }
+      };
+      document.getElementById("surfaces").onclick = async () => {
+        try { show("surface.list →", await call("surface.list")); }
+        catch (err) { show("error", String(err)); }
+      };
+      document.getElementById("notify").onclick = async () => {
+        try {
+          await call("notification.create", {
+            title: "Hello Extension",
+            body: "Notification sent from an extension iframe 👋",
+          });
+          show("notification.create →", "sent");
+        } catch (err) { show("error", String(err)); }
+      };
+
+      // Announce mount + greet on load.
+      post({ kind: "frontend-ready" });
+      call("notification.create", {
+        title: "Hello Extension",
+        body: "Extension loaded",
+      }).catch(() => {});
+    </script>
+  </body>
+</html>

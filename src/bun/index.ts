@@ -58,6 +58,7 @@ import {
 import { normalizeMenuActionEvent } from "./menu-events";
 import { SettingsManager } from "./settings-manager";
 import { PiAgentManager } from "./pi-agent-manager";
+import { ExtensionManager } from "./extension-manager";
 import { AppContext } from "./app-context";
 import { switchToAccessoryMode } from "./accessory-mode";
 import { TelegramDatabase } from "./telegram-db";
@@ -268,6 +269,23 @@ const browserHistory = new BrowserHistoryStore(configDir);
 const cookieStore = new CookieStore(configDir);
 const metadataPoller = new SurfaceMetadataPoller(sessions);
 const panelRegistry = new PanelRegistry();
+
+// Extension-app platform host. Manages each running extension surface's Bun
+// backend (+ Vite dev server in dev mode) and serves built bundles. The
+// host→frontend payload sink references `rpc` (declared below); it is only
+// invoked at runtime once a backend emits, well after `rpc` is initialised.
+const extensionManager = new ExtensionManager({
+  configDir,
+  socketPath: join(configDir, SOCKET_BASENAME),
+  // Bundled scaffold templates ship under examples/extensions in dev; absolute
+  // template paths also work (install/scaffold). Packaged builds copy these in.
+  templatesDir: fileURLToPath(
+    new URL("../../examples/extensions", import.meta.url),
+  ),
+  onHostPayload: (surfaceId, payload) =>
+    sendExtensionHostPayload(surfaceId, payload),
+  onLog: (line) => console.log(line),
+});
 
 // ── Telegram bot integration ──
 // Database is always opened so the read-side `telegram.history` /
@@ -551,6 +569,7 @@ const {
   browserHistory,
   cookieStore,
   metadataPoller,
+  extensionManager,
   telegramDb,
   askUser,
   configDir,
@@ -572,6 +591,8 @@ const {
   splitTelegramSurface,
   createEditorWorkspaceSurface,
   splitEditorSurface,
+  createExtensionWorkspaceSurface,
+  splitExtensionSurface,
   sendTelegramAndBroadcast,
   sendTelegramStateToWebview,
   scheduleLayoutSave,
@@ -952,6 +973,69 @@ function splitEditorSurface(
       readEditorFile({ surfaceId, path: resolvedPath, create }),
     );
   }
+}
+
+// ── Extension Surface Creation ──
+
+let extensionSurfaceCounter = 0;
+function nextExtensionSurfaceId(): string {
+  // `ext:` prefix — the web mirror + close routing dispatch on it.
+  return `ext:${++extensionSurfaceCounter}:${Date.now().toString(36)}`;
+}
+
+/** Push a host→frontend bridge payload into the webview, which relays it to
+ *  the extension's iframe. Referenced by `extensionManager.onHostPayload`. */
+function sendExtensionHostPayload(
+  surfaceId: string,
+  payload: import("../shared/extension-types").ExtensionHostPayload,
+): void {
+  rpc.send("extensionBackendMessage", { surfaceId, payload });
+}
+
+function createExtensionWorkspaceSurface(extensionId: string): void {
+  const surfaceId = nextExtensionSurfaceId();
+  app.focusedSurfaceId = surfaceId;
+  void extensionManager
+    .ensureBackend(extensionId, surfaceId)
+    .then((handle) => {
+      rpc.send("extensionSurfaceCreated", {
+        surfaceId,
+        extensionId,
+        title: handle.title,
+        icon: handle.icon,
+        devUrl: handle.devUrl,
+        bundleUrl: handle.bundleUrl,
+      });
+    })
+    .catch((err) => {
+      console.error(`[ext] create failed (${extensionId}):`, err);
+    });
+}
+
+function splitExtensionSurface(
+  direction: "horizontal" | "vertical",
+  extensionId: string,
+): void {
+  const splitFrom = app.focusedSurfaceId;
+  const surfaceId = nextExtensionSurfaceId();
+  app.focusedSurfaceId = surfaceId;
+  void extensionManager
+    .ensureBackend(extensionId, surfaceId)
+    .then((handle) => {
+      rpc.send("extensionSurfaceCreated", {
+        surfaceId,
+        extensionId,
+        title: handle.title,
+        icon: handle.icon,
+        devUrl: handle.devUrl,
+        bundleUrl: handle.bundleUrl,
+        splitFrom: splitFrom ?? undefined,
+        direction,
+      });
+    })
+    .catch((err) => {
+      console.error(`[ext] split failed (${extensionId}):`, err);
+    });
 }
 
 // ── Telegram Surface Creation ──
@@ -1998,7 +2082,14 @@ function dispatch(action: string, payload: Record<string, unknown>) {
   } else if (action === "closeSurface") {
     const p = payload as ActionPayloadByAction["closeSurface"];
     const surfaceId = p.surfaceId;
-    if (surfaceId?.startsWith("editor:") || surfaceId?.startsWith("tg:")) {
+    if (surfaceId?.startsWith("ext:")) {
+      // Stop the extension's backend (+ dev server) so it doesn't leak.
+      extensionManager.stop(surfaceId);
+      rpc.send("surfaceClosed", { surfaceId });
+    } else if (
+      surfaceId?.startsWith("editor:") ||
+      surfaceId?.startsWith("tg:")
+    ) {
       rpc.send("surfaceClosed", { surfaceId });
     } else if (surfaceId) {
       sessions.closeSurface(surfaceId);
@@ -2156,6 +2247,13 @@ function dispatch(action: string, payload: Record<string, unknown>) {
       p.cwd,
       p.create === true,
     );
+  } else if (action === "createExtensionSurface") {
+    const p = payload as ActionPayloadByAction["createExtensionSurface"];
+    if (p.extensionId) createExtensionWorkspaceSurface(p.extensionId);
+  } else if (action === "splitExtensionSurface") {
+    const p = payload as ActionPayloadByAction["splitExtensionSurface"];
+    if (p.extensionId)
+      splitExtensionSurface(p.direction || "horizontal", p.extensionId);
   } else if (action === "openExternal") {
     const p = payload as ActionPayloadByAction["openExternal"];
     if (typeof p.url === "string" && /^https?:\/\//i.test(p.url)) {
@@ -2413,6 +2511,7 @@ const socketHandler = createRpcHandler(
   {
     panelRegistry,
     piAgentManager,
+    extensionManager,
     shutdown: () => gracefulShutdown(),
     testModeEnabled: HT_TEST_MODE,
     telegramDb,
@@ -2624,6 +2723,8 @@ function saveLayout(): void {
         surfaceCwds: ws.surfaceCwds,
         selectedCwd: ws.selectedCwd,
         surfaceUrls: ws.surfaceUrls,
+        surfaceEditorFiles: ws.surfaceEditorFiles,
+        surfaceExtensionIds: ws.surfaceExtensionIds,
         surfaceTypes: ws.surfaceTypes,
       })),
       sidebarVisible: app.sidebarVisible,
@@ -2734,6 +2835,40 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
             "editorFileSnapshot",
             readEditorFile({ surfaceId: newId, path }),
           );
+      } else if (surfType === "extension") {
+        const extId = ws.surfaceExtensionIds?.[oldId];
+        if (!extId || !extensionManager.has(extId)) {
+          // Extension uninstalled — degrade to a terminal placeholder
+          // (same strategy as the agent branch above) so the layout slot
+          // isn't lost.
+          const cwd = ws.surfaceCwds?.[oldId];
+          const newId = sessions.createSurface(cols, rows, cwd);
+          surfaceMapping[oldId] = newId;
+          const title = sessions.getSurface(newId)?.title ?? "shell";
+          rpc.send("surfaceCreated", { surfaceId: newId, title });
+          broadcastSurfaceCreated(newId, title);
+        } else {
+          // Restore the surface + a FRESH backend; the extension reloads its
+          // own state.json. Mint a new id so the pane-tree mapping stays
+          // consistent with the other kinds.
+          const newId = nextExtensionSurfaceId();
+          surfaceMapping[oldId] = newId;
+          void extensionManager
+            .ensureBackend(extId, newId)
+            .then((handle) => {
+              rpc.send("extensionSurfaceCreated", {
+                surfaceId: newId,
+                extensionId: extId,
+                title: handle.title,
+                icon: handle.icon,
+                devUrl: handle.devUrl,
+                bundleUrl: handle.bundleUrl,
+              });
+            })
+            .catch((err) =>
+              console.error(`[ext] restore failed (${extId}):`, err),
+            );
+        }
       } else {
         // Re-spawn in the surface's last known cwd so shells resume where they
         // left off (the metadata poller picks this up within a tick; without
@@ -2779,6 +2914,13 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
           if (newId) remappedEditorFiles[newId] = path;
         }
       }
+      const remappedExtensionIds: Record<string, string> = {};
+      if (ws.surfaceExtensionIds) {
+        for (const [oldId, extId] of Object.entries(ws.surfaceExtensionIds)) {
+          const newId = surfaceMapping[oldId];
+          if (newId) remappedExtensionIds[newId] = extId;
+        }
+      }
       return {
         ...ws,
         layout: remapPaneNode(ws.layout, surfaceMapping),
@@ -2792,6 +2934,10 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
         surfaceEditorFiles:
           Object.keys(remappedEditorFiles).length > 0
             ? remappedEditorFiles
+            : undefined,
+        surfaceExtensionIds:
+          Object.keys(remappedExtensionIds).length > 0
+            ? remappedExtensionIds
             : undefined,
       };
     }),
@@ -2926,6 +3072,11 @@ function persistAndCloseSync(): void {
     piAgentManager.dispose();
   } catch (err) {
     console.warn("[main] piAgentManager.dispose failed:", err);
+  }
+  try {
+    extensionManager.dispose();
+  } catch (err) {
+    console.warn("[main] extensionManager.dispose failed:", err);
   }
   try {
     app.webServer?.stop();

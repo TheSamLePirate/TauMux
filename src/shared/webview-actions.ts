@@ -36,6 +36,8 @@ export type WebviewActionEnvelope =
   | { action: "splitBrowserSurface"; payload: SplitBrowserSurfacePayload }
   | { action: "createEditorSurface"; payload: EditorSurfacePayload }
   | { action: "splitEditorSurface"; payload: SplitEditorSurfacePayload }
+  | { action: "createExtensionSurface"; payload: ExtensionSurfacePayload }
+  | { action: "splitExtensionSurface"; payload: SplitExtensionSurfacePayload }
   | { action: "openExternal"; payload: OpenExternalPayload };
 
 export type WebviewActionKind = WebviewActionEnvelope["action"];
@@ -133,6 +135,14 @@ export interface EditorSurfacePayload {
 }
 
 export interface SplitEditorSurfacePayload extends EditorSurfacePayload {
+  direction?: "horizontal" | "vertical";
+}
+
+export interface ExtensionSurfacePayload {
+  extensionId?: string;
+}
+
+export interface SplitExtensionSurfacePayload extends ExtensionSurfacePayload {
   direction?: "horizontal" | "vertical";
 }
 

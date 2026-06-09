@@ -14,6 +14,7 @@ import { registerAskUserWebviewHandlers } from "./ask-user";
 import { registerBrowserWebviewHandlers } from "./browser";
 import { registerClipboardWebviewHandlers } from "./clipboard";
 import { registerEditorWebviewHandlers } from "./editor";
+import { registerExtensionWebviewHandlers } from "./extension";
 import { registerNotificationWebviewHandlers } from "./notification";
 import { registerReplyWebviewHandlers } from "./reply";
 import { registerSurfaceWebviewHandlers } from "./surface";
@@ -49,6 +50,7 @@ export function buildBunMessageHandlers(
     ...registerAgentWebviewHandlers(ctx),
     ...registerTelegramWebviewHandlers(ctx),
     ...registerEditorWebviewHandlers(ctx),
+    ...registerExtensionWebviewHandlers(ctx),
     ...registerAskUserWebviewHandlers(ctx),
   } satisfies BunMessageHandlers;
 }

@@ -400,6 +400,49 @@ export function mapCommand(ctx: CliContext): RpcCall {
       throw new Error(`Unknown editor subcommand: ${sub}`);
     }
 
+    case "extension":
+    case "ext": {
+      const sub = positional[0] || "list";
+      const target = positional[1];
+      if (sub === "list") return { method: "extension.list", params: {} };
+      if (sub === "templates")
+        return { method: "extension.templates", params: {} };
+      if (sub === "open")
+        return {
+          method: "extension.open",
+          params: {
+            id: target,
+            split: flags["split"] === "true",
+            direction: flags["direction"] || "right",
+          },
+        };
+      if (sub === "split")
+        return {
+          method: "extension.split",
+          params: { id: target, direction: flags["direction"] || "right" },
+        };
+      if (sub === "new")
+        return {
+          method: "extension.new",
+          params: {
+            id: target,
+            template: flags["template"],
+            name: flags["name"],
+          },
+        };
+      if (sub === "install")
+        return { method: "extension.install", params: { path: target } };
+      if (sub === "remove")
+        return { method: "extension.remove", params: { id: target } };
+      if (sub === "reload") return { method: "extension.reload", params: {} };
+      if (sub === "stop")
+        return {
+          method: "extension.stop",
+          params: { surface_id: target || flags["surface"] },
+        };
+      throw new Error(`Unknown extension subcommand: ${sub}`);
+    }
+
     case "list-workspaces":
       return { method: "workspace.list", params: {} };
     case "current-workspace":

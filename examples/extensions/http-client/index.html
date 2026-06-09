@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HTTP Client · τ-mux extension</title>
+    <style>
+      /* ---- Reset / fill the iframe viewport ---- */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body,
+      #app {
+        height: 100%;
+        width: 100%;
+      }
+      body {
+        margin: 0;
+        background: #0b0d12;
+        color: #e6e8ee;
+        font-family:
+          ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      /* ---- App shell: a request column on the left, history rail on the right ---- */
+      #app {
+        display: grid;
+        grid-template-columns: 1fr 240px;
+        gap: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+      .main {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      /* ---- Request builder ---- */
+      .request-bar {
+        display: flex;
+        gap: 8px;
+        padding: 12px;
+        border-bottom: 1px solid #1c212c;
+        background: #0e1117;
+      }
+      select,
+      input,
+      textarea,
+      button {
+        font-family: inherit;
+        font-size: 13px;
+        color: #e6e8ee;
+        background: #11151d;
+        border: 1px solid #232a36;
+        border-radius: 6px;
+        padding: 7px 9px;
+        outline: none;
+      }
+      select:focus,
+      input:focus,
+      textarea:focus {
+        border-color: #3b82f6;
+      }
+      select.method {
+        flex: 0 0 96px;
+        font-weight: 600;
+      }
+      input.url {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      button.send {
+        flex: 0 0 auto;
+        background: #2563eb;
+        border-color: #2563eb;
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 7px 16px;
+      }
+      button.send:hover {
+        background: #1d4ed8;
+      }
+      button.send:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+
+      /* ---- Editor panes (headers + body) ---- */
+      .editors {
+        display: flex;
+        gap: 12px;
+        padding: 12px;
+        border-bottom: 1px solid #1c212c;
+      }
+      .editor {
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        min-width: 0;
+      }
+      .editor.hidden {
+        display: none;
+      }
+      .editor label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #8b94a7;
+      }
+      textarea {
+        resize: vertical;
+        min-height: 92px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        white-space: pre;
+        overflow: auto;
+      }
+
+      /* ---- Response viewer ---- */
+      .response {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        padding: 12px;
+        gap: 8px;
+        overflow: hidden;
+      }
+      .status-line {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+      }
+      .status-pill {
+        font-weight: 700;
+        padding: 3px 9px;
+        border-radius: 5px;
+        background: #1c2230;
+      }
+      .status-pill.ok {
+        background: #15391f;
+        color: #6ee7a0;
+      }
+      .status-pill.warn {
+        background: #3a2f12;
+        color: #f0c674;
+      }
+      .status-pill.err {
+        background: #3a1717;
+        color: #f08a8a;
+      }
+      .status-pill.pending {
+        background: #1c2740;
+        color: #93b4f0;
+      }
+      .timing {
+        color: #8b94a7;
+        font-variant-numeric: tabular-nums;
+      }
+      .resp-body {
+        flex: 1 1 auto;
+        margin: 0;
+        padding: 10px;
+        background: #0e1117;
+        border: 1px solid #1c212c;
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow: auto;
+      }
+      .resp-headers {
+        max-height: 120px;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        color: #9aa3b5;
+        background: #0e1117;
+        border: 1px solid #1c212c;
+        border-radius: 6px;
+        padding: 8px 10px;
+      }
+      .resp-headers .hk {
+        color: #6ee7a0;
+      }
+
+      /* ---- History rail ---- */
+      .history {
+        border-left: 1px solid #1c212c;
+        background: #0e1117;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .history h2 {
+        margin: 0;
+        padding: 12px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #8b94a7;
+        border-bottom: 1px solid #1c212c;
+      }
+      .history-list {
+        flex: 1 1 auto;
+        overflow: auto;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .history-item {
+        padding: 8px 12px;
+        border-bottom: 1px solid #161b24;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .history-item:hover {
+        background: #131925;
+      }
+      .history-item .hmethod {
+        font-weight: 700;
+        font-size: 10px;
+        letter-spacing: 0.04em;
+      }
+      .history-item .hurl {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        color: #b8c0d0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .history-item .hstatus {
+        font-size: 10px;
+        color: #8b94a7;
+      }
+      .history-empty {
+        padding: 12px;
+        color: #5d6577;
+        font-size: 12px;
+      }
+
+      .muted {
+        color: #8b94a7;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Three.js Demo · τ-mux extension</title>
+    <style>
+      /* Fill the iframe viewport, no scrollbars, dark backdrop behind the canvas. */
+      html,
+      body,
+      #app {
+        height: 100%;
+        width: 100%;
+      }
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #0b0d12;
+        color: #e6e8ee;
+        font-family:
+          ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      #app {
+        display: block;
+      }
+      /* The three.js renderer appends a <canvas> here; make it fill #app. */
+      #app canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

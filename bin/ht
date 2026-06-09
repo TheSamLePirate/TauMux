@@ -1041,6 +1041,17 @@ Editor:
   editor list                       List editor panes
   editor save|reload|close [editor:N]
 
+Extensions (extension app platform):
+  extension list                    List installed extensions
+  extension templates               List bundled scaffold templates
+  extension open <id> [--split]     Open an extension app in a workspace/split
+  extension split <id> [--direction right|down]
+  extension new <id> --template T [--name N]   Scaffold from a template
+  extension install <path>          Install an extension dir
+  extension remove <id>             Uninstall an extension
+  extension stop <ext:N>            Stop a running extension backend
+  extension reload                  Re-scan the extensions dir
+
 I/O:
   send [--surface S] "text"         Send text to terminal.
                                     Escapes: \\n and \\r both send carriage

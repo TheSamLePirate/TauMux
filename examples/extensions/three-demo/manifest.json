@@ -1,0 +1,10 @@
+{
+  "id": "com.taumux.three-demo",
+  "name": "Three.js Demo",
+  "version": "0.1.0",
+  "icon": "🧊",
+  "description": "A spinning 3D scene rendered with three.js, with a backend that drives τ-mux control surfaces.",
+  "backend": { "entry": "src/index.ts" },
+  "frontend": { "dev": "vite", "devPort": 5191, "dist": "dist", "entry": "index.html" },
+  "permissions": ["notification", "sidebar", "surface"]
+}

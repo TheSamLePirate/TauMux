@@ -1,0 +1,8 @@
+{
+  "name": "taumux-ext-three-demo",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite", "build": "vite build" },
+  "dependencies": { "three": "^0.169.0", "@tau-mux/sdk": "file:../../../packages/tau-mux-sdk" },
+  "devDependencies": { "vite": "^5.4.0", "typescript": "^5.6.0", "@types/three": "^0.169.0" }
+}

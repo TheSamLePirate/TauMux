@@ -211,6 +211,20 @@ export interface SplitEditorPayload {
   direction: "horizontal" | "vertical";
 }
 
+/** Split a new extension pane running the same extension. */
+export interface SplitExtensionPayload {
+  extensionId: string;
+  direction: "horizontal" | "vertical";
+}
+
+/** Extension iframe → host bridge message (relayed to bun as
+ *  `extensionFrontendMessage`). `payload` is an opaque
+ *  `ExtensionFrontendPayload`. */
+export interface ExtensionFrontendMessagePayload {
+  surfaceId: string;
+  payload: import("./extension-types").ExtensionFrontendPayload;
+}
+
 /** Sidebar cwd-chip click → tell the host this cwd is the workspace's
  *  primary directory. Re-runs the package.json / cargo card resolve. */
 export interface SelectWorkspaceCwdPayload {
@@ -443,6 +457,8 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-telegram-request-history": TelegramRequestHistoryPayload;
   "ht-telegram-request-state": TelegramRequestStatePayload;
   "ht-split-editor": SplitEditorPayload;
+  "ht-split-extension": SplitExtensionPayload;
+  "ht-extension-frontend-message": ExtensionFrontendMessagePayload;
   "ht-select-workspace-cwd": SelectWorkspaceCwdPayload;
   "ht-rename-workspace": RenameWorkspacePayload;
   "ht-pin-workspace": PinWorkspacePayload;

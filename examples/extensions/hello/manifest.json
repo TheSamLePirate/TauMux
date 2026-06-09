@@ -1,0 +1,9 @@
+{
+  "id": "com.taumux.hello",
+  "name": "Hello Extension",
+  "version": "0.1.0",
+  "icon": "👋",
+  "description": "A zero-dependency static extension that demonstrates the frontend⇄host RPC bridge. No bun install, no Vite — served straight from its committed static/ dir.",
+  "frontend": { "dist": "static", "entry": "index.html" },
+  "permissions": ["notification", "system"]
+}

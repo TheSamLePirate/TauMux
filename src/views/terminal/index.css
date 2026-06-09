@@ -12427,3 +12427,44 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 .editor-status.error {
   color: var(--tau-err);
 }
+
+/* ── Extension app pane ─────────────────────────────────────────────── */
+
+.extension-body {
+  position: absolute;
+  inset: var(--surface-bar-height, 28px) 0 0 0;
+  display: flex;
+  min-height: 0;
+  background: var(--tau-bg);
+}
+
+.extension-iframe {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: var(--tau-bg);
+  display: block;
+}
+
+.surface-bar-icon.extension-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.surface-chip.extension-status {
+  font-variant-numeric: tabular-nums;
+}
+.surface-chip.extension-status.starting {
+  color: var(--tau-text-dim);
+}
+.surface-chip.extension-status.ready {
+  color: var(--tau-cyan);
+}
+.surface-chip.extension-status.offline {
+  color: var(--tau-err);
+}
+
+.surface-chip.extension-mode-chip {
+  color: var(--tau-text-faint);
+}

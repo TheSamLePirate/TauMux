@@ -55,6 +55,12 @@ import type { TelegramPaneView } from "./telegram-pane";
 import { TelegramSurfaceController } from "./telegram-surface-controller";
 import type { EditorPaneViewRef } from "./editor-pane";
 import { EditorSurfaceController } from "./editor-surface-controller";
+import type { ExtensionPaneViewRef } from "./extension-pane";
+import { ExtensionSurfaceController } from "./extension-surface-controller";
+import type {
+  ExtensionHostPayload,
+  ExtensionSurfaceHandle,
+} from "../../shared/extension-types";
 import type {
   EditorFileSnapshot,
   EditorSaveResult,
@@ -121,6 +127,8 @@ export interface SurfaceView {
   telegramView: TelegramPaneView | null;
   // Editor-specific (null for non-editor panes)
   editorView: EditorPaneViewRef | null;
+  // Extension-specific (null for non-extension panes)
+  extensionView: ExtensionPaneViewRef | null;
   // Shared
   container: HTMLDivElement;
   titleEl: HTMLSpanElement;
@@ -180,6 +188,8 @@ export class SurfaceManager {
   private telegram: TelegramSurfaceController;
   /** Editor-pane concern, extracted from this god object (H10). */
   private editor: EditorSurfaceController;
+  /** Extension-app-pane concern (Bun backend + Vite iframe). */
+  private extension: ExtensionSurfaceController;
   /** Agent-pane concern, extracted from this god object (H10). */
   private agent: AgentSurfaceController;
   private wsCounter = 0;
@@ -268,6 +278,10 @@ export class SurfaceManager {
       getFocusedSurfaceId: () => this.focusedSurfaceId,
       focusSurface: (id) => this.focusSurface(id),
       updateSidebar: () => this.updateSidebar(),
+    });
+    this.extension = new ExtensionSurfaceController({
+      getSurface: (id) => this.surfaces.get(id),
+      focusSurface: (id) => this.focusSurface(id),
     });
     this.agent = new AgentSurfaceController({
       getSurface: (id) => this.surfaces.get(id),
@@ -524,6 +538,37 @@ export class SurfaceManager {
     this.removeSurface(surfaceId);
   }
 
+  /** Add an extension pane as a new workspace. */
+  addExtensionSurface(surfaceId: string, handle: ExtensionSurfaceHandle): void {
+    const view = this.createExtensionSurfaceView(surfaceId, handle);
+    this.addNewWorkspace(surfaceId, handle.title, view, () =>
+      this.focusSurface(surfaceId),
+    );
+  }
+
+  /** Add an extension pane as a split within the active workspace. */
+  addExtensionSurfaceAsSplit(
+    surfaceId: string,
+    handle: ExtensionSurfaceHandle,
+    splitFrom: string,
+    direction: "horizontal" | "vertical",
+  ): void {
+    const view = this.createExtensionSurfaceView(surfaceId, handle);
+    this.addSurfaceAsSplitImpl(surfaceId, view, splitFrom, direction);
+  }
+
+  removeExtensionSurface(surfaceId: string): void {
+    this.removeSurface(surfaceId);
+  }
+
+  /** Route a host→frontend bridge payload into the extension's iframe. */
+  applyExtensionBackendMessage(
+    surfaceId: string,
+    payload: ExtensionHostPayload,
+  ): void {
+    this.extension.applyBackendMessage(surfaceId, payload);
+  }
+
   // Editor handlers — thin forwards to EditorSurfaceController. Public names
   // unchanged for the index.ts RPC handlers + keybindings + palette.
   applyEditorFileSnapshot(snapshot: EditorFileSnapshot): void {
@@ -705,6 +750,7 @@ export class SurfaceManager {
     if (view.browserView) this.browser.destroyView(view.browserView);
     if (view.telegramView) this.telegram.destroyView(view.telegramView);
     if (view.editorView) this.editor.destroyView(view.editorView);
+    if (view.extensionView) this.extension.destroyView(view.extensionView);
     view.container.remove();
     this.updateSidebar();
   }
@@ -734,7 +780,8 @@ export class SurfaceManager {
     if (
       focusedView?.surfaceType === "browser" ||
       focusedView?.surfaceType === "telegram" ||
-      focusedView?.surfaceType === "editor"
+      focusedView?.surfaceType === "editor" ||
+      focusedView?.surfaceType === "extension"
     ) {
       // Non-terminal panes don't have a terminal to focus
     } else {
@@ -1608,6 +1655,7 @@ export class SurfaceManager {
         const surfaceCwds: Record<string, string> = {};
         const surfaceUrls: Record<string, string> = {};
         const surfaceEditorFiles: Record<string, string> = {};
+        const surfaceExtensionIds: Record<string, string> = {};
         const surfaceTypes: Record<string, SurfaceKind> = {};
         for (const sid of surfaceIds) {
           const view = this.surfaces.get(sid);
@@ -1626,6 +1674,10 @@ export class SurfaceManager {
             surfaceTypes[sid] = "editor";
             if (view.editorView?.path)
               surfaceEditorFiles[sid] = view.editorView.path;
+          } else if (view?.surfaceType === "extension") {
+            surfaceTypes[sid] = "extension";
+            if (view.extensionView?.extensionId)
+              surfaceExtensionIds[sid] = view.extensionView.extensionId;
           } else {
             const cwd = this.metadata.get(sid)?.cwd;
             if (cwd) surfaceCwds[sid] = cwd;
@@ -1652,6 +1704,10 @@ export class SurfaceManager {
           surfaceEditorFiles:
             Object.keys(surfaceEditorFiles).length > 0
               ? surfaceEditorFiles
+              : undefined,
+          surfaceExtensionIds:
+            Object.keys(surfaceExtensionIds).length > 0
+              ? surfaceExtensionIds
               : undefined,
           surfaceTypes:
             Object.keys(surfaceTypes).length > 0 ? surfaceTypes : undefined,
@@ -2020,6 +2076,7 @@ export class SurfaceManager {
       agentView: null,
       telegramView: null,
       editorView: null,
+      extensionView: null,
       container: browserView.container,
       titleEl: browserView.titleEl,
       chipsEl: browserView.chipsEl,
@@ -2048,6 +2105,7 @@ export class SurfaceManager {
       agentView,
       telegramView: null,
       editorView: null,
+      extensionView: null,
       container: agentView.container,
       titleEl: agentView.titleEl,
       chipsEl: agentView.chipsEl,
@@ -2284,6 +2342,7 @@ export class SurfaceManager {
       agentView: null,
       telegramView: null,
       editorView: null,
+      extensionView: null,
       container,
       titleEl: barTitle,
       chipsEl,
@@ -2312,6 +2371,7 @@ export class SurfaceManager {
       agentView: null,
       telegramView: null,
       editorView,
+      extensionView: null,
       container: editorView.container,
       titleEl: editorView.titleEl,
       chipsEl: editorView.chipsEl,
@@ -2337,10 +2397,40 @@ export class SurfaceManager {
       agentView: null,
       telegramView,
       editorView: null,
+      extensionView: null,
       container: telegramView.container,
       titleEl: telegramView.titleEl,
       chipsEl: telegramView.chipsEl,
       title: telegramView.title,
+    };
+  }
+
+  private createExtensionSurfaceView(
+    surfaceId: string,
+    handle: ExtensionSurfaceHandle,
+  ): SurfaceView {
+    const extensionView = this.extension.createExtensionView(surfaceId, handle);
+
+    this.terminalContainer.appendChild(extensionView.container);
+
+    return {
+      id: surfaceId,
+      surfaceType: "extension",
+      term: null,
+      fitAddon: null,
+      searchAddon: null,
+      effects: null,
+      panelManager: null,
+      panelsEl: null,
+      browserView: null,
+      agentView: null,
+      telegramView: null,
+      editorView: null,
+      extensionView,
+      container: extensionView.container,
+      titleEl: extensionView.titleEl,
+      chipsEl: extensionView.chipsEl,
+      title: extensionView.title,
     };
   }
 
@@ -2400,6 +2490,10 @@ export class SurfaceManager {
       } else if (view.surfaceType === "telegram") {
         // Telegram panes are pure DOM — no terminal to fit, no OOPIF to
         // size. The container was already positioned in applyPositions().
+      } else if (view.surfaceType === "extension") {
+        // Extension panes are an iframe that self-sizes to its container via
+        // CSS; the ResizeObserver in extension-pane.ts notifies the frontend.
+        // No xterm fit, no OOPIF sync.
       } else {
         fitSurfaceTerminal(view);
         view.effects?.setFocused(view.id === this.focusedSurfaceId);

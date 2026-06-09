@@ -119,6 +119,22 @@ links.)_
   (e.g. dragging bloom intensity, pane gap, or the overlay timeout). Settings
   apply live and instantly with no Apply button needed.
 
+## Pending — Extension App Platform (NEW surface type)
+
+- **Extension apps (`extension` surface).** A new surface type that hosts a
+  full "extension app" = a Bun backend child process (can `bun install`) + a
+  Vite frontend in an `<iframe>` (HMR while editing, built static when
+  installed) + a typed `@tau-mux/sdk` over the existing socket/Electrobun RPC so
+  the extension drives every τ-mux control surface. Extensions persist under
+  `~/Library/Application Support/hyperterm-canvas/extensions/<id>/` with a
+  `manifest.json` + registry. A `⌘⌥E` "Manage Extensions" overlay + palette
+  commands + `ht extension {list,new,run,stop,remove}` CLI create/edit/install
+  them. Ships two example extensions (Three.js demo, HTTP "Postman" client).
+  Fully trusted (no sandbox). Needs: changelog section; new docs page
+  `extensions/` (en+fr) covering the manifest schema, the SDK surface, the dev
+  loop, and the `ht extension` CLI; api/system.md + cli/system.md version bump;
+  `ht extension` entry under cli/. See `doc/design_extension_platform.md`.
+
 ## Pending — shareBin utility expansion
 
 - **New shareBin visual utilities (v0.3.186).** Add documentation/changelog
