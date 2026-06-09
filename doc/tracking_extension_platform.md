@@ -71,6 +71,8 @@ Legend: ☐ todo · ◐ in progress · ☑ done · ⚠ deviation/issue
 - `205d7a37` feat(extensions): extension-app platform — Bun runtime + Vite
   frontend + SDK (v0.4.0). Phases 0–4, 6 + CLI/palette (Phase 5 partial).
   3100 tests pass, typecheck + emoji-audit clean, web-client bundle builds.
+- `70d17581` feat(extensions): in-app editor — Open/Edit/Remove/New via command
+  palette (v0.4.1). Completes Phase 5. 3100 tests pass, all gates green.
 
 ## Deviations / issues
 - Worktree was branched from `origin/main` (v0.3.182); reset to `aaa-polish` (v0.3.188) so the feature builds on the user's latest work.
