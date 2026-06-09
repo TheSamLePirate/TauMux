@@ -40,10 +40,16 @@ Legend: ☐ todo · ◐ in progress · ☑ done · ⚠ deviation/issue
 - ☑ Ships TS source (Bun + Vite both resolve `.ts`); `exports` map (`.`/`./backend`/`./frontend`/`./protocol`); standalone tsconfig typechecks clean
 - ☑ Distribution into extension node_modules via `file:../../../packages/tau-mux-sdk`
 
-## Phase 5 — Extension editor UX ◐
-- ☑ Command Palette "Extensions: Open <name>" (dynamic, driven by `extensionList`)
+## Phase 5 — Extension editor UX ☑
+- ☑ Command Palette per-extension: **Open** (run), **Edit** (opens its
+  backend src / manifest in the CodeMirror editor surface), **Remove** (confirm
+  → delete) + **New Extension…** (prompt id + template → scaffold). Driven by
+  the enriched `extensionList` (path / hasBackend / templates).
+- ☑ `extensionScaffold` / `extensionRemove` webview→bun messages (mutate +
+  re-push list).
 - ☑ `ht extension {list,templates,open,split,new,install,remove,reload,stop}` CLI + bin/ht help
-- ☐ `⌘⌥E` Manage Extensions overlay (create/install/enable-disable/remove/open-in-editor) — FOLLOW-UP
+- Note: chose palette + existing CodeMirror editor + prompt dialogs over a
+  bespoke ⌘⌥E overlay — leaner, reuses proven primitives, same capability set.
 
 ## Phase 6 — Example extensions ☑
 - ☑ `examples/extensions/three-demo` (Vite + three; backend drives sidebar/notification)
@@ -62,7 +68,9 @@ Legend: ☐ todo · ◐ in progress · ☑ done · ⚠ deviation/issue
 - ☑ `bun run bump:*` before commit
 
 ## Commits
-(record commit ids here as work lands)
+- `205d7a37` feat(extensions): extension-app platform — Bun runtime + Vite
+  frontend + SDK (v0.4.0). Phases 0–4, 6 + CLI/palette (Phase 5 partial).
+  3100 tests pass, typecheck + emoji-audit clean, web-client bundle builds.
 
 ## Deviations / issues
 - Worktree was branched from `origin/main` (v0.3.182); reset to `aaa-polish` (v0.3.188) so the feature builds on the user's latest work.

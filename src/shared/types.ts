@@ -860,6 +860,12 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       extensionFrontendMessage: { surfaceId: string; payload: unknown };
       /** Ask bun for the installed-extension list (drives the palette). */
       requestExtensionList: void;
+      /** Scaffold a new extension from a bundled template, then re-push the
+       *  list. */
+      extensionScaffold: { id: string; name?: string; template: string };
+      /** Uninstall an extension (stops its backends, deletes its dir), then
+       *  re-push the list. */
+      extensionRemove: { id: string };
 
       /** Send a message via the bot. */
       telegramSend: { chatId: string; text: string };
@@ -1080,14 +1086,21 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
        *  resize); the pane relay posts it into the iframe. */
       extensionBackendMessage: { surfaceId: string; payload: unknown };
       /** Installed-extension list (reply to `requestExtensionList`); drives
-       *  the command-palette "Extensions: Open …" entries. */
+       *  the command-palette "Extensions: Open / Edit / Remove …" entries. */
       extensionList: {
         extensions: {
           id: string;
           name: string;
           icon?: string;
           hasBuild: boolean;
+          hasBackend: boolean;
+          /** Absolute extension dir (so the palette can open its source). */
+          path: string;
+          /** Relative backend entry (e.g. "src/index.ts") when present. */
+          backendEntry?: string;
         }[];
+        /** Bundled scaffold-template names (e.g. hello / three-demo). */
+        templates: string[];
       };
 
       // ── Telegram (bun → webview) ──

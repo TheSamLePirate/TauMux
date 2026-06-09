@@ -8,7 +8,9 @@ type Keys =
   | "createExtensionSurface"
   | "splitExtensionSurface"
   | "extensionFrontendMessage"
-  | "requestExtensionList";
+  | "requestExtensionList"
+  | "extensionScaffold"
+  | "extensionRemove";
 
 /** Extension-app surface lifecycle + the frontend⇄host bridge.
  *
@@ -56,14 +58,44 @@ export function registerExtensionWebviewHandlers(
       // `frontend-ready` is a no-op in v1 (no queued-message replay yet).
     },
     requestExtensionList: () => {
-      ctx.rpc.send("extensionList", {
-        extensions: ctx.extensionManager.list().map((d) => ({
-          id: d.manifest.id,
-          name: d.manifest.name,
-          icon: d.manifest.icon,
-          hasBuild: d.hasBuild,
-        })),
-      });
+      pushExtensionList(ctx);
+    },
+    extensionScaffold: (payload) => {
+      try {
+        ctx.extensionManager.scaffold({
+          id: payload.id,
+          name: payload.name,
+          template: payload.template,
+        });
+      } catch (err) {
+        console.error("[ext] scaffold failed:", err);
+      }
+      pushExtensionList(ctx);
+    },
+    extensionRemove: (payload) => {
+      try {
+        ctx.extensionManager.remove(payload.id);
+      } catch (err) {
+        console.error("[ext] remove failed:", err);
+      }
+      pushExtensionList(ctx);
     },
   };
+}
+
+/** Push the current installed-extension list + bundled templates to the
+ *  webview (drives the command-palette entries). */
+function pushExtensionList(ctx: WebviewHandlerContext): void {
+  ctx.rpc.send("extensionList", {
+    extensions: ctx.extensionManager.list().map((d) => ({
+      id: d.manifest.id,
+      name: d.manifest.name,
+      icon: d.manifest.icon,
+      hasBuild: d.hasBuild,
+      hasBackend: !!d.manifest.backend?.entry,
+      path: d.path,
+      backendEntry: d.manifest.backend?.entry,
+    })),
+    templates: ctx.extensionManager.listTemplates(),
+  });
 }

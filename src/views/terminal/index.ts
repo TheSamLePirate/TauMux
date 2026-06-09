@@ -226,6 +226,7 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       },
       extensionList: (payload) => {
         availableExtensions = payload.extensions;
+        extensionTemplates = payload.templates;
         syncPaletteCommands();
       },
       // Agent surface messages are routed via socketAction (proven channel)
@@ -1027,13 +1028,18 @@ function resetFontSize(): void {
 }
 
 /** Installed extensions, pushed by bun via `extensionList`. Drives the
- *  command-palette "Extensions: Open …" entries. */
+ *  command-palette "Extensions: Open / Edit / Remove …" entries. */
 let availableExtensions: {
   id: string;
   name: string;
   icon?: string;
   hasBuild: boolean;
+  hasBackend: boolean;
+  path: string;
+  backendEntry?: string;
 }[] = [];
+/** Bundled scaffold templates (for "Extensions: New …"). */
+let extensionTemplates: string[] = [];
 
 function buildPaletteCommands(): PaletteCommand[] {
   const terminalEffectsEnabled = surfaceManager.areTerminalEffectsEnabled();
@@ -1634,19 +1640,85 @@ function buildPaletteCommands(): PaletteCommand[] {
       shortcut: "\u2318I",
       action: () => toggleFocusedSurfaceInfo(),
     },
-    // Extension apps \u2014 one "Open" entry per installed extension. The list is
-    // pushed by bun (`extensionList`) on startup and palette open.
-    ...availableExtensions.map(
-      (ext): PaletteCommand => ({
-        id: `extension-open-${ext.id}`,
-        category: "Extensions",
-        label: `Open ${ext.icon ? ext.icon + " " : ""}${ext.name}`,
-        description: `Launch the "${ext.name}" extension app in a new pane.`,
-        action: () =>
-          rpc.send("createExtensionSurface", { extensionId: ext.id }),
-      }),
-    ),
+    // Extension apps \u2014 the editor surface. Per installed extension: Open
+    // (run it), Edit (open its source in the CodeMirror editor), Remove. Plus
+    // "New Extension\u2026" to scaffold from a bundled template. The list is pushed
+    // by bun (`extensionList`) on startup and palette open.
+    ...availableExtensions.flatMap((ext): PaletteCommand[] => {
+      const label = `${ext.icon ? ext.icon + " " : ""}${ext.name}`;
+      const editTarget = ext.hasBackend
+        ? `${ext.path}/${ext.backendEntry}`
+        : `${ext.path}/manifest.json`;
+      return [
+        {
+          id: `extension-open-${ext.id}`,
+          category: "Extensions",
+          label: `Open ${label}`,
+          description: `Launch the "${ext.name}" extension app in a new pane.`,
+          action: () =>
+            rpc.send("createExtensionSurface", { extensionId: ext.id }),
+        },
+        {
+          id: `extension-edit-${ext.id}`,
+          category: "Extensions",
+          label: `Edit ${label}`,
+          description: `Open ${ext.hasBackend ? ext.backendEntry : "manifest.json"} in the editor.`,
+          action: () =>
+            rpc.send("splitEditorSurface", {
+              direction: "horizontal",
+              path: editTarget,
+            }),
+        },
+        {
+          id: `extension-remove-${ext.id}`,
+          category: "Extensions",
+          label: `Remove ${label}`,
+          description: `Uninstall "${ext.name}" (deletes its folder).`,
+          action: () => {
+            if (
+              confirm(
+                `Remove the "${ext.name}" extension? This deletes its folder.`,
+              )
+            ) {
+              rpc.send("extensionRemove", { id: ext.id });
+            }
+          },
+        },
+      ];
+    }),
+    {
+      id: "extension-new",
+      category: "Extensions",
+      label: "New Extension\u2026",
+      description: extensionTemplates.length
+        ? `Scaffold from a template (${extensionTemplates.join(", ")}).`
+        : "Scaffold a new extension app from a bundled template.",
+      action: () => void scaffoldNewExtension(),
+    },
   ];
+}
+
+/** Prompt for an id + template, then ask bun to scaffold a new extension. */
+async function scaffoldNewExtension(): Promise<void> {
+  if (extensionTemplates.length === 0) {
+    showToast("No extension templates available", "error");
+    return;
+  }
+  const id = await showPromptDialog({
+    title: "New extension",
+    message: "Extension id (e.g. com.you.my-app):",
+    placeholder: "com.you.my-app",
+  });
+  if (!id) return;
+  const template = await showPromptDialog({
+    title: "New extension",
+    message: `Template \u2014 one of: ${extensionTemplates.join(", ")}`,
+    placeholder: extensionTemplates[0],
+    initialValue: extensionTemplates[0],
+  });
+  if (!template) return;
+  rpc.send("extensionScaffold", { id: id.trim(), template: template.trim() });
+  showToast(`Scaffolding ${id}\u2026`, "success");
 }
 
 function syncPaletteCommands(): void {
