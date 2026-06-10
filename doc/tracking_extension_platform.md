@@ -35,7 +35,13 @@ Legend: ☐ todo · ◐ in progress · ☑ done · ⚠ deviation/issue
 - ☑ webview message handlers (`extensionSurfaceCreated`, `extensionBackendMessage`, `extensionList`) + htEvents listeners (`ht-split-extension`, `ht-extension-frontend-message`)
 - ☑ new htEvents channels registered in `HtEventMap`
 
-## Phase 4 — @tau-mux/sdk ☑
+## Phase 4 — @tau-mux/sdk ☑ (full-surface v0.4.7)
+- ☑ Typed facade expanded from the curated subset to the COMPLETE RPC catalog
+  (17 domains, ~120 methods) — generated from a single wire-name table in
+  `protocol.ts`; identical surface on both transports; `call()` escape hatch
+  for future/unlisted methods. Two-directional coverage guard in
+  `tests/sdk-api-coverage.test.ts` (would have caught the `set_status` bug).
+  Vendored copies in all 3 examples re-synced.
 - ☑ `packages/tau-mux-sdk/` — `protocol.ts` (typed `TauMuxApi` + bridge types), `backend.ts` (persistent unix-socket client + stdin/stdout app channel), `frontend.ts` (postMessage bridge), `index.ts`
 - ☑ Ships TS source (Bun + Vite both resolve `.ts`); `exports` map (`.`/`./backend`/`./frontend`/`./protocol`); standalone tsconfig typechecks clean
 - ☑ Distribution into extension node_modules via `file:../../../packages/tau-mux-sdk`

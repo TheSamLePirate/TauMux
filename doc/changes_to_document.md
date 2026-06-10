@@ -126,6 +126,22 @@ _Extension App Platform folded into website-doc 2026-06-09 (v0.4.0 / v0.4.1):_
 - `website-doc/.../api/extensions.md` (en + fr) — the `extension.*` JSON-RPC methods.
 - `api/system.md` + `cli/system.md` (en + fr) — version 0.4.1 (auto-bumped). The palette uses Open/Edit/Remove/New rather than a ⌘⌥E overlay (deviation from the original note). See `doc/design_extension_platform.md`.
 
+## Pending — SDK full control-surface coverage (v0.4.7)
+
+- **`@tau-mux/sdk` now types the COMPLETE RPC catalog.** The typed facade grew
+  from 6 curated namespaces to all 17 domains (~120 methods): `system`,
+  `workspace`, `surface` (incl. `sendKey`/`readText`/`metadata`/`screenshot`/
+  `openPort`/`killPort`), `sidebar` (incl. progress), `notification`, the full
+  `browser` driver (click/type/eval/snapshot/cookies/console/…), `agent`
+  (incl. `askUser`), `telegram`, `editor`, `extension` (extensions can manage
+  extensions), `plan`, `autoContinue`, `audit`, `pane`, `panel`, `script` —
+  identical from the Bun backend (socket) and the Vite frontend (bridge), plus
+  the `call(method, params)` escape hatch for future methods. Guarded by
+  `tests/sdk-api-coverage.test.ts` (two-directional: no phantom names / no
+  uncovered methods). Update `features/extensions.md` (en + fr) — the
+  "Both halves expose the same namespaces — notification, sidebar, surface,
+  workspace, browser, system" sentence undersells it now.
+
 ## Pending — Nebula flagship extension + SDK fix
 
 - **Nebula extension (`examples/extensions/nebula`).** A flagship example: a 3D
