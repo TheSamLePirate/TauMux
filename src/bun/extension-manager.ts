@@ -19,7 +19,7 @@
  * throws from a callback. See doc/design_extension_platform.md.
  */
 
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { connect } from "node:net";
 import {
   cpSync,
@@ -414,34 +414,38 @@ export class ExtensionManager {
     return handle;
   }
 
-  /** Point the extension's `@tau-mux/sdk` dependency at the absolute SDK path.
-   *  Extensions ship a relative `file:../../../packages/tau-mux-sdk` that only
-   *  resolves inside the repo; once copied into the config dir it breaks and
-   *  `bun install` fails. Rewrite it in place before installing. */
+  /** Make the extension's `@tau-mux/sdk` dependency resolvable before install.
+   *  The bundled examples vendor the SDK (`file:./vendor/tau-mux-sdk`) so it
+   *  travels with the extension and always resolves — that path is left alone.
+   *  A hand-written extension that still points at the in-repo SDK via a
+   *  relative path (which breaks once copied out of the repo) is rewired to the
+   *  absolute `sdkDir`, when known. */
   private repairSdkDependency(dir: string): void {
-    const sdkDir = this.deps.sdkDir;
-    if (!sdkDir || !existsSync(sdkDir)) return;
     const pkgPath = join(dir, "package.json");
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as {
         dependencies?: Record<string, string>;
         devDependencies?: Record<string, string>;
       };
+      const sdkDir = this.deps.sdkDir;
       let changed = false;
       for (const field of ["dependencies", "devDependencies"] as const) {
         const deps = pkg[field];
         const cur = deps?.["@tau-mux/sdk"];
-        if (
-          deps &&
-          typeof cur === "string" &&
-          /^(file:|link:|workspace:)/.test(cur) &&
-          cur !== `file:${sdkDir}`
-        ) {
+        if (!deps || typeof cur !== "string") continue;
+        const m = /^(?:file:|link:)(.+)$/.exec(cur);
+        if (!m) continue; // npm/version spec — leave it
+        const target = m[1];
+        const abs = isAbsolute(target) ? target : join(dir, target);
+        // Already resolvable (vendored, or a valid absolute path)? Leave it.
+        if (existsSync(join(abs, "package.json"))) continue;
+        // Broken relative path — rescue it with the absolute in-repo SDK.
+        if (sdkDir && existsSync(sdkDir)) {
           deps["@tau-mux/sdk"] = `file:${sdkDir}`;
           changed = true;
         }
       }
-      if (changed) {
+      if (changed && sdkDir) {
         writeFileAtomic(pkgPath, JSON.stringify(pkg, null, 2));
         this.log(`rewired @tau-mux/sdk → file:${sdkDir} for install`);
       }
@@ -556,6 +560,27 @@ export class ExtensionManager {
     });
   }
 
+  /** Resolve a locally-installed CLI's runnable JS entry inside an extension's
+   *  node_modules. Prefers the package's own `bin` entry (robust against an
+   *  unlinked `.bin`), then the `.bin/<bin>` symlink. Returns null if absent. */
+  private resolveLocalBin(extDir: string, bin: string): string | null {
+    const nm = join(extDir, "node_modules");
+    try {
+      const pkg = JSON.parse(
+        readFileSync(join(nm, bin, "package.json"), "utf-8"),
+      ) as { bin?: string | Record<string, string> };
+      const rel = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.[bin];
+      if (rel) {
+        const entry = join(nm, bin, rel);
+        if (existsSync(entry)) return entry;
+      }
+    } catch {
+      /* not installed / no bin field */
+    }
+    const dotBin = join(nm, ".bin", bin);
+    return existsSync(dotBin) ? dotBin : null;
+  }
+
   private spawnDevServer(
     inst: ExtensionBackendInstance,
     desc: ExtensionDescriptor,
@@ -564,11 +589,13 @@ export class ExtensionManager {
     if (!devCmd) return;
     const port = desc.manifest.frontend?.devPort ?? 5173;
     const [bin, ...rest] = devCmd.split(" ");
-    // Prefer the locally-installed binary (node_modules/.bin/<bin>) run via
-    // bun — reliable and offline. Fall back to `bun x <bin>` only if it isn't
-    // installed locally (which would fetch it).
-    const localBin = join(desc.path, "node_modules", ".bin", bin);
-    const argv = existsSync(localBin)
+    // Run the locally-installed binary via bun. We prefer the package's bin
+    // ENTRY (`node_modules/<bin>/<bin-from-package.json>`) over the
+    // `node_modules/.bin/<bin>` symlink because bun's first install with a
+    // `file:` dep can leave `.bin` unlinked even though the package itself is
+    // present. `bun x <bin>` is the last resort (it may fetch from the network).
+    const localBin = this.resolveLocalBin(desc.path, bin);
+    const argv = localBin
       ? [
           resolveBunBinary(),
           localBin,

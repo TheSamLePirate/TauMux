@@ -2,7 +2,7 @@ import type { Handler, HandlerDeps } from "./types";
 import { computeNormalizedRects } from "./shared";
 import { RPC_PROTOCOL } from "../../shared/brand";
 
-const VERSION = "0.4.5";
+const VERSION = "0.4.6";
 const START_TIME_MS = Date.now();
 
 /** system.* handlers: diagnostic + discovery RPCs.

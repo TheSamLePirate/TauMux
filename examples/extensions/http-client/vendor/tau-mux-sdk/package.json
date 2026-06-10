@@ -1,0 +1,15 @@
+{
+  "name": "@tau-mux/sdk",
+  "version": "0.1.0",
+  "description": "Typed access to every τ-mux control surface from an extension app.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./backend": "./src/backend.ts",
+    "./frontend": "./src/frontend.ts",
+    "./protocol": "./src/protocol.ts"
+  },
+  "types": "./src/index.ts",
+  "files": ["src"],
+  "license": "MIT"
+}

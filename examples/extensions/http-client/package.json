@@ -2,7 +2,15 @@
   "name": "taumux-ext-http-client",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "vite", "build": "vite build" },
-  "dependencies": { "@tau-mux/sdk": "file:../../../packages/tau-mux-sdk" },
-  "devDependencies": { "vite": "^5.4.0", "typescript": "^5.6.0" }
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@tau-mux/sdk": "file:./vendor/tau-mux-sdk"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "typescript": "^5.6.0"
+  }
 }
