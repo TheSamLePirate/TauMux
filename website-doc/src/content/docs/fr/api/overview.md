@@ -5,14 +5,15 @@ sidebar:
   order: 1
 ---
 
-τ-mux expose une API JSON-RPC sur `/tmp/hyperterm.sock` (substituable via `HT_SOCKET_PATH`). Le même ensemble de gestionnaires est disponible via Electrobun RPC (utilisé par le webview) et le [miroir web](/fr/features/web-mirror/) WebSocket.
+τ-mux expose une API JSON-RPC via un socket Unix dans le répertoire de config de l'app — macOS : `~/Library/Application Support/hyperterm-canvas/hyperterm.sock` (substituable via `HT_SOCKET_PATH`). Le même ensemble de gestionnaires est disponible via Electrobun RPC (utilisé par le webview) et le [miroir web](/fr/features/web-mirror/) WebSocket.
 
 ## Connexion
 
 Le socket est un simple socket de domaine Unix. Parlez en JSON délimité par des sauts de ligne.
 
 ```bash
-echo '{"id":"1","method":"system.ping","params":{}}' | nc -U /tmp/hyperterm.sock
+SOCK="$HOME/Library/Application Support/hyperterm-canvas/hyperterm.sock"
+echo '{"id":"1","method":"system.ping","params":{}}' | nc -U "$SOCK"
 # {"id":"1","result":"PONG"}
 ```
 
@@ -20,8 +21,13 @@ Ou en code :
 
 ```ts
 import { connect } from "node:net";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
-const s = connect("/tmp/hyperterm.sock");
+const sock =
+  process.env.HT_SOCKET_PATH ??
+  join(homedir(), "Library/Application Support/hyperterm-canvas/hyperterm.sock");
+const s = connect(sock);
 s.write(JSON.stringify({ id: "1", method: "system.ping", params: {} }) + "\n");
 s.on("data", (buf) => console.log(buf.toString()));
 ```

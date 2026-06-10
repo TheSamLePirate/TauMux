@@ -60,7 +60,7 @@ The backend (`src/index.ts`) is a plain Bun child process in both modes — **ne
 
 ## The `@tau-mux/sdk`
 
-The SDK gives a single typed surface from both halves of an extension. It ships as TypeScript source under `packages/tau-mux-sdk` and is wired into each extension's `node_modules` (a `file:` dependency in dev).
+The SDK gives a single typed surface from both halves of an extension. It ships as TypeScript source under `packages/tau-mux-sdk`; the bundled examples **vendor a copy** (`vendor/tau-mux-sdk`, declared as `"@tau-mux/sdk": "file:./vendor/tau-mux-sdk"`) so it travels with the extension and `bun install` resolves it offline — in dev, installed, and packaged builds alike.
 
 **Backend** (`src/index.ts`) — talks to τ-mux over the unix socket; exchanges app-level messages with the frontend over stdin/stdout:
 
@@ -90,7 +90,25 @@ sdk.onBackendMessage((data) => console.log(data));
 sdk.onResize(({ width, height }) => relayout(width, height));
 ```
 
-Both halves expose the same namespaces — `notification`, `sidebar`, `surface`, `workspace`, `browser`, `system` — plus a raw `call(method, params)` escape hatch that can reach **any** method in the [JSON-RPC API](/api/overview/). See the [`extension.*` API](/api/extensions/) for the host-side surface.
+Both halves expose the **complete control surface** — every JSON-RPC method the `ht` CLI can call, typed, across all 17 domains (~120 methods):
+
+| Namespace | Highlights |
+|---|---|
+| `system` | `ping`, `version`, `identify`, `capabilities`, `health`, `tree`, `shutdown` |
+| `workspace` | list / current / create / select / next / previous / rename / close |
+| `surface` | list, split, close, focus, rename, `sendText`, `sendKey`, `readText` (terminal contents), `metadata` (process tree, **listening ports**, git, package.json), `screenshot`, `openPort` / `killPort` / `killPid`, `waitReady` |
+| `sidebar` | `setStatus` (chips + live charts via key suffixes like `_sparkline`), `clearStatus`, `setProgress` / `clearProgress`, `log` |
+| `notification` | create / list / dismiss / clear |
+| `browser` | the full driver: open, navigate, back/forward/reload, `click` / `type` / `fill` / `press` / `hover` / `select` / `scroll`, `eval` / `addScript` / `addStyle`, `snapshot` / `get` / `is` / `wait`, console + errors, history, the cookie store |
+| `agent` | list / create / createSplit / close pi-agent panes, plus `askUser` modals (`askPending` / `askAnswer` / `askCancel`) |
+| `telegram` | status / chats / history / send / restart |
+| `editor` | open / split / list / save / reload / close CodeMirror panes |
+| `extension` | extensions can manage extensions — list / templates / open / new / install / remove / stop |
+| `plan` | set / update / complete / list / clear the plan panel |
+| `autoContinue` | status / set / pause / resume / fire / audit |
+| `audit`, `pane`, `panel`, `script` | self-audits, pane + panel listings, `script.run` |
+
+Plus the raw `call(method, params)` escape hatch for any method added after this SDK shipped. A two-directional coverage test in the repo keeps the SDK's wire names in lockstep with the host's RPC registry. See the [`extension.*` API](/api/extensions/) for the host-side management surface.
 
 ## Creating, editing, and removing
 
@@ -107,13 +125,14 @@ An extension pane is saved with its workspace layout (by extension id). On resta
 
 ## Bundled examples
 
-Three example extensions ship in `examples/extensions/` (they double as scaffold templates):
+Four example extensions ship in `examples/extensions/` (they double as scaffold templates):
 
 | Example | Demonstrates |
 |---|---|
 | `hello` | Zero-dependency static app. No `bun install`, no Vite — served straight from a committed `static/`. The fastest way to see the frontend ⇄ host bridge. |
 | `three-demo` | A Vite + [three.js](https://threejs.org) WebGL scene with HMR; the backend drives the sidebar + notifications. Proves `bun install` of a real dependency. |
 | `http-client` | A Postman-style HTTP request builder. The frontend builds the request; the **backend** runs `fetch` (no CORS) and persists history to `state.json`. |
+| `nebula` | The flagship: a **3D HTTP API explorer** — a full Postman-style client rendered as a living three.js scene with a glassmorphism HUD. It **discovers the dev servers running in your terminals** (via `surface.metadata` listening ports) as one-click orbiting endpoints, animates requests/responses through the scene, and drives τ-mux: open-in-browser, send-as-`curl` into a new terminal split, a live latency sparkline in the sidebar, notifications on failures. |
 
 ## Trust model
 

@@ -7,6 +7,15 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.4.7 — Nebula, the full SDK surface & extension-platform fixes
+
+The extension platform's first hardening wave, plus a flagship example.
+
+- **Nebula — a 3D HTTP API explorer (0.4.4).** A showcase extension: a full Postman-style HTTP client rendered as a living three.js scene with a glassmorphism HUD. It **discovers the dev servers running in your terminals** (via the process-metadata listening ports) and turns each into a one-click orbiting endpoint, fires requests through the scene (status-colored response rings, latency-mapped animation), and drives τ-mux from your API workflow — open a URL in a browser pane, send the request as `curl` into a new terminal split, live latency sparkline in the sidebar, notifications on failures. `ht extension install …/examples/extensions/nebula`. See [Extension apps](/features/extensions/#bundled-examples).
+- **`@tau-mux/sdk` now types the complete control surface (0.4.7).** The typed facade grew from 6 curated namespaces to **all 17 RPC domains (~120 methods)** — including the full browser driver (click / type / eval / snapshot / cookies / console), agents (incl. `askUser` modals), telegram, editor panes, plans, auto-continue, audits, screenshots, and the extension platform itself — identical from the Bun backend and the Vite frontend. A two-directional coverage test keeps the SDK and the host registry in lockstep. (Also fixed: `sidebar.setStatus` previously targeted a non-existent wire name — it now correctly calls `sidebar.set_status`.)
+- **Extensions install anywhere (0.4.6).** The SDK is vendored into each bundled example (`file:./vendor/tau-mux-sdk`), so `bun install` resolves offline in dev, installed, and packaged builds — previously a repo-relative path broke once the extension was copied into the config dir, leaving the pane blank.
+- **Extension pane fixes (0.4.2 – 0.4.5).** The pane close button now stops the extension's backend + dev server (no process leaks); the status pill flips to "running" when the iframe actually loads; dev mode waits for the Vite server to listen before pointing the iframe at it; and a webview-init regression that disabled the command palette + title-bar double-click (a TDZ throw during module init) was fixed with a structural regression test.
+
 ## 0.4.0 — Extension apps
 
 A new surface type: **extension apps**. An extension is a **Bun backend** (a real child process that can `bun install` its own deps) + a **Vite frontend** rendered in an `<iframe>` (hot-module reload while editing, built static once installed) + a typed **`@tau-mux/sdk`** that drives every τ-mux control surface — create panes, open browser surfaces, push notifications, set sidebar status, and more. Extensions are saved on disk, restored with your layout, and created / edited / removed from inside the app.
@@ -18,6 +27,30 @@ A new surface type: **extension apps**. An extension is a **Bun backend** (a rea
 - **In-app editor (0.4.1).** The command palette (`⌘⇧P`, "Extensions") now offers, per installed extension, **Open**, **Edit** (opens its backend source — or `manifest.json` — in the [editor surface](/features/file-explorer-and-editor/), the live edit → HMR loop), and **Remove**, plus **New Extension…** to scaffold from a template.
 
 Extensions are **fully trusted** — there is no sandbox; manifest `permissions` are advisory. Install only what you trust, exactly as you would a shell script.
+
+## 0.3.188 — UI polish: zero-flicker rendering, smoother resize & live settings
+
+A focused quality pass on rendering churn, long-session memory, service resilience, and the Settings panel — plus ten new shareBin utilities.
+
+### Rendering & flicker
+
+- **Status-key charts redesigned + flicker-free (0.3.184 – 0.3.185).** The `ht set-status` chart renderers got a visual overhaul (smooth curved line/area graphs with gradient fills, baseline grid + latest-value headline, value-centered gauges, rounded bars/heatmap cells), and status grids now reconcile the DOM **minimally in place** — a 1 Hz `set-status` tick repaints only the entries whose value actually changed, on native and the web mirror. `shareBin/demo_status_keys --live` is a good showcase.
+- **Zero-flicker sidebar workspace cards (0.3.187).** CPU bar, % / RAM / process chips, and the sparkline update in place on each metadata tick; the CPU-bar fill keeps its node identity so its transition animates instead of snapping. Cards now also refresh on live CPU/MEM movement, while a truly idle workspace still costs nothing.
+- **No notification-overlay strobe (0.3.187).** The on-terminal notification stack reconciles in place, so existing cards keep their slide-in state and auto-dismiss countdown when new ones arrive.
+- **Sideband panels never strand transparent (0.3.187).** Panels created while the window was backgrounded no longer depend on a rAF WKWebView may suspend — resting opacity is set synchronously, with a self-healing CSS entrance fade.
+
+### Feel & resilience
+
+- **Smooth sidebar resize (0.3.187).** Dragging the sidebar divider only repositions panes during the drag; the authoritative terminal refit runs once on release — no more per-frame reflow jank.
+- **Terminal no longer jumps on resize (0.3.187).** Refits (sidebar/pane resize, sideband-panel triggers) preserve your scrollback position; alt-screen TUIs (vim, htop) are untouched.
+- **Lower idle CPU + memory (0.3.187).** rAF-coalesced web-mirror status bar, in-place sidebar log/stat strips, metadata polling backs off when the window loses focus, and several long-session leaks were plugged (web-mirror per-pane observers/timers, browser-pane retry timer, auto-continue per-surface state, dead-workspace status in the web store, the ask-user title cache).
+- **More resilient services (0.3.187).** A crash inside a Telegram handler can no longer demote the long-poll loop; a failed agent spawn surfaces an `agent_exit` banner instead of an inert pane; the PTY stdout pipeline is guarded against a misbehaving output sink.
+- **Live, smooth Settings (0.3.188).** Dragging a slider no longer stalls per step — value-based change detection, rAF-coalesced apply, debounced persistence, and `applySettings` skips per-pane refit/layout work when the changed fields don't need it. Settings apply instantly, no Apply button.
+
+### CLI & shareBin
+
+- **`ht` works from any shell (0.3.187).** The CLI's default socket path is now the app's real config-dir socket (`~/Library/Application Support/hyperterm-canvas/hyperterm.sock`) instead of the legacy `/tmp/hyperterm.sock` — `ht` connects from terminals the app didn't spawn, no `HT_SOCKET_PATH` export needed (it still overrides; `ht doctor` diagnoses drift).
+- **Ten new shareBin utilities (0.3.186).** `show_logs` (live log viewer), `show_csv_profile` (CSV/TSV profiling), `show_http` (HTTP response inspector), `show_mermaid` (Mermaid diagrams — first version renders via a CDN bundle), `show_env` (environment diagnostics), `show_sqlite` (read-only SQLite browser), `show_ports` (live listening-port dashboard), `show_proc` (live process tree), `show_image_diff` (image comparison), `show_openapi` (OpenAPI/Swagger explorer). See [shareBin](/features/sharebin/).
 
 ## 0.3.183 — Workspace screenshots
 

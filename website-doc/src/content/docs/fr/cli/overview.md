@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-`ht` est le CLI de τ-mux. Il parle à une instance τ-mux en cours d'exécution via un socket Unix (`/tmp/hyperterm.sock`) en utilisant JSON-RPC.
+`ht` est le CLI de τ-mux. Il parle à une instance τ-mux en cours d'exécution via un socket Unix en utilisant JSON-RPC. Depuis 0.3.187, le socket par défaut vit dans le répertoire de config de l'app (macOS : `~/Library/Application Support/hyperterm-canvas/hyperterm.sock`), donc `ht` fonctionne depuis **n'importe quel** shell — pas seulement les panneaux lancés par τ-mux. `HT_SOCKET_PATH` reste prioritaire ; `ht doctor` diagnostique les divergences.
 
 ## Installation
 
@@ -58,7 +58,7 @@ Sans `--json`, la sortie est du texte lisible par un humain — des tableaux pou
 
 | Variable | Rôle |
 |----------|---------|
-| `HT_SOCKET_PATH` | Remplace `/tmp/hyperterm.sock` |
+| `HT_SOCKET_PATH` | Remplace le chemin de socket par défaut (`<config dir>/hyperterm.sock`) |
 | `HT_SURFACE` | Auto-défini par shell créé (CLI par défaut pour `--surface` ; le serveur résout l'espace de travail propriétaire à partir de celui-ci pour les commandes scopées par espace de travail) |
 | `HT_WORKSPACE_ID` | Remplacement optionnel pour `--workspace`. **Pas** auto-défini — exportez-le manuellement si vous voulez qu'un shell hors panneau utilise par défaut un espace de travail spécifique. |
 | `HYPERTERM_WEB_PORT` | Remplace `webMirrorPort` et force le démarrage du miroir |

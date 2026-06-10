@@ -56,7 +56,7 @@ ht open                       # ouvre le port en écoute unique
 ht kill 3000                  # SIGTERM le pid lié à :3000
 ```
 
-Le CLI communique avec τ-mux via `/tmp/hyperterm.sock`. Voir [Aperçu du CLI](/fr/cli/overview/).
+Le CLI communique avec τ-mux via le socket Unix du répertoire de config de l'app (`~/Library/Application Support/hyperterm-canvas/hyperterm.sock` sur macOS) — il fonctionne depuis n'importe quel shell. Voir [Aperçu du CLI](/fr/cli/overview/).
 
 ## 4. Essayer un panneau sideband
 

@@ -26,6 +26,16 @@ Each script uses the [sideband protocol](/sideband/overview/) (fd 3/4/5) to rend
 | `show_qr <text>` | QR code SVG. `--ec`, `--scale`, `--margin`, `--dark`/`--light`. |
 | `show_sysmon` | Full-pane system monitor — CPU arc, per-core bars, RAM, top procs, sparkline. |
 | `show_webcam` | MJPEG webcam stream via ffmpeg + AVFoundation (macOS) / V4L2 (Linux). |
+| `show_logs [file]` | Live log viewer — level colors, counts, search, bounded buffering. Reads a file once or streams stdin live. *(0.3.186)* |
+| `show_csv_profile <csv\|tsv>` | Data profiling — inferred column types, nulls, distinct counts, top values, numeric summaries, histograms, sample rows. *(0.3.186)* |
+| `show_http` | HTTP response inspector — from `curl -i` output, a saved file, stdin, or a direct `--url` fetch. Status, headers, redirects, JSON/HTML/text bodies. *(0.3.186)* |
+| `show_mermaid [file.mmd]` | Mermaid diagram renderer (file or stdin). First version loads Mermaid from a CDN — needs network access. *(0.3.186)* |
+| `show_env` | Environment + project diagnostics dashboard, with conservative secret redaction. *(0.3.186)* |
+| `show_sqlite <db>` | Read-only SQLite browser — tables, schemas, row counts, previews, optional read-only query. *(0.3.186)* |
+| `show_ports` | Live dashboard of listening TCP ports and their owning processes. *(0.3.186)* |
+| `show_proc` | Live process tree / resource inspector (`ps`-based). *(0.3.186)* |
+| `show_image_diff <a> <b>` | Image comparison for screenshots/design artifacts — split, onion-skin, and diff-heatmap modes. *(0.3.186)* |
+| `show_openapi <spec>` | Interactive read-only OpenAPI/Swagger explorer (JSON or YAML). *(0.3.186)* |
 | `demo_status_keys` | Exercise every renderer in the smart status-key DSL via `ht set-status`. |
 
 Most accept `<path>` or stdin (`-` is implicit when nothing is on argv), so they compose with shell pipes:

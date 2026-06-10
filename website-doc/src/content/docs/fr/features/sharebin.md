@@ -26,6 +26,16 @@ Chaque script utilise le [protocole sideband](/fr/sideband/overview/) (fd 3/4/5)
 | `show_qr <text>` | SVG de QR code. `--ec`, `--scale`, `--margin`, `--dark`/`--light`. |
 | `show_sysmon` | Moniteur système plein-volet — arc CPU, barres par cœur, RAM, top procs, sparkline. |
 | `show_webcam` | Flux MJPEG webcam via ffmpeg + AVFoundation (macOS) / V4L2 (Linux). |
+| `show_logs [file]` | Visionneuse de logs en direct — couleurs par niveau, compteurs, recherche, tampon borné. Lit un fichier en une passe ou streame stdin en direct. *(0.3.186)* |
+| `show_csv_profile <csv\|tsv>` | Profilage de données — types de colonnes inférés, nulls, comptes de valeurs distinctes, valeurs les plus fréquentes, résumés numériques, histogrammes, lignes d'échantillon. *(0.3.186)* |
+| `show_http` | Inspecteur de réponses HTTP — depuis une sortie `curl -i`, un fichier sauvegardé, stdin, ou un fetch direct via `--url`. Statut, en-têtes, redirections, corps JSON/HTML/texte. *(0.3.186)* |
+| `show_mermaid [file.mmd]` | Rendu de diagrammes Mermaid (fichier ou stdin). La première version charge Mermaid depuis un CDN — nécessite un accès réseau. *(0.3.186)* |
+| `show_env` | Tableau de bord de diagnostics environnement + projet, avec caviardage prudent des secrets. *(0.3.186)* |
+| `show_sqlite <db>` | Navigateur SQLite en lecture seule — tables, schémas, comptes de lignes, aperçus, requête optionnelle en lecture seule. *(0.3.186)* |
+| `show_ports` | Tableau de bord en direct des ports TCP en écoute et de leurs processus propriétaires. *(0.3.186)* |
+| `show_proc` | Arbre de processus / inspecteur de ressources en direct (basé sur `ps`). *(0.3.186)* |
+| `show_image_diff <a> <b>` | Comparaison d'images pour captures d'écran/artefacts de design — modes côte-à-côte, pelure d'oignon et heatmap de diff. *(0.3.186)* |
+| `show_openapi <spec>` | Explorateur OpenAPI/Swagger interactif en lecture seule (JSON ou YAML). *(0.3.186)* |
 | `demo_status_keys` | Exerce tous les rendus du DSL de status-keys via `ht set-status`. |
 
 La plupart acceptent `<path>` ou stdin (`-` est implicite quand argv est vide), donc ils se composent avec les pipes shell :

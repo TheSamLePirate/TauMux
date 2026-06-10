@@ -18,7 +18,7 @@ sidebar:
 │                         │                                                            │
 │                         │ stdout / stdin / fd3 / fd4 / fd5                           │
 │                         ▼                                                            │
-│  SidebandParser / EventWriter      SocketServer (/tmp/hyperterm.sock — JSON-RPC)     │
+│  SidebandParser / EventWriter      SocketServer (<config>/hyperterm.sock — JSON-RPC) │
 │                         │                     ▲                                       │
 │                         │                     │                                       │
 │                         ▼                     │                                       │
@@ -63,7 +63,7 @@ Elles façonnent chaque décision architecturale du projet.
 | Surface | Utilisée par | Transport |
 |---|---|---|
 | Electrobun RPC | La webview Electrobun | IPC via le runtime Electrobun |
-| Socket Unix | Le CLI `ht`, scripts, agents | `/tmp/hyperterm.sock`, JSON délimité par retour à la ligne |
+| Socket Unix | Le CLI `ht`, scripts, agents | `<config dir>/hyperterm.sock` (surcharge : `HT_SOCKET_PATH`), JSON délimité par retour à la ligne |
 | WebSocket | Le client miroir web | Trames encapsulées par session via WS |
 
 Les trois partagent les mêmes implémentations de gestionnaires — ajouter une méthode RPC l'expose automatiquement sur chaque transport. Domaines :

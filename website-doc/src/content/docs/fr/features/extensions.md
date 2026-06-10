@@ -60,7 +60,7 @@ Le backend (`src/index.ts`) est un simple processus enfant Bun dans les deux mod
 
 ## Le `@tau-mux/sdk`
 
-Le SDK offre une seule surface typée depuis les deux moitiés d'une extension. Il est livré en tant que source TypeScript sous `packages/tau-mux-sdk` et est câblé dans le `node_modules` de chaque extension (une dépendance `file:` en dev).
+Le SDK offre une seule surface typée depuis les deux moitiés d'une extension. Il est livré en tant que source TypeScript sous `packages/tau-mux-sdk` ; les exemples fournis en **vendorent une copie** (`vendor/tau-mux-sdk`, déclarée `"@tau-mux/sdk": "file:./vendor/tau-mux-sdk"`) pour qu'il voyage avec l'extension et que `bun install` le résolve hors ligne — dans les builds dev, installées et packagées.
 
 **Backend** (`src/index.ts`) — dialogue avec τ-mux via la socket unix ; échange des messages applicatifs avec le frontend via stdin/stdout :
 
@@ -90,7 +90,25 @@ sdk.onBackendMessage((data) => console.log(data));
 sdk.onResize(({ width, height }) => relayout(width, height));
 ```
 
-Les deux moitiés exposent les mêmes espaces de noms — `notification`, `sidebar`, `surface`, `workspace`, `browser`, `system` — plus une trappe de sortie brute `call(method, params)` qui peut atteindre **n'importe quelle** méthode de l'[API JSON-RPC](/fr/api/overview/). Voir l'[API `extension.*`](/fr/api/extensions/) pour la surface côté hôte.
+Les deux moitiés exposent la **surface de contrôle complète** — chaque méthode JSON-RPC que la CLI `ht` peut appeler, typée, sur l'ensemble des 17 domaines (~120 méthodes) :
+
+| Espace de noms | Points forts |
+|---|---|
+| `system` | `ping`, `version`, `identify`, `capabilities`, `health`, `tree`, `shutdown` |
+| `workspace` | list / current / create / select / next / previous / rename / close |
+| `surface` | list, split, close, focus, rename, `sendText`, `sendKey`, `readText` (contenu du terminal), `metadata` (arbre de processus, **ports en écoute**, git, package.json), `screenshot`, `openPort` / `killPort` / `killPid`, `waitReady` |
+| `sidebar` | `setStatus` (puces + graphiques en direct via des suffixes de clé comme `_sparkline`), `clearStatus`, `setProgress` / `clearProgress`, `log` |
+| `notification` | create / list / dismiss / clear |
+| `browser` | le pilote complet : open, navigate, back/forward/reload, `click` / `type` / `fill` / `press` / `hover` / `select` / `scroll`, `eval` / `addScript` / `addStyle`, `snapshot` / `get` / `is` / `wait`, console + erreurs, historique, le magasin de cookies |
+| `agent` | list / create / createSplit / close des panneaux pi-agent, plus les modales `askUser` (`askPending` / `askAnswer` / `askCancel`) |
+| `telegram` | status / chats / history / send / restart |
+| `editor` | open / split / list / save / reload / close des panneaux CodeMirror |
+| `extension` | les extensions peuvent gérer des extensions — list / templates / open / new / install / remove / stop |
+| `plan` | set / update / complete / list / clear du panneau de plan |
+| `autoContinue` | status / set / pause / resume / fire / audit |
+| `audit`, `pane`, `panel`, `script` | auto-audits, listes des panneaux (pane) et des panels, `script.run` |
+
+Plus la trappe de sortie brute `call(method, params)` pour toute méthode ajoutée après la sortie de ce SDK. Un test de couverture bidirectionnel dans le dépôt maintient les noms de méthodes du SDK en parfaite synchronisation avec le registre RPC de l'hôte. Voir l'[API `extension.*`](/fr/api/extensions/) pour la surface de gestion côté hôte.
 
 ## Créer, éditer et supprimer
 
@@ -107,13 +125,14 @@ Un panneau d'extension est sauvegardé avec la disposition de son espace de trav
 
 ## Exemples embarqués
 
-Trois extensions d'exemple sont livrées dans `examples/extensions/` (elles servent aussi de templates d'échafaudage) :
+Quatre extensions d'exemple sont livrées dans `examples/extensions/` (elles servent aussi de templates d'échafaudage) :
 
 | Exemple | Démontre |
 |---|---|
 | `hello` | App statique sans dépendance. Pas de `bun install`, pas de Vite — servie directement depuis un `static/` commité. La façon la plus rapide de voir le pont frontend ⇄ hôte. |
 | `three-demo` | Une scène WebGL Vite + [three.js](https://threejs.org) avec HMR ; le backend pilote la barre latérale + les notifications. Prouve le `bun install` d'une vraie dépendance. |
 | `http-client` | Un constructeur de requêtes HTTP à la Postman. Le frontend construit la requête ; le **backend** exécute `fetch` (pas de CORS) et persiste l'historique dans `state.json`. |
+| `nebula` | Le fleuron : un **explorateur d'API HTTP en 3D** — un client complet à la Postman rendu comme une scène three.js vivante avec un HUD en glassmorphisme. Il **découvre les serveurs de dev qui tournent dans vos terminaux** (via les ports en écoute de `surface.metadata`) sous forme d'endpoints orbitaux cliquables, anime les requêtes/réponses à travers la scène, et pilote τ-mux : ouverture dans le navigateur, envoi en `curl` dans un nouveau split de terminal, sparkline de latence en direct dans la barre latérale, notifications en cas d'échec. |
 
 ## Modèle de confiance
 

@@ -32,7 +32,7 @@ To use `ht` against a τ-mux instance on a Mac that doesn't have Bun installed, 
 bun run build:cli            # produces ./build/ht-cli
 ```
 
-Copy `./build/ht-cli` anywhere on the target machine's `PATH` (rename it to `ht` if you prefer) and it will talk to the running τ-mux over the Unix socket at `/tmp/hyperterm.sock`.
+Copy `./build/ht-cli` anywhere on the target machine's `PATH` (rename it to `ht` if you prefer) and it will talk to the running τ-mux over the Unix socket in the app's config dir (macOS: `~/Library/Application Support/hyperterm-canvas/hyperterm.sock`; override with `HT_SOCKET_PATH`).
 
 ## Verify
 

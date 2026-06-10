@@ -7,6 +7,15 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.4.7 — Nebula, la surface SDK complète & correctifs de la plateforme d'extensions
+
+La première vague de durcissement de la plateforme d'extensions, plus un exemple vitrine.
+
+- **Nebula — un explorateur d'API HTTP en 3D (0.4.4).** Une extension vitrine : un client HTTP complet à la Postman rendu comme une scène three.js vivante avec un HUD en glassmorphisme. Elle **découvre les serveurs de dev qui tournent dans vos terminaux** (via les ports en écoute des métadonnées de processus) et transforme chacun en endpoint orbital cliquable, fait transiter les requêtes à travers la scène (anneaux de réponse colorés selon le statut, animation calée sur la latence), et pilote τ-mux depuis votre flux de travail API — ouvrir une URL dans un panneau navigateur, envoyer la requête en `curl` dans un nouveau split de terminal, sparkline de latence en direct dans la barre latérale, notifications en cas d'échec. `ht extension install …/examples/extensions/nebula`. Voir [Applications d'extension](/fr/features/extensions/#exemples-embarqués).
+- **`@tau-mux/sdk` type désormais la surface de contrôle complète (0.4.7).** La façade typée est passée de 6 espaces de noms triés sur le volet à **l'ensemble des 17 domaines RPC (~120 méthodes)** — y compris le pilote navigateur complet (click / type / eval / snapshot / cookies / console), les agents (dont les modales `askUser`), telegram, les panneaux éditeur, les plans, l'auto-continue, les audits, les captures d'écran et la plateforme d'extensions elle-même — à l'identique depuis le backend Bun et le frontend Vite. Un test de couverture bidirectionnel maintient le SDK et le registre de l'hôte en parfaite synchronisation. (Corrigé au passage : `sidebar.setStatus` visait jusque-là un nom inexistant sur le fil — il appelle désormais correctement `sidebar.set_status`.)
+- **Les extensions s'installent n'importe où (0.4.6).** Le SDK est vendoré dans chaque exemple fourni (`file:./vendor/tau-mux-sdk`), donc `bun install` se résout hors ligne dans les builds dev, installées et packagées — auparavant, un chemin relatif au dépôt se cassait dès que l'extension était copiée dans le répertoire de config, laissant le panneau vide.
+- **Correctifs du panneau d'extension (0.4.2 – 0.4.5).** Le bouton de fermeture du panneau arrête désormais le backend + le serveur de dev de l'extension (plus de fuite de processus) ; la pastille de statut passe à « running » quand l'iframe se charge réellement ; le mode dev attend que le serveur Vite écoute avant d'y pointer l'iframe ; et une régression à l'initialisation de la webview qui désactivait la palette de commandes + le double-clic sur la barre de titre (un throw TDZ pendant l'init du module) a été corrigée, avec un test de régression structurel.
+
 ## 0.4.0 — Applications d'extension
 
 Un nouveau type de surface : les **applications d'extension**. Une extension est un **backend Bun** (un véritable processus enfant qui peut faire `bun install` de ses propres dépendances) + un **frontend Vite** rendu dans une `<iframe>` (rechargement à chaud des modules pendant l'édition, statique compilé une fois installé) + un **`@tau-mux/sdk`** typé qui pilote chaque surface de contrôle de τ-mux — créer des panneaux, ouvrir des surfaces navigateur, envoyer des notifications, définir le statut de la barre latérale, et plus encore. Les extensions sont sauvegardées sur disque, restaurées avec votre disposition, et créées / éditées / supprimées depuis l'intérieur de l'app.
@@ -18,6 +27,30 @@ Un nouveau type de surface : les **applications d'extension**. Une extension est
 - **Éditeur intégré (0.4.1).** La palette de commandes (`⌘⇧P`, « Extensions ») propose désormais, par extension installée, **Open**, **Edit** (ouvre sa source backend — ou `manifest.json` — dans la [surface éditeur](/fr/features/file-explorer-and-editor/), la boucle live édition → HMR) et **Remove**, plus **New Extension…** pour échafauder à partir d'un template.
 
 Les extensions sont **entièrement de confiance** — il n'y a pas de bac à sable ; les `permissions` du manifeste sont indicatives. N'installez que ce dont vous avez confiance, exactement comme vous le feriez pour un script shell.
+
+## 0.3.188 — Polish UI : rendu sans scintillement, redimensionnement fluide & réglages instantanés
+
+Une passe de qualité ciblée sur le churn de rendu, la mémoire des sessions longues, la résilience des services et le panneau Réglages — plus dix nouveaux utilitaires shareBin.
+
+### Rendu & scintillement
+
+- **Graphiques de status-keys repensés + sans scintillement (0.3.184 – 0.3.185).** Les rendus de graphiques de `ht set-status` ont eu droit à une refonte visuelle (courbes ligne/aire lissées avec remplissages en dégradé, grille de référence + dernière valeur en gros titre, jauges centrées sur la valeur, barres et cellules de heatmap arrondies), et les grilles de statut réconcilient désormais le DOM **a minima, en place** — un tick `set-status` à 1 Hz ne repeint que les entrées dont la valeur a réellement changé, en natif comme sur le miroir web. `shareBin/demo_status_keys --live` en est une bonne vitrine.
+- **Cartes d'espace de travail sans scintillement dans la barre latérale (0.3.187).** La barre CPU, les puces % / RAM / processus et la sparkline se mettent à jour en place à chaque tick de métadonnées ; le remplissage de la barre CPU conserve son identité de nœud, donc sa transition s'anime au lieu de sauter. Les cartes se rafraîchissent désormais aussi sur les mouvements CPU/MEM en direct, tandis qu'un espace de travail vraiment inactif ne coûte toujours rien.
+- **Plus de stroboscope sur la pile de notifications (0.3.187).** La pile de notifications sur le terminal se réconcilie en place : les cartes existantes conservent leur état d'entrée en glissement et leur compte à rebours d'auto-fermeture quand de nouvelles arrivent.
+- **Les panneaux sideband ne restent plus bloqués transparents (0.3.187).** Les panneaux créés pendant que la fenêtre était en arrière-plan ne dépendent plus d'un rAF que WKWebView peut suspendre — l'opacité de repos est posée de façon synchrone, avec un fondu d'entrée CSS auto-réparateur.
+
+### Sensations & résilience
+
+- **Redimensionnement fluide de la barre latérale (0.3.187).** Faire glisser le séparateur de la barre latérale ne fait que repositionner les panneaux pendant le glissement ; le refit de terminal faisant autorité s'exécute une seule fois au relâchement — fini le reflow saccadé à chaque frame.
+- **Le terminal ne saute plus au redimensionnement (0.3.187).** Les refits (redimensionnement de la barre latérale ou d'un panneau, déclencheurs des panneaux sideband) préservent votre position dans le scrollback ; les TUIs en écran alternatif (vim, htop) ne sont pas touchés.
+- **Moins de CPU et de mémoire au repos (0.3.187).** Barre de statut du miroir web coalescée en rAF, bandeaux de logs/stats de la barre latérale mis à jour en place, le polling de métadonnées ralentit quand la fenêtre perd le focus, et plusieurs fuites de session longue ont été colmatées (observers/timers par panneau du miroir web, timer de retry du panneau navigateur, état par surface de l'auto-continue, statut d'espace de travail mort dans le store web, le cache de titres ask-user).
+- **Des services plus résilients (0.3.187).** Un crash dans un gestionnaire Telegram ne peut plus rétrograder la boucle de long-poll ; un spawn d'agent raté affiche une bannière `agent_exit` au lieu d'un panneau inerte ; et le pipeline stdout du PTY est protégé contre un sink de sortie défaillant.
+- **Des Réglages instantanés et fluides (0.3.188).** Faire glisser un curseur ne cale plus à chaque pas — détection de changement par valeur, application coalescée en rAF, persistance débouncée, et `applySettings` saute le travail de refit/layout par panneau quand les champs modifiés ne l'exigent pas. Les réglages s'appliquent instantanément, sans bouton Apply.
+
+### CLI & shareBin
+
+- **`ht` fonctionne depuis n'importe quel shell (0.3.187).** Le chemin de socket par défaut de la CLI est désormais le vrai socket du répertoire de config de l'app (`~/Library/Application Support/hyperterm-canvas/hyperterm.sock`) au lieu de l'ancien `/tmp/hyperterm.sock` — `ht` se connecte depuis des terminaux que l'app n'a pas lancés, sans export `HT_SOCKET_PATH` (il reste prioritaire ; `ht doctor` diagnostique les divergences).
+- **Dix nouveaux utilitaires shareBin (0.3.186).** `show_logs` (visionneuse de logs en direct), `show_csv_profile` (profilage CSV/TSV), `show_http` (inspecteur de réponses HTTP), `show_mermaid` (diagrammes Mermaid — la première version rend via un bundle CDN), `show_env` (diagnostics d'environnement), `show_sqlite` (navigateur SQLite en lecture seule), `show_ports` (tableau de bord en direct des ports en écoute), `show_proc` (arbre de processus en direct), `show_image_diff` (comparaison d'images), `show_openapi` (explorateur OpenAPI/Swagger). Voir [shareBin](/fr/features/sharebin/).
 
 ## 0.3.183 — Captures d'écran d'espace de travail
 
