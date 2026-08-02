@@ -38,6 +38,8 @@ import { registerBrowserDom } from "./rpc-handlers/browser-dom";
 import { registerTelegram } from "./rpc-handlers/telegram";
 import { registerEditor } from "./rpc-handlers/editor";
 import { registerExtension } from "./rpc-handlers/extension";
+import { registerClaude } from "./rpc-handlers/claude";
+import type { ClaudeSessionRegistry } from "./claude-session-registry";
 import type { ExtensionManager } from "./extension-manager";
 import type { TelegramService } from "./telegram-service";
 import type { TelegramDatabase } from "./telegram-db";
@@ -119,6 +121,10 @@ export interface RpcHandlerOptions {
    *  create / clear / dismiss. Omitted in tests so they get a fresh
    *  in-memory store with no IO. */
   notificationPersistencePath?: string;
+  /** august-plan M1 — when wired, `claude.*` ingestion handlers register
+   *  and the ht-bridge / statusline tee feed Claude Code session state
+   *  into the registry. Optional in test fixtures. */
+  claudeRegistry?: ClaudeSessionRegistry;
 }
 
 export function createRpcHandler(
@@ -190,6 +196,7 @@ export function createRpcHandler(
     registerTelegram(deps),
     registerEditor(deps),
     registerExtension(deps),
+    options.claudeRegistry ? registerClaude(deps, options.claudeRegistry) : {},
     options.audits ? registerAudit(deps, options.audits) : {},
     options.plans ? registerPlan(deps, options.plans) : {},
     options.askUser ? registerAskUser(deps, options.askUser) : {},

@@ -4,9 +4,20 @@
  * Controls τ-mux via Unix socket (JSON-RPC).
  */
 
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { parseFlags, unescapeText } from "../src/cli/flags";
 import { SOCKET_PATH, runRpc } from "../src/cli/rpc-client";
 import { mapCommand, BROWSER_HELP } from "../src/cli/map-command";
+import {
+  parseStatuslinePayload,
+  renderStatusline,
+} from "../src/shared/claude-statusline";
+import type { ClaudeSessionState } from "../src/shared/claude-types";
+import {
+  formatClaudeCost,
+  sessionTitle,
+} from "../src/shared/claude-types";
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -402,7 +413,97 @@ async function runTelegramSend(): Promise<void> {
   }
 }
 
+/** `git branch --show-current`, best-effort with a hard timeout so the
+ *  statusline never stalls on a wedged repo (NFS, fsmonitor, …). */
+function resolveGitBranch(cwd: string | undefined): string | undefined {
+  if (!cwd) return undefined;
+  try {
+    const r = spawnSync("git", ["branch", "--show-current"], {
+      cwd,
+      encoding: "utf-8",
+      timeout: 300,
+      env: { ...process.env, LC_ALL: "C", LANG: "C" },
+    });
+    if (r.status === 0) {
+      const b = (r.stdout ?? "").trim();
+      return b || undefined;
+    }
+  } catch {
+    /* not a repo / git missing — segment drops out */
+  }
+  return undefined;
+}
+
+/** `ht claude statusline` — installed as Claude Code's statusLine command
+ *  (august-plan M1 / WS2). Reads the statusline JSON Claude Code pipes on
+ *  stdin, prints the rendered τ-mux status line, then tees the parsed
+ *  subset to the app (`claude.statusline`) with a short watchdog. The
+ *  print ALWAYS happens and always comes first — a missing / hung app
+ *  must never degrade the line Claude Code shows. Exit code is always 0
+ *  for the same reason. */
+async function runClaudeStatusline(): Promise<void> {
+  let raw: Record<string, unknown> = {};
+  try {
+    const text = process.stdin.isTTY ? "" : readFileSync(0, "utf-8");
+    if (text.trim()) raw = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    /* malformed stdin — render the fallback line, skip the tee */
+  }
+
+  const data = parseStatuslinePayload(raw, process.env["HT_SURFACE"]);
+  const gitBranch = resolveGitBranch(data?.cwd);
+  console.log(
+    renderStatusline(data ?? { sessionId: "" }, { gitBranch }),
+  );
+
+  if (data) {
+    try {
+      await runRpc("claude.statusline", { data }, 250);
+    } catch {
+      /* τ-mux not running / slow — the line already printed */
+    }
+  }
+  process.exit(0);
+}
+
+function formatClaudeSessions(result: unknown): void {
+  const sessions =
+    result && typeof result === "object"
+      ? ((result as { sessions?: ClaudeSessionState[] }).sessions ?? [])
+      : [];
+  if (sessions.length === 0) {
+    console.log("No Claude Code sessions observed.");
+    console.log(
+      "(Hooks installed? See claude-integration/README.md — events arrive via `ht claude event`.)",
+    );
+    return;
+  }
+  for (const s of sessions) {
+    const parts: string[] = [];
+    parts.push(`${s.sessionId.slice(0, 8)}  ${s.phase.padEnd(16)}`);
+    parts.push((s.surfaceId ?? "-").padEnd(12));
+    const title = sessionTitle(s);
+    parts.push(title.length > 40 ? title.slice(0, 39) + "…" : title);
+    const meta: string[] = [];
+    if (s.modelDisplayName) meta.push(s.modelDisplayName);
+    if (typeof s.contextUsedPct === "number") {
+      meta.push(`${Math.round(s.contextUsedPct)}% ctx`);
+    }
+    const cost = formatClaudeCost(s.costUsd);
+    if (cost) meta.push(cost);
+    if (s.turnCount > 0) meta.push(`turn ${s.turnCount}`);
+    if (meta.length) parts.push(`(${meta.join(" · ")})`);
+    console.log(parts.join("  "));
+  }
+}
+
 async function main(): Promise<void> {
+  // `claude statusline` reads stdin + must print before (and regardless
+  // of) the RPC tee — it can't go through the single-RPC pipeline.
+  if (command === "claude" && positional[0] === "statusline") {
+    await runClaudeStatusline();
+    return;
+  }
   // Telegram send needs a multi-step flow (stdin / default-chat
   // resolution) that the regular single-RPC pipeline can't model.
   // Intercept it before mapCommand runs.
@@ -497,6 +598,10 @@ function formatOutput(result: unknown): void {
   }
   if (command === "telegram" && result && typeof result === "object") {
     formatTelegram(result);
+    return;
+  }
+  if (command === "claude" && positional[0] === "sessions") {
+    formatClaudeSessions(result);
     return;
   }
   if (command === "audit") {
@@ -1089,6 +1194,16 @@ Notifications:
   notify [--title T] [--body B]         Create a notification
   list-notifications                    List notifications
   clear-notifications                   Clear all notifications
+
+Claude Code (see claude-integration/README.md):
+  claude statusline                     Statusline command for Claude Code —
+                                        reads its JSON on stdin, prints the
+                                        τ-mux status line, tees cost/context/
+                                        rate-limit data into the sidebar.
+                                        Install: {"statusLine": {"type":
+                                        "command", "command": "ht claude statusline"}}
+  claude sessions [--all]               List observed Claude Code sessions
+  claude event --json '<payload>'       (internal) hook-bridge event ingestion
 
 Live Metadata (reads from polled surface state):
   metadata [--surface S]                Summary: pid, fg, cwd, counts

@@ -159,3 +159,36 @@ everything except §2.1 web-mirror defaults, which the user deferred):_
   line about defaults. Note that re-enabling the GPU renderer after upgrading
   sticks (the migration runs once), and that the underlying WebGL fault is
   still unconfirmed — the renderer remains experimental.
+
+---
+
+_Pending — august-plan M1 "τ-mux sees Claude" (v0.5.0).
+Plan: `doc/august-plan.md` · Tracking: `doc/tracking_august-plan.md`._
+
+- **Changelog (en + fr)** — new top section **"0.5.0 — Claude Code
+  integration, milestone 1"**:
+  - **Full-lifecycle Claude Code awareness.** The ht-bridge now forwards
+    fourteen hook events (was four): session start/end, prompt/stop,
+    StopFailure, subagent start/stop, compaction, cwd changes, task
+    created/completed, idle/permission notifications. A new app-side
+    session registry tracks every Claude Code session's phase (working /
+    waiting input / approval needed / compacting / error) per pane.
+  - **`ht claude statusline`.** One-line install into Claude Code's
+    `statusLine` setting: renders a τ-mux-styled status line (model,
+    effort, dir, git branch, permission mode, PR, context bar, cost,
+    +N/-N lines, rate-limit warnings ≥80%) AND feeds cost / context % /
+    rate limits / session title into the τ-mux sidebar. Replaces the v1
+    bridge's transcript parsing, hand-maintained pricing table, and the
+    `pi`-based title sidecar — all numbers now come from Claude Code
+    itself, so they always match `/cost` and `/context`.
+  - **Smarter ticker + notifications.** `cc` pill shows
+    `Opus · 42% ctx · $0.31`; turn-end notification carries prompt +
+    duration + cost; API errors (rate limit / overload) get their own
+    red state + notification; idle pauses change the pill only.
+- **`cli/` new page or section (en + fr)** — `ht claude` verbs:
+  `statusline` (install snippet), `sessions [--all]`, `event` (internal).
+- **`api/` (en + fr)** — `claude.event` / `claude.statusline` /
+  `claude.sessions` RPC methods + the ClaudeSessionState wire shape.
+- **claude-integration install docs (en + fr)** — settings.snippet.jsonc
+  now carries the full 14-hook block + statusLine; v1 installs only need
+  the new blocks added (the four v1 event names are unchanged).

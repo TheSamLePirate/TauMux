@@ -1,817 +1,73 @@
 #!/usr/bin/env bun
 /**
- * ht-bridge — Claude Code → τ-mux sidebar bridge.
+ * ht-bridge v2 — Claude Code → τ-mux hook bridge (august-plan M1 / WS1).
  *
- * Mirrors the pi-extensions/ht-notify-summary shape for Claude Code's
- * shell-hook surface. Invoked by ~/.claude/settings.json with an event
- * kind as argv[2]; reads the hook JSON payload on stdin; shells out to
- * `ht` to update the sidebar pill or fire a notification.
+ * Invoked by ~/.claude/settings.json with an event name as argv[2];
+ * reads the hook JSON payload on stdin; forwards one small normalized
+ * event to the running app via `ht claude event`. That's the whole job.
  *
- * Events (argv[2]):
- *   prompt             UserPromptSubmit — set the active "Claude : <label>"
- *                      pill; remember prompt + started_at so Stop can build
- *                      a summary notification.
- *   stop               Stop — clear the active pill, parse the transcript
- *                      for tokens + cost, fire `ht notify` with the final
- *                      label, duration and spend; update the persistent
- *                      ticker pill with session totals.
- *   notify-idle        Notification matcher="idle_prompt" — orange pill
- *                      + sidebar notification asking for input.
- *   notify-permission  Notification matcher="permission_prompt" — red
- *                      pill + notification asking for approval.
+ * The app-side ClaudeSessionRegistry owns ALL state (phase, turn
+ * counting, labels, task mirror) and the presenter owns ALL rendering
+ * (sidebar pills, notifications). v1's per-session temp-file state,
+ * transcript/cost parsing, pricing table, and `pi` title sidecar are
+ * deleted — cost / context / rate limits / session title now come from
+ * `ht claude statusline` (data Claude Code computes itself).
  *
- * Between events we keep tiny per-session state files at
- *   $TMPDIR/ht-claude-bridge/<session_id>.json
- * Files older than 24 h are pruned on every invocation.
+ * Contract with Claude Code's hook pipeline:
+ *   - fire-and-forget: the `ht` spawn is never awaited; a dead τ-mux
+ *     means the CLI fails silently and Claude Code never notices.
+ *   - exit 0 always; hook stderr only with HT_CLAUDE_DEBUG=1.
+ *   - unknown event names are ignored (installer may be newer than us).
  *
- * Every `ht` call is fire-and-forget (no awaiting) — if τ-mux isn't
- * running the ht CLI just fails silently and the hook continues. Nothing
- * in this runner is allowed to block Claude Code's hook pipeline; set
- * HT_CLAUDE_DEBUG=1 to surface errors on stderr.
+ * Config (all optional), via config.json next to src/ or env:
+ *   { "enabled": true, "htBinary": "ht" }
+ *   HT_CLAUDE_ENABLED=0   disable everything
+ *   HT_CLAUDE_HT_BIN=…    path to the ht binary
+ *   HT_CLAUDE_DEBUG=1     surface errors on stderr
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  statSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface ModelCost {
-  /** USD per million tokens. Matches pi-ai's model.cost convention. */
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-}
+import { buildBridgeEvent } from "./build-event";
 
 interface Config {
   enabled: boolean;
   htBinary: string;
-
-  // Active label pill ("Claude : Fixing the bug").
-  labelKey: string;
-  labelIcon: string;
-  labelColor: string;
-  labelMaxChars: number;
-
-  // State colors for idle / permission / error.
-  idleColor: string;
-  permissionColor: string;
-
-  // Persistent ticker pill ("cc : turn 3 · 2.1 min · $0.034").
-  tickerEnabled: boolean;
-  tickerKey: string;
-  tickerIcon: string;
-  tickerColor: string;
-
-  // Notification subtitle.
-  notifySubtitle: string;
-
-  // Plan #03 §C — when false (default), the "Claude Code · waiting"
-  // notification is suppressed and only the sidebar status pill is
-  // updated. Users who want the toast back can flip this to true in
-  // ht-bridge config.json (or set HT_CLAUDE_NOTIFY_ON_IDLE=1).
-  notifyOnIdle: boolean;
-
-  // Conversation-title sidecar. On UserPromptSubmit the pill flips to
-  // `titleStartingLabel` in `titleNeutralColor`, then a detached `pi -p`
-  // call generates a 3-5 word title and switches the pill to the pink
-  // `labelColor`. Previous title is passed back to pi so the title can
-  // be refined across turns.
-  titleEnabled: boolean;
-  titleStartingLabel: string;
-  titleNeutralColor: string;
-  titleSidecarTimeoutMs: number;
-  titlePiBin: string;
-  titlePiArgs: string[];
-
-  // Pricing tables — $ per million tokens. Unknown models fall back to
-  // a tier heuristic (opus / sonnet / haiku substring match).
-  pricing: Record<string, ModelCost>;
-
-  // Per-session state storage.
-  stateDir: string;
-  stateTTLMs: number;
 }
-
-interface SessionState {
-  sessionId: string;
-  /** First UserPromptSubmit we saw. Drives the ticker's "elapsed". */
-  startedAt: number;
-  /** Most recent UserPromptSubmit. Drives the Stop-notification "took N s". */
-  promptStartedAt: number;
-  currentLabel: string;
-  currentPrompt: string;
-  /** pi-generated 3-5 word title. Refined across turns when present. */
-  currentTitle: string;
-  /**
-   * True between a `prompt` event and the next `stop`/`notify-*`.
-   * The title sidecar always updates `currentTitle` so the next turn has
-   * context, but only touches the visible pill when this flag is true —
-   * preventing a "ghost" pill after Stop if the sidecar finishes late.
-   */
-  promptActive: boolean;
-  turnCount: number;
-  lastModel: string;
-  totalInputTokens: number;
-  totalOutputTokens: number;
-  totalCacheReadTokens: number;
-  totalCacheWriteTokens: number;
-  totalCostUSD: number;
-  cwd: string;
-}
-
-// ---------------------------------------------------------------------------
-// Config loader
-// ---------------------------------------------------------------------------
 
 const DEFAULT_CONFIG: Config = {
   enabled: true,
   htBinary: "ht",
-  labelKey: "Claude",
-  labelIcon: "bolt",
-  labelColor: "#f5c2e7",
-  labelMaxChars: 40,
-  idleColor: "#f9e2af",
-  permissionColor: "#f38ba8",
-  tickerEnabled: true,
-  tickerKey: "cc",
-  tickerIcon: "chart",
-  tickerColor: "#89b4fa",
-  notifySubtitle: "Claude Code",
-  notifyOnIdle: false,
-  titleEnabled: true,
-  titleStartingLabel: "Starting…",
-  titleNeutralColor: "#cdd6f4",
-  titleSidecarTimeoutMs: 5000,
-  titlePiBin: "pi",
-  // Minimal pi invocation: print mode, gpt-5-nano without thinking, no
-  // tools / sessions / extensions / skills / prompt templates / themes /
-  // context files so it boots fast and stays text-only.
-  titlePiArgs: [
-    "-p",
-    "--model",
-    "openai/gpt-5-nano",
-    "--thinking",
-    "off",
-    "--no-tools",
-    "--no-session",
-    "--no-extensions",
-    "--no-skills",
-    "--no-prompt-templates",
-    "--no-themes",
-    "-nc",
-  ],
-  // Seed prices for the Claude 4.x family as of 2026-04. Unknown versions
-  // fall back to a tier heuristic in `findFuzzyPrice`. Users can override
-  // via config.json without touching this source.
-  pricing: {
-    "claude-opus-4-7": {
-      input: 15,
-      output: 75,
-      cacheRead: 1.5,
-      cacheWrite: 18.75,
-    },
-    "claude-opus-4-6": {
-      input: 15,
-      output: 75,
-      cacheRead: 1.5,
-      cacheWrite: 18.75,
-    },
-    "claude-opus-4-5": {
-      input: 15,
-      output: 75,
-      cacheRead: 1.5,
-      cacheWrite: 18.75,
-    },
-    "claude-sonnet-4-6": {
-      input: 3,
-      output: 15,
-      cacheRead: 0.3,
-      cacheWrite: 3.75,
-    },
-    "claude-sonnet-4-5": {
-      input: 3,
-      output: 15,
-      cacheRead: 0.3,
-      cacheWrite: 3.75,
-    },
-    "claude-haiku-4-5": {
-      input: 0.8,
-      output: 4,
-      cacheRead: 0.08,
-      cacheWrite: 1.0,
-    },
-  },
-  stateDir: join(tmpdir(), "ht-claude-bridge"),
-  stateTTLMs: 24 * 60 * 60 * 1000,
 };
 
 function loadConfig(): Config {
   const here = dirname(fileURLToPath(import.meta.url));
-  const configPath = join(here, "..", "config.json");
   let fromFile: Partial<Config> = {};
   try {
-    fromFile = JSON.parse(readFileSync(configPath, "utf-8")) as Partial<Config>;
+    fromFile = JSON.parse(
+      readFileSync(join(here, "..", "config.json"), "utf-8"),
+    ) as Partial<Config>;
   } catch {
     /* optional — defaults stand */
   }
-
   const c: Config = { ...DEFAULT_CONFIG, ...fromFile };
-  // Pricing merges per-entry so partial user overrides keep the baseline.
-  if (fromFile.pricing) {
-    c.pricing = { ...DEFAULT_CONFIG.pricing, ...fromFile.pricing };
-  }
-
-  // Env overrides — take precedence over config.json.
   const env = process.env;
-  if (env.HT_CLAUDE_ENABLED !== undefined) {
+  if (env["HT_CLAUDE_ENABLED"] !== undefined) {
     c.enabled =
-      env.HT_CLAUDE_ENABLED !== "0" &&
-      env.HT_CLAUDE_ENABLED.toLowerCase() !== "false";
+      env["HT_CLAUDE_ENABLED"] !== "0" &&
+      env["HT_CLAUDE_ENABLED"].toLowerCase() !== "false";
   }
-  if (env.HT_CLAUDE_HT_BIN) c.htBinary = env.HT_CLAUDE_HT_BIN;
-  if (env.HT_CLAUDE_LABEL_KEY) c.labelKey = env.HT_CLAUDE_LABEL_KEY;
-  if (env.HT_CLAUDE_TICKER_KEY) c.tickerKey = env.HT_CLAUDE_TICKER_KEY;
-  if (env.HT_CLAUDE_TICKER_ENABLED !== undefined) {
-    c.tickerEnabled =
-      env.HT_CLAUDE_TICKER_ENABLED !== "0" &&
-      env.HT_CLAUDE_TICKER_ENABLED.toLowerCase() !== "false";
-  }
-  if (env.HT_CLAUDE_NOTIFY_ON_IDLE !== undefined) {
-    c.notifyOnIdle =
-      env.HT_CLAUDE_NOTIFY_ON_IDLE !== "0" &&
-      env.HT_CLAUDE_NOTIFY_ON_IDLE.toLowerCase() !== "false";
-  }
-  if (env.HT_CLAUDE_TITLE_ENABLED !== undefined) {
-    c.titleEnabled =
-      env.HT_CLAUDE_TITLE_ENABLED !== "0" &&
-      env.HT_CLAUDE_TITLE_ENABLED.toLowerCase() !== "false";
-  }
-  if (env.HT_CLAUDE_PI_BIN) c.titlePiBin = env.HT_CLAUDE_PI_BIN;
+  if (env["HT_CLAUDE_HT_BIN"]) c.htBinary = env["HT_CLAUDE_HT_BIN"];
   return c;
 }
 
-// ---------------------------------------------------------------------------
-// State — tiny per-session JSON blobs under $TMPDIR/ht-claude-bridge/
-// ---------------------------------------------------------------------------
-
-function newState(sessionId: string): SessionState {
-  return {
-    sessionId,
-    startedAt: 0,
-    promptStartedAt: 0,
-    currentLabel: "",
-    currentPrompt: "",
-    currentTitle: "",
-    promptActive: false,
-    turnCount: 0,
-    lastModel: "",
-    totalInputTokens: 0,
-    totalOutputTokens: 0,
-    totalCacheReadTokens: 0,
-    totalCacheWriteTokens: 0,
-    totalCostUSD: 0,
-    cwd: "",
-  };
-}
-
-function loadState(cfg: Config, sessionId: string): SessionState {
-  try {
-    const file = join(cfg.stateDir, `${sessionId}.json`);
-    const raw = readFileSync(file, "utf-8");
-    return { ...newState(sessionId), ...JSON.parse(raw) };
-  } catch {
-    return newState(sessionId);
+function debugLog(msg: string): void {
+  if (process.env["HT_CLAUDE_DEBUG"]) {
+    console.error(`[ht-bridge] ${msg}`);
   }
 }
-
-function saveState(cfg: Config, state: SessionState): void {
-  if (!existsSync(cfg.stateDir)) mkdirSync(cfg.stateDir, { recursive: true });
-  const file = join(cfg.stateDir, `${state.sessionId}.json`);
-  // Atomic write: tmpfile + rename so a crash mid-write never produces
-  // a half-written JSON blob that the next hook can't parse.
-  const tmp = `${file}.tmp${process.pid}`;
-  writeFileSync(tmp, JSON.stringify(state));
-  renameSync(tmp, file);
-}
-
-function pruneOldState(cfg: Config): void {
-  try {
-    if (!existsSync(cfg.stateDir)) return;
-    const cutoff = Date.now() - cfg.stateTTLMs;
-    for (const f of readdirSync(cfg.stateDir)) {
-      if (!f.endsWith(".json")) continue;
-      const fp = join(cfg.stateDir, f);
-      try {
-        if (statSync(fp).mtimeMs < cutoff) unlinkSync(fp);
-      } catch {
-        /* race with another hook — fine */
-      }
-    }
-  } catch {
-    /* best-effort janitor — never fail a hook because of cleanup */
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Formatting helpers
-// ---------------------------------------------------------------------------
-
-/** One-line active task label. Prefers the first clause of the user's
- *  prompt; falls back to a hard char cap so the sidebar pill never wraps. */
-function truncateLabel(prompt: string, max: number): string {
-  const trimmed = prompt.trim().replace(/\s+/g, " ");
-  if (!trimmed) return "Working";
-  const firstClause = trimmed.split(/[.!?\n]/)[0]!.trim() || trimmed;
-  if (firstClause.length <= max) return firstClause;
-  return firstClause.slice(0, max - 1).trimEnd() + "…";
-}
-
-function truncateBody(s: string, max = 240): string {
-  const t = s.trim();
-  if (t.length <= max) return t;
-  return t.slice(0, max - 1).trimEnd() + "…";
-}
-
-function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "";
-  const sec = ms / 1000;
-  if (sec < 10) return `${sec.toFixed(1)}s`;
-  if (sec < 60) return `${Math.round(sec)}s`;
-  const min = sec / 60;
-  if (min < 60) return `${Math.round(min)} min`;
-  const h = Math.floor(min / 60);
-  const m = Math.round(min - h * 60);
-  return `${h}h ${String(m).padStart(2, "0")}m`;
-}
-
-function formatCost(cost: number): string {
-  if (cost <= 0) return "";
-  if (cost < 0.01) return `$${cost.toFixed(3)}`;
-  // Strip meaningless trailing zeros but keep one decimal so `$0.10`
-  // doesn't collapse to `$0.1`.
-  const fixed = cost.toFixed(3).replace(/0+$/, "").replace(/\.$/, ".0");
-  return `$${fixed}`;
-}
-
-function formatTokens(n: number): string {
-  if (n < 1000) return String(n);
-  if (n < 10_000) return `${(n / 1000).toFixed(1)}k`;
-  if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
-  return `${(n / 1_000_000).toFixed(1)}M`;
-}
-
-// ---------------------------------------------------------------------------
-// Transcript parsing — compute cumulative token + cost from the JSONL
-// file Claude Code writes incrementally during the session.
-// ---------------------------------------------------------------------------
-
-interface TranscriptTotals {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  lastModel: string;
-}
-
-function parseTranscript(path: string): TranscriptTotals {
-  const totals: TranscriptTotals = {
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    lastModel: "",
-  };
-  try {
-    const raw = readFileSync(path, "utf-8");
-    for (const line of raw.split("\n")) {
-      if (!line) continue;
-      let obj: {
-        message?: { model?: string; usage?: Record<string, unknown> };
-      };
-      try {
-        obj = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      const msg = obj.message;
-      if (!msg || typeof msg !== "object") continue;
-      if (typeof msg.model === "string" && msg.model)
-        totals.lastModel = msg.model;
-      const u = msg.usage;
-      if (!u) continue;
-      totals.inputTokens += numOrZero(u["input_tokens"]);
-      totals.outputTokens += numOrZero(u["output_tokens"]);
-      totals.cacheReadTokens += numOrZero(u["cache_read_input_tokens"]);
-      totals.cacheWriteTokens += numOrZero(u["cache_creation_input_tokens"]);
-    }
-  } catch {
-    /* transcript missing / unreadable — zeros are fine */
-  }
-  return totals;
-}
-
-function numOrZero(x: unknown): number {
-  return typeof x === "number" && Number.isFinite(x) ? x : 0;
-}
-
-function calcCost(cfg: Config, t: TranscriptTotals): number {
-  if (!t.lastModel) return 0;
-  const price = cfg.pricing[t.lastModel] ?? findFuzzyPrice(cfg, t.lastModel);
-  if (!price) return 0;
-  return (
-    (price.input * t.inputTokens) / 1_000_000 +
-    (price.output * t.outputTokens) / 1_000_000 +
-    (price.cacheRead * t.cacheReadTokens) / 1_000_000 +
-    (price.cacheWrite * t.cacheWriteTokens) / 1_000_000
-  );
-}
-
-function findFuzzyPrice(cfg: Config, model: string): ModelCost | null {
-  // Dated variants like `claude-opus-4-7-20260118` → match on prefix.
-  for (const [key, p] of Object.entries(cfg.pricing)) {
-    if (model.startsWith(key)) return p;
-  }
-  // Tier heuristic — covers future point releases before the user adds
-  // an explicit entry to config.json.
-  if (model.includes("opus")) return cfg.pricing["claude-opus-4-7"] ?? null;
-  if (model.includes("sonnet")) return cfg.pricing["claude-sonnet-4-6"] ?? null;
-  if (model.includes("haiku")) return cfg.pricing["claude-haiku-4-5"] ?? null;
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// Title sidecar — detached `pi -p` call that generates a 3-5 word title
-// for the current turn. Updates state.currentTitle (always) and the
-// Claude pill (only if state.promptActive when the result arrives).
-// ---------------------------------------------------------------------------
-
-/** Strip quoted/markdown decorations from pi output and cap length. */
-function sanitizeTitle(raw: string, max: number): string {
-  let t = raw.replace(/^\s+|\s+$/g, "").split("\n")[0] ?? "";
-  t = t.trim();
-  // Drop wrapping quotes / backticks the model sometimes adds despite the
-  // "no quotes" instruction.
-  t = t.replace(/^[`'"“”‘’]+|[`'"“”‘’]+$/g, "").trim();
-  // Drop common markdown prefixes ("- ", "* ", "1. ", "# ").
-  t = t.replace(/^(?:[-*]\s+|\d+[.)]\s+|#+\s+)/, "").trim();
-  if (!t) return "";
-  if (t.length > max) t = t.slice(0, max - 1).trimEnd() + "…";
-  return t;
-}
-
-/** Build the prompt sent to pi on stdin. */
-function buildTitlePrompt(previousTitle: string, userPrompt: string): string {
-  const prev = previousTitle.trim() || "(none — first turn)";
-  return [
-    "Generate a 3 to 5 word title for this coding task.",
-    `Previous title: ${prev}`,
-    "New user prompt:",
-    userPrompt.trim(),
-    "",
-    "Rules: reply with ONLY the title, no quotes, no punctuation, no markdown.",
-    "If the new prompt continues the same topic, refine the previous title.",
-    "If it pivots, write a fresh title.",
-  ].join("\n");
-}
-
-/** Fire the detached second invocation that runs `handleTitle`. */
-function spawnTitleSidecar(sessionId: string): void {
-  try {
-    const child = spawn(
-      process.execPath,
-      [fileURLToPath(import.meta.url), "title", sessionId],
-      { detached: true, stdio: "ignore" },
-    );
-    child.on("error", (err) => {
-      if (process.env.HT_CLAUDE_DEBUG) {
-        console.error(`[ht-bridge] title sidecar spawn: ${err.message}`);
-      }
-    });
-    child.unref();
-  } catch (err) {
-    if (process.env.HT_CLAUDE_DEBUG) {
-      console.error(
-        `[ht-bridge] title sidecar spawn failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-}
-
-/**
- * Run pi non-interactively and collect stdout. Returns "" on timeout,
- * non-zero exit, spawn error, or empty output. LC_ALL=C, LANG=C so any
- * locale-specific output stays predictable.
- */
-function runTitleSidecar(cfg: Config, promptText: string): Promise<string> {
-  return new Promise((resolve) => {
-    let settled = false;
-    let stdout = "";
-    let stderr = "";
-    const finish = (s: string) => {
-      if (settled) return;
-      settled = true;
-      resolve(s);
-    };
-    let child: ChildProcess;
-    try {
-      child = spawn(cfg.titlePiBin, cfg.titlePiArgs, {
-        stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, LC_ALL: "C", LANG: "C" },
-      });
-    } catch (err) {
-      if (process.env.HT_CLAUDE_DEBUG) {
-        console.error(
-          `[ht-bridge] pi spawn failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-      return finish("");
-    }
-    const timer = setTimeout(() => {
-      try {
-        child.kill("SIGTERM");
-      } catch {
-        /* already exited */
-      }
-      finish("");
-    }, cfg.titleSidecarTimeoutMs);
-    child.stdout?.on("data", (b: Buffer) => {
-      stdout += b.toString("utf-8");
-    });
-    child.stderr?.on("data", (b: Buffer) => {
-      stderr += b.toString("utf-8");
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      if (process.env.HT_CLAUDE_DEBUG) {
-        console.error(`[ht-bridge] pi error: ${err.message}`);
-      }
-      finish("");
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code !== 0) {
-        if (process.env.HT_CLAUDE_DEBUG) {
-          console.error(`[ht-bridge] pi exit ${code}: ${stderr.trim()}`);
-        }
-        return finish("");
-      }
-      finish(stdout);
-    });
-    try {
-      child.stdin?.write(promptText);
-      child.stdin?.end();
-    } catch {
-      /* pi closed early — handler above resolves */
-    }
-  });
-}
-
-// ---------------------------------------------------------------------------
-// ht CLI wrappers — fire-and-forget; exit code is ignored.
-// ---------------------------------------------------------------------------
-
-function runHt(cfg: Config, args: string[]): void {
-  try {
-    const child = spawn(cfg.htBinary, args, { stdio: "ignore" });
-    child.on("error", (err) => {
-      if (process.env.HT_CLAUDE_DEBUG) {
-        console.error(`[ht-bridge] ht ${args[0]}: ${err.message}`);
-      }
-    });
-  } catch (err) {
-    if (process.env.HT_CLAUDE_DEBUG) {
-      console.error(
-        `[ht-bridge] spawn ht failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-}
-
-function htSetStatus(
-  cfg: Config,
-  key: string,
-  value: string,
-  icon: string,
-  color: string,
-): void {
-  runHt(cfg, ["set-status", key, value, "--icon", icon, "--color", color]);
-}
-
-function htClearStatus(cfg: Config, key: string): void {
-  runHt(cfg, ["clear-status", key]);
-}
-
-function htNotify(cfg: Config, title: string, body: string): void {
-  const args = ["notify", "--title", title, "--body", body];
-  if (cfg.notifySubtitle) args.push("--subtitle", cfg.notifySubtitle);
-  runHt(cfg, args);
-}
-
-// ---------------------------------------------------------------------------
-// Ticker — composes the persistent "cc" pill from session totals.
-// ---------------------------------------------------------------------------
-
-function tickerLine(state: SessionState, fallback: string): string {
-  const parts: string[] = [];
-  if (state.turnCount > 0) parts.push(`turn ${state.turnCount}`);
-  const elapsed = state.startedAt > 0 ? Date.now() - state.startedAt : 0;
-  if (elapsed >= 1500) parts.push(formatDuration(elapsed));
-  if (state.totalCostUSD > 0) {
-    parts.push(formatCost(state.totalCostUSD));
-  } else if (state.totalOutputTokens > 0) {
-    parts.push(`${formatTokens(state.totalOutputTokens)} out`);
-  }
-  if (parts.length === 0) parts.push(fallback);
-  return parts.join(" · ");
-}
-
-function setTicker(cfg: Config, state: SessionState, fallback: string): void {
-  if (!cfg.tickerEnabled) return;
-  htSetStatus(
-    cfg,
-    cfg.tickerKey,
-    tickerLine(state, fallback),
-    cfg.tickerIcon,
-    cfg.tickerColor,
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Event handlers
-// ---------------------------------------------------------------------------
-
-function handlePrompt(cfg: Config, payload: Record<string, unknown>): void {
-  const sessionId = (payload["session_id"] as string) || "unknown";
-  const state = loadState(cfg, sessionId);
-  state.sessionId = sessionId;
-  if (state.startedAt === 0) state.startedAt = Date.now();
-  state.promptStartedAt = Date.now();
-  state.turnCount += 1;
-  state.currentPrompt =
-    typeof payload["prompt"] === "string" ? (payload["prompt"] as string) : "";
-  // First-clause fallback. Used when titleEnabled=false or while the
-  // sidecar is still running. handleStop also reads this as a fallback
-  // when currentTitle hasn't been generated yet.
-  state.currentLabel = truncateLabel(state.currentPrompt, cfg.labelMaxChars);
-  state.promptActive = true;
-  if (typeof payload["cwd"] === "string") state.cwd = payload["cwd"] as string;
-  saveState(cfg, state);
-
-  if (cfg.titleEnabled) {
-    // Two-phase: muted "Starting…" → pink title once pi returns.
-    htSetStatus(
-      cfg,
-      cfg.labelKey,
-      cfg.titleStartingLabel,
-      cfg.labelIcon,
-      cfg.titleNeutralColor,
-    );
-    setTicker(cfg, state, cfg.titleStartingLabel);
-    spawnTitleSidecar(sessionId);
-  } else {
-    // Escape hatch — preserves the original first-clause-of-prompt label.
-    htSetStatus(
-      cfg,
-      cfg.labelKey,
-      state.currentLabel,
-      cfg.labelIcon,
-      cfg.labelColor,
-    );
-    setTicker(cfg, state, state.currentLabel);
-  }
-}
-
-async function handleTitle(cfg: Config, sessionId: string): Promise<void> {
-  if (!cfg.titleEnabled) return;
-  const state = loadState(cfg, sessionId);
-  if (!state.currentPrompt) return;
-
-  const promptText = buildTitlePrompt(state.currentTitle, state.currentPrompt);
-  const raw = await runTitleSidecar(cfg, promptText);
-  const title = sanitizeTitle(raw, cfg.labelMaxChars);
-  if (!title) return;
-
-  // Re-load before writing — Stop/Idle/Permission may have run while we
-  // were waiting on pi, and they own promptActive.
-  const fresh = loadState(cfg, sessionId);
-  fresh.currentTitle = title;
-  saveState(cfg, fresh);
-
-  if (fresh.promptActive) {
-    htSetStatus(cfg, cfg.labelKey, title, cfg.labelIcon, cfg.labelColor);
-    setTicker(cfg, fresh, title);
-  }
-}
-
-function handleStop(cfg: Config, payload: Record<string, unknown>): void {
-  const sessionId = (payload["session_id"] as string) || "unknown";
-  const state = loadState(cfg, sessionId);
-  state.sessionId = sessionId;
-
-  // Pull the authoritative token totals from the transcript Claude Code
-  // maintains. Cheaper than asking the user to wire a separate usage
-  // tracker, and resilient to us missing intermediate hook events.
-  const transcriptPath = payload["transcript_path"];
-  if (typeof transcriptPath === "string" && transcriptPath) {
-    const totals = parseTranscript(transcriptPath);
-    state.totalInputTokens = totals.inputTokens;
-    state.totalOutputTokens = totals.outputTokens;
-    state.totalCacheReadTokens = totals.cacheReadTokens;
-    state.totalCacheWriteTokens = totals.cacheWriteTokens;
-    if (totals.lastModel) state.lastModel = totals.lastModel;
-    state.totalCostUSD = calcCost(cfg, totals);
-  }
-
-  const turnMs =
-    state.promptStartedAt > 0 ? Date.now() - state.promptStartedAt : 0;
-  state.promptActive = false;
-  saveState(cfg, state);
-
-  htClearStatus(cfg, cfg.labelKey);
-
-  // Build the notification. Title carries the pi-generated label (or
-  // the first-clause fallback while the sidecar hasn't returned) so the
-  // sidebar row is scannable; body carries the original prompt + metadata.
-  const labelForTitle = state.currentTitle || state.currentLabel;
-  const title = labelForTitle ? `Claude · ${labelForTitle}` : "Claude done";
-  const metaParts: string[] = [];
-  if (turnMs > 0) metaParts.push(formatDuration(turnMs));
-  if (state.totalCostUSD > 0) metaParts.push(formatCost(state.totalCostUSD));
-  else if (state.totalOutputTokens > 0)
-    metaParts.push(`${formatTokens(state.totalOutputTokens)} out`);
-  const bodyLines: string[] = [];
-  if (state.currentPrompt) bodyLines.push(truncateBody(state.currentPrompt));
-  if (metaParts.length) bodyLines.push(metaParts.join(" · "));
-  htNotify(cfg, title, bodyLines.join("\n"));
-
-  // Refresh the persistent ticker with the final totals.
-  setTicker(cfg, state, "Done");
-}
-
-function handleNotifyIdle(cfg: Config, payload: Record<string, unknown>): void {
-  const sessionId = (payload["session_id"] as string) || "unknown";
-  const state = loadState(cfg, sessionId);
-  // Don't bump turnCount — this is a mid-turn signal, not a new turn.
-  // Drop promptActive so a late title sidecar won't repaint the pill.
-  state.promptActive = false;
-  saveState(cfg, state);
-
-  htSetStatus(
-    cfg,
-    cfg.labelKey,
-    "Waiting for input",
-    cfg.labelIcon,
-    cfg.idleColor,
-  );
-  // Plan #03 §C — the idle "waiting" notification is opt-in. The
-  // sidebar pill above is enough information for most workflows;
-  // a toast on every Claude pause is just noise.
-  if (cfg.notifyOnIdle) {
-    const msg = (payload["message"] as string) || "Awaiting your prompt";
-    htNotify(cfg, "Claude Code · waiting", msg);
-  }
-}
-
-function handleNotifyPermission(
-  cfg: Config,
-  payload: Record<string, unknown>,
-): void {
-  const sessionId = (payload["session_id"] as string) || "unknown";
-  const state = loadState(cfg, sessionId);
-  state.promptActive = false;
-  saveState(cfg, state);
-
-  htSetStatus(
-    cfg,
-    cfg.labelKey,
-    "Approval needed",
-    cfg.labelIcon,
-    cfg.permissionColor,
-  );
-  const msg = (payload["message"] as string) || "A tool needs permission";
-  htNotify(cfg, "Claude Code · approval needed", msg);
-}
-
-// ---------------------------------------------------------------------------
-// stdin reader — Claude Code pipes the hook payload as JSON on stdin.
-// Returns `{}` on TTY / empty / parse failure so the dispatcher can
-// still run with reasonable fallbacks.
-// ---------------------------------------------------------------------------
 
 async function readStdin(): Promise<Record<string, unknown>> {
   if (process.stdin.isTTY) return {};
@@ -828,43 +84,29 @@ async function readStdin(): Promise<Record<string, unknown>> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Entry
-// ---------------------------------------------------------------------------
+/** Fire-and-forget `ht claude event`. Exit code ignored by design. */
+function sendEvent(cfg: Config, event: Record<string, unknown>): void {
+  try {
+    const child = spawn(
+      cfg.htBinary,
+      ["claude", "event", "--json", JSON.stringify(event)],
+      { stdio: "ignore" },
+    );
+    child.on("error", (err) => debugLog(`ht spawn: ${err.message}`));
+  } catch (err) {
+    debugLog(
+      `spawn failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
   if (!cfg.enabled) return;
 
-  const event = process.argv[2];
-  if (!event) {
-    if (process.env.HT_CLAUDE_DEBUG) {
-      console.error("[ht-bridge] missing event argv[2]");
-    }
-    return;
-  }
-
-  pruneOldState(cfg);
-
-  // `title` is the detached self-re-invocation from spawnTitleSidecar.
-  // It reads sessionId from argv[3] (not stdin) and runs pi.
-  if (event === "title") {
-    const sessionId = process.argv[3];
-    if (!sessionId) {
-      if (process.env.HT_CLAUDE_DEBUG) {
-        console.error("[ht-bridge] title: missing sessionId argv[3]");
-      }
-      return;
-    }
-    try {
-      await handleTitle(cfg, sessionId);
-    } catch (err) {
-      if (process.env.HT_CLAUDE_DEBUG) {
-        console.error(
-          `[ht-bridge] title failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
+  const eventName = process.argv[2];
+  if (!eventName) {
+    debugLog("missing event argv[2]");
     return;
   }
 
@@ -876,30 +118,13 @@ async function main(): Promise<void> {
   }
 
   try {
-    switch (event) {
-      case "prompt":
-        handlePrompt(cfg, payload);
-        break;
-      case "stop":
-        handleStop(cfg, payload);
-        break;
-      case "notify-idle":
-        handleNotifyIdle(cfg, payload);
-        break;
-      case "notify-permission":
-        handleNotifyPermission(cfg, payload);
-        break;
-      default:
-        if (process.env.HT_CLAUDE_DEBUG) {
-          console.error(`[ht-bridge] unknown event: ${event}`);
-        }
-    }
+    const event = buildBridgeEvent(eventName, payload, process.env, Date.now());
+    if (event) sendEvent(cfg, event);
+    else debugLog(`skipped event: ${eventName}`);
   } catch (err) {
-    if (process.env.HT_CLAUDE_DEBUG) {
-      console.error(
-        `[ht-bridge] ${event} failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    debugLog(
+      `${eventName} failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 

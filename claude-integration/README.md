@@ -1,25 +1,43 @@
 # Claude Code ↔ τ-mux
 
-Glue that surfaces Claude Code session state into τ-mux's sidebar — and teaches Claude Code to drive τ-mux's interactive surfaces — the same way `pi-extensions/ht-bridge` does for the pi coding agent.
+Glue that makes τ-mux the best place to run Claude Code — and teaches
+Claude Code to drive τ-mux's interactive surfaces — the same way
+`pi-extensions/ht-bridge` does for the pi coding agent.
 
-The integration ships two pieces:
+Three pieces (august-plan M1 architecture):
 
-- **Runtime hook bridge** (`ht-bridge/`) — passive. Drives the active label pill, cost/context ticker, and idle/permission pill colour from Claude Code shell hooks. No LLM involvement.
-- **`tau-mux` skill** (`skills/tau-mux/`) — active. Tells Claude Code to prefer `ht ask`, `ht plan`, `ht notify`, `ht new-split`, `ht browser`, `ht screenshot`, etc. over plain terminal output. Loaded by Claude Code from `~/.claude/skills/tau-mux/SKILL.md`.
-
-Both are installed by `./install.sh` (one symlinks into `~/.claude/scripts/`, the other into `~/.claude/skills/`).
+- **Event plane — hook bridge** (`ht-bridge/`), passive. Fourteen Claude
+  Code shell hooks → `ht claude event` → the app-side
+  `ClaudeSessionRegistry`. Drives the session phase (working / waiting /
+  approval / compacting / error), turn boundaries, subagent counts, and
+  the native task mirror. No LLM involvement.
+- **Data plane — statusline** (`ht claude statusline`), passive. Claude
+  Code pipes its statusline JSON (cost, context %, rate limits, session
+  title, model, PR state — computed by Claude Code itself); the command
+  renders a τ-mux status line back AND tees the data into the registry.
+  Replaces v1's transcript parsing + pricing table + `pi` title sidecar.
+- **`tau-mux` skill** (`skills/tau-mux/`), active. Tells Claude Code to
+  prefer `ht ask`, `ht plan`, `ht notify`, `ht new-split`, `ht browser`,
+  `ht screenshot` over plain terminal output. Loaded from
+  `~/.claude/skills/tau-mux/SKILL.md`.
 
 ## What's here
 
-| Path                                      | Purpose                                                           |
-| ----------------------------------------- | ----------------------------------------------------------------- |
-| `ht-bridge/src/index.ts`                  | Shell-hook runner. Four events (`prompt`, `stop`, `notify-idle`, `notify-permission`) → `ht set-status` / `ht notify`. |
-| `ht-bridge/config.json`                   | Optional per-user overrides (colors, keys, pricing, ticker off). |
-| `ht-bridge/README.md`                     | Per-component doc, manual-test snippets, env vars.               |
-| `skills/tau-mux/SKILL.md`                 | Instructional skill — teaches Claude Code to use ht ask / plan / notify / split / browser / screenshot when running inside τ-mux. |
-| `skills/tau-mux/README.md`                | Skill doc — install, scope, and split-of-responsibilities with the runtime hook bridge. |
-| `settings.snippet.jsonc`                  | Copy-paste hooks for `~/.claude/settings.json`.                  |
-| `install.sh`                              | Symlinks `ht-bridge/` into `~/.claude/scripts/` and `skills/tau-mux/` into `~/.claude/skills/` so edits here land live with no rebuild. Use `SKIP_HOOKS=1` or `SKIP_SKILL=1` to install one without the other. |
+| Path | Purpose |
+| ---- | ------- |
+| `ht-bridge/src/index.ts` | Thin hook runner: argv[2] event + stdin payload → `ht claude event`. |
+| `ht-bridge/src/build-event.ts` | Pure payload→event mapping (unit-tested in `tests/claude-bridge.test.ts`). |
+| `ht-bridge/config.json` | Optional overrides (enable flag, ht path). |
+| `ht-bridge/README.md` | Per-component doc, event table, manual-test snippets. |
+| `skills/tau-mux/SKILL.md` | Instructional skill — ask / plan / notify / split / browser / screenshot. |
+| `settings.snippet.jsonc` | Drop-in `statusLine` + full `hooks` block for `~/.claude/settings.json`. |
+| `install.sh` | Symlinks `ht-bridge/` into `~/.claude/scripts/` and the skill into `~/.claude/skills/`. |
+
+App-side counterparts live in the main tree: `src/bun/claude-session-registry.ts`
+(state), `src/bun/claude-status-presenter.ts` (pills + notifications),
+`src/bun/rpc-handlers/claude.ts` (`claude.event` / `claude.statusline` /
+`claude.sessions`), `src/shared/claude-types.ts` +
+`src/shared/claude-statusline.ts` (wire types, statusline parse/render).
 
 ## Install
 
@@ -28,38 +46,41 @@ Both are installed by `./install.sh` (one symlinks into `~/.claude/scripts/`, th
 ./claude-integration/install.sh
 ```
 
-The script symlinks `~/.claude/scripts/ht-bridge` → this folder. Edits to `ht-bridge/src/index.ts` are picked up on the next hook invocation (Bun reads the file each time — no bundling step).
+Then merge `settings.snippet.jsonc` into `~/.claude/settings.json`:
 
-Then merge the hooks in `settings.snippet.jsonc` into your `~/.claude/settings.json`. Precisely:
+1. the `statusLine` block (or keep your own statusline and lose the
+   cost/context/rate-limit feed), and
+2. the `hooks` entries — all fourteen are optional; the four v1 names
+   (`prompt`, `stop`, `notify-idle`, `notify-permission`) are unchanged,
+   so an existing install only needs the new blocks added.
 
-- **Add** one hook under `UserPromptSubmit` (alongside your existing superset-notify entry).
-- **Replace** the contents of `Stop` — drop the `afplay finish.mp3` and `cmux-notify.sh 'Session complete'` lines; keep the superset-notify block.
-- **Replace** the contents of `Notification` — drop all `cmux-notify.sh` and `afplay need-human.mp3` lines; keep only the `idle_prompt` + `permission_prompt` bridge entries.
+A one-click installer in the app (Settings → Claude Code) is planned for
+M2 (`doc/august-plan.md` WS7).
 
-`settings.snippet.jsonc` shows the final shape.
+## Verify
+
+```bash
+ht claude sessions --all       # sessions the app has observed
+echo '{"session_id":"t","prompt":"hello"}' \
+  | bun ~/.claude/scripts/ht-bridge/src/index.ts prompt   # manual event
+HT_CLAUDE_DEBUG=1 …            # surface bridge errors on stderr
+```
 
 ## How it mirrors pi-extensions
 
-The pi side packs both the passive surface (active label, cost ticker, notifications) and the active surface (LLM-callable tools, plan workflow, ask-user, system-prompt primer) into a single JS extension. Claude Code can't load JS extensions, so we split the same responsibilities across two install targets:
-
-| `pi-extensions/ht-bridge` capability                 | Claude Code analog                                                                  |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `before_agent_start` → "Thinking…" pill              | `UserPromptSubmit` hook → active label pill (`ht-bridge/`)                          |
-| Haiku call → 3-5 word label                          | `pi -p --model openai/gpt-5-nano --thinking off` sidecar — 3-5 word title, refined across turns. Falls back to first clause of prompt when `titleEnabled=false`. [1] |
-| `agent_end` → `ht notify` summary                    | `Stop` hook → `ht notify` with prompt + duration + cost (`ht-bridge/`)              |
-| `turn_end` → `ctx · %` ticker                        | `Stop` hook → `cc · turn N · cost` ticker (`ht-bridge/`)                            |
-| Cost from pi-ai's `model.cost`                       | Cost from parsing the transcript JSONL (`ht-bridge/`)                               |
-| `session_shutdown` → clear pills                     | `Stop` clears label; 24 h janitor prunes stale state (`ht-bridge/`)                 |
-| `ht_ask_user` LLM tool                               | `tau-mux` skill — instructs the model to call `ht ask {yesno|choice|text|confirm-command}` |
-| `ht_plan_*` LLM tools (review-first .pi/plans/*.md)  | `tau-mux` skill — instructs the model to write `.claude/plans/<name>.md` first, gate via `ht ask choice`, then `ht plan set` |
-| `ht_notify` LLM tool                                 | `tau-mux` skill — instructs the model to fire `ht notify` on milestones (sparingly) |
-| `ht_browser_*` LLM tools                             | `tau-mux` skill — instructs the model to use `ht browser open-split` + `ht browser browser:N …` |
-| `ht_screenshot` LLM tool                             | `tau-mux` skill — instructs the model to call `ht screenshot --out`                 |
-| `ht_run_in_split` LLM tool                           | `tau-mux` skill — instructs the model to use `ht new-split` + `ht send` for long-running commands |
-| Bash-safety gate (registered via `before_tool_call`) | `tau-mux` skill — instructs the model to gate destructive bash via `ht ask confirm-command` |
-| System-prompt primer at every turn                   | `tau-mux` skill — Claude Code loads the skill body when its `description` matches the user's task |
-
-[1] The title sidecar is detached (`spawn(...).unref()`) so the hook itself returns in ~ms; the pill flips from `Starting…` to the generated title when pi exits (~1–3 s typical, 5 s hard timeout).
+| `pi-extensions/ht-bridge` capability | Claude Code analog |
+| ------------------------------------ | ------------------ |
+| `before_agent_start` → "Thinking…" pill | `UserPromptSubmit` hook → working pill |
+| Haiku call → 3-5 word label | Claude Code's own session title, via the statusline feed (no sidecar, no second model) |
+| `agent_end` → `ht notify` summary | `Stop` hook → app-side summary notification |
+| `turn_end` → `ctx · %` ticker | statusline feed → `Opus · 42% ctx · $0.31` ticker |
+| Cost from pi-ai's `model.cost` | `cost.total_cost_usd` from the statusline feed |
+| `session_shutdown` → clear pills | `SessionEnd` hook → registry prune + pill clear |
+| `ht_ask_user` LLM tool | `tau-mux` skill — `ht ask {yesno\|choice\|text\|confirm-command}` |
+| `ht_plan_*` LLM tools | `tau-mux` skill + native TaskCreated/TaskCompleted mirror (M2 wires it to the plan panel) |
+| `ht_notify` LLM tool | `tau-mux` skill — `ht notify` on milestones |
+| `ht_browser_*` / `ht_screenshot` tools | `tau-mux` skill — `ht browser` / `ht screenshot` |
+| Bash-safety gate | `tau-mux` skill — `ht ask confirm-command` (M2: PermissionRequest hook routing) |
 
 ## Uninstall
 
@@ -68,11 +89,13 @@ rm ~/.claude/scripts/ht-bridge
 rm ~/.claude/skills/tau-mux
 ```
 
-Then revert the `~/.claude/settings.json` hook blocks; the bridge owns no other files beyond transient state at `$TMPDIR/ht-claude-bridge/`.
+Then remove the hook blocks + `statusLine` from `~/.claude/settings.json`.
+v2 keeps no state anywhere (v1's `$TMPDIR/ht-claude-bridge/` is gone; if
+present from an old install it can be deleted).
 
 ## Related
 
-- `bin/ht` — the CLI the bridge shells out to.
-- `src/bun/rpc-handlers/sidebar.ts` — the `sidebar.set_status` RPC method the bridge drives. Workspace attribution via `HT_SURFACE` lives here.
-- `src/bun/rpc-handlers/notification.ts` — the `notification.create` / `notification.dismiss` path the bridge's `ht notify` calls hit.
+- `doc/august-plan.md` — the full integration plan (M1–M4).
+- `bin/ht` — the CLI the bridge shells out to (`claude event|statusline|sessions`).
+- `src/bun/rpc-handlers/sidebar.ts` — workspace attribution via `HT_SURFACE`.
 - `doc/system-webview-ui.md` §4 — sidebar UX spec the pills render under.

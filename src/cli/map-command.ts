@@ -447,6 +447,45 @@ export function mapCommand(ctx: CliContext): RpcCall {
       throw new Error(`Unknown extension subcommand: ${sub}`);
     }
 
+    // august-plan M1 — Claude Code integration verbs. `ht claude
+    // statusline` is intercepted in bin/ht main() (it reads stdin and
+    // must print before the tee); everything else is a plain RPC map.
+    case "claude": {
+      const sub = positional[0];
+      if (sub === "event") {
+        const rawJson = flags["json"] ?? positional[1] ?? "";
+        let event: Record<string, unknown>;
+        try {
+          event = JSON.parse(rawJson) as Record<string, unknown>;
+        } catch {
+          throw new Error(
+            "ht claude event: --json '<bridge-event JSON>' is required",
+          );
+        }
+        // Pane attribution fallback: the ht-bridge hook process inherits
+        // HT_SURFACE from the pane's shell, and so do we — belt and
+        // braces for producers that forget to set it themselves.
+        if (!event["surfaceId"] && process.env["HT_SURFACE"]) {
+          event["surfaceId"] = process.env["HT_SURFACE"];
+        }
+        return { method: "claude.event", params: { event } };
+      }
+      if (sub === "sessions") {
+        return {
+          method: "claude.sessions",
+          params: { all: flags["all"] === "true" },
+        };
+      }
+      if (sub === "statusline") {
+        throw new Error(
+          "ht claude statusline: handled by main() — should not reach mapCommand",
+        );
+      }
+      throw new Error(
+        `Unknown claude subcommand: ${sub ?? "(none)"} (expected event|sessions|statusline)`,
+      );
+    }
+
     case "list-workspaces":
       return { method: "workspace.list", params: {} };
     case "current-workspace":

@@ -1,20 +1,21 @@
-// Drop-in hook blocks for ~/.claude/settings.json.
+// Drop-in hook blocks for ~/.claude/settings.json — ht-bridge v2
+// (august-plan M1). JSONC for readability; strip comments before pasting,
+// or hand-merge into your existing `hooks` object.
 //
-// This is JSONC (JSON with comments) for readability — strip the
-// comments before pasting into settings.json, or hand-merge the three
-// blocks below into the existing `hooks` object.
+// Every entry is the same shape: `bun …/ht-bridge/src/index.ts <event>`.
+// All events are optional — install the subset you want. The four v1
+// events (prompt / stop / notify-idle / notify-permission) keep their
+// names, so an existing install only needs the NEW blocks added.
 //
-// What to do:
-//   * UserPromptSubmit  — ADD the bun entry next to your existing
-//                         superset-notify hook.
-//   * Stop              — REPLACE the `afplay finish.mp3` +
-//                         `cmux-notify.sh 'Session complete'` lines
-//                         with the bun entry. Keep the superset-notify
-//                         block.
-//   * Notification      — REPLACE all cmux-notify.sh + afplay
-//                         need-human.mp3 entries with exactly the two
-//                         bun entries below.
+// Also install the statusline (cost / context / rate limits / session
+// title — this is the data plane, the hooks are only the event plane):
+//
+//   "statusLine": { "type": "command", "command": "ht claude statusline" }
 {
+  "statusLine": {
+    "type": "command",
+    "command": "ht claude statusline"
+  },
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -23,11 +24,9 @@
             "type": "command",
             "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts prompt"
           }
-          // plus any existing superset-notify hook you already had.
         ]
       }
     ],
-
     "Stop": [
       {
         "matcher": "",
@@ -38,9 +37,107 @@
           }
         ]
       }
-      // plus any existing superset-notify Stop block.
     ],
-
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts stop-failure"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts session-start"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts session-end"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts subagent-start"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts subagent-stop"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts pre-compact"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts post-compact"
+          }
+        ]
+      }
+    ],
+    "CwdChanged": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts cwd-changed"
+          }
+        ]
+      }
+    ],
+    "TaskCreated": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts task-created"
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts task-completed"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "idle_prompt",

@@ -49,6 +49,7 @@ import { NativeStdoutCoalescer } from "./native-stdout-coalescer";
 import { SurfaceMetadataPoller } from "./surface-metadata";
 import { WebServer } from "./web-server";
 import { createRpcHandler } from "./rpc-handler";
+import { createClaudeIntegration } from "./claude-integration";
 import {
   buildApplicationMenu,
   ELECTROBUN_DOCS_URL,
@@ -2573,6 +2574,9 @@ const autoContinueHost = createAutoContinueHost({
   getOutputHistory: (surfaceId) => sessions.getOutputHistory(surfaceId),
 });
 
+// august-plan M1 — Claude Code integration (see ./claude-integration.ts).
+const claudeIntegration = createClaudeIntegration();
+
 const socketHandler = createRpcHandler(
   sessions,
   () => app.getAppState(),
@@ -2587,6 +2591,7 @@ const socketHandler = createRpcHandler(
     panelRegistry,
     piAgentManager,
     extensionManager,
+    claudeRegistry: claudeIntegration.registry,
     shutdown: () => gracefulShutdown(),
     testModeEnabled: HT_TEST_MODE,
     telegramDb,
@@ -2613,6 +2618,8 @@ const socketHandler = createRpcHandler(
     },
   },
 );
+
+claudeIntegration.attachPresenter(socketHandler);
 
 // All late-bound dependencies referenced by the webview handlers now
 // exist; flush them into the context so the registered handlers can

@@ -1,93 +1,106 @@
-# ht-bridge
+# ht-bridge (v2)
 
-Surfaces Claude Code session events into τ-mux's sidebar, replacing the old `afplay` + `cmux-notify` hooks.
+Forwards Claude Code shell-hook events into τ-mux. That is the whole job:
+one hook fires → the bridge normalizes the payload into a small JSON event
+→ `ht claude event` delivers it to the app → the app-side
+`ClaudeSessionRegistry` (`src/bun/claude-session-registry.ts`) updates the
+session state and the `ClaudeStatusPresenter` renders pills/notifications.
 
-Two sidebar pills appear while Claude Code is running:
+**What changed from v1** (august-plan M1): the bridge no longer keeps
+per-session state files, parses transcripts, maintains a pricing table, or
+runs the `pi` title sidecar. Cost, context %, rate limits, and the session
+title now come from `ht claude statusline` — numbers Claude Code computes
+itself. The bridge shrank from ~900 lines to ~150 and only *forwards*.
 
-- **`Claude`** — active task label. On `UserPromptSubmit` the pill flips immediately to **`Starting…`** (muted `#cdd6f4`), then a detached `pi -p` sidecar generates a 3-5 word **conversation title** and switches the pill to pink (`#f5c2e7`) with that title. The previous title is passed back to pi on each turn so the label can refine across the session (`"Investigate flaky CI timeout"` → `"Investigate macOS CI Timeout"` once scope clarifies). Cleared on `Stop`. Flips to a yellow **Waiting for input** or red **Approval needed** state on `Notification` events.
-- **`cc`** — persistent session ticker. Updated on every prompt and every stop: `turn N · 2.1 min · $0.034`. Cost + tokens come from parsing the transcript JSONL Claude Code writes incrementally, so nothing extra needs to be wired.
+The visible result (rendered app-side, keys unchanged from v1):
 
-On `Stop`, an `ht notify` fires with the label in the title and the original prompt + duration + cost in the body — same surface the τ-mux sidebar already uses for the `finish.mp3` sound cue, pane glow, and click-to-focus. Nothing else is spawned (no afplay, no native toast).
-
-The arrival sound respects τ-mux's `notificationSoundEnabled` / `notificationSoundVolume` settings — mute and volume live in **Settings → General**, and the webview's command palette has a **Mute / Unmute Notification Sound** entry for quick toggling without touching the bridge config.
+- **`Claude`** — active label pill. Prompt's first clause immediately,
+  Claude Code's own session title once the statusline reports it. Yellow
+  **Waiting for input**, red **Approval needed**, muted **Compacting…**,
+  red error text on API failures. Cleared when the turn ends.
+- **`cc`** — persistent ticker: `Opus · 42% ctx · $0.31` (or `turn N`
+  before the statusline has reported).
+- A completion notification on `Stop` (prompt + duration + cost), an
+  error notification on `StopFailure`, an approval notification on
+  permission prompts. Idle pauses change the pill only — no toast.
 
 ## Wire-up
 
-Runs as shell hooks from `~/.claude/settings.json`. Four entry points, dispatched via argv[2]:
+Shell hooks from `~/.claude/settings.json` — see
+`../settings.snippet.jsonc` for the full drop-in block. Event name is
+argv[2]; the hook payload arrives on stdin:
 
-| Event kind | Hook matcher                          | Effect                                      |
-| ---------- | ------------------------------------- | ------------------------------------------- |
-| `prompt`   | `UserPromptSubmit`                    | Set label pill, bump turn counter           |
-| `stop`     | `Stop`                                | Clear label, parse transcript, fire notify  |
-| `notify-idle` | `Notification` matcher=`idle_prompt`  | Yellow "Waiting for input" pill + notify    |
-| `notify-permission` | `Notification` matcher=`permission_prompt` | Red "Approval needed" pill + notify |
+| argv[2] | Hook |
+| ------- | ---- |
+| `prompt` | `UserPromptSubmit` |
+| `stop` | `Stop` |
+| `stop-failure` | `StopFailure` |
+| `session-start` / `session-end` | `SessionStart` / `SessionEnd` |
+| `subagent-start` / `subagent-stop` | `SubagentStart` / `SubagentStop` |
+| `pre-compact` / `post-compact` | `PreCompact` / `PostCompact` |
+| `cwd-changed` | `CwdChanged` |
+| `task-created` / `task-completed` | `TaskCreated` / `TaskCompleted` |
+| `notify-idle` | `Notification` matcher=`idle_prompt` |
+| `notify-permission` | `Notification` matcher=`permission_prompt` |
 
-Each hook is fire-and-forget. `ht` is spawned with `stdio: ignore`; errors are swallowed unless `HT_CLAUDE_DEBUG=1` is set. If τ-mux isn't running the socket call fails silently and nothing else breaks.
+All events are optional — install the subset you want; the registry
+tolerates any combination. Unknown argv[2] values are ignored (an
+installer newer than the bridge must not crash the hook pipeline).
 
-## State
+Every `ht` spawn is fire-and-forget (`stdio: ignore`, never awaited). If
+τ-mux isn't running, the CLI fails silently and Claude Code never
+notices. Exit code is always 0.
 
-Per-session state (turn count, start time, last model, cumulative tokens + cost) lives at `$TMPDIR/ht-claude-bridge/<session_id>.json`. Files older than 24 h are pruned on every invocation. State writes are atomic (temp-file + rename).
+**Companion (data plane):** install the statusline too —
+
+```json
+"statusLine": { "type": "command", "command": "ht claude statusline" }
+```
 
 ## Config
 
-Edit `config.json` next to `src/index.ts` or set environment variables:
+`config.json` next to `src/`, or environment variables:
 
-| Env                         | Effect                          |
-| --------------------------- | ------------------------------- |
-| `HT_CLAUDE_ENABLED=0`       | Disable the bridge entirely     |
-| `HT_CLAUDE_HT_BIN=/path/ht` | Override `ht` CLI location      |
-| `HT_CLAUDE_LABEL_KEY=foo`   | Rename the active pill key      |
-| `HT_CLAUDE_TICKER_KEY=bar`  | Rename the ticker pill key      |
-| `HT_CLAUDE_TICKER_ENABLED=0` | Disable the persistent ticker   |
-| `HT_CLAUDE_TITLE_ENABLED=0` | Disable the pi title sidecar — fall back to first-clause-of-prompt label |
-| `HT_CLAUDE_PI_BIN=/path/pi` | Override `pi` CLI location      |
-| `HT_CLAUDE_NOTIFY_ON_IDLE=1` | Re-enable the "waiting" toast on idle (pill only by default) |
-| `HT_CLAUDE_DEBUG=1`         | Surface errors on stderr        |
+| Env | Effect |
+| --- | ------ |
+| `HT_CLAUDE_ENABLED=0` | Disable the bridge entirely |
+| `HT_CLAUDE_HT_BIN=/path/ht` | Override `ht` CLI location |
+| `HT_CLAUDE_DEBUG=1` | Surface errors on stderr |
 
-## Title generation
-
-The title sidecar shells out to [pi](https://github.com/mariozechner/pi-coding-agent) (`pi -p --model openai/gpt-5-nano --thinking off --no-tools …`) on every `UserPromptSubmit`. The two-phase pill is the visible artefact:
-
-| Phase | Pill | Trigger |
-| ----- | ---- | ------- |
-| 1     | `Claude · Starting…` (muted `#cdd6f4`) | Synchronous inside the prompt hook |
-| 2     | `Claude · <pi-generated title>` (pink `#f5c2e7`) | When pi returns (~1–3 s typical) |
-
-The sidecar is fully best-effort:
-
-- **5-second timeout** — if pi takes longer the SIGTERM fires and the pill stays at `Starting…` until the next event.
-- **Silent on failure** — pi missing, no `OPENAI_API_KEY`, network error → pill stays at `Starting…`. Set `HT_CLAUDE_DEBUG=1` to surface the underlying error on stderr.
-- **Race-safe with Stop** — the sidecar always writes its result into the per-session state file (so the *next* turn's pi call has the previous title for refinement), but only touches the visible pill if `promptActive` is still true. A late title arrival after `Stop` won't produce a "ghost" pill.
-
-### Requirements
-
-- `pi` on `$PATH` (or set `HT_CLAUDE_PI_BIN`).
-- An API key resolvable by pi for the configured model — by default `OPENAI_API_KEY` (gpt-5-nano). Switch models by editing `titlePiArgs` in `config.json`.
-
-### Disabling
-
-Set `titleEnabled: false` in `config.json` or `HT_CLAUDE_TITLE_ENABLED=0`. The pill falls back to the original first-clause-of-prompt label (truncated to `labelMaxChars`).
-
-## Pricing
-
-Token costs come from `config.json → pricing` (`$ / million tokens`, keyed by model id). Claude 4.x family is seeded; dated suffixes like `claude-opus-4-7-20260118` match by prefix; unknown models fall back to a tier heuristic (`opus` / `sonnet` / `haiku` substring match). When no price is resolvable the ticker shows output tokens instead of dollars.
+Pill keys, colors, and notification behavior are app-side now
+(`src/bun/claude-status-presenter.ts`).
 
 ## Manual test
 
-With τ-mux running and this bridge wired into `settings.json`, trigger each hook manually:
+With τ-mux running (a build that has the `claude.*` RPC — ≥ 0.5.0):
 
 ```bash
-# label pill
+# label pill (working, pink)
 echo '{"session_id":"manual-test","prompt":"Investigate a flaky test in the billing suite"}' \
   | bun ~/.claude/scripts/ht-bridge/src/index.ts prompt
 
-# permission flash
+# permission state (red) + notification
 echo '{"session_id":"manual-test","message":"Allow ls?"}' \
   | bun ~/.claude/scripts/ht-bridge/src/index.ts notify-permission
 
-# stop — needs a real transcript path to compute cost
-echo '{"session_id":"manual-test","transcript_path":"/Users/you/.claude/projects/.../foo.jsonl"}' \
+# turn end — clears the pill, fires the summary notification
+echo '{"session_id":"manual-test"}' \
   | bun ~/.claude/scripts/ht-bridge/src/index.ts stop
+
+# inspect what the app recorded
+ht claude sessions --all
 ```
 
-Check the sidebar of whichever τ-mux workspace `HT_SURFACE` points at; the native `surface_id` resolution plumbing (see `src/bun/rpc-handlers/sidebar.ts`) routes each pill to the caller's workspace automatically.
+Run from inside a τ-mux pane so `HT_SURFACE` attributes the session to
+your workspace; from outside, events land unattributed (active-workspace
+fallback). `HT_CLAUDE_DEBUG=1` surfaces spawn errors.
+
+## Tests
+
+`tests/claude-bridge.test.ts` drives `src/build-event.ts` (the pure
+payload→event mapping) with recorded hook payloads and replays the
+result through the real registry — the wire contract between this
+folder and the app is locked there. The bridge deliberately does not
+import from `src/` (it's symlinked into `~/.claude/scripts/`), so the
+event type is re-declared in `build-event.ts` and the test file is what
+keeps the two in sync.

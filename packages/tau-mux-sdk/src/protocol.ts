@@ -269,6 +269,16 @@ export interface TauMuxApi {
   pane: { list: M };
   panel: { list: M };
   script: { run: M }; // { workspace_id, cwd, command, script_key }
+
+  /** Claude Code integration (august-plan M1) — hook-event ingestion,
+   *  statusline tee, and session observability. `event` / `statusline`
+   *  are producer-facing (the ht-bridge and `ht claude statusline` are
+   *  the normal callers); `sessions` is the read side. */
+  claude: {
+    event: M; // { event: ClaudeBridgeEvent }
+    statusline: M; // { data: ClaudeStatuslineData }
+    sessions: M; // { all? } → { sessions: ClaudeSessionState[] }
+  };
 }
 
 /** Internal: wire-name table for the generated namespaces. Each entry is
@@ -421,6 +431,11 @@ const NAMESPACES: Record<string, [string, string][]> = {
     ["list", "list"],
     ["run", "run"],
     ["fix", "fix"],
+  ],
+  claude: [
+    ["event", "event"],
+    ["statusline", "statusline"],
+    ["sessions", "sessions"],
   ],
   pane: [["list", "list"]],
   panel: [["list", "list"]],
