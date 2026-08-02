@@ -21,6 +21,7 @@ import type {
   SurfaceMetadata,
 } from "../shared/types";
 import { ManifestScanner } from "./manifest-scanner";
+import { openNativeProc } from "./native-proc";
 import { parseCargoToml } from "./parse-cargo-toml";
 
 export interface PsRow {
@@ -526,15 +527,12 @@ export class SurfaceMetadataPoller {
     /** Active (non-idle) cadence. The effective interval grows from this
      *  while idle and snaps back to it on activity. */
     private baseIntervalMs = 1000,
-    /** Subprocess seam — defaults to the real ps/lsof/git runners.
-     *  Function declarations below are hoisted, so referencing them
-     *  here (evaluated at construction) is safe. */
-    private runners: MetadataRunners = {
-      runPs,
-      runListeningPorts,
-      runCwds,
-      runGit,
-    },
+    /** Subprocess seam — defaults to the native FFI runners when this
+     *  machine passes `openNativeProc()`'s self-validation, and to the
+     *  ps/lsof subprocess runners otherwise. Function declarations below
+     *  are hoisted, so referencing them here (evaluated at construction)
+     *  is safe. */
+    private runners: MetadataRunners = createDefaultRunners(),
   ) {}
 
   start(): void {
@@ -959,6 +957,49 @@ async function runSubprocess(
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/**
+ * Pick the fastest runner set this machine can support.
+ *
+ * The native (FFI) path reads the same facts straight out of the kernel
+ * instead of forking `ps` and `lsof` twice a second — ~5 ms per tick
+ * against ~200 ms. `openNativeProc()` self-validates and returns null
+ * whenever it can't prove its struct offsets still hold, in which case
+ * we keep the subprocess runners and behave exactly as before. The probe
+ * is memoised, so constructing several pollers only pays for it once.
+ *
+ * See doc/desktop-perf-plan.md §2 and `src/bun/native-proc.ts`.
+ */
+export function createDefaultRunners(): MetadataRunners {
+  const native = openNativeProc();
+  if (!native) {
+    return { runPs, runListeningPorts, runCwds, runGit };
+  }
+  return {
+    runPs: () => {
+      const rows = native.listProcesses();
+      // An empty table means the syscall failed. Report it the same way
+      // a failed `ps` is reported so `tick()` retries at base cadence
+      // instead of publishing an empty world.
+      if (rows.size === 0) return Promise.resolve(null);
+      native.pruneCpuSamples(new Set(rows.keys()));
+      return Promise.resolve(rows);
+    },
+    runListeningPorts: (pids) =>
+      Promise.resolve(pids.length === 0 ? new Map() : native.listenersOf(pids)),
+    runCwds: (pids) => {
+      const result = new Map<number, string>();
+      for (const pid of pids) {
+        const cwd = native.cwdOf(pid);
+        if (cwd) result.set(pid, cwd);
+      }
+      return Promise.resolve(result);
+    },
+    // git has no syscall equivalent — it stays a subprocess, still
+    // behind the existing per-cwd TTL cache and stall cooldown.
+    runGit,
+  };
 }
 
 async function runPs(): Promise<Map<number, PsRow> | null> {
