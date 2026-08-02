@@ -4,7 +4,7 @@
 **Scope agreed with the user:** implement everything **except §2.1** (web-mirror
 `0.0.0.0` / empty-token defaults), which was explicitly deferred.
 **Started:** 2026-08-02, from `cfaa406e` (v0.4.11).
-**Shipped as:** v0.4.12 — commit `TBD`.
+**Shipped as:** v0.4.12 — commit `a50306cd`.
 
 ---
 
