@@ -9,7 +9,7 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 | Milestone | Target | Status | Version | Commit |
 |---|---|---|---|---|
 | M1 — "τ-mux sees Claude" (WS1 + WS1b + WS2) | 0.5.0 | ✅ | 0.5.0 | `4287936f` |
-| M2 — "τ-mux acts for Claude" (WS3 + WS4 + WS7) | 0.6.0 | ✅ | 0.6.0 | _see below_ |
+| M2 — "τ-mux acts for Claude" (WS3 + WS4 + WS7) | 0.6.0 | ✅ | 0.6.0 | `e2cea5e3` |
 | M3 — "Claude lives in τ-mux" (WS5 + WS8) | 0.7.0 | ⏸ | — | — |
 | M4 — "AAA" (WS6 + WS9) | 0.8.0 | ⏸ | — | — |
 

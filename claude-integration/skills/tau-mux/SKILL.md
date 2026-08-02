@@ -1,6 +1,7 @@
 ---
 name: tau-mux
-description: Use when running Claude Code inside τ-mux (the hybrid terminal emulator with workspace sidebar, plan panel, ask-user modals, browser panes). Activates on multi-step plans, user questions, long-running processes (dev servers / watchers / log tails), browser verification, screenshots, completion signaling, and risky bash. When `$HT_SURFACE` or `$HYPERTERM_PROTOCOL_VERSION` is set, prefer the structured `ht` CLI surfaces (`ht ask`, `ht plan`, `ht notify`, `ht new-split` + `ht send`, `ht browser`, `ht screenshot`, `ht set-status`) over plain terminal output. This skill mirrors the behaviour the pi-extensions/ht-bridge installs into the pi coding agent — it is the Claude Code analog.
+version: 2.0.0
+description: Use when running Claude Code inside τ-mux (the hybrid terminal emulator with workspace sidebar, plan panel, ask-user modals, browser panes). Activates on user questions, long-running processes (dev servers / watchers / log tails), browser verification, screenshots, milestone signaling, and risky bash. When `$HT_SURFACE` or `$HYPERTERM_PROTOCOL_VERSION` is set, prefer the structured `ht` CLI surfaces (`ht ask`, `ht notify`, `ht new-split` + `ht send`, `ht browser`, `ht screenshot`, `ht set-status`) over plain terminal output. Status pills, cost/context ticker, completion notifications, and the plan-panel mirror of your task list are automatic (hooks + statusline) — this skill covers only the interactive surfaces.
 ---
 
 # τ-mux integration
@@ -30,55 +31,32 @@ Your job is to use the *interactive* surfaces (plans, ask-user, notify,
 splits, browser, screenshots) instead of plain text where it would be a
 better experience for the user.
 
-## Plan workflow — review-first
+## Plans & tasks — your task list is mirrored automatically
 
-For any task with **3 or more discrete steps**, do *not* publish a plan
-directly to the sidebar. Instead:
+**Your native task list (TaskCreate / TaskUpdate) is already mirrored
+into the τ-mux sidebar plan panel** — creation and completion land there
+automatically via hooks, per session. Just use your task tools normally;
+do NOT also run `ht plan set` for the same steps (you'd double-publish).
 
-1. **Write the detailed plan to a markdown file first.**
-   ```bash
-   mkdir -p .claude/plans
-   # write the human-readable plan to:
-   #   .claude/plans/<plan-name>.md
-   # Use the Write tool, not heredoc.
-   ```
-   The markdown file is the durable source of truth — durable across resumes,
-   forks, and compactions. The sidebar plan is just a glanceable view.
+What remains yours for **big plans** (3+ steps with real design risk):
 
-2. **Show the file path to the user and ask for accept / decline / discuss
-   before publishing the sidebar steps.** Use `ht ask choice`:
+1. **Write the durable plan to `.claude/plans/<plan-name>.md` first**
+   (Write tool, not heredoc). The file survives resumes, forks, and
+   compactions; the sidebar is just the glanceable view.
+2. **Gate it with `ht ask choice`** before starting implementation:
    ```bash
    ht ask choice \
      --title "Plan ready: <plan-name>" \
      --body "Saved to .claude/plans/<plan-name>.md — review then choose." \
      --choices "accept:Accept,decline:Decline,discuss:Discuss"
    ```
-   - `accept` → publish concise steps with `ht plan set`.
-   - `decline` → keep the markdown file for reference, do not publish.
-   - `discuss` → ask the user for revisions, write a v2 plan, repeat.
+3. **On accept**, create your native tasks from the plan's milestones —
+   the mirror puts them in the sidebar. On resume, read the plan file
+   first and continue where it left off.
 
-3. **Publish the concise sidebar plan with `ht plan set`** (only on accept):
-   ```bash
-   ht plan set --json '[
-     {"id":"M1","title":"Survey existing usage","state":"active"},
-     {"id":"M2","title":"Land the migration","state":"pending"},
-     {"id":"M3","title":"Backfill + tests","state":"pending"}
-   ]'
-   ```
-   Steps must be derived from the markdown plan, not invented separately.
-   Keep titles short — the sidebar is narrow.
-
-4. **Update steps as you progress:**
-   ```bash
-   ht plan update M1 --state done
-   ht plan update M2 --state active
-   ht plan complete            # all steps done → confetti
-   ht plan clear               # plan abandoned → clear the panel
-   ```
-
-5. **On resume** — if `.claude/plans/<plan-name>.md` already exists for the
-   current task, read it first and continue from where it left off rather
-   than starting a fresh plan.
+`ht plan set/update/complete/clear` still exists for ad-hoc publishing
+when you deliberately want a sidebar plan that differs from your task
+list — rare; prefer the mirror.
 
 ## Ask the user (structured)
 
@@ -246,7 +224,7 @@ For routine commands (`bun test`, `git commit`, `ls`, etc.) **do not** gate
 
 | Need                                  | Command                                              |
 | ------------------------------------- | ---------------------------------------------------- |
-| Multi-step plan                       | write `.claude/plans/<name>.md` → `ht ask choice` → `ht plan set` |
+| Multi-step plan                       | write `.claude/plans/<name>.md` → `ht ask choice` → native TaskCreate (auto-mirrored) |
 | Yes/no question                       | `ht ask yesno --title "…" --body "…"`                |
 | Pick one of N                         | `ht ask choice --title "…" --choices "id:label,…"`  |
 | Free-form input                       | `ht ask text --title "…" --default "…"`              |
@@ -262,17 +240,22 @@ For routine commands (`bun test`, `git commit`, `ls`, etc.) **do not** gate
 
 ## What you do **not** drive
 
-The runtime hook bridge at `~/.claude/scripts/ht-bridge/` (installed via
-`claude-integration/install.sh` from the τ-mux repo) handles these
-automatically — leave them alone:
+The runtime integration (hooks + `ht claude statusline`, installed via
+`ht claude install`) handles these automatically — leave them alone:
 
-- The **active label pill** (`Claude : <task>`) on `UserPromptSubmit`.
-- The **cost / context ticker** (`cc · turn 3 · 2.1 min · $0.034`) on `Stop`.
-- The **idle / permission** pill colour on `Notification` events.
-- The **completion notification** on `Stop`.
+- The **active label pill** (`Claude : <task>`) and its idle / approval /
+  compacting / error colours.
+- The **cost / context ticker** (`Opus · 42% ctx · $0.31`).
+- The **completion notification** on `Stop`, the error notification on
+  API failures.
+- The **plan panel mirror** of your native task list.
+- **Permission prompts** — when remote approvals are installed, they
+  already reach the user as a modal + Telegram; never try to answer or
+  gate them yourself.
 
-If you find yourself reaching for `ht set-status Claude …` or
-`ht set-status cc …`, stop — the hook owns those keys.
+If you find yourself reaching for `ht set-status Claude …`,
+`ht set-status cc …`, or `ht plan set` for your own task list — stop;
+the runtime owns those.
 
 ## Why this skill exists
 
