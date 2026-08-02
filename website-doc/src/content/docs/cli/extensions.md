@@ -1,6 +1,6 @@
 ---
 title: Extensions
-description: ht extension list, templates, open, split, new, install, remove, reload, stop.
+description: ht extension list, templates, open, split, new, install, remove, enable, disable, reload, stop.
 sidebar:
   order: 13
 ---
@@ -58,6 +58,8 @@ ht extension install /path/to/an-extension-dir
 
 Copies an external extension directory (one containing a valid `manifest.json`) into the extensions store and registers it.
 
+**Trust note:** installing runs `bun install` (including arbitrary postinstall scripts) and opening runs the extension's backend with a token granting the whole `ht` control surface. Install only what you would pipe to a shell — see the [trust model](/features/extensions/#trust-model). Since v0.4.12 the dev-server `bun x` network fallback is gone (a missing dev binary fails with "run `bun install`" instead of fetching from the network), and dev ports are allocated per instance — a manifest's `devPort` is a preference, and τ-mux walks to the next free port instead of loading another server's UI into the pane.
+
 ## remove
 
 ```bash
@@ -65,6 +67,18 @@ ht extension remove <id>
 ```
 
 Stops any running surfaces for the extension and deletes its folder.
+
+## enable / disable
+
+```bash
+ht extension enable <id>
+ht extension disable <id>
+```
+
+*(v0.4.12)* Disabling an extension **stops any surface currently running
+it** and makes `extension.open` / `extension.split` refuse until it's
+re-enabled. Before v0.4.12 the flag existed but was never enforced — a
+"disabled" extension silently launched anyway.
 
 ## reload
 

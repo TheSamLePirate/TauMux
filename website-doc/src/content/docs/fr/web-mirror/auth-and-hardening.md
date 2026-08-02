@@ -72,14 +72,14 @@ Depuis la **v0.3.161**, cette adresse de bind est honorée au démarrage automat
 
 La CLI `ht` communique avec l'application via un socket Unix. Le fichier socket est créé avec le mode `0600`, de sorte que seul le même utilisateur système peut l'ouvrir. C'est la barrière de base.
 
-Nouveau en **v0.3.163** : une seconde couche optionnelle — **Réglages → Réseau → « Exiger un jeton de socket RPC »** (**désactivé par défaut**). Une fois activée, le socket exige un jeton par démarrage (per-boot) pour les commandes **qui modifient l'état** — frappe dans les panneaux, arrêt de processus, création de splits, et autres. Les **diagnostics en lecture seule** restent ouverts même sans le jeton, afin qu'une incohérence de jeton reste diagnosticable :
+Une seconde couche est arrivée en **v0.3.163** et est **activée par défaut depuis la v0.4.12** : **Réglages → Réseau → « Exiger un jeton de socket RPC »**. Le socket exige un jeton par démarrage (per-boot) pour les commandes **qui modifient l'état** — frappe dans les panneaux, arrêt de processus, création de splits, installation d'extensions, et autres. Les **diagnostics en lecture seule** restent ouverts même sans le jeton, afin qu'une incohérence de jeton reste diagnosticable :
 
 - `ht version`
 - `ht identify`
 - `ht doctor`
 - arbre / lecture d'écran et autres commandes d'inspection
 
-Le `ht` fourni et le `ht-bridge` de pi / Claude lisent et présentent le jeton automatiquement — rien à configurer sur ces chemins. **Les anciennes installations externes de `ht` perdent les commandes de modification jusqu'à leur mise à jour** (leurs diagnostics en lecture seule continuent de fonctionner).
+Le `ht` fourni, les ponts pi / Claude et le SDK d'extensions lisent et présentent le jeton automatiquement — rien à configurer sur ces chemins, ce qui a permis d'inverser le défaut sans casser les usages internes. **Les anciennes installations `ht` externes perdent les commandes de modification jusqu'à leur mise à jour** (leurs diagnostics en lecture seule continuent de fonctionner) ; ne désactivez le réglage que pour un client tiers qui parle directement le protocole socket sans envoyer `__token`.
 
 Le jeton est écrit dans un fichier nommé `socket.token` (mode `0600`) à côté du socket. Définissez la variable d'environnement `HT_RPC_TOKEN_PATH` pour remplacer ce chemin.
 

@@ -7,6 +7,39 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.7.1 — Claude Code integration (milestones 1–3)
+
+τ-mux becomes a first-class harness for Claude Code — plan: `doc/august-plan.md`. Three releases in one wave; see the rewritten [Claude Code integration](/integrations/claude-code/) page.
+
+- **Full-lifecycle awareness (0.5.0).** The hook bridge now forwards **fourteen** Claude Code events (was four): session start/end, prompt/stop, API failures, subagent start/stop, compaction, cwd changes, task created/completed, idle/permission notifications. A per-session registry tracks each session's phase — working / waiting for input / **approval needed** / compacting / error — attributed to the pane it runs in. API errors get their own red state and an actionable notification ("Rate limited").
+- **`ht claude statusline` (0.5.0).** One line in `~/.claude/settings.json` gives Claude Code a τ-mux-styled statusline (model, effort, dir, git branch, permission mode, PR badge, color-coded context bar, cost, ±lines, rate-limit warnings ≥80%) **and** feeds cost / context % / rate limits / session title into the sidebar ticker (`Opus · 42% ctx · $0.31`). These are numbers Claude Code computes itself — the old transcript parsing, hand-maintained pricing table, and the `pi`-based title generator are deleted; the pills now always match `/cost` and `/context`.
+- **Remote approvals, opt-in (0.6.0).** `ht claude install --features approvals` routes Claude Code permission prompts to a τ-mux [ask-user modal](/features/ask-user/) — and to **Telegram** — with Allow / Deny / "Answer in terminal". Fail-safe by construction: any failure (τ-mux down, timeout, error) falls back to Claude Code's own prompt; the gate can only *add* an answer path. Approve a `Bash` command from your phone.
+- **Automatic task mirror (0.6.0).** Claude Code's native task list projects into the [plan panel](/features/plan-panel/) deterministically (hooks, not model cooperation), per session, cleared on session end, coexisting with pi plans. Together with turn-end notifications this plugs Claude Code sessions into the existing [auto-continue](/features/auto-continue/) engine.
+- **One-command install (0.6.0).** [`ht claude install / uninstall / doctor`](/cli/claude/) — timestamped backups, additive merge, idempotence, refuse-on-parse-failure, and a doctor that names exactly what's missing.
+- **Native Claude Code pane (0.7.0).** A first-class surface hosting an Agent SDK session: streamed responses, tool cards, permission-mode switcher, interrupt, cost pills, and a **Sessions picker that resumes previous sessions**. Tool permissions ride the same modal + Telegram path. See [Claude Code pane](/features/claude-code-pane/).
+- **Agent-teams pill (0.7.1).** With Claude Code's experimental agent teams enabled, a passive sidebar pill shows `3 members · 2/6 tasks` from the on-disk team state.
+- New [`claude.*` JSON-RPC domain](/api/claude/) + `claude` namespace in the extension SDK.
+
+## 0.4.12 — Audit remediation
+
+Everything actionable from the 2026-08 whole-repo audit (`doc/full_app_review_2026-08.md`) except the web-mirror defaults (deferred).
+
+- **Security — RPC socket token ON by default.** `rpcSocketRequireToken` now defaults to `true`: state-mutating socket calls require the per-boot token. Every first-party client (the bundled `ht`, the pi bridge, the extension SDK, the Claude bridge) reads it automatically, so nothing changes in normal use; read-only diagnostics stay open so `ht doctor` still works. See [auth & hardening](/web-mirror/auth-and-hardening/).
+- **Security — extension trust boundary.** The `bun x` network fallback for dev servers was removed; the `enabled` flag is now actually enforced (a disabled extension refuses to open — previously it silently launched); new [`ht extension enable / disable`](/cli/extensions/) verbs; backends get a real SIGTERM→SIGKILL escalation so they can't outlive the app. The trust model is now stated plainly: **extensions are fully trusted code — install only what you would pipe to a shell.**
+- **Correctness.** CPU-sample pruning actually runs (a guard made it a no-op — the sample map never shrank); the GPU-renderer palette toggle no longer shows inverted before settings load; `system.identify` reports `null` instead of a plausible-but-wrong socket path when unwired; extension dev-server ports are allocated per instance (two devPort-less extensions — or any unrelated Vite project on 5173 — could previously collide and load the wrong UI into a pane).
+- **Fixed for real this time — blank GPU panes.** v0.4.11 reverted the renderer default to `dom`, but anyone who ran v0.4.9/v0.4.10 had `webgl` *persisted* in settings, so their panes stayed blank across two releases. A one-time settings migration (schema v1 → v2) resets a persisted `webgl` back to `dom`; re-enabling it afterwards sticks. The renderer remains experimental, and the settings panel now shows a live "running on DOM — <reason>" hint when the GPU renderer has fallen back.
+- **Performance.** The webview's 1 Hz status-bar tick is skipped while the window is hidden (it was rebuilding the whole status-key subtree every second even when occluded).
+- **Tooling.** The coverage gate now reports files it isn't gating (it had been blind to ~2,000 LOC of new files since May); a new module-size ratchet fails CI when an oversized module grows further.
+
+## 0.4.11 — Desktop performance
+
+The `doc/desktop-perf-plan.md` wave (v0.4.8 → v0.4.11).
+
+- **Metadata poller rewritten on libSystem FFI (0.4.8).** `ps` + two `lsof` calls per 1 Hz tick (~200 ms of subprocess CPU every second) replaced by direct `sysctl(KERN_PROC_ALL)` + `proc_pidinfo` / `proc_pidfdinfo` calls: measured **135.8 ms → 2.42 ms per tick (56×)**; steady-state CPU of the main process dropped from 7–10% to ~1%. The module self-validates its kernel struct offsets at startup (own pid/cwd, a throwaway listener) and falls back to `ps`/`lsof` cleanly on any mismatch or off macOS.
+- **More accurate CPU% (0.4.8).** Chips, Process Manager, and sidebar now derive CPU from cumulative CPU-time deltas instead of `ps`'s decaying average — a process that just finished a burst no longer lingers at a high reading.
+- **Adaptive stdout coalescing (0.4.10).** Keystroke echo on a quiet terminal no longer waits out the batching window; batching engages only under sustained output.
+- **Optional GPU terminal renderer (0.4.9, opt-in since 0.4.11).** New `terminalRenderer` setting (`dom` default, `webgl` opt-in) plus a command-palette toggle. **Experimental** — it shipped enabled in 0.4.9 and rendered panes blank on some setups; see the 0.4.12 note above for the persisted-setting migration.
+
 ## 0.4.7 — Nebula, the full SDK surface & extension-platform fixes
 
 The extension platform's first hardening wave, plus a flagship example.

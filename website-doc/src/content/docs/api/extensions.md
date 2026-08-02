@@ -13,6 +13,8 @@ The host side of the [extension-app platform](/features/extensions/). These meth
 |---|---|---|
 | `extension.list` | `{}` | `[{ id, name, version, icon, description, enabled, hasBuild, running, path }]` |
 | `extension.templates` | `{}` | `string[]` — bundled scaffold-template names |
+| `extension.enable` | `{ id: string }` | `"OK"` — allow the extension to be opened *(v0.4.12)* |
+| `extension.disable` | `{ id: string }` | `"OK"` — stops running surfaces; `extension.open` refuses until re-enabled *(v0.4.12; the flag existed before but was never enforced)* |
 | `extension.reload` | `{}` | `"OK"` — re-scan the extensions dir + rebuild the registry |
 
 ## Surfaces

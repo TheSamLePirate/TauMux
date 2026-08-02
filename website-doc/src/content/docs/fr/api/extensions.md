@@ -13,6 +13,8 @@ Le côté hôte de la [plateforme d'applications d'extension](/fr/features/exten
 |---|---|---|
 | `extension.list` | `{}` | `[{ id, name, version, icon, description, enabled, hasBuild, running, path }]` |
 | `extension.templates` | `{}` | `string[]` — noms des templates d'échafaudage embarqués |
+| `extension.enable` | `{ id: string }` | `"OK"` — autorise l'ouverture de l'extension *(v0.4.12)* |
+| `extension.disable` | `{ id: string }` | `"OK"` — arrête les surfaces en cours ; `extension.open` refuse jusqu'à réactivation *(v0.4.12 ; le drapeau existait mais n'était jamais appliqué)* |
 | `extension.reload` | `{}` | `"OK"` — re-scanne le répertoire des extensions + reconstruit le registre |
 
 ## Surfaces

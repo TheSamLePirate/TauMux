@@ -1,6 +1,6 @@
 ---
 title: Extensions
-description: ht extension list, templates, open, split, new, install, remove, reload, stop.
+description: ht extension list, templates, open, split, new, install, remove, enable, disable, reload, stop.
 sidebar:
   order: 13
 ---
@@ -65,6 +65,30 @@ ht extension remove <id>
 ```
 
 Arrête toute surface en cours d'exécution pour l'extension et supprime son dossier.
+
+## enable / disable
+
+```bash
+ht extension enable <id>
+ht extension disable <id>
+```
+
+*(v0.4.12)* Désactiver une extension **arrête toute surface qui
+l'exécute** et fait refuser `extension.open` / `extension.split` jusqu'à
+sa réactivation. Avant la v0.4.12 le drapeau existait mais n'était
+jamais appliqué — une extension « désactivée » se lançait quand même en
+silence.
+
+**Note de confiance :** l'installation exécute `bun install` (scripts
+postinstall arbitraires inclus) et l'ouverture lance le backend de
+l'extension avec un jeton donnant accès à toute la surface de contrôle
+`ht`. N'installez que ce que vous enverriez dans un shell — voir le
+[modèle de confiance](/fr/features/extensions/). Depuis la v0.4.12, le
+repli réseau `bun x` du serveur dev a disparu (un binaire dev manquant
+échoue avec « run `bun install` » au lieu d'aller sur le réseau), et les
+ports dev sont alloués par instance — le `devPort` du manifest est une
+préférence, τ-mux passe au port libre suivant au lieu de charger l'UI
+d'un autre serveur dans le panneau.
 
 ## reload
 

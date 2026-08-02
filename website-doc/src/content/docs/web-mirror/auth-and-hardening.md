@@ -72,14 +72,14 @@ As of **v0.3.161** this bind address is honored on auto-start as well — not ju
 
 The `ht` CLI talks to the app over a Unix socket. The socket file is created with mode `0600`, so only the same OS user can open it. That's the baseline boundary.
 
-New in **v0.3.163** is an optional second layer: **Settings → Network → "Require RPC socket token"** (**off by default**). When enabled, the socket requires a per-boot token for **state-mutating** commands — typing into panes, killing processes, creating splits, and the like. **Read-only diagnostics** stay open even without the token, so a token mismatch can still be diagnosed:
+A second layer landed in **v0.3.163** and is **on by default since v0.4.12**: **Settings → Network → "Require RPC socket token"**. The socket requires a per-boot token for **state-mutating** commands — typing into panes, killing processes, creating splits, installing extensions, and the like. **Read-only diagnostics** stay open even without the token, so a token mismatch can still be diagnosed:
 
 - `ht version`
 - `ht identify`
 - `ht doctor`
 - tree / read-screen and other inspection commands
 
-The bundled `ht` and the pi / Claude `ht-bridge` read and present the token automatically — nothing to configure on those paths. **Older external `ht` installs lose mutating commands until updated** (their read-only diagnostics keep working).
+The bundled `ht`, the pi / Claude bridges, and the extension SDK read and present the token automatically — nothing to configure on those paths, which is why the default could flip without breaking first-party workflows. **Older external `ht` installs lose mutating commands until updated** (their read-only diagnostics keep working); turn the setting off only for a third-party client that speaks the socket protocol directly and has not been taught to send `__token`.
 
 The token is written to a file named `socket.token` (mode `0600`) beside the socket. Set the env var `HT_RPC_TOKEN_PATH` to override that path.
 

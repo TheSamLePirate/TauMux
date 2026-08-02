@@ -97,7 +97,7 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 | WS9 — keyboard ⌘⌥C, approval sound, a11y pass on new DOM | ⏸ REMAINING | `KEYBOARD_BINDINGS` entry → `claudeAgentCreate`; `claudeApprovalSound` setting per `notificationSound*` pattern |
 | WS9 — pane-header Claude phase chip (deferred from M1) | ⏸ REMAINING | `renderSurfaceChips` + registry state push |
 | M2 deferral — bridge bundling into .app + copy-install | ⏸ REMAINING | electrobun.config copy rule + installer copy path |
-| WS9 — website-doc sweep (EN + FR, version-stamped) | ⏸ ON USER REQUEST | per CLAUDE.md ("update the website-doc on user request"); the full backlog is ready in `doc/changes_to_document.md` (M1+M2+M3 entries) |
+| WS9 — website-doc sweep (EN + FR, version-stamped) | ✅ | user-requested 2026-08-02: 3 changelog sections (incl. the two pre-plan pending waves), claude-code integration rewrite, 3 new page pairs (features/claude-code-pane, cli/claude, api/claude), settings/auth-hardening/extensions edits — all EN+FR; site builds (149 pages); backlog cleared |
 | M4 completion gate (→ 0.8.0) | ⏸ | close the REMAINING rows above, then `bun run bump:minor` |
 
 ## Deviations from plan

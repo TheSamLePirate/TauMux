@@ -1,96 +1,136 @@
 ---
 title: Claude Code
-description: Intégration en deux pièces — hooks shell d'exécution qui pilotent les pastilles de la barre latérale, plus une skill `tau-mux` qui apprend à Claude Code à utiliser les surfaces interactives de τ-mux.
+description: Intégration profonde avec Claude Code — hooks couvrant tout le cycle de vie, flux de données statusline, approbations de permissions à distance, miroir automatique de la liste de tâches, et un panneau Claude Code natif.
 sidebar:
   order: 1
 ---
 
-L'intégration Claude Code livre **deux pièces** car Claude Code ne peut pas charger d'extension JS comme le fait pi. Les responsabilités de l'extension pi sont réparties entre :
+Depuis la 0.5.0, τ-mux s'intègre à Claude Code sur **trois plans**, plus
+un [panneau Claude Code natif](/fr/features/claude-code-pane/) (0.7.0).
+Chaque pièce se dégrade indépendamment — n'importe quel sous-ensemble
+fonctionne, et rien ne peut casser le terminal (le PTY ne dépend jamais
+de l'intégration).
 
-- **`claude-integration/ht-bridge/`** — hooks shell d'exécution. Passif. Pilote la pastille label-actif, le téléscripteur coût / contexte, et la couleur de la pastille idle / permission depuis les hooks shell de Claude Code. Aucune intervention du LLM.
-- **`claude-integration/skills/tau-mux/`** — skill Claude Code. Active. Apprend à Claude Code à préférer les surfaces interactives `ht` de τ-mux (`ht ask`, `ht plan`, `ht notify`, `ht new-split`, `ht browser`, `ht screenshot`, `ht set-status`) plutôt que la sortie terminale brute.
+## Les trois plans
 
-Côté pi, les deux sont fusionnées dans une seule extension JS (`pi-extensions/ht-bridge/`) ; côté Claude Code, les deux moitiés s'installent dans des emplacements différents sous `~/.claude/`.
+### Plan événementiel — les hooks
+
+Quatorze hooks shell de Claude Code (début/fin de session, prompt/stop,
+échecs API, sous-agents, compaction, changements de cwd, tâches
+créées/terminées, notifications idle/permission) exécutent un petit pont
+qui transmet un événement JSON normalisé à l'app (`ht claude event`). Un
+registre par session suit la **phase** de chaque session Claude Code —
+en cours / en attente d'entrée / approbation requise / compaction /
+erreur — et l'attribue au panneau où elle tourne (`HT_SURFACE`).
+
+Concrètement :
+
+- la **pastille `Claude`** — titre de session pendant le travail, jaune
+  *Waiting for input*, rouge *Approval needed*, discret *Compacting…*,
+  texte d'erreur rouge sur échec API (rate limit, surcharge) ;
+- une **notification de fin de tour** (prompt + durée + coût), une
+  notification d'erreur sur échec API ;
+- le **panneau de plan** qui reflète la liste de tâches native de Claude
+  Code — voir ci-dessous.
+
+### Plan de données — la statusline
+
+```json title="~/.claude/settings.json"
+{ "statusLine": { "type": "command", "command": "ht claude statusline" } }
+```
+
+Claude Code envoie un instantané JSON à sa commande statusline à chaque
+message de l'assistant. `ht claude statusline` rend une ligne de statut
+au style τ-mux dans Claude Code — modèle, effort, dossier, branche git,
+mode de permission, badge PR, barre de contexte colorée, coût de session,
+±lignes, et alertes de rate-limit dès 80 % — **et** reverse les données
+dans la barre latérale : le **ticker `cc`** devient
+`Opus · 42% ctx · $0.31`.
+
+Coût, % de contexte, rate limits et titre de session sont des **valeurs
+calculées par Claude Code lui-même** — elles correspondent toujours à
+`/cost` et `/context`. (Les versions précédentes analysaient les
+transcripts avec une table de prix maintenue à la main ; cette machinerie
+a disparu.)
+
+### Plan de décision — approbations à distance (opt-in)
+
+Avec la fonctionnalité `approvals` installée, les demandes de permission
+de Claude Code sont routées vers une **[modale
+ask-user](/fr/features/ask-user/)** de τ-mux — et vers **Telegram** quand
+le [pont](/fr/features/telegram-bridge/) est configuré — avec trois
+réponses : **Allow**, **Deny**, **Answer in terminal**. La modale montre
+l'outil et son entrée exacts (vérité brute, jamais un résumé).
+
+**Fail-safe par construction :** si τ-mux ne tourne pas, si la modale
+expire, si vous choisissez « Answer in terminal », ou si quoi que ce soit
+échoue, le pont n'imprime rien et Claude Code affiche sa propre invite
+exactement comme avant. La porte ne peut qu'*ajouter* un chemin de
+réponse. Coupe-circuit sans désinstaller : `HT_CLAUDE_APPROVALS=0`.
+
+## Miroir de la liste de tâches
+
+La liste de tâches native de Claude Code (TaskCreate / TaskCompleted) est
+reflétée automatiquement dans le [panneau de plan](/fr/features/plan-panel/),
+par session — aucune coopération du modèle requise. Les tâches terminées
+apparaissent « done », la première tâche ouverte « active » ; le miroir
+est effacé à la fin de la session, et cohabite avec les plans pi (chaque
+agent a son propre emplacement).
+
+Comme le plan miroité et la notification de fin de tour alimentent le
+moteur d'[auto-continue](/fr/features/auto-continue/) existant, la
+continuation ancrée sur plan fonctionne pour les sessions Claude Code
+sous les mêmes garde-fous.
 
 ## Installation
 
 ```bash
-cd claude-integration
-./install.sh         # symlinks ht-bridge → ~/.claude/scripts/ht-bridge
-                     # ET skills/tau-mux → ~/.claude/skills/tau-mux
+# une fois : mettre en place le pont + la skill (depuis le dépôt τ-mux)
+./claude-integration/install.sh
+
+# câbler le tout dans ~/.claude/settings.json (géré, réversible)
+ht claude install                          # lifecycle + tasks + statusline
+ht claude install --features approvals     # opt-in : approbations à distance
+ht claude install --dry-run                # prévisualiser le diff
+ht claude uninstall                        # retirer chaque entrée gérée
 ```
 
-Drapeaux :
+L'installateur fait une **sauvegarde horodatée**, fusionne
+**additivement** (vos hooks existants sont intacts), est **idempotent**,
+refuse de réécrire un fichier de réglages qu'il ne peut pas parser, et
+n'écrase jamais une statusline définie par l'utilisateur (il la signale
+comme conservée). Voir [`ht claude`](/fr/cli/claude/).
 
-- `SKIP_HOOKS=1 ./install.sh` — installer uniquement la skill.
-- `SKIP_SKILL=1 ./install.sh` — installer uniquement le pont de hooks d'exécution.
-- `FORCE=1` — remplacer les cibles existantes sans demander.
-- `COPY=1` — copier au lieu de symlinker (checkouts en lecture seule).
+## Diagnostics
 
-Ajoutez ensuite les blocs de hooks de `claude-integration/settings.snippet.jsonc` dans votre `~/.claude/settings.json` (le snippet montre les hooks d'événement exacts pour `UserPromptSubmit` / `Stop` / `Notification`). La skill se charge automatiquement — pas d'édition de settings.json nécessaire.
+```bash
+ht claude doctor      # binaire + version, hooks câblés/manquants,
+                      # approbations, statusline, skill, joignabilité
+ht claude sessions    # sessions observées (phase, titre, coût)
+HT_CLAUDE_DEBUG=1     # erreurs du pont sur stderr
+```
 
-## Pont de hooks d'exécution — ce qui s'affiche
+## La skill `tau-mux`
 
-| Événement Claude | Ce que fait ht-bridge |
-|---|---|
-| `UserPromptSubmit` | Pose la pastille label actif `Claude : <task>`. Démarre le minuteur de session. |
-| `Stop` | Efface le label, parse le JSONL de transcript pour les tokens / coût, déclenche `ht notify` avec prompt + durée + coût, rafraîchit le téléscripteur persistant `cc · turn N · …`. |
-| `Notification` matcher `idle_prompt` | Pose la pastille label sur `Waiting for input` (orange). |
-| `Notification` matcher `permission_prompt` | Pose la pastille label sur `Approval needed` (rouge) et déclenche une notification. |
+La skill (v2) enseigne à Claude Code les surfaces **interactives** —
+`ht ask` pour les décisions, les splits pour les processus longs,
+`ht browser` / `ht screenshot` pour la vérification, la porte
+`confirm-command` pour le bash destructif. Tout ce que les hooks
+automatisent (pastilles, ticker, notifications, miroir de plan,
+approbations) n'est explicitement *pas* le travail du modèle — la skill
+le dit, ce qui la garde courte et fiable.
 
-Si τ-mux ne tourne pas ou que `ht` n'est pas dans le PATH, les hooks ne font rien gracieusement — Claude Code continue sans être affecté.
+## Équipes d'agents
 
-## Skill tau-mux — ce qu'elle enseigne
+Quand les équipes d'agents expérimentales de Claude Code sont activées,
+τ-mux affiche une **pastille `team`** passive (« 3 members · 2/6
+tasks ») lue depuis l'état d'équipe sur disque. Lecture seule et
+défensive sur le schéma — la fonctionnalité amont est expérimentale.
 
-Quand une session Claude Code correspond à la description de la skill (plans multi-étapes, questions à l'utilisateur, processus longs, vérification navigateur, captures d'écran, signal de complétion, bash risqué), Claude Code charge `~/.claude/skills/tau-mux/SKILL.md`. La skill instruit le modèle à :
+## Architecture
 
-- **Workflow de planification.** Écrire le plan détaillé dans `.claude/plans/<name>.md` d'abord, gater la publication via `ht ask choice` (accepter / refuser / discuter), puis `ht plan set` uniquement sur acceptation. Mettre à jour les étapes avec `ht plan update <id> --state …` à mesure que le travail avance.
-- **Questions structurées.** Utiliser `ht ask {yesno|choice|text|confirm-command}` pour les décisions que l'utilisateur possède — points de bifurcation, choix de framework, messages de commit, flux de connexion. Une modale apparaît dans τ-mux (avec transfert Telegram optionnel).
-- **Notifications de jalon.** `ht notify --title … --body …`, avec parcimonie — une ou deux fois par tâche. Ne pas doublonner avec la notification du hook `Stop`.
-- **Processus longs.** Utiliser `ht new-split` + `ht send --surface … "cmd\n"` pour les serveurs de dev, watchers et tail de logs — pas l'outil `bash` inline. L'utilisateur peut regarder en direct ; l'agent reste débloqué.
-- **Vérification navigateur.** `ht browser open-split <url>`, puis piloter avec `ht browser browser:N {navigate|click|fill|wait|get|is|eval|console|errors|snapshot}`.
-- **Captures d'écran.** `ht screenshot --out /tmp/…png` puis `Read` du fichier pour que l'agent voie ce que voit l'utilisateur.
-- **Progression dans la barre latérale.** `ht set-status <key> "<value>" --icon … --color …` et `ht set-progress 0.42 --label "…"`. Choisir une clé qui n'est pas `Claude` ou `cc` (celles-ci appartiennent au hook d'exécution).
-- **Sécurité bash.** Gater les commandes destructives (`rm -rf`, `git push --force`, `sudo`, `mkfs`, `dd`, `chown`/`chmod` en bulk) via `ht ask confirm-command --command "…" --reason "…"` avant exécution.
-
-La skill est autonome — pas de fichier de config, pas de variables d'env. Éditez `claude-integration/skills/tau-mux/SKILL.md` pour réajuster le comportement ; les changements sont pris en compte en direct (Claude Code relit la skill à chaque session).
-
-## Comment elle reflète pi-extensions
-
-| Capacité de `pi-extensions/ht-bridge`                     | Analogue Claude Code                                                                  |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `before_agent_start` → pastille « Thinking… »             | Hook `UserPromptSubmit` → pastille label actif (pont de hooks d'exécution)            |
-| `agent_end` → résumé `ht notify`                          | Hook `Stop` → `ht notify` avec prompt + durée + coût (pont de hooks d'exécution)      |
-| `turn_end` → téléscripteur `ctx · %`                      | Hook `Stop` → téléscripteur `cc · turn N · cost` (pont de hooks d'exécution)          |
-| Outil LLM `ht_ask_user`                                   | Skill `tau-mux` — instruit le modèle à appeler `ht ask {yesno\|choice\|text\|confirm-command}` |
-| Outils LLM `ht_plan_*` (review-first `.pi/plans/*.md`)    | Skill `tau-mux` — `.claude/plans/<name>.md` → gate `ht ask choice` accept → `ht plan set` |
-| Outil LLM `ht_notify`                                     | Skill `tau-mux` — `ht notify` aux jalons, avec parcimonie                             |
-| Outils LLM `ht_browser_*`                                 | Skill `tau-mux` — `ht browser open-split` + `ht browser browser:N …`                  |
-| Outil LLM `ht_screenshot`                                 | Skill `tau-mux` — `ht screenshot --out`                                               |
-| Outil LLM `ht_run_in_split`                               | Skill `tau-mux` — `ht new-split` + `ht send`                                          |
-| Garde bash-safety (`before_tool_call`)                    | Skill `tau-mux` — `ht ask confirm-command` avant bash destructif                      |
-| Primer system-prompt à chaque tour                        | Skill `tau-mux` — Claude Code charge le corps de la skill quand sa `description` matche |
-
-## Transfert vers Telegram
-
-Lorsque **Settings → Telegram → Forward notifications** est activé dans τ-mux, chaque appel `ht notify` (qu'il vienne du hook d'exécution sur `Stop` ou de la skill sur un jalon) est aussi transféré vers votre chat configuré. Pratique pour les pings « Claude a fini pendant que j'étais absent », et pour les modales `ht ask` qui apparaissent comme boutons inline-keyboard dans le chat.
-
-## Personnalisation
-
-- **Pont de hooks d'exécution.** Éditez `claude-integration/ht-bridge/src/index.ts`. Surcharges par utilisateur via `claude-integration/ht-bridge/config.json` (couleurs, clés, tables de prix, téléscripteur on/off, notification idle on/off). Surcharges d'env sous `HT_CLAUDE_*`. Bun relit le fichier à chaque invocation de hook ; pas d'étape de rebuild.
-- **Skill tau-mux.** Éditez `claude-integration/skills/tau-mux/SKILL.md`. Le champ frontmatter `description` contrôle quand la skill se charge — ajustez-le pour élargir ou restreindre la surface de déclenchement.
-
-## Source
-
-- `claude-integration/ht-bridge/src/index.ts` — le runner de hooks (TypeScript, exécuté via Bun).
-- `claude-integration/ht-bridge/config.json` — surcharges d'exécution par utilisateur.
-- `claude-integration/skills/tau-mux/SKILL.md` — le corps de la skill.
-- `claude-integration/skills/tau-mux/README.md` — notes d'install et de portée de la skill.
-- `claude-integration/install.sh` — symlinke les deux pièces dans `~/.claude/`.
-- `claude-integration/settings.snippet.jsonc` — configuration de hook clé en main.
-
-## Pour aller plus loin
-
-- [Extensions pi](/fr/integrations/pi/)
-- [Canaux de notification](/fr/integrations/notification-channels/)
-- [Pont Telegram](/fr/features/telegram-bridge/)
+Le pont et la skill vivent dans `claude-integration/` du dépôt ; l'état
+côté app vit dans un registre de sessions avec des modules
+presenter / mirror / watcher. La conception complète — y compris le
+modèle de confiance — est documentée dans
+`doc/system-claude-integration.md`.
