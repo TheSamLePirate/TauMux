@@ -10,7 +10,7 @@ Started: 2026-08-02 · Version at start: **0.4.7**
 | P1 | FFI process introspection (`native-proc.ts` + runners) | **done** | `7bcb2fd3` (v0.4.8) |
 | P2 | WebGL terminal renderer + setting + fallback | **shipped, then made opt-in** | `a3a8fc6a` (v0.4.9), `4aeebb81` (v0.4.11) |
 | P3 | Adaptive stdout coalescing | **done** | `b135c721` (v0.4.10) |
-| P4 | Bump / docs / changelog backlog | in progress | — |
+| P4 | Bump / docs / changelog backlog | **done** | `faa3c0ab` |
 
 ## Baseline (2026-08-02, packaged v0.4.7, PID 76622)
 
@@ -81,6 +81,30 @@ with a `refresh()` so a quiet pane paints its existing buffer.
 Whether that was the *whole* cause is **unverified on-screen** — which is
 precisely why the default was not restored to `webgl` on the strength of
 it.
+
+### 2026-08-02 — acceptance measurement (v0.4.11)
+
+Built `build:dev` and ran it against a throwaway config dir, measured
+with `top -l 7` after a 45 s settle.
+
+| bun main process | CPU | RSS |
+|---|---|---|
+| baseline v0.4.7 (PID 76622) | 7–10 % | 184 MB |
+| **v0.4.11** | **0.1–1.1 %** | **127 MB** |
+
+Acceptance criteria from the plan §5:
+
+- ✅ steady-state bun CPU under 2 % (measured 0.1–1.1 %)
+- ✅ poller tick under 10 ms (measured 2.42 ms vs ~135.8 ms baseline)
+- ✅ `bun test` (3136) + `bun run typecheck` green
+- ✅ `bun start` launches; sessions, socket, audits all healthy
+- ✅ forcing FFI validation to fail restores `ps`/`lsof` behaviour
+
+Caveat on the CPU comparison: the v0.4.7 baseline had ~7 shells with an
+active coding agent, the measured build had 1 idle shell, so the two are
+not the same workload. The *poller* component is comparable regardless —
+its dominant cost is the full-table `ps` scan, which is independent of
+shell count.
 
 ## Deviations
 
