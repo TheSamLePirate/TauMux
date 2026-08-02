@@ -700,8 +700,7 @@ applyNativeWindowFrameInset(mainWindow.frame.width, mainWindow.frame.height);
 
 mainWindow.on("resize", (event: unknown) => {
   const resized = event as
-    | { data?: { width?: number; height?: number } }
-    | undefined;
+    { data?: { width?: number; height?: number } } | undefined;
   const width = resized?.data?.width ?? mainWindow.frame.width;
   const height = resized?.data?.height ?? mainWindow.frame.height;
   applyNativeWindowFrameInset(width, height);
@@ -808,7 +807,11 @@ browserSurfaces.onSurfaceClosed = (surfaceId) => {
 };
 
 sessions.onSurfaceExit = (surfaceId, exitCode) => {
+  // Deliver the shell's final burst before announcing that it's gone,
+  // then drop the coalescer's per-surface bookkeeping so it doesn't
+  // retain an entry for every surface the app has ever opened.
   nativeStdout.flushSurface(surfaceId);
+  nativeStdout.forget(surfaceId);
   rpc.send("surfaceExited", { surfaceId, exitCode });
   app.webServer?.broadcast({ type: "surfaceExited", surfaceId, exitCode });
 };
