@@ -9,7 +9,9 @@ import {
   type ClaudePaneView,
   claudePaneApplyEvent,
   claudePaneApplyExit,
+  claudePaneApplyHistory,
   claudePaneApplySessions,
+  claudePaneReset,
   createClaudePaneView,
   destroyClaudePaneView,
 } from "./claude-agent-pane";
@@ -38,18 +40,30 @@ export class ClaudeSurfaceController {
       onSetMode: (sid, mode) => {
         htEvents.emit("ht-claude-agent-set-mode", { surfaceId: sid, mode });
       },
+      onSetModel: (sid, model) => {
+        htEvents.emit("ht-claude-agent-set-model", {
+          surfaceId: sid,
+          model,
+        });
+      },
       onListSessions: () => {
         htEvents.emit("ht-claude-agent-list-sessions", undefined);
       },
-      onResume: (sessionId, fork) => {
-        // Resume opens a NEW pane bound to the old session (the SDK
-        // cannot swap sessions inside a live query stream).
-        htEvents.emit("ht-claude-agent-create", {
+      // Pane v2 — resume swaps the session IN PLACE (bun rebinds the
+      // agent under the same surface id and replays history).
+      onResume: (sid, sessionId, fork) => {
+        const view = this.deps.getSurface(sid)?.claudeView;
+        if (view) claudePaneReset(view);
+        htEvents.emit("ht-claude-agent-new-session", {
+          surfaceId: sid,
           resume: sessionId,
           fork,
-          split: true,
-          direction: "right",
         });
+      },
+      onNewSession: (sid) => {
+        const view = this.deps.getSurface(sid)?.claudeView;
+        if (view) claudePaneReset(view);
+        htEvents.emit("ht-claude-agent-new-session", { surfaceId: sid });
       },
       onClose: (sid) => {
         htEvents.emit("ht-claude-agent-close", { surfaceId: sid });
@@ -82,8 +96,20 @@ export class ClaudeSurfaceController {
     if (view?.claudeView) claudePaneApplyExit(view.claudeView, error);
   }
 
-  /** Session list reply — fills every open resume menu (cheap; usually
-   *  exactly one pane has the menu open). */
+  /** Replayed transcript of a just-resumed session (pane v2). */
+  handleHistory(
+    surfaceId: string,
+    sessionId: string,
+    messages: unknown[],
+  ): void {
+    const view = this.deps.getSurface(surfaceId);
+    if (view?.claudeView) {
+      claudePaneApplyHistory(view.claudeView, sessionId, messages);
+    }
+  }
+
+  /** Session list reply — fills every open sessions menu (cheap;
+   *  usually exactly one pane has the menu open). */
   handleSessions(sessions: ClaudeAgentSessionWire[]): void {
     for (const view of this.deps.allSurfaces()) {
       if (view.claudeView) {

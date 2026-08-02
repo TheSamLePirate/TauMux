@@ -226,9 +226,20 @@ export interface ClaudeAgentSetModePayload {
   surfaceId: string;
   mode: string;
 }
+/** Pane v2 — mid-session model switch (undefined → session default). */
+export interface ClaudeAgentSetModelPayload {
+  surfaceId: string;
+  model?: string;
+}
 export type ClaudeAgentListSessionsPayload = void;
 export interface ClaudeAgentClosePayload {
   surfaceId: string;
+}
+/** Pane v2 — in-place session swap (fresh / resume / fork). */
+export interface ClaudeAgentNewSessionPayload {
+  surfaceId: string;
+  resume?: string;
+  fork?: boolean;
 }
 
 /** Split a new editor pane. `path` is optional — when omitted the new
@@ -488,7 +499,9 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-claude-agent-prompt": ClaudeAgentPromptPayload;
   "ht-claude-agent-interrupt": ClaudeAgentInterruptPayload;
   "ht-claude-agent-set-mode": ClaudeAgentSetModePayload;
+  "ht-claude-agent-set-model": ClaudeAgentSetModelPayload;
   "ht-claude-agent-list-sessions": ClaudeAgentListSessionsPayload;
+  "ht-claude-agent-new-session": ClaudeAgentNewSessionPayload;
   "ht-claude-agent-close": ClaudeAgentClosePayload;
   "ht-split-editor": SplitEditorPayload;
   "ht-split-extension": SplitExtensionPayload;

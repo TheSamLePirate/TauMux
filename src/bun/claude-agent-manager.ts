@@ -290,7 +290,13 @@ export class ClaudeAgentManager {
   }
 
   create(config: ClaudeAgentConfig): ClaudeAgentInstance {
-    const id = `claude-agent:${++this.counter}`;
+    return this.createWithId(`claude-agent:${++this.counter}`, config);
+  }
+
+  /** Create an instance bound to a caller-chosen id. Used by `replace`
+   *  so a pane can swap sessions (new / resume) without changing its
+   *  surface id. */
+  createWithId(id: string, config: ClaudeAgentConfig): ClaudeAgentInstance {
     const inst = new ClaudeAgentInstance(id, config, {
       claudeBinary: resolveClaudeBinary(),
       ...this.deps,
@@ -298,6 +304,26 @@ export class ClaudeAgentManager {
     this.instances.set(id, inst);
     inst.start();
     return inst;
+  }
+
+  /** Swap the session behind a surface id: close the old instance (if
+   *  any) and start a fresh one under the SAME id. The SDK cannot swap
+   *  sessions inside a live query stream, so in-pane "new session" and
+   *  "resume" are implemented as a rebind. */
+  async replace(
+    id: string,
+    config: ClaudeAgentConfig,
+  ): Promise<ClaudeAgentInstance> {
+    const old = this.instances.get(id);
+    if (old) {
+      // Detach observers FIRST so the old stream's exit doesn't reach
+      // the pane as "session ended" after the new one mounted.
+      old.onEvent = null;
+      old.onExit = null;
+      await old.close();
+      this.instances.delete(id);
+    }
+    return this.createWithId(id, config);
   }
 
   get(id: string): ClaudeAgentInstance | undefined {

@@ -210,6 +210,28 @@ describe("ClaudeAgentManager", () => {
     await mgr.dispose();
   });
 
+  test("replace rebinds a fresh instance under the SAME id and silences the old one", async () => {
+    const fake = makeFakeQuery();
+    const mgr = new ClaudeAgentManager({ queryFn: fake.queryFn });
+    const first = mgr.create({});
+    const id = first.id;
+    let oldExitSeen = 0;
+    first.onExit = () => {
+      oldExitSeen += 1;
+    };
+    const second = await mgr.replace(id, { resume: "old-session" });
+    expect(second.id).toBe(id);
+    expect(mgr.get(id)).toBe(second);
+    // The old pump drains asynchronously after close(); give it a tick.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(first.state.exited).toBe(true);
+    // The pane must NOT get a "session ended" from the old stream after
+    // the swap — replace detaches observers before closing.
+    expect(oldExitSeen).toBe(0);
+    expect(second.config.resume).toBe("old-session");
+    await mgr.dispose();
+  });
+
   test("ids are stable and sequential per manager", () => {
     const fake = makeFakeQuery();
     const mgr = new ClaudeAgentManager({ queryFn: fake.queryFn });

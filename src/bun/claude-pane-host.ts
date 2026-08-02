@@ -1,15 +1,22 @@
 /**
  * Claude pane host — everything bun/index.ts would otherwise inline for
- * the native Claude Code pane (august-plan M3 / WS5): the agent manager
- * with its canUseTool → ask-user bridge, the surface factory with event
- * fan-out, and the SDK-backed session lister. index.ts keeps wiring
- * lines only (module-size ratchet).
+ * the native Claude Code pane (august-plan M3/WS5, pane v2 in M4): the
+ * agent manager with its canUseTool → ask-user bridge, the surface
+ * factory with event fan-out, in-place session swapping (new / resume,
+ * with history replay), and the SDK-backed session lister. index.ts
+ * keeps wiring lines only (module-size ratchet).
  */
 
-import { listSessions as sdkListSessions } from "@anthropic-ai/claude-agent-sdk";
+import {
+  getSessionMessages,
+  listSessions as sdkListSessions,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudeAgentSessionWire } from "../shared/types";
 import type { AskUserQueue } from "./ask-user-queue";
-import { ClaudeAgentManager } from "./claude-agent-manager";
+import {
+  ClaudeAgentManager,
+  type ClaudeAgentInstance,
+} from "./claude-agent-manager";
 
 export interface ClaudePaneHostDeps {
   askUser: AskUserQueue;
@@ -20,6 +27,10 @@ export interface ClaudePaneHostDeps {
   setFocused: (surfaceId: string) => void;
   /** Split origin — the pane focused when a split is requested. */
   getFocused: () => string | null;
+  /** cwd of the currently-focused pane (metadata poller) — new Claude
+   *  panes inherit it so sessions start where the user is working, not
+   *  wherever the app process happens to live. */
+  getDefaultCwd?: () => string | undefined;
 }
 
 export interface ClaudePaneCreateOpts {
@@ -34,6 +45,12 @@ export interface ClaudePaneCreateOpts {
 export interface ClaudePaneHost {
   manager: ClaudeAgentManager;
   createClaudeWorkspaceSurface: (opts: ClaudePaneCreateOpts) => void;
+  /** In-place session swap for an existing pane: fresh session, or
+   *  resume/fork of a previous one (history replayed to the pane). */
+  newSession: (
+    surfaceId: string,
+    opts: { resume?: string; fork?: boolean },
+  ) => Promise<void>;
   listClaudeSessions: (cwd?: string) => Promise<ClaudeAgentSessionWire[]>;
 }
 
@@ -41,9 +58,15 @@ export function createClaudePaneHost(deps: ClaudePaneHostDeps): ClaudePaneHost {
   // canUseTool → the same ask-user modal + Telegram forward WS3 uses for
   // hook-level approvals. Timeout → null → the manager denies with a
   // "timed out" message (the SDK requires a resolution either way).
+  // Synthetic `__tau_permission` events bracket the wait so the pane can
+  // show an inline "waiting for approval" row next to the tool card.
   const manager = new ClaudeAgentManager({
     askUser: async ({ agentId, toolName, input }) => {
       const body = JSON.stringify(input, null, 2);
+      deps.send("claudeAgentEvent", {
+        surfaceId: agentId,
+        event: { type: "__tau_permission", status: "pending", toolName },
+      });
       const { response } = deps.askUser.create({
         surface_id: agentId,
         kind: "choice",
@@ -56,21 +79,26 @@ export function createClaudePaneHost(deps: ClaudePaneHostDeps): ClaudePaneHost {
         timeout_ms: 570_000,
       });
       const r = await response;
-      if (r.action === "ok" && (r.value === "allow" || r.value === "deny")) {
-        return r.value;
-      }
-      return r.action === "cancel" ? "deny" : null;
+      const behavior =
+        r.action === "ok" && (r.value === "allow" || r.value === "deny")
+          ? r.value
+          : r.action === "cancel"
+            ? "deny"
+            : null;
+      deps.send("claudeAgentEvent", {
+        surfaceId: agentId,
+        event: {
+          type: "__tau_permission",
+          status: "resolved",
+          toolName,
+          behavior: behavior ?? "timeout",
+        },
+      });
+      return behavior;
     },
   });
 
-  function createClaudeWorkspaceSurface(opts: ClaudePaneCreateOpts): void {
-    const splitFrom = opts.split ? (deps.getFocused() ?? undefined) : undefined;
-    const inst = manager.create({
-      cwd: opts.cwd,
-      model: opts.model,
-      resume: opts.resume,
-      forkSession: opts.fork,
-    });
+  function wireInstance(inst: ClaudeAgentInstance): void {
     const surfaceId = inst.id;
     inst.onEvent = (event) => {
       deps.send("claudeAgentEvent", { surfaceId, event });
@@ -78,9 +106,21 @@ export function createClaudePaneHost(deps: ClaudePaneHostDeps): ClaudePaneHost {
     inst.onExit = (error) => {
       deps.send("claudeAgentExit", { surfaceId, error });
     };
-    deps.setFocused(surfaceId);
+  }
+
+  function createClaudeWorkspaceSurface(opts: ClaudePaneCreateOpts): void {
+    const splitFrom = opts.split ? (deps.getFocused() ?? undefined) : undefined;
+    const cwd = opts.cwd ?? deps.getDefaultCwd?.();
+    const inst = manager.create({
+      cwd,
+      model: opts.model,
+      resume: opts.resume,
+      forkSession: opts.fork,
+    });
+    wireInstance(inst);
+    deps.setFocused(inst.id);
     deps.send("claudeAgentSurfaceCreated", {
-      surfaceId,
+      surfaceId: inst.id,
       splitFrom,
       direction:
         opts.direction === "down" || opts.direction === "up"
@@ -88,8 +128,46 @@ export function createClaudePaneHost(deps: ClaudePaneHostDeps): ClaudePaneHost {
           : opts.direction
             ? ("horizontal" as const)
             : undefined,
-      cwd: opts.cwd,
+      cwd,
     });
+  }
+
+  async function newSession(
+    surfaceId: string,
+    opts: { resume?: string; fork?: boolean },
+  ): Promise<void> {
+    const old = manager.get(surfaceId);
+    const cwd = old?.config.cwd ?? deps.getDefaultCwd?.();
+    const inst = await manager.replace(surfaceId, {
+      cwd,
+      resume: opts.resume,
+      forkSession: opts.fork,
+    });
+    wireInstance(inst);
+
+    // Resuming: replay the persisted transcript so the pane shows the
+    // conversation so far. Main-thread messages only — subagent noise
+    // would swamp the transcript.
+    if (opts.resume) {
+      try {
+        const messages = await getSessionMessages(opts.resume);
+        deps.send("claudeAgentHistory", {
+          surfaceId,
+          sessionId: opts.resume,
+          messages: messages.filter(
+            (m) => m.parent_tool_use_id === null && m.parent_agent_id === null,
+          ),
+        });
+      } catch {
+        // History is a nicety — the resumed session still has its full
+        // context server-side; the pane just starts visually empty.
+        deps.send("claudeAgentHistory", {
+          surfaceId,
+          sessionId: opts.resume,
+          messages: [],
+        });
+      }
+    }
   }
 
   async function listClaudeSessions(
@@ -110,5 +188,10 @@ export function createClaudePaneHost(deps: ClaudePaneHostDeps): ClaudePaneHost {
     }));
   }
 
-  return { manager, createClaudeWorkspaceSurface, listClaudeSessions };
+  return {
+    manager,
+    createClaudeWorkspaceSurface,
+    newSession,
+    listClaudeSessions,
+  };
 }

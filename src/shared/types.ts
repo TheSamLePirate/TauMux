@@ -896,6 +896,14 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       claudeAgentListSessions: { cwd?: string };
       /** Tear down the agent behind a closing pane. */
       claudeAgentClose: { surfaceId: string };
+      /** Pane v2 — swap the session behind an EXISTING pane in place:
+       *  fresh session ({}), or resume/fork a previous one. On resume
+       *  bun replays the persisted transcript via `claudeAgentHistory`. */
+      claudeAgentNewSession: {
+        surfaceId: string;
+        resume?: string;
+        fork?: boolean;
+      };
 
       // ── Plan #10 commit C: ask-user (webview → bun) ──
       /** Resolve a pending agent → user question with the user's
@@ -1165,6 +1173,14 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       /** Reply to `claudeAgentListSessions` — recent sessions for the
        *  resume picker. */
       claudeAgentSessions: { sessions: ClaudeAgentSessionWire[] };
+      /** Pane v2 — persisted transcript of a just-resumed session
+       *  (SDK SessionMessage[], main-thread only). The pane clears and
+       *  replays these through the same renderer as live events. */
+      claudeAgentHistory: {
+        surfaceId: string;
+        sessionId: string;
+        messages: unknown[];
+      };
     };
   };
 }

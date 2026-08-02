@@ -7,6 +7,18 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.8.0 — The Claude Code pane, full-featured
+
+The [native pane](/features/claude-code-pane/) grows from a working v1 into the flagship surface:
+
+- **Markdown transcript** with O(N) live streaming, code blocks, inline code, headers and lists; **thinking blocks** stream into a collapsed, pulsing block.
+- **Tool cards v2** — status dot (running → ok/failed), one-line summaries, expandable full **input and matched output** (`tool_use_id` pairing) with copy buttons.
+- **In-place sessions** — *New* starts a fresh session in the same pane; *Sessions* resumes (or **forks**) a previous one with its transcript replayed under a divider. The pane rebinds its SDK stream; the layout slot never changes.
+- **Model switcher** (mid-session, via the SDK) next to the permission-mode switcher; `bypassPermissions` is highlighted red.
+- **Inline approval status** — "Waiting for approval: Bash" appears in the transcript while the τ-mux modal / Telegram question is open; denials and timeouts leave a red record.
+- **Meters + state** — token / cost / elapsed pills, a pulsing state dot, smart stick-to-bottom autoscroll with a ↓ latest pill, a proper empty state, and cwd inheritance: new panes start in the directory of the pane you were focused on.
+- Composer: auto-growing textarea; **sending mid-turn queues** the message.
+
 ## 0.7.1 — Claude Code integration (milestones 1–3)
 
 τ-mux becomes a first-class harness for Claude Code — plan: `doc/august-plan.md`. Three releases in one wave; see the rewritten [Claude Code integration](/integrations/claude-code/) page.

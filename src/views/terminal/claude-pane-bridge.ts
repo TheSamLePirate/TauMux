@@ -25,7 +25,15 @@ interface ClaudeBridgeRpc {
     message: "claudeAgentSetMode",
     payload: { surfaceId: string; mode: string },
   ): void;
+  send(
+    message: "claudeAgentSetModel",
+    payload: { surfaceId: string; model?: string },
+  ): void;
   send(message: "claudeAgentListSessions", payload: { cwd?: string }): void;
+  send(
+    message: "claudeAgentNewSession",
+    payload: { surfaceId: string; resume?: string; fork?: boolean },
+  ): void;
   send(message: "claudeAgentClose", payload: { surfaceId: string }): void;
 }
 
@@ -61,8 +69,24 @@ export function wireClaudePaneBridge(rpc: ClaudeBridgeRpc): void {
     if (!d?.surfaceId || !d.mode) return;
     rpc.send("claudeAgentSetMode", { surfaceId: d.surfaceId, mode: d.mode });
   });
+  window.addEventListener("ht-claude-agent-set-model", (e: Event) => {
+    const d = (e as CustomEvent).detail as
+      { surfaceId?: string; model?: string } | undefined;
+    if (!d?.surfaceId) return;
+    rpc.send("claudeAgentSetModel", { surfaceId: d.surfaceId, model: d.model });
+  });
   window.addEventListener("ht-claude-agent-list-sessions", () => {
     rpc.send("claudeAgentListSessions", {});
+  });
+  window.addEventListener("ht-claude-agent-new-session", (e: Event) => {
+    const d = (e as CustomEvent).detail as
+      { surfaceId?: string; resume?: string; fork?: boolean } | undefined;
+    if (!d?.surfaceId) return;
+    rpc.send("claudeAgentNewSession", {
+      surfaceId: d.surfaceId,
+      resume: d.resume,
+      fork: d.fork,
+    });
   });
   window.addEventListener("ht-claude-agent-close", (e: Event) => {
     const d = (e as CustomEvent).detail as { surfaceId?: string } | undefined;

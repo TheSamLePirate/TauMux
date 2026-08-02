@@ -640,6 +640,12 @@ const claudePaneHost = createClaudePaneHost({
     app.focusedSurfaceId = id;
   },
   getFocused: () => app.focusedSurfaceId,
+  getDefaultCwd: () => {
+    const focused = app.focusedSurfaceId;
+    return focused
+      ? (metadataPoller.getSnapshot(focused)?.cwd ?? undefined)
+      : undefined;
+  },
 });
 
 const {
@@ -677,6 +683,7 @@ const {
   claudeAgentManager: claudePaneHost.manager,
   createClaudeWorkspaceSurface: claudePaneHost.createClaudeWorkspaceSurface,
   listClaudeSessions: claudePaneHost.listClaudeSessions,
+  claudeNewSession: claudePaneHost.newSession,
   createEditorWorkspaceSurface,
   splitEditorSurface,
   createExtensionWorkspaceSurface,

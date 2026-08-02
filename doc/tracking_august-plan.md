@@ -85,6 +85,25 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 5. Tests: pane view DOM smoke (happy-dom like telegram-pane tests), message
    handler roundtrip, restore branch.
 
+## Pane v2 (user-requested, 0.8.0)
+
+The user judged the M3 pane "not good enough" — full-feature pass:
+
+| Item | Status | Notes |
+|---|---|---|
+| Markdown transcript (shared `mdLite`), O(N) streaming live-element | ✅ | pi-pane pattern; HTML-injection test locked |
+| Thinking blocks (streamed, collapsed, pulsing) | ✅ | |
+| Tool cards v2: status dot, expandable input + `tool_use_id`-matched output, copy buttons, failure styling | ✅ | output capped 4k chars |
+| In-place New / Resume / Fork (`manager.replace` rebind + `getSessionMessages` history replay under a divider) | ✅ | old stream's observers detached first — no ghost "session ended" |
+| Inline approval status (synthetic `__tau_permission` events from the host) | ✅ | pending row → denied/timeout record |
+| Model switcher (mid-session; session's real model auto-added) + mode switcher w/ bypass highlight | ✅ | |
+| Meters (tokens/cost/elapsed) + pulsing state dot + smart autoscroll + jump pill + empty state | ✅ | |
+| cwd inheritance (new panes start in the focused pane's cwd via metadata poller) | ✅ | |
+| Composer: autoResize, queue-while-streaming, local echo deduped against SDK replay | ✅ | |
+| Design governance | ✅ | emoji audit (glyphs → icon/CSS), canonical keyframes (tauBlink/tauNotifyPulse), radius ≤12px — all three audits caught my first draft and were fixed |
+| Tests | ✅ | pane suite rewritten: 23 DOM/pure tests; manager `replace` test; 3316 total green |
+| Docs | ✅ | features/claude-code-pane rewritten (EN+FR), 0.8.0 changelog section (EN+FR), site builds 149 pages |
+
 ## M4 detail (partial — 0.7.1)
 
 | Item | Status | Notes |

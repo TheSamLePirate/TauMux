@@ -8,6 +8,7 @@ type Keys =
   | "claudeAgentSetModel"
   | "claudeAgentSetMode"
   | "claudeAgentListSessions"
+  | "claudeAgentNewSession"
   | "claudeAgentClose";
 
 /** Native Claude Code pane (august-plan M3 / WS5) — webview ↔ bun
@@ -45,6 +46,12 @@ export function registerClaudeWebviewHandlers(
         }
         ctx.rpc.send("claudeAgentSessions", { sessions });
       })();
+    },
+    claudeAgentNewSession: (payload) => {
+      void ctx.claudeNewSession(payload.surfaceId, {
+        resume: payload.resume,
+        fork: payload.fork,
+      });
     },
     claudeAgentClose: (payload) => {
       void mgr().close(payload.surfaceId);

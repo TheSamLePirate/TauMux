@@ -166,6 +166,12 @@ export interface WebviewHandlerContext {
   listClaudeSessions: (
     cwd?: string,
   ) => Promise<import("../../shared/types").ClaudeAgentSessionWire[]>;
+  /** Pane v2 — in-place session swap (new / resume / fork) for an
+   *  existing pane; resume replays history via `claudeAgentHistory`. */
+  claudeNewSession: (
+    surfaceId: string,
+    opts: { resume?: string; fork?: boolean },
+  ) => Promise<void>;
   createEditorWorkspaceSurface: (
     path?: string,
     cwd?: string,

@@ -7,6 +7,18 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.8.0 — Le panneau Claude Code, complet
+
+Le [panneau natif](/fr/features/claude-code-pane/) passe d'un v1 fonctionnel à la surface phare :
+
+- **Transcript markdown** avec streaming O(N), blocs de code, code inline, titres et listes ; **blocs de réflexion** streamés dans un bloc replié pulsant.
+- **Cartes d'outils v2** — point d'état (en cours → ok/échec), résumés d'une ligne, **entrée et sortie appariées** dépliables (`tool_use_id`) avec boutons copier.
+- **Sessions sur place** — *New* démarre une session neuve dans le même panneau ; *Sessions* reprend (ou **forke**) une session précédente avec son transcript rejoué sous un séparateur. Le panneau rebranche son flux SDK ; l'emplacement de disposition ne change jamais.
+- **Sélecteur de modèle** (en cours de session, via le SDK) à côté du sélecteur de mode ; `bypassPermissions` surligné en rouge.
+- **Statut d'approbation en ligne** — « Waiting for approval: Bash » apparaît dans le transcript pendant que la modale τ-mux / Telegram est ouverte ; refus et expirations laissent une trace rouge.
+- **Compteurs + état** — pastilles tokens / coût / durée, point d'état pulsant, autoscroll intelligent avec pastille ↓ latest, un vrai état vide, et héritage du cwd : les nouveaux panneaux démarrent dans le dossier du panneau focalisé.
+- Composeur : zone de texte auto-extensible ; **envoyer en cours de tour met en file**.
+
 ## 0.7.1 — Intégration Claude Code (jalons 1–3)
 
 τ-mux devient un harnais de premier rang pour Claude Code — plan : `doc/august-plan.md`. Trois versions en une vague ; voir la page réécrite [Intégration Claude Code](/fr/integrations/claude-code/).

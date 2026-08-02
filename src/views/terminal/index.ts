@@ -335,6 +335,13 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       claudeAgentSessions: (payload) => {
         surfaceManager.claude.handleSessions(payload.sessions);
       },
+      claudeAgentHistory: (payload) => {
+        surfaceManager.claude.handleHistory(
+          payload.surfaceId,
+          payload.sessionId,
+          payload.messages,
+        );
+      },
       // Note: browser navigation commands from socket API go through socketAction
       surfaceMetadata: (payload) => {
         surfaceManager.setSurfaceMetadata(payload.surfaceId, payload.metadata);
