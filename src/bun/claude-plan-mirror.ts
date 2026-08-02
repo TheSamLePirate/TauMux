@@ -20,7 +20,10 @@ import type { ClaudeSessionRegistry } from "./claude-session-registry";
 import type { PlanStore } from "./plan-store";
 
 /** Pure: task list → plan steps. Completed → done; the first
- *  not-completed task → active; the rest → waiting. */
+ *  not-completed task → active; the rest → waiting. Titles prefer the
+ *  task subject, then the description's first clause, then the id —
+ *  a bare numeric id is what the panel showed before the real payload
+ *  field (`task_subject`) was discovered, and it read as "empty plan". */
 export function tasksToSteps(tasks: ClaudeTask[]): PlanStep[] {
   let activeAssigned = false;
   return tasks.map((t) => {
@@ -33,7 +36,15 @@ export function tasksToSteps(tasks: ClaudeTask[]): PlanStep[] {
     } else {
       state = "waiting";
     }
-    return { id: t.id, title: t.name || t.id, state };
+    const descClause = (t.description ?? "").split(/[.!?\n]/)[0]?.trim();
+    let title = t.name || descClause || `task ${t.id}`;
+    if (title.length > 80) title = title.slice(0, 79).trimEnd() + "…";
+    return {
+      id: t.id,
+      title,
+      state,
+      ...(t.description ? { description: t.description } : {}),
+    };
   });
 }
 

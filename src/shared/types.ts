@@ -450,6 +450,9 @@ export interface PlanStep {
   id: string;
   title: string;
   state: PlanStepState;
+  /** Optional longer context (e.g. Claude Code's task_description).
+   *  Rendered as a hover tooltip on the step row — never inline. */
+  description?: string;
 }
 
 export interface Plan {

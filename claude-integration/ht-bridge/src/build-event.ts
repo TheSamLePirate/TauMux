@@ -151,11 +151,16 @@ export function buildBridgeEvent(
     case "task-created":
     case "task-completed": {
       const taskId = s(payload["task_id"]);
-      const taskName = s(payload["task_name"]);
+      // Real payloads (captured from Claude Code 2.1.220) carry
+      // `task_subject` + `task_description`; `task_name` is kept as a
+      // fallback for the shape the docs described.
+      const taskName = s(payload["task_subject"]) ?? s(payload["task_name"]);
+      const taskDescription = s(payload["task_description"]);
       if (taskId) ev["taskId"] = taskId;
-      if (taskName) ev["taskName"] = taskName;
-      // TaskCreated fires mid-creation and may not carry an id yet —
-      // the registry dedups `name:<task_name>` against the real id later.
+      if (taskName) ev["taskName"] = taskName.slice(0, 200);
+      if (taskDescription) {
+        ev["taskDescription"] = taskDescription.slice(0, 500);
+      }
       if (!taskId && !taskName) return null; // nothing to mirror
       break;
     }

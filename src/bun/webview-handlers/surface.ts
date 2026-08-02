@@ -42,6 +42,16 @@ export function registerSurfaceWebviewHandlers(
           type: "surfaceClosed",
           surfaceId: payload.surfaceId,
         });
+      } else if (payload.surfaceId.startsWith("claude-agent:")) {
+        // Claude panes own an Agent SDK subprocess — wind it down, then
+        // echo the close so the webview layout removes the pane. (The
+        // pane also fires claudeAgentClose; manager.close is idempotent.)
+        void ctx.claudeAgentManager.close(payload.surfaceId);
+        ctx.rpc.send("surfaceClosed", { surfaceId: payload.surfaceId });
+        ctx.app.webServer?.broadcast({
+          type: "surfaceClosed",
+          surfaceId: payload.surfaceId,
+        });
       } else if (
         payload.surfaceId.startsWith("tg:") ||
         payload.surfaceId.startsWith("editor:")

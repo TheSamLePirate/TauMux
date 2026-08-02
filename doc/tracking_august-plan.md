@@ -104,6 +104,13 @@ The user judged the M3 pane "not good enough" — full-feature pass:
 | Tests | ✅ | pane suite rewritten: 23 DOM/pure tests; manager `replace` test; 3316 total green |
 | Docs | ✅ | features/claude-code-pane rewritten (EN+FR), 0.8.0 changelog section (EN+FR), site builds 149 pages |
 
+## User bug reports (0.8.1)
+
+| Report | Root cause | Fix |
+|---|---|---|
+| "Cannot close the Claude pane (X does nothing)" | bun's polymorphic `closeSurface` had no `claude-agent:` branch — the id fell through to the PTY close, which no-ops on unknown ids, so no `surfaceClosed` echo ever removed the pane | branch added (close SDK agent + echo); routing locked by `tests/claude-pane-close.test.ts` |
+| "Plan panel shows only that there is a plan, no information" | Claude Code's real TaskCreated payload carries **`task_subject`** (+ `task_description`) — not the doc-described `task_name` we read; steps got empty names, titles degraded to bare numeric ids. Verified by capturing a live hook payload (CC 2.1.220) | bridge reads `task_subject` (with `task_name` fallback) + forwards `task_description`; registry stores descriptions; mirror titles = subject → description first-clause → `task <id>`, capped 80 chars; `PlanStep.description` threaded through store + panel as a hover tooltip |
+
 ## M4 detail (partial — 0.7.1)
 
 | Item | Status | Notes |

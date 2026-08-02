@@ -171,6 +171,7 @@ export function reduceEvent(
         state.tasks.push({
           id,
           name: ev.taskName ?? "",
+          ...(ev.taskDescription ? { description: ev.taskDescription } : {}),
           state: "pending",
           createdAt: ts,
         });
@@ -196,11 +197,13 @@ export function reduceEvent(
         t.completedAt = ts;
         if (ev.taskId) t.id = ev.taskId;
         if (ev.taskName) t.name = ev.taskName;
+        if (ev.taskDescription) t.description = ev.taskDescription;
       } else if (ev.taskId || ev.taskName) {
         if (state.tasks.length >= MAX_TASKS) state.tasks.shift();
         state.tasks.push({
           id: ev.taskId ?? `name:${ev.taskName}`,
           name: ev.taskName ?? "",
+          ...(ev.taskDescription ? { description: ev.taskDescription } : {}),
           state: "completed",
           createdAt: ts,
           completedAt: ts,

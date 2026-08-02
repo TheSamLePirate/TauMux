@@ -78,6 +78,7 @@ export interface ClaudeBridgeEvent {
   /** task-created / task-completed. */
   taskId?: string;
   taskName?: string;
+  taskDescription?: string;
   /** Hook-universal context, forwarded when present. */
   permissionMode?: string;
   transcriptPath?: string;
@@ -131,6 +132,9 @@ export interface ClaudeStatuslineData {
 export interface ClaudeTask {
   id: string;
   name: string;
+  /** TaskCreated's `task_description` — longer context for tooltips /
+   *  the sessions panel; absent when the hook didn't carry one. */
+  description?: string;
   state: "pending" | "completed";
   createdAt: number;
   completedAt?: number;

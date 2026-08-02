@@ -158,6 +158,9 @@ function normalizeSteps(steps: PlanStep[]): PlanStep[] {
       id: raw.id,
       title: typeof raw.title === "string" ? raw.title.trim() : raw.id,
       state,
+      ...(typeof raw.description === "string" && raw.description.trim()
+        ? { description: raw.description.trim() }
+        : {}),
     });
   }
   return [...seen.values()];

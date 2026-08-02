@@ -31,10 +31,27 @@ describe("tasksToSteps", () => {
     ]);
   });
 
-  test("all completed → all done; nameless task falls back to id", () => {
-    expect(tasksToSteps([task({ state: "completed", name: "" })])).toEqual([
-      { id: "t1", title: "t1", state: "done" },
+  test("title fallbacks: subject → description clause → task <id>", () => {
+    expect(
+      tasksToSteps([
+        task({
+          name: "",
+          description: "Capture the payload. Then delete it.",
+        }),
+      ]),
+    ).toEqual([
+      {
+        id: "t1",
+        title: "Capture the payload",
+        state: "active",
+        description: "Capture the payload. Then delete it.",
+      },
     ]);
+    expect(tasksToSteps([task({ state: "completed", name: "" })])).toEqual([
+      { id: "t1", title: "task t1", state: "done" },
+    ]);
+    const long = tasksToSteps([task({ name: "x".repeat(120) })]);
+    expect(long[0]!.title.length).toBeLessThanOrEqual(80);
   });
 });
 

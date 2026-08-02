@@ -45,13 +45,17 @@ export function renderStepRowHtml(step: {
   id: string;
   title: string;
   state: string;
+  description?: string;
 }): string {
   const icon = stateIcon(step.state);
   const stateClass = ["done", "active", "waiting", "err"].includes(step.state)
     ? step.state
     : "waiting";
+  const tooltip = step.description
+    ? ` title="${escapeHtml(step.description)}"`
+    : "";
   return [
-    `<div class="spp-step spp-step-${stateClass}">`,
+    `<div class="spp-step spp-step-${stateClass}"${tooltip}>`,
     `<span class="spp-step-icon">${icon}</span>`,
     `<span class="spp-step-id">${escapeHtml(step.id)}</span>`,
     `<span class="spp-step-title">${escapeHtml(step.title)}</span>`,

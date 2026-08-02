@@ -125,16 +125,49 @@ describe("buildBridgeEvent", () => {
     expect(ev["message"]).toBe("Claude needs permission to run Bash");
   });
 
-  test("task events forward id/name; contentless task events are skipped", () => {
+  test("task events use the REAL payload fields (task_subject + task_description)", () => {
+    // Shape captured live from Claude Code 2.1.220 (TaskCreated hook).
+    const ev = buildBridgeEvent(
+      "task-created",
+      {
+        ...BASE,
+        task_id: "9",
+        task_subject: "Probe task two — payload capture",
+        task_description: "Temporary: captures the raw payload.",
+      },
+      ENV,
+      T0,
+    )!;
+    expect(ev["taskId"]).toBe("9");
+    expect(ev["taskName"]).toBe("Probe task two — payload capture");
+    expect(ev["taskDescription"]).toBe("Temporary: captures the raw payload.");
+  });
+
+  test("task events fall back to task_name (documented shape); contentless are skipped", () => {
     const ev = buildBridgeEvent(
       "task-created",
       { ...BASE, task_id: "t1", task_name: "Write tests" },
       ENV,
       T0,
     )!;
-    expect(ev["taskId"]).toBe("t1");
     expect(ev["taskName"]).toBe("Write tests");
     expect(buildBridgeEvent("task-created", BASE, ENV, T0)).toBeNull();
+  });
+
+  test("task subject/description are capped", () => {
+    const ev = buildBridgeEvent(
+      "task-created",
+      {
+        ...BASE,
+        task_id: "t1",
+        task_subject: "s".repeat(400),
+        task_description: "d".repeat(900),
+      },
+      ENV,
+      T0,
+    )!;
+    expect((ev["taskName"] as string).length).toBe(200);
+    expect((ev["taskDescription"] as string).length).toBe(500);
   });
 });
 
