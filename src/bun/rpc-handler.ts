@@ -102,6 +102,14 @@ export interface RpcHandlerOptions {
   /** august-plan M3 — opens a native Claude Code pane. Wired to the
    *  pane host so `ht claude pane` reaches the same factory the command
    *  palette uses. Omitted in tests. */
+  /** august-plan — accept a Claude Code terminal permission prompt.
+   *  Wired to the auto-approve engine so `claude.approve` and the
+   *  command palette share one implementation (and one safety gate). */
+  claudeApprove?: (surfaceId?: string) => {
+    ok: boolean;
+    surfaceId?: string;
+    reason?: string;
+  };
   claudeOpenPane?: (opts: {
     cwd?: string;
     resume?: string;
@@ -206,7 +214,12 @@ export function createRpcHandler(
     registerEditor(deps),
     registerExtension(deps),
     options.claudeRegistry
-      ? registerClaude(deps, options.claudeRegistry, options.claudeOpenPane)
+      ? registerClaude(
+          deps,
+          options.claudeRegistry,
+          options.claudeOpenPane,
+          options.claudeApprove,
+        )
       : {},
     options.audits ? registerAudit(deps, options.audits) : {},
     options.plans ? registerPlan(deps, options.plans) : {},

@@ -172,6 +172,12 @@ export interface WebviewHandlerContext {
     surfaceId: string,
     opts: { resume?: string; fork?: boolean },
   ) => Promise<void>;
+  /** Accept a Claude Code terminal permission prompt (sends Enter). */
+  claudeApprove: (surfaceId?: string) => {
+    ok: boolean;
+    surfaceId?: string;
+    reason?: string;
+  };
   createEditorWorkspaceSurface: (
     path?: string,
     cwd?: string,

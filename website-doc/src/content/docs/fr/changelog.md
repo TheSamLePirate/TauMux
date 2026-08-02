@@ -7,6 +7,14 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.10.0 — Accepter les invites de permission de Claude Code
+
+Quand Claude Code tourne dans un panneau terminal et demande la permission d'exécuter une commande, τ-mux peut désormais y répondre pour vous.
+
+- **Approbation manuelle, toujours disponible** — la palette *« Approve Claude Code permission prompt »* ou [`ht claude approve`](/fr/cli/claude/) appuie sur Entrée sur l'invite qui attend depuis le plus longtemps (ou `--surface`).
+- **Auto-approbation, opt-in** — Réglages → *Auto-approve Claude Code prompts* (désactivé par défaut) les accepte à mesure qu'elles apparaissent, après un court délai configurable.
+- **Volontairement restreint**, car c'est une barrière de consentement : ne se déclenche que pour l'invite propre de Claude Code dans le terminal du panneau — jamais pour la modale τ-mux, jamais pour le panneau Claude Code ; revérifie que l'invite est encore à l'écran après le délai ; se met en pause avec notification au-delà de huit invites par minute ; et chaque approbation est inscrite dans le journal de la barre latérale du panneau.
+
 ## 0.9.0 — Le panneau Claude Code, aligné sur le système de design τ-mux
 
 Le panneau ressemble et se comporte désormais comme une surface d'agent native de τ-mux, plus comme une application invitée.

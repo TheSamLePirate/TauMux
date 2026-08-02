@@ -189,12 +189,14 @@ export const SETTINGS_FIELD_SCHEMAS = {
   webMirrorPort: numberRange(3000, 1, 65535, { round: true }),
   paneGap: numberRange(2, 0, 20, { round: true }),
   sidebarWidth: numberRange(320, 200, 600, { round: true }),
+  claudeAutoApproveDelayMs: numberRange(700, 0, 10000, { round: true }),
   notificationSoundEnabled: bool(true),
   notificationSoundVolume: numberRange(1.0, 0, 1),
 
   // S14 strict-bool batch
   telegramNotificationButtonsEnabled: boolStrict(false),
   telegramAskUserEnabled: boolStrict(false),
+  claudeAutoApprove: boolStrict(false),
   terminalOsc94Enabled: boolStrict(true),
   notificationOverlayEnabled: boolStrict(true),
   workspaceCardShowMeta: boolStrict(true),

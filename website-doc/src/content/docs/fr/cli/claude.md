@@ -41,6 +41,18 @@ définit le dossier de la session (par défaut celui du panneau focalisé),
 `--split` l'ouvre à côté du panneau courant, `--resume ID` rouvre une
 session précédente. À l'image de `agent.create` pour le panneau pi.
 
+## claude approve
+
+```bash
+ht claude approve [--surface S]
+```
+
+Accepte l'invite de permission que Claude Code affiche dans un panneau
+**terminal** en envoyant Entrée. Sans `--surface`, répond à la session
+qui attend depuis le plus longtemps. Refuse (avec un motif) si rien
+n'attend, si l'approbation a été routée vers la modale τ-mux, ou s'il
+s'agit d'un [panneau Claude Code](/fr/features/claude-code-pane/).
+
 ## claude sessions
 
 ```bash

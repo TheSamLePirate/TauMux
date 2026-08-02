@@ -185,6 +185,14 @@ export interface ClaudeSessionState {
   /** What is waiting for approval (tool name / prompt message) while
    *  phase === "waiting-approval". Cleared on resolution or next turn. */
   approvalMessage: string | null;
+  /** Where the pending approval is being answered.
+   *  `"tty"`  — Claude Code is showing its own prompt in the pane's
+   *             terminal (Notification/permission_prompt). Enter accepts.
+   *  `"modal"`— the PermissionRequest hook routed it to a τ-mux modal /
+   *             Telegram; NO terminal prompt exists, so sending keys to
+   *             the pane would type into whatever is on screen.
+   *  Auto-approve only ever acts on `"tty"`. */
+  approvalSource: "tty" | "modal" | null;
   errorType: string | null;
   errorMessage: string | null;
   subagents: ClaudeSubagent[];
@@ -233,6 +241,7 @@ export function newClaudeSessionState(
     prUrl: null,
     prReviewState: null,
     approvalMessage: null,
+    approvalSource: null,
     errorType: null,
     errorMessage: null,
     subagents: [],

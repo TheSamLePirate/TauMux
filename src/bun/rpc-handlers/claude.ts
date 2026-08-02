@@ -30,8 +30,23 @@ export function registerClaude(
     split?: boolean;
     direction?: "right" | "down" | "left" | "up";
   }) => void,
+  approve?: (surfaceId?: string) => {
+    ok: boolean;
+    surfaceId?: string;
+    reason?: string;
+  },
 ): Record<string, Handler> {
   return {
+    /** Accept the permission prompt Claude Code is showing in a terminal
+     *  pane by sending Enter (its default option is "Yes"). Answers the
+     *  longest-waiting session, or `surface_id` when given. Refuses when
+     *  the approval is modal-routed or no prompt is up. */
+    "claude.approve": (params) => {
+      if (!approve) return { ok: false, reason: "auto-approve not wired" };
+      const sid = params["surface_id"] ?? params["surface"];
+      return approve(typeof sid === "string" ? sid : undefined);
+    },
+
     /** Open a native Claude Code pane (M3/WS5) from the CLI or a script —
      *  the same entry point the command palette uses. Mirrors
      *  `agent.create` / `agent.create_split` for the pi pane. */

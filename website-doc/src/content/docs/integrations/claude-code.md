@@ -63,6 +63,33 @@ bridge prints nothing and Claude Code shows its own prompt exactly as
 before. The gate can only ever *add* an answer path. Kill switch without
 uninstalling: `HT_CLAUDE_APPROVALS=0`.
 
+## Accepting terminal prompts
+
+When Claude Code runs in a **terminal pane** and asks permission to run a
+command, τ-mux can press Enter for you (its prompt's default answer is
+*Yes*):
+
+- **Manually**, always available — command palette → *"Approve Claude Code
+  permission prompt"*, or [`ht claude approve`](/cli/claude/) (answers the
+  longest-waiting session, or `--surface`).
+- **Automatically** — Settings → *Auto-approve Claude Code prompts*
+  (**off by default**). Every approval is written to that pane's sidebar
+  log, so there is a record of what was accepted unattended.
+
+This is deliberately narrow. It only fires when Claude Code is showing
+its **own prompt in that pane's terminal**; it never answers the
+[τ-mux approval modal](#decision-plane--remote-approvals-opt-in) (there
+is no terminal prompt to answer in that case) and never types into the
+[Claude Code pane](/features/claude-code-pane/). It re-checks the prompt
+is still on screen after the configured delay, so it can't fire a stray
+Enter into a pane where you already answered. And if more than eight
+prompts arrive in a minute it pauses itself and notifies you — a prompt
+storm is not something to rubber-stamp.
+
+Auto-approve hands a coding agent unattended consent for the commands it
+asks to run. Turn it on when you are supervising the pane, not as a
+permanent default.
+
 ## Task-list mirror
 
 Claude Code's native task list (TaskCreate / TaskCompleted) is mirrored

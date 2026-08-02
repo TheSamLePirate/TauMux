@@ -155,6 +155,19 @@ export interface AppSettings {
   /** Master toggle for the arrival cue when a sidebar notification
    *  lands. Dismissing individual notifications is always silent; this
    *  gate only controls the `finish.mp3` one-shot. */
+  /** Claude Code — auto-accept permission prompts shown in a TERMINAL
+   *  pane by sending Enter (the prompt's default option is "Yes").
+   *
+   *  OFF by default, and deliberately so: this hands a coding agent
+   *  unattended consent for commands it asks to run. It only ever fires
+   *  when Claude Code is showing its own prompt in that pane's tty
+   *  (Notification/permission_prompt) — never for the τ-mux approval
+   *  modal, and never for the native Claude pane. A burst guard pauses
+   *  it if prompts arrive faster than a human could be reading them. */
+  claudeAutoApprove: boolean;
+  /** Delay before the Enter keystroke, so the prompt has finished
+   *  rendering (and you can see what was approved). */
+  claudeAutoApproveDelayMs: number;
   notificationSoundEnabled: boolean;
   /** Playback volume for the arrival cue. 0 is silent, 1 is full
    *  volume. Drives `HTMLAudioElement.volume` on every play. */
@@ -764,6 +777,8 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
 
   packageRunner: "bun",
 
+  claudeAutoApprove: false,
+  claudeAutoApproveDelayMs: 700,
   notificationSoundEnabled: true,
   notificationSoundVolume: 1.0,
 
@@ -897,6 +912,13 @@ export function validateSettings(s: AppSettings): AppSettings {
       ),
     paneGap: SETTINGS_FIELD_SCHEMAS.paneGap.validate(s.paneGap),
     sidebarWidth: SETTINGS_FIELD_SCHEMAS.sidebarWidth.validate(s.sidebarWidth),
+    claudeAutoApprove: SETTINGS_FIELD_SCHEMAS.claudeAutoApprove.validate(
+      s.claudeAutoApprove,
+    ),
+    claudeAutoApproveDelayMs:
+      SETTINGS_FIELD_SCHEMAS.claudeAutoApproveDelayMs.validate(
+        s.claudeAutoApproveDelayMs,
+      ),
     notificationSoundEnabled:
       SETTINGS_FIELD_SCHEMAS.notificationSoundEnabled.validate(
         s.notificationSoundEnabled,

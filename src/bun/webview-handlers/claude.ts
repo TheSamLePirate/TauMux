@@ -9,7 +9,8 @@ type Keys =
   | "claudeAgentSetMode"
   | "claudeAgentListSessions"
   | "claudeAgentNewSession"
-  | "claudeAgentClose";
+  | "claudeAgentClose"
+  | "claudeApprove";
 
 /** Native Claude Code pane (august-plan M3 / WS5) — webview ↔ bun
  *  bridge over the ClaudeAgentManager. Event flow back to the pane is
@@ -55,6 +56,9 @@ export function registerClaudeWebviewHandlers(
     },
     claudeAgentClose: (payload) => {
       void mgr().close(payload.surfaceId);
+    },
+    claudeApprove: (payload) => {
+      ctx.claudeApprove(payload.surfaceId);
     },
   };
 }

@@ -1704,6 +1704,32 @@ function buildPaletteCommands(): PaletteCommand[] {
       action: () => rpc.send("splitAgentSurface", { direction: "vertical" }),
     },
     {
+      id: "claude-approve",
+      category: "Claude Code",
+      label: "Approve Claude Code permission prompt",
+      description:
+        "Press Enter on the permission prompt Claude Code is showing in a terminal pane.",
+      action: () => rpc.send("claudeApprove", {}),
+    },
+    {
+      id: "claude-toggle-auto-approve",
+      category: "Claude Code",
+      label:
+        (currentSettings?.claudeAutoApprove ?? false)
+          ? "Disable Claude Code auto-approve"
+          : "Enable Claude Code auto-approve",
+      description:
+        (currentSettings?.claudeAutoApprove ?? false)
+          ? "Stop auto-accepting permission prompts in terminal panes."
+          : "Automatically press Enter on permission prompts Claude Code shows in terminal panes.",
+      action: () => {
+        const next = !(currentSettings?.claudeAutoApprove ?? false);
+        const base = currentSettings ?? DEFAULT_SETTINGS;
+        applySettings(mergeSettings(base, { claudeAutoApprove: next }));
+        rpc.send("updateSettings", { settings: { claudeAutoApprove: next } });
+      },
+    },
+    {
       id: "claude-new",
       category: "Claude Code",
       label: "New Claude Code Pane",

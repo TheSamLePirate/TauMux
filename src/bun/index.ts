@@ -684,6 +684,8 @@ const {
   createClaudeWorkspaceSurface: claudePaneHost.createClaudeWorkspaceSurface,
   listClaudeSessions: claudePaneHost.listClaudeSessions,
   claudeNewSession: claudePaneHost.newSession,
+  claudeApprove: (surfaceId) =>
+    claudeIntegration.autoApprove.approveNow(surfaceId),
   createEditorWorkspaceSurface,
   splitEditorSurface,
   createExtensionWorkspaceSurface,
@@ -2615,6 +2617,8 @@ const socketHandler = createRpcHandler(
     extensionManager,
     claudeRegistry: claudeIntegration.registry,
     claudeOpenPane: (opts) => claudePaneHost.createClaudeWorkspaceSurface(opts),
+    claudeApprove: (surfaceId) =>
+      claudeIntegration.autoApprove.approveNow(surfaceId),
     shutdown: () => gracefulShutdown(),
     testModeEnabled: HT_TEST_MODE,
     telegramDb,
@@ -2642,7 +2646,10 @@ const socketHandler = createRpcHandler(
   },
 );
 
-claudeIntegration.attach(socketHandler, plans, () => app.getAppState());
+claudeIntegration.attach(socketHandler, plans, () => app.getAppState(), {
+  autoApprove: () => settingsManager.get().claudeAutoApprove,
+  autoApproveDelayMs: () => settingsManager.get().claudeAutoApproveDelayMs,
+});
 
 // All late-bound dependencies referenced by the webview handlers now
 // exist; flush them into the context so the registered handlers can

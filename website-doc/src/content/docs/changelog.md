@@ -7,6 +7,14 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.10.0 — Accept Claude Code permission prompts
+
+When Claude Code runs in a terminal pane and asks permission to run a command, τ-mux can now answer it for you.
+
+- **Manual approve, always available** — command palette *"Approve Claude Code permission prompt"* or [`ht claude approve`](/cli/claude/) presses Enter on the longest-waiting prompt (or `--surface`).
+- **Auto-approve, opt-in** — Settings → *Auto-approve Claude Code prompts* (off by default) accepts them as they appear, after a short configurable delay.
+- **Deliberately narrow**, because this is a consent gate: it fires only for Claude Code's own prompt in that pane's terminal — never for the τ-mux approval modal, never for the Claude Code pane; it re-checks the prompt is still on screen after the delay so it can't send a stray Enter into a pane you already answered; it pauses and notifies after more than eight prompts in a minute; and every approval is written to that pane's sidebar log. See [accepting terminal prompts](/integrations/claude-code/#accepting-terminal-prompts).
+
 ## 0.9.0 — The Claude Code pane, on the τ-mux design system
 
 The pane now looks and behaves like a native τ-mux agent surface rather than a guest app.

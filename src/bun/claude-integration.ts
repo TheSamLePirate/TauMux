@@ -14,6 +14,7 @@
  */
 
 import type { AppState } from "./rpc-handlers/types";
+import { ClaudeAutoApprove } from "./claude-auto-approve";
 import { ClaudePlanMirror } from "./claude-plan-mirror";
 import { ClaudeSessionRegistry } from "./claude-session-registry";
 import { ClaudeStatusPresenter } from "./claude-status-presenter";
@@ -22,6 +23,9 @@ import type { PlanStore } from "./plan-store";
 
 export interface ClaudeIntegration {
   registry: ClaudeSessionRegistry;
+  /** Permission auto-approve engine — also the manual `approveNow`
+   *  entry point behind `claude.approve` / the command palette. */
+  autoApprove: ClaudeAutoApprove;
   attach(
     callRpc: (
       method: string,
@@ -29,14 +33,30 @@ export interface ClaudeIntegration {
     ) => unknown | Promise<unknown>,
     plans?: PlanStore,
     getState?: () => AppState,
+    settings?: {
+      autoApprove: () => boolean;
+      autoApproveDelayMs: () => number;
+    },
   ): void;
 }
 
 export function createClaudeIntegration(): ClaudeIntegration {
   const registry = new ClaudeSessionRegistry();
+  // Constructed eagerly (never auto-fires until `attach` supplies the
+  // settings readers) so `claude.approve` can be wired before attach.
+  let autoApprove!: ClaudeAutoApprove;
   return {
     registry,
-    attach(callRpc, plans, getState) {
+    get autoApprove() {
+      return autoApprove;
+    },
+    attach(callRpc, plans, getState, settings) {
+      autoApprove = new ClaudeAutoApprove({
+        callRpc,
+        isEnabled: settings?.autoApprove ?? (() => false),
+        delayMs: settings?.autoApproveDelayMs ?? (() => 700),
+      });
+      autoApprove.attach(registry);
       new ClaudeStatusPresenter({ callRpc }).attach(registry);
       // M4 / WS6 — passive agent-teams pill. Reads ~/.claude/teams on a
       // slow poll; silent (one stat per tick) when the experimental

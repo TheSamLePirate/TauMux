@@ -1361,6 +1361,10 @@ Claude Code (see claude-integration/README.md):
   claude pane [--cwd P] [--split] [--direction right|down] [--resume ID]
                                         Open a native Claude Code pane (Agent
                                         SDK session) in this workspace
+  claude approve [--surface S]          Accept the permission prompt Claude
+                                        Code is showing in a terminal pane
+                                        (sends Enter). Defaults to the
+                                        longest-waiting session.
   claude sessions [--all]               List observed Claude Code sessions
   claude install [--features lifecycle,tasks,statusline,approvals]
                                         Wire the hook bridge + statusline into

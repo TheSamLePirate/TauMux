@@ -85,6 +85,36 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 5. Tests: pane view DOM smoke (happy-dom like telegram-pane tests), message
    handler roundtrip, restore branch.
 
+## Permission auto-approve (user-requested, 0.10.0)
+
+User: "accept (press enter) on a claude code session in any terminal when
+there is the message asking permission to run command."
+
+No screen scraping needed — the `Notification`/`permission_prompt` hook
+already tells us a prompt is on screen and `HT_SURFACE` says which pane,
+so the whole feature is: gate carefully, then `surface.send_key enter`.
+
+| Item | Status | Notes |
+|---|---|---|
+| `approvalSource: "tty" \| "modal"` on session state | ✅ | THE load-bearing distinction — a modal-routed approval has no terminal prompt, so sending Enter would type into whatever is on screen |
+| `src/bun/claude-auto-approve.ts` — engine + `canAutoApprove` (pure) | ✅ | all safety rules in one testable predicate |
+| Manual path (always available) | ✅ | palette entry, `ht claude approve [--surface]`, `claude.approve` RPC, `claudeApprove` webview message, SDK namespace |
+| Auto path (opt-in) | ✅ | `claudeAutoApprove` (default **false**) + `claudeAutoApproveDelayMs` (700) |
+| Guard: terminal panes only | ✅ | refuses `claude-agent:` (native pane answers via canUseTool) and unattributed sessions |
+| Guard: transition-only | ✅ | statusline tees while the prompt is up don't re-fire |
+| Guard: re-check after the delay | ✅ | if the user answered it themselves meanwhile, nothing is sent |
+| Guard: burst limit | ✅ | >8/min pauses that session + notifies |
+| Audit trail | ✅ | every approval (manual or auto) writes a `sidebar.log` line |
+| Tests | ✅ | 17 covering each guard, both paths, and the throwing-dispatcher case |
+| Gates | ✅ | 3348 green · typecheck · lint · all five design audits |
+| Live verification | ✅ | manual approve → shell prompt re-rendered; auto-approve fired unattended after the delay; sidebar showed `Logs (1)`; dev setting restored to off afterwards |
+| Docs | ✅ | integration page section + cli/claude verb + 0.10.0 changelog, EN+FR; site builds |
+
+**Deviation:** ratchet promotes on views/index.ts (+26, two palette
+entries) and settings-panel.ts (+24, two fields) — both are the
+CLAUDE.md-documented homes for those patterns, so the growth is
+structural rather than avoidable.
+
 ## Pane v3 — design-system alignment (user-requested, 0.9.0)
 
 User: "make the UI/UX much better, better color theme, better visual effects,

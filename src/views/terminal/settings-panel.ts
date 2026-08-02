@@ -352,6 +352,30 @@ export class SettingsPanel {
 
     this.toggleField(
       c,
+      "Auto-approve Claude Code prompts",
+      s.claudeAutoApprove,
+      "claudeAutoApprove",
+      {
+        note:
+          "Presses Enter on the permission prompt Claude Code shows in a " +
+          "terminal pane (its default answer is Yes). Only fires for that " +
+          "terminal prompt — never for the τ-mux approval modal or the " +
+          "Claude pane — and pauses itself if prompts arrive in a burst. " +
+          "Every approval is written to the pane's sidebar log. This grants " +
+          "unattended consent for commands the agent asks to run.",
+      },
+    );
+    this.sliderField(
+      c,
+      "Auto-approve delay",
+      s.claudeAutoApproveDelayMs,
+      "claudeAutoApproveDelayMs",
+      { min: 0, max: 5000, step: 100 },
+      (v) => `${Math.round(v)} ms`,
+    );
+
+    this.toggleField(
+      c,
       "Notification Sound",
       s.notificationSoundEnabled,
       "notificationSoundEnabled",

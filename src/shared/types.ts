@@ -899,6 +899,10 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       claudeAgentListSessions: { cwd?: string };
       /** Tear down the agent behind a closing pane. */
       claudeAgentClose: { surfaceId: string };
+      /** Accept the permission prompt Claude Code is showing in a
+       *  TERMINAL pane (sends Enter). Omitting `surfaceId` answers the
+       *  longest-waiting session. */
+      claudeApprove: { surfaceId?: string };
       /** Pane v2 — swap the session behind an EXISTING pane in place:
        *  fresh session ({}), or resume/fork a previous one. On resume
        *  bun replays the persisted transcript via `claudeAgentHistory`. */

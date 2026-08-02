@@ -68,6 +68,35 @@ expire, si vous choisissez « Answer in terminal », ou si quoi que ce soit
 exactement comme avant. La porte ne peut qu'*ajouter* un chemin de
 réponse. Coupe-circuit sans désinstaller : `HT_CLAUDE_APPROVALS=0`.
 
+## Accepter les invites du terminal
+
+Quand Claude Code tourne dans un **panneau terminal** et demande la
+permission d'exécuter une commande, τ-mux peut appuyer sur Entrée pour
+vous (la réponse par défaut de l'invite est *Yes*) :
+
+- **Manuellement**, toujours disponible — palette de commandes →
+  *« Approve Claude Code permission prompt »*, ou
+  [`ht claude approve`](/fr/cli/claude/) (répond à la session qui attend
+  depuis le plus longtemps, ou `--surface`).
+- **Automatiquement** — Réglages → *Auto-approve Claude Code prompts*
+  (**désactivé par défaut**). Chaque approbation est inscrite dans le
+  journal de la barre latérale du panneau : il reste une trace de ce qui
+  a été accepté sans surveillance.
+
+C'est volontairement restreint. Cela ne se déclenche que lorsque Claude
+Code affiche **sa propre invite dans le terminal du panneau** ; jamais
+pour la [modale d'approbation τ-mux](/fr/integrations/claude-code/) (il
+n'y a alors aucune invite terminal à répondre) et jamais dans le
+[panneau Claude Code](/fr/features/claude-code-pane/). Le système
+revérifie que l'invite est toujours à l'écran après le délai configuré :
+pas d'Entrée parasite dans un panneau où vous avez déjà répondu. Et
+au-delà de huit invites en une minute, il se met en pause et vous
+notifie — une rafale d'invites ne se tamponne pas à l'aveugle.
+
+L'auto-approbation donne à un agent un consentement non surveillé pour
+les commandes qu'il demande à exécuter. Activez-la quand vous supervisez
+le panneau, pas comme réglage permanent.
+
 ## Miroir de la liste de tâches
 
 La liste de tâches native de Claude Code (TaskCreate / TaskCompleted) est

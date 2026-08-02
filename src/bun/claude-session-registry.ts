@@ -71,6 +71,8 @@ export function reduceEvent(
       break;
 
     case "prompt":
+      state.approvalSource = null;
+      state.approvalMessage = null;
       state.turnCount += 1;
       state.promptStartedAt = ts;
       state.currentPrompt = (ev.prompt ?? "").slice(0, MAX_PROMPT_CHARS);
@@ -85,6 +87,7 @@ export function reduceEvent(
       state.phase = "idle";
       state.promptStartedAt = 0;
       state.approvalMessage = null;
+      state.approvalSource = null;
       break;
 
     case "stop-failure":
@@ -135,14 +138,18 @@ export function reduceEvent(
       break;
 
     case "notify-permission":
+      // Claude Code is showing its OWN prompt in the terminal.
       state.phase = "waiting-approval";
+      state.approvalSource = "tty";
       if (ev.message) state.approvalMessage = ev.message;
       break;
 
     // WS3 — the PermissionRequest hook is being routed to a τ-mux ask
     // modal. `message` carries the tool name for the pill/notification.
     case "permission-request":
+      // Routed to a τ-mux modal — there is no terminal prompt to answer.
       state.phase = "waiting-approval";
+      state.approvalSource = "modal";
       state.approvalMessage = ev.message ?? null;
       break;
 
@@ -152,6 +159,7 @@ export function reduceEvent(
     case "permission-resolved":
       state.phase = state.promptStartedAt > 0 ? "working" : "idle";
       state.approvalMessage = null;
+      state.approvalSource = null;
       break;
 
     case "task-created": {

@@ -39,6 +39,19 @@ directory (defaults to the focused pane's), `--split` opens it beside the
 current pane, `--resume ID` reopens a previous session. Mirrors
 `agent.create` for the pi pane.
 
+## claude approve
+
+```bash
+ht claude approve [--surface S]
+```
+
+Accept the permission prompt Claude Code is showing in a **terminal**
+pane by sending Enter. Without `--surface` it answers the
+longest-waiting session. Refuses (with a reason) when nothing is
+waiting, when the approval was routed to the τ-mux modal instead, or
+when the session is a [Claude Code pane](/features/claude-code-pane/) —
+see [accepting terminal prompts](/integrations/claude-code/#accepting-terminal-prompts).
+
 ## claude sessions
 
 ```bash

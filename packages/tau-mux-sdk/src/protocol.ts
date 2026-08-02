@@ -113,6 +113,8 @@ export interface TauMuxApi {
   claude: {
     /** Open a Claude Code pane. `{ cwd?, resume?, split?, direction? }` */
     pane: M;
+    /** Accept a Claude Code terminal permission prompt. `{ surface_id? }` */
+    approve: M;
     event: M;
     statusline: M;
     sessions: M;
@@ -443,6 +445,7 @@ const NAMESPACES: Record<string, [string, string][]> = {
   ],
   claude: [
     ["pane", "pane"],
+    ["approve", "approve"],
     ["event", "event"],
     ["statusline", "statusline"],
     ["sessions", "sessions"],

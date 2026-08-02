@@ -481,6 +481,15 @@ export function mapCommand(ctx: CliContext): RpcCall {
           },
         };
       }
+      if (sub === "approve") {
+        return {
+          method: "claude.approve",
+          params: {
+            surface_id:
+              flags["surface"] || process.env["HT_SURFACE"] || undefined,
+          },
+        };
+      }
       if (sub === "sessions") {
         return {
           method: "claude.sessions",
@@ -493,7 +502,7 @@ export function mapCommand(ctx: CliContext): RpcCall {
         );
       }
       throw new Error(
-        `Unknown claude subcommand: ${sub ?? "(none)"} (expected pane|sessions|statusline|install|uninstall|doctor|event)`,
+        `Unknown claude subcommand: ${sub ?? "(none)"} (expected pane|approve|sessions|statusline|install|uninstall|doctor|event)`,
       );
     }
 
