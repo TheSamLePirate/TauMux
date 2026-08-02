@@ -8,9 +8,9 @@ Started: 2026-08-02 · Version at start: **0.4.7**
 | ID | Item | State | Commit |
 |----|------|-------|--------|
 | P1 | FFI process introspection (`native-proc.ts` + runners) | **done** | `7bcb2fd3` (v0.4.8) |
-| P2 | WebGL terminal renderer + setting + fallback | in progress | — |
-| P3 | Adaptive stdout coalescing | not started | — |
-| P4 | Bump / docs / changelog backlog | not started | — |
+| P2 | WebGL terminal renderer + setting + fallback | **shipped, then made opt-in** | `a3a8fc6a` (v0.4.9), `4aeebb81` (v0.4.11) |
+| P3 | Adaptive stdout coalescing | **done** | `b135c721` (v0.4.10) |
+| P4 | Bump / docs / changelog backlog | in progress | — |
 
 ## Baseline (2026-08-02, packaged v0.4.7, PID 76622)
 
@@ -50,6 +50,38 @@ listener under it: trees, foreground pids, full commands, ports, and cwds
 all identical. (`ps` reports one extra pid — itself — which is expected and
 not a discrepancy; confirmed by reversing snapshot order.)
 
+### 2026-08-02 — P2 regression and revert (`4aeebb81`, v0.4.11)
+
+**v0.4.9 shipped the WebGL renderer on by default and it rendered
+terminal panes blank in the real app.** Reported by the user during the
+session; reproduced on-screen (new build's pane empty, v0.4.7 alongside
+it rendering normally).
+
+Default reverted to `dom`, which restores the exact pre-v0.4.9 code path.
+WebGL stays available as opt-in.
+
+**Why the tests passed anyway — the important lesson.**
+`tests-e2e-native/specs/renderer.spec.ts` asserted that the addon
+attached and that `getActiveRendererKind()` reported `"webgl"`. Both were
+true. Neither is the same claim as *pixels reach the screen*. An
+attachment assertion is not a rendering assertion, and treating one as a
+proxy for the other is what let a blank terminal ship. Verifying a
+renderer needs a pixel-level check — the design-report screenshot suite
+is the right tool.
+
+**Real defect found while investigating** (kept, correct regardless of
+the default): the renderer was attached immediately after `term.open()`,
+while the pane container is still 0×0 because the layout pass has not
+run. The DOM renderer re-measures on the next frame; the WebGL renderer
+sizes its canvas and glyph atlas at attach time and never recovers from a
+zero-sized drawing buffer. Attachment is now deferred to `applyLayout()`
+after `fitSurfaceTerminal()`, guarded on a non-zero `.xterm-screen` rect,
+with a `refresh()` so a quiet pane paints its existing buffer.
+
+Whether that was the *whole* cause is **unverified on-screen** — which is
+precisely why the default was not restored to `webgl` on the strength of
+it.
+
 ## Deviations
 
 - **`pti_total_user` / `pti_total_system` are mach absolute time units, not
@@ -66,4 +98,11 @@ not a discrepancy; confirmed by reversing snapshot order.)
 
 ## Issues
 
-_(none open)_
+- **OPEN — GPU renderer unverified.** `terminalRenderer: "webgl"` is
+  opt-in and its blank-pane cause is not confirmed. Before it can default
+  on again it needs a pixel-level check (design-report screenshot), not
+  an attachment assertion.
+- **Pre-existing, unrelated —** `tests-e2e-native/specs/demos.spec.ts`
+  imports `tests-e2e/design/helpers/demos`, which does not exist, so the
+  native suite fails to collect. Confirmed present before this plan's
+  work (verified by stashing). Run individual spec files to bypass.

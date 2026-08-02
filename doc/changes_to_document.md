@@ -66,3 +66,31 @@ vendored-SDK installs, pane fixes) into:_
   installation.md`, `getting-started/quick-start.md`, `api/overview.md` — the
   default is now `<config dir>/hyperterm.sock`, not `/tmp/hyperterm.sock`.
 - `api/system.md` + `cli/system.md` (en + fr) — version 0.4.7 (auto-bumped).
+
+---
+
+_Pending — desktop performance & reactivity wave (v0.4.8 → v0.4.11).
+Plan: `doc/desktop-perf-plan.md` · Tracking: `doc/tracking_desktop_perf.md`._
+
+- **Changelog (en + fr)** — new section **"0.4.11 — Desktop performance"**:
+  - **Metadata poller rewritten on libSystem FFI (v0.4.8).** `ps` +
+    two `lsof` calls per 1 Hz tick (~200 ms of CPU every second) replaced
+    by `sysctl(KERN_PROC_ALL)` + `proc_pidinfo`/`proc_pidfdinfo`.
+    Measured 135.8 ms → 2.42 ms per tick (56×); steady-state bun-process
+    CPU dropped from 7–10 % to ~1 %. Falls back to `ps`/`lsof`
+    automatically if self-validation fails or off macOS.
+  - **More accurate CPU% in chips / Process Manager / sidebar (v0.4.8).**
+    Derived from cumulative CPU-time deltas instead of `ps`'s decaying
+    average, so a process that just finished a burst no longer lingers
+    at a high reading.
+  - **Adaptive stdout coalescing (v0.4.10).** Keystroke echo no longer
+    waits out the 8 ms batching window on a quiet terminal; batching
+    still engages under sustained output.
+  - **Optional GPU terminal renderer (v0.4.9, opt-in since v0.4.11).**
+    New `terminalRenderer` setting (`dom` default, `webgl` opt-in) plus a
+    command-palette toggle. **Document it as experimental** — it shipped
+    on by default in v0.4.9 and rendered panes blank; the cause is not
+    yet confirmed.
+- **`configuration/settings.md` (en + fr)** — new `terminalRenderer`
+  field: values, `dom` default, the experimental caveat, and the
+  automatic DOM fallback on unsupported hardware / context loss.
