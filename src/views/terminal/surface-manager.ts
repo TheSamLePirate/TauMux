@@ -55,6 +55,11 @@ import type { TelegramPaneView } from "./telegram-pane";
 import { TelegramSurfaceController } from "./telegram-surface-controller";
 import type { EditorPaneViewRef } from "./editor-pane";
 import { EditorSurfaceController } from "./editor-surface-controller";
+import {
+  attachRenderer,
+  type RendererHandle,
+  type TerminalRendererKind,
+} from "./terminal-renderer";
 import type { ExtensionPaneViewRef } from "./extension-pane";
 import { ExtensionSurfaceController } from "./extension-surface-controller";
 import type {
@@ -116,6 +121,10 @@ export interface SurfaceView {
   term: Terminal | null;
   fitAddon: FitAddon | null;
   searchAddon: SearchAddon | null;
+  /** GPU renderer attachment. Null for non-terminal surfaces and for
+   *  terminals that fell back to (or were configured for) the DOM
+   *  renderer. Disposed with the surface. */
+  renderer: RendererHandle | null;
   effects: TerminalEffects | null;
   panelManager: PanelManager | null;
   panelsEl: HTMLDivElement | null;
@@ -173,6 +182,9 @@ export class SurfaceManager {
    *  the parser falls back to its default behaviour (the chunk is
    *  silently consumed without painting progress). Default true. */
   private osc94Enabled = true;
+  /** Renderer requested by settings. New terminals attach with this;
+   *  changing it re-attaches every live terminal in place. */
+  private rendererKind: TerminalRendererKind = "webgl";
   /** Cached `ht set-status` key order from settings — applied when
    *  building the sidebar workspace cards so user reorder choices
    *  propagate without a full settings re-flow. */
@@ -743,6 +755,11 @@ export class SurfaceManager {
     view.panelManager?.destroy();
     view.panelManager = null;
     view.effects?.destroy();
+    // Release the WebGL context before the terminal goes away — browsers
+    // cap live contexts, and with one per pane a leak here would
+    // eventually starve new panes of GPU rendering.
+    view.renderer?.dispose();
+    view.renderer = null;
     view.term?.dispose();
     // Browser panes keep webviewEl.on() handlers that close over
     // surfaceId + callbacks; detach them explicitly or they leak for
@@ -1235,6 +1252,8 @@ export class SurfaceManager {
       prev.sidebarWidth !== s.sidebarWidth;
     const browserDarkChanged =
       !prev || prev.browserForceDarkMode !== s.browserForceDarkMode;
+    const rendererChanged =
+      !prev || prev.terminalRenderer !== s.terminalRenderer;
 
     // Build xterm theme from settings (only used when terminal visuals moved)
     const theme = {
@@ -1248,6 +1267,26 @@ export class SurfaceManager {
     };
 
     setPaneGap(s.paneGap);
+
+    // Swapping renderer is a detach/attach on every live terminal. The
+    // xterm buffer is renderer-independent, so scrollback, selection, and
+    // cursor position all survive; only the paint path changes. Skipped
+    // entirely when the setting didn't move, which is the common case.
+    // The `!prev` first call reports "changed" for every field, so also
+    // require the value to actually differ from what terminals are
+    // already using — otherwise startup pays a pointless dispose +
+    // re-attach (and a fresh WebGL context) per pane.
+    if (rendererChanged && s.terminalRenderer !== this.rendererKind) {
+      this.rendererKind = s.terminalRenderer;
+      for (const view of this.surfaces.values()) {
+        if (!view.term) continue;
+        view.renderer?.dispose();
+        view.renderer = attachRenderer(view.term, this.rendererKind);
+        // Repaint so the freshly-attached renderer has the current
+        // screen rather than waiting for the next PTY write.
+        view.term.refresh(0, view.term.rows - 1);
+      }
+    }
 
     if (termVisualChanged || bloomChanged) {
       for (const view of this.surfaces.values()) {
@@ -1341,6 +1380,18 @@ export class SurfaceManager {
 
   getFontSize(): number {
     return this.fontSize;
+  }
+
+  /** What is *actually* painting the focused terminal right now — which
+   *  is not necessarily what `terminalRenderer` asked for, since WebGL
+   *  degrades to DOM on unsupported hardware or context loss. Returns
+   *  null when the focused surface isn't a terminal. */
+  getActiveRendererKind(): TerminalRendererKind | null {
+    const id = this.focusedSurfaceId;
+    if (!id) return null;
+    const view = this.surfaces.get(id);
+    if (!view?.term) return null;
+    return view.renderer?.active ?? "dom";
   }
 
   setFontSize(size: number): void {
@@ -2069,6 +2120,7 @@ export class SurfaceManager {
       term: null,
       fitAddon: null,
       searchAddon: null,
+      renderer: null,
       effects: null,
       panelManager: null,
       panelsEl: null,
@@ -2098,6 +2150,7 @@ export class SurfaceManager {
       term: null,
       fitAddon: null,
       searchAddon: null,
+      renderer: null,
       effects: null,
       panelManager: null,
       panelsEl: null,
@@ -2241,6 +2294,11 @@ export class SurfaceManager {
     term.loadAddon(searchAddon);
     term.open(termLayerEl);
 
+    // Must run after open(): the WebGL addon binds its canvas to the
+    // element xterm just created. Never throws — falls back to the DOM
+    // renderer and reports that through the handle.
+    const renderer = attachRenderer(term, this.rendererKind);
+
     const effects = new TerminalEffects(termEl, term);
     effects.setEnabled(this.terminalEffectsEnabled);
 
@@ -2335,6 +2393,7 @@ export class SurfaceManager {
       term,
       fitAddon,
       searchAddon,
+      renderer,
       effects,
       panelManager,
       panelsEl,
@@ -2364,6 +2423,7 @@ export class SurfaceManager {
       term: null,
       fitAddon: null,
       searchAddon: null,
+      renderer: null,
       effects: null,
       panelManager: null,
       panelsEl: null,
@@ -2390,6 +2450,7 @@ export class SurfaceManager {
       term: null,
       fitAddon: null,
       searchAddon: null,
+      renderer: null,
       effects: null,
       panelManager: null,
       panelsEl: null,
@@ -2419,6 +2480,7 @@ export class SurfaceManager {
       term: null,
       fitAddon: null,
       searchAddon: null,
+      renderer: null,
       effects: null,
       panelManager: null,
       panelsEl: null,

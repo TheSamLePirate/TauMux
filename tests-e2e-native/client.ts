@@ -116,6 +116,9 @@ export interface WebviewState {
   activeSurfaceType: "terminal" | "browser" | "agent" | null;
   activeWorkspaceId: string | null;
   fontSize: number;
+  /** The renderer actually painting the focused terminal — "webgl" or
+   *  "dom". Reflects real fallback behaviour, not the requested setting. */
+  terminalRenderer: "webgl" | "dom" | null;
 }
 
 export interface PaletteCommandDTO {

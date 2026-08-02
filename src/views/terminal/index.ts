@@ -1435,6 +1435,31 @@ function buildPaletteCommands(): PaletteCommand[] {
       },
     },
     {
+      // Same settings pipeline as the bloom / sound toggles: the flip
+      // persists to disk and the settings panel reflects it immediately.
+      // SurfaceManager re-attaches every live terminal in place, so the
+      // switch is visible without reopening panes.
+      id: "toggle-terminal-renderer",
+      category: "View",
+      label:
+        (currentSettings?.terminalRenderer ?? "webgl") === "webgl"
+          ? "Use DOM Terminal Renderer"
+          : "Use GPU Terminal Renderer",
+      description:
+        (currentSettings?.terminalRenderer ?? "webgl") === "webgl"
+          ? "Fall back to xterm's element-per-run renderer."
+          : "Draw glyphs from a GPU texture atlas — much cheaper under heavy output.",
+      action: () => {
+        const next =
+          (currentSettings?.terminalRenderer ?? "webgl") === "webgl"
+            ? ("dom" as const)
+            : ("webgl" as const);
+        const base = currentSettings ?? DEFAULT_SETTINGS;
+        applySettings(mergeSettings(base, { terminalRenderer: next }));
+        rpc.send("updateSettings", { settings: { terminalRenderer: next } });
+      },
+    },
+    {
       id: "focus-left",
       category: "Navigation",
       label: "Focus Pane Left",

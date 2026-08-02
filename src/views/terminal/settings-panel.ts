@@ -401,6 +401,19 @@ export class SettingsPanel {
     ]);
 
     this.toggleField(c, "Cursor Blink", s.cursorBlink, "cursorBlink");
+
+    this.segmentedField(
+      c,
+      "Renderer",
+      s.terminalRenderer,
+      "terminalRenderer",
+      [
+        { value: "webgl", label: "GPU" },
+        { value: "dom", label: "DOM" },
+      ],
+      "GPU draws glyphs from a texture atlas — far cheaper under heavy " +
+        "output. Falls back to DOM automatically if WebGL is unavailable.",
+    );
   }
 
   /**
@@ -1800,8 +1813,9 @@ export class SettingsPanel {
     value: string,
     key: keyof AppSettings,
     options: { value: string; label: string }[],
+    note?: string,
   ): void {
-    const row = this.fieldRow(c, label, undefined, key);
+    const row = this.fieldRow(c, label, note, key);
     const group = document.createElement("div");
     group.className = "settings-segmented";
 

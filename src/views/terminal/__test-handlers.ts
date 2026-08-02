@@ -108,6 +108,10 @@ function buildHandlers(ctx: TestHandlerContext): Record<string, Handler> {
       activeSurfaceType: ctx.surfaceManager.getActiveSurfaceType(),
       activeWorkspaceId: ctx.surfaceManager.getActiveWorkspaceId(),
       fontSize: ctx.surfaceManager.getFontSize(),
+      // The renderer actually in use, not the requested setting — lets a
+      // native e2e assert that WebGL really engaged on real hardware
+      // rather than silently falling back.
+      terminalRenderer: ctx.surfaceManager.getActiveRendererKind(),
     }),
 
     "__test.readPaletteCommands": () => {

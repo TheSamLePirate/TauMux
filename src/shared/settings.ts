@@ -30,6 +30,12 @@ export interface AppSettings {
   lineHeight: number;
   cursorStyle: "block" | "bar" | "underline";
   cursorBlink: boolean;
+  /** Which xterm renderer to use. "webgl" draws glyphs from a GPU
+   *  texture atlas and is dramatically cheaper under heavy output;
+   *  "dom" forces xterm's element-per-run fallback. WebGL degrades to
+   *  DOM automatically when unavailable or on context loss, so this is
+   *  a preference, not a guarantee. */
+  terminalRenderer: "webgl" | "dom";
 
   // Theme
   themePreset: string;
@@ -690,6 +696,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   lineHeight: 1.0,
   cursorStyle: "block",
   cursorBlink: true,
+  terminalRenderer: "webgl",
 
   themePreset: THEME_PRESETS[0].id,
   accentColor: THEME_PRESETS[0].accentColor,
@@ -918,6 +925,9 @@ export function validateSettings(s: AppSettings): AppSettings {
         s.telegramAskUserEnabled,
       ),
     cursorStyle: SETTINGS_FIELD_SCHEMAS.cursorStyle.validate(s.cursorStyle),
+    terminalRenderer: SETTINGS_FIELD_SCHEMAS.terminalRenderer.validate(
+      s.terminalRenderer,
+    ),
     packageRunner: SETTINGS_FIELD_SCHEMAS.packageRunner.validate(
       s.packageRunner,
     ),
@@ -1223,6 +1233,7 @@ export function pickWebSettings(s: AppSettings): {
   lineHeight: number;
   cursorStyle: "block" | "bar" | "underline";
   cursorBlink: boolean;
+  terminalRenderer: "webgl" | "dom";
   scrollbackLines: number;
   paneGap: number;
   sidebarWidth: number;
@@ -1255,6 +1266,7 @@ export function pickWebSettings(s: AppSettings): {
     lineHeight: s.lineHeight,
     cursorStyle: s.cursorStyle,
     cursorBlink: s.cursorBlink,
+    terminalRenderer: s.terminalRenderer,
     scrollbackLines: s.scrollbackLines,
     paneGap: s.paneGap,
     sidebarWidth: s.sidebarWidth,
