@@ -12468,3 +12468,207 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 .surface-chip.extension-mode-chip {
   color: var(--tau-text-faint);
 }
+
+/* ── Native Claude Code pane (august-plan M3 / WS5) ─────────────────── */
+
+.surface-claude {
+  display: flex;
+  flex-direction: column;
+  background: var(--tau-bg-deep, #11111b);
+}
+
+.claude-pane-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--tau-border-subtle, #313244);
+  flex: 0 0 auto;
+}
+
+.claude-pane-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+.claude-pane-pill {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: var(--tau-bg-raised, #1e1e2e);
+  color: var(--tau-text-muted, #a6adc8);
+  white-space: nowrap;
+}
+
+.claude-pane-model {
+  color: #f5c2e7;
+}
+
+.claude-pane-mode-select {
+  font-size: 10px;
+  background: var(--tau-bg-raised, #1e1e2e);
+  color: var(--tau-text-muted, #a6adc8);
+  border: 1px solid var(--tau-border-subtle, #313244);
+  border-radius: 6px;
+  padding: 1px 4px;
+}
+
+.claude-pane-btn {
+  font-size: 10px;
+  padding: 2px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--tau-border-subtle, #313244);
+  background: var(--tau-bg-raised, #1e1e2e);
+  color: var(--tau-text, #cdd6f4);
+  cursor: pointer;
+}
+
+.claude-pane-btn:hover {
+  background: var(--tau-bg-hover, #313244);
+}
+
+.claude-pane-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.claude-pane-interrupt {
+  color: #f38ba8;
+}
+
+.claude-pane-resume-menu {
+  position: absolute;
+  top: 56px;
+  right: 8px;
+  z-index: 30;
+  max-height: 50%;
+  overflow-y: auto;
+  min-width: 280px;
+  background: var(--tau-bg-raised, #1e1e2e);
+  border: 1px solid var(--tau-border-subtle, #313244);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  padding: 4px;
+}
+
+.claude-resume-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tau-text, #cdd6f4);
+  cursor: pointer;
+}
+
+.claude-resume-row:hover {
+  background: var(--tau-bg-hover, #313244);
+}
+
+.claude-resume-title {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.claude-resume-meta,
+.claude-resume-empty {
+  font-size: 9px;
+  color: var(--tau-text-faint, #6c7086);
+}
+
+.claude-pane-transcript {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.claude-msg {
+  max-width: 92%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.claude-msg-user {
+  align-self: flex-end;
+  background: var(--tau-bg-raised, #1e1e2e);
+  border: 1px solid var(--tau-border-subtle, #313244);
+  color: var(--tau-text, #cdd6f4);
+}
+
+.claude-msg-assistant {
+  align-self: flex-start;
+  color: var(--tau-text, #cdd6f4);
+  padding-left: 0;
+}
+
+.claude-msg-tool {
+  align-self: flex-start;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 11px;
+  background: color-mix(in srgb, #f5c2e7 6%, transparent);
+  border: 1px solid var(--tau-border-subtle, #313244);
+}
+
+.claude-tool-name {
+  color: #f5c2e7;
+  font-weight: 600;
+}
+
+.claude-tool-summary {
+  color: var(--tau-text-muted, #a6adc8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.claude-msg-result {
+  align-self: center;
+  font-size: 10px;
+  color: var(--tau-text-faint, #6c7086);
+  padding: 0;
+}
+
+.claude-msg-error {
+  color: #f38ba8;
+}
+
+.claude-pane-composer {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--tau-border-subtle, #313244);
+  flex: 0 0 auto;
+}
+
+.claude-pane-input {
+  flex: 1 1 auto;
+  resize: none;
+  font: inherit;
+  font-size: 12px;
+  background: var(--tau-bg-raised, #1e1e2e);
+  color: var(--tau-text, #cdd6f4);
+  border: 1px solid var(--tau-border-subtle, #313244);
+  border-radius: 8px;
+  padding: 6px 9px;
+}
+
+.claude-pane-input:focus {
+  outline: none;
+  border-color: #f5c2e7;
+}

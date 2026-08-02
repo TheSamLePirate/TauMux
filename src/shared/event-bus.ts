@@ -204,6 +204,33 @@ export interface TelegramRequestHistoryPayload {
 /** Telegram pane — async re-sync of the state snapshot. Void payload. */
 export type TelegramRequestStatePayload = void;
 
+// august-plan M3 — native Claude Code pane payloads. Mirror the
+// `claudeAgent*` wire messages in shared/types.ts; index.ts bridges
+// bus → Electrobun RPC one-to-one.
+export interface ClaudeAgentCreatePayload {
+  cwd?: string;
+  model?: string;
+  resume?: string;
+  fork?: boolean;
+  split?: boolean;
+  direction?: "right" | "down" | "left" | "up";
+}
+export interface ClaudeAgentPromptPayload {
+  surfaceId: string;
+  text: string;
+}
+export interface ClaudeAgentInterruptPayload {
+  surfaceId: string;
+}
+export interface ClaudeAgentSetModePayload {
+  surfaceId: string;
+  mode: string;
+}
+export type ClaudeAgentListSessionsPayload = void;
+export interface ClaudeAgentClosePayload {
+  surfaceId: string;
+}
+
 /** Split a new editor pane. `path` is optional — when omitted the new
  *  pane opens a blank buffer. */
 export interface SplitEditorPayload {
@@ -456,6 +483,13 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-telegram-send": TelegramSendPayload;
   "ht-telegram-request-history": TelegramRequestHistoryPayload;
   "ht-telegram-request-state": TelegramRequestStatePayload;
+  // august-plan M3 — native Claude Code pane channels.
+  "ht-claude-agent-create": ClaudeAgentCreatePayload;
+  "ht-claude-agent-prompt": ClaudeAgentPromptPayload;
+  "ht-claude-agent-interrupt": ClaudeAgentInterruptPayload;
+  "ht-claude-agent-set-mode": ClaudeAgentSetModePayload;
+  "ht-claude-agent-list-sessions": ClaudeAgentListSessionsPayload;
+  "ht-claude-agent-close": ClaudeAgentClosePayload;
   "ht-split-editor": SplitEditorPayload;
   "ht-split-extension": SplitExtensionPayload;
   "ht-extension-frontend-message": ExtensionFrontendMessagePayload;

@@ -2922,6 +2922,20 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
           type: "telegramSurfaceCreated",
           surfaceId: newId,
         });
+      } else if (surfType === "claude") {
+        // Claude panes re-mount as a FRESH Agent SDK session — the old
+        // stream died with the app; the pane's Sessions picker offers
+        // resume. Mounting the pane (not a PTY) keeps the layout intact
+        // without leaking a shell (CLAUDE.md non-PTY checklist).
+        const inst = claudePaneHost.manager.create({});
+        surfaceMapping[oldId] = inst.id;
+        inst.onEvent = (event) => {
+          rpc.send("claudeAgentEvent", { surfaceId: inst.id, event });
+        };
+        inst.onExit = (error) => {
+          rpc.send("claudeAgentExit", { surfaceId: inst.id, error });
+        };
+        rpc.send("claudeAgentSurfaceCreated", { surfaceId: inst.id });
       } else if (surfType === "editor") {
         const path = ws.surfaceEditorFiles?.[oldId];
         const newId = nextEditorSurfaceId();

@@ -10,7 +10,7 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 |---|---|---|---|---|
 | M1 — "τ-mux sees Claude" (WS1 + WS1b + WS2) | 0.5.0 | ✅ | 0.5.0 | `4287936f` |
 | M2 — "τ-mux acts for Claude" (WS3 + WS4 + WS7) | 0.6.0 | ✅ | 0.6.0 | `e2cea5e3` |
-| M3 — "Claude lives in τ-mux" (WS5 + WS8) | 0.7.0 | ⏸ | — | — |
+| M3 — "Claude lives in τ-mux" (WS5 + WS8) | 0.7.0 | ✅ | 0.7.0 | _see M3 detail_ |
 | M4 — "AAA" (WS6 + WS9) | 0.8.0 | ⏸ | — | — |
 
 ## M1 detail
@@ -54,13 +54,14 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 | Skill v2 (2.0.0) — mirror-aware, slimmed | ✅ | committed `0ada7222` |
 | `@anthropic-ai/claude-agent-sdk` pinned 0.3.220 | ✅ | bundles CC 2.1.220 — matches user's installed CLI |
 | `src/bun/claude-agent-manager.ts` + 7 fake-query tests | ✅ | committed `0ada7222` |
-| Shared types: `SurfaceKind` + RPC messages for the pane | 🔄 | NEXT — see continuation map |
-| Webview: `claude-agent-pane.ts` view + controller + SurfaceManager methods + CSS | ⏸ | |
-| Bun: index.ts wiring (manager, message handlers, event fan-out, `tryRestoreLayout` branch) | ⏸ | |
-| canUseTool → ask-user queue wiring (same modal as WS3) | ⏸ | |
-| Session browser (SDK `listSessions` → picker; resume/fork) | ⏸ | |
-| Gates + `bun start` + commit 0.7.0 | ⏸ | |
-| MCP spike (WS8) | ⏸ | time-boxed; may be recorded as evaluated-and-skipped |
+| Shared types: `SurfaceKind` + RPC messages for the pane | ✅ | `592d4b67` |
+| Bun: handlers slice + ctx + `claude-pane-host.ts` (manager, factory, session lister) | ✅ | `592d4b67` + `23159e71` |
+| canUseTool → ask-user queue wiring (same modal as WS3) | ✅ | in claude-pane-host; deny-on-timeout |
+| Webview: pane view + controller + bridge + SurfaceManager methods + palette entries + CSS | ✅ | 4 new modules (`claude-agent-pane`, `claude-surface-controller`, `claude-pane-bridge`, + host); 12 DOM tests |
+| Bun: `tryRestoreLayout` branch `surfType === "claude"` | ✅ | fresh session on restore; resume via Sessions picker |
+| Session browser (SDK `listSessions` → picker; resume in split) | ✅ | resume opens a new pane bound to the old session (SDK can't swap sessions in a live stream) |
+| Gates + `bun start` | ✅ | 3299 tests green · typecheck · web-client bundles · app boots + terminal works |
+| MCP spike (WS8) | ✅ decided | **Evaluated → skipped for v1.** The `ht` CLI surface already works and is token-free per session; MCP tool schemas would cost context in every Claude session for a duplicate surface. Revisit post-M4 only if skill activation proves unreliable in practice. |
 
 **Continuation map (exact wiring steps, CLAUDE.md non-PTY checklist):**
 1. `src/shared/types.ts`: add `"claude"` to `SurfaceKind`; webview→bun
@@ -112,7 +113,20 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
    install` requires the bridge dir (repo `install.sh` symlink) and says so
    with a clear error; bundling a copy into Resources + copy-install is an
    M4 packaging task.
-7. **Transition note:** the bridge is symlink-installed, so v2 went live for
+7. **⚠️ M3 v1 pane scope (per plan §WS5 non-goals + additions):** images,
+   MCP management UI, subagent transcripts, checkpoint/rewind, and slash
+   parity are out, as planned. Additionally deferred beyond the plan's
+   list: mid-session model *switcher UI* (RPC + manager support exist;
+   no dropdown yet — palette/M4), fork-from-picker (resume only; `fork`
+   is wired through the whole stack but no UI toggle), and in-pane
+   visual verification (app boots + 12 DOM tests cover the pane; a
+   human click-through of the palette flow is recommended before
+   release).
+8. **⚠️ M3 ratchet promotes:** bun/index.ts +14 (restore branch),
+   views/index.ts +50 (palette + message registries), surface-manager.ts
+   +82 (the per-kind surface pattern lives there by design). All logic
+   is in the 4 new modules; the promoted lines are registry entries.
+9. **Transition note:** the bridge is symlink-installed, so v2 went live for
    the user's hooks immediately. Against the still-running 0.4.7 app,
    `claude.event` is an unknown method → `ht` fails silently (fire-and-forget
    holds, verified). Pills resume once the user restarts τ-mux on ≥0.5.0.

@@ -1,3 +1,4 @@
+import { wireClaudePaneBridge } from "./claude-pane-bridge";
 import { Electroview } from "electrobun/view";
 import type {
   TauMuxRPC,
@@ -312,6 +313,27 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       telegramState: (payload) => {
         surfaceManager.handleTelegramState(payload);
         surfaceManager.getSidebar().setTelegramStatus(payload.status);
+      },
+      // ── Native Claude Code pane lifecycle (bun → webview, M3/WS5) ──
+      claudeAgentSurfaceCreated: (payload) => {
+        if (payload.splitFrom && payload.direction) {
+          surfaceManager.addClaudeSurfaceAsSplit(
+            payload.surfaceId,
+            payload.splitFrom,
+            payload.direction,
+          );
+        } else {
+          surfaceManager.addClaudeSurface(payload.surfaceId);
+        }
+      },
+      claudeAgentEvent: (payload) => {
+        surfaceManager.claude.handleEvent(payload.surfaceId, payload.event);
+      },
+      claudeAgentExit: (payload) => {
+        surfaceManager.claude.handleExit(payload.surfaceId, payload.error);
+      },
+      claudeAgentSessions: (payload) => {
+        surfaceManager.claude.handleSessions(payload.sessions);
       },
       // Note: browser navigation commands from socket API go through socketAction
       surfaceMetadata: (payload) => {
@@ -1672,6 +1694,31 @@ function buildPaletteCommands(): PaletteCommand[] {
       action: () => rpc.send("splitAgentSurface", { direction: "vertical" }),
     },
     {
+      id: "claude-new",
+      category: "Claude Code",
+      label: "New Claude Code Pane",
+      description:
+        "Open a native Claude Code session (Agent SDK) in a new workspace.",
+      action: () => rpc.send("claudeAgentCreate", {}),
+    },
+    {
+      id: "claude-split-right",
+      category: "Claude Code",
+      label: "Split Claude Code Right",
+      description:
+        "Open a native Claude Code session next to the current pane.",
+      action: () =>
+        rpc.send("claudeAgentCreate", { split: true, direction: "right" }),
+    },
+    {
+      id: "claude-split-down",
+      category: "Claude Code",
+      label: "Split Claude Code Down",
+      description: "Open a native Claude Code session below the current pane.",
+      action: () =>
+        rpc.send("claudeAgentCreate", { split: true, direction: "down" }),
+    },
+    {
       id: "telegram-new",
       category: "Telegram",
       label: "New Telegram Pane",
@@ -2812,6 +2859,9 @@ window.addEventListener("ht-telegram-request-history", (e: Event) => {
 window.addEventListener("ht-telegram-request-state", () => {
   rpc.send("telegramRequestState");
 });
+
+// ── Native Claude Code pane → bun (M3/WS5) ──
+wireClaudePaneBridge(rpc);
 
 // ── Editor pane → bun ──
 window.addEventListener("ht-editor-read-file", (e: Event) => {

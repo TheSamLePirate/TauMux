@@ -53,6 +53,8 @@ import {
 } from "./browser-surface-controller";
 import type { TelegramPaneView } from "./telegram-pane";
 import { TelegramSurfaceController } from "./telegram-surface-controller";
+import { ClaudeSurfaceController } from "./claude-surface-controller";
+import type { ClaudePaneView } from "./claude-agent-pane";
 import type { EditorPaneViewRef } from "./editor-pane";
 import { EditorSurfaceController } from "./editor-surface-controller";
 import {
@@ -134,6 +136,8 @@ export interface SurfaceView {
   agentView: AgentPaneView | null;
   // Telegram-specific (null for non-telegram panes)
   telegramView: TelegramPaneView | null;
+  // Claude-pane-specific (null for non-claude panes)
+  claudeView: ClaudePaneView | null;
   // Editor-specific (null for non-editor panes)
   editorView: EditorPaneViewRef | null;
   // Extension-specific (null for non-extension panes)
@@ -198,6 +202,9 @@ export class SurfaceManager {
   private browser: BrowserSurfaceController;
   /** Telegram-pane concern, extracted from this god object (H10). */
   private telegram: TelegramSurfaceController;
+  /** august-plan M3 — native Claude Code pane controller. Public so
+   *  index.ts can route claudeAgentEvent/Exit/Sessions pushes to it. */
+  readonly claude: ClaudeSurfaceController;
   /** Editor-pane concern, extracted from this god object (H10). */
   private editor: EditorSurfaceController;
   /** Extension-app-pane concern (Bun backend + Vite iframe). */
@@ -279,6 +286,13 @@ export class SurfaceManager {
       updateSidebar: () => this.updateSidebar(),
     });
     this.telegram = new TelegramSurfaceController({
+      getSurface: (id) => this.surfaces.get(id),
+      getFocusedSurfaceId: () => this.focusedSurfaceId,
+      allSurfaces: () => this.surfaces.values(),
+      focusSurface: (id) => this.focusSurface(id),
+      notifyGlow: (id) => this.notifyGlow(id),
+    });
+    this.claude = new ClaudeSurfaceController({
       getSurface: (id) => this.surfaces.get(id),
       getFocusedSurfaceId: () => this.focusedSurfaceId,
       allSurfaces: () => this.surfaces.values(),
@@ -503,6 +517,28 @@ export class SurfaceManager {
    *  to know — it sees the resulting `surfaceClosed` event the same way
    *  for both kinds. */
   removeAgentSurface(surfaceId: string): void {
+    this.removeSurface(surfaceId);
+  }
+
+  /** Add a native Claude Code pane as a new workspace. */
+  addClaudeSurface(surfaceId: string): void {
+    const view = this.createClaudeSurfaceView(surfaceId);
+    this.addNewWorkspace(surfaceId, "Claude Code", view, () =>
+      this.focusSurface(surfaceId),
+    );
+  }
+
+  /** Add a native Claude Code pane as a split in the active workspace. */
+  addClaudeSurfaceAsSplit(
+    surfaceId: string,
+    splitFrom: string,
+    direction: "horizontal" | "vertical",
+  ): void {
+    const view = this.createClaudeSurfaceView(surfaceId);
+    this.addSurfaceAsSplitImpl(surfaceId, view, splitFrom, direction);
+  }
+
+  removeClaudeSurface(surfaceId: string): void {
     this.removeSurface(surfaceId);
   }
 
@@ -766,6 +802,7 @@ export class SurfaceManager {
     // the lifetime of the electrobun <electrobun-webview> tag.
     if (view.browserView) this.browser.destroyView(view.browserView);
     if (view.telegramView) this.telegram.destroyView(view.telegramView);
+    if (view.claudeView) this.claude.destroyView(view.claudeView);
     if (view.editorView) this.editor.destroyView(view.editorView);
     if (view.extensionView) this.extension.destroyView(view.extensionView);
     view.container.remove();
@@ -797,6 +834,7 @@ export class SurfaceManager {
     if (
       focusedView?.surfaceType === "browser" ||
       focusedView?.surfaceType === "telegram" ||
+      focusedView?.surfaceType === "claude" ||
       focusedView?.surfaceType === "editor" ||
       focusedView?.surfaceType === "extension"
     ) {
@@ -906,7 +944,8 @@ export class SurfaceManager {
     if (
       !view ||
       view.surfaceType === "browser" ||
-      view.surfaceType === "telegram"
+      view.surfaceType === "telegram" ||
+      view.surfaceType === "claude"
     )
       return null;
     return view.term;
@@ -1295,7 +1334,11 @@ export class SurfaceManager {
 
     if (termVisualChanged || bloomChanged) {
       for (const view of this.surfaces.values()) {
-        if (view.surfaceType === "browser" || view.surfaceType === "telegram")
+        if (
+          view.surfaceType === "browser" ||
+          view.surfaceType === "telegram" ||
+          view.surfaceType === "claude"
+        )
           continue;
         const t = view.term;
         if (!t) continue;
@@ -1420,6 +1463,7 @@ export class SurfaceManager {
       if (
         view.surfaceType === "browser" ||
         view.surfaceType === "telegram" ||
+        view.surfaceType === "claude" ||
         !view.term
       )
         continue;
@@ -1741,6 +1785,8 @@ export class SurfaceManager {
             surfaceTypes[sid] = "agent";
           } else if (view?.surfaceType === "telegram") {
             surfaceTypes[sid] = "telegram";
+          } else if (view?.surfaceType === "claude") {
+            surfaceTypes[sid] = "claude";
           } else if (view?.surfaceType === "editor") {
             surfaceTypes[sid] = "editor";
             if (view.editorView?.path)
@@ -2147,6 +2193,7 @@ export class SurfaceManager {
       browserView,
       agentView: null,
       telegramView: null,
+      claudeView: null,
       editorView: null,
       extensionView: null,
       container: browserView.container,
@@ -2177,6 +2224,7 @@ export class SurfaceManager {
       browserView: null,
       agentView,
       telegramView: null,
+      claudeView: null,
       editorView: null,
       extensionView: null,
       container: agentView.container,
@@ -2424,6 +2472,7 @@ export class SurfaceManager {
       browserView: null,
       agentView: null,
       telegramView: null,
+      claudeView: null,
       editorView: null,
       extensionView: null,
       container,
@@ -2454,12 +2503,41 @@ export class SurfaceManager {
       browserView: null,
       agentView: null,
       telegramView: null,
+      claudeView: null,
       editorView,
       extensionView: null,
       container: editorView.container,
       titleEl: editorView.titleEl,
       chipsEl: editorView.chipsEl,
       title: editorView.title,
+    };
+  }
+
+  private createClaudeSurfaceView(surfaceId: string): SurfaceView {
+    const claudeView = this.claude.createClaudeView(surfaceId);
+
+    this.terminalContainer.appendChild(claudeView.container);
+
+    return {
+      id: surfaceId,
+      surfaceType: "claude",
+      term: null,
+      fitAddon: null,
+      searchAddon: null,
+      renderer: null,
+      effects: null,
+      panelManager: null,
+      panelsEl: null,
+      browserView: null,
+      agentView: null,
+      telegramView: null,
+      claudeView,
+      editorView: null,
+      extensionView: null,
+      container: claudeView.container,
+      titleEl: claudeView.titleEl,
+      chipsEl: claudeView.chipsEl,
+      title: claudeView.title,
     };
   }
 
@@ -2481,6 +2559,7 @@ export class SurfaceManager {
       browserView: null,
       agentView: null,
       telegramView,
+      claudeView: null,
       editorView: null,
       extensionView: null,
       container: telegramView.container,
@@ -2511,6 +2590,7 @@ export class SurfaceManager {
       browserView: null,
       agentView: null,
       telegramView: null,
+      claudeView: null,
       editorView: null,
       extensionView,
       container: extensionView.container,
@@ -2601,6 +2681,8 @@ export class SurfaceManager {
       } else if (view.surfaceType === "telegram") {
         // Telegram panes are pure DOM — no terminal to fit, no OOPIF to
         // size. The container was already positioned in applyPositions().
+      } else if (view.surfaceType === "claude") {
+        // Claude panes: pure DOM chat, same story as Telegram.
       } else if (view.surfaceType === "extension") {
         // Extension panes are an iframe that self-sizes to its container via
         // CSS; the ResizeObserver in extension-pane.ts notifies the frontend.

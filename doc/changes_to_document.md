@@ -225,3 +225,29 @@ Plan: `doc/august-plan.md` · Tracking: `doc/tracking_august-plan.md`._
 - **Security note (en + fr)** — approvals are answered from the modal or
   Telegram; the modal shows the exact tool + input (ground truth, no
   summarization); `HT_CLAUDE_APPROVALS=0` is the kill switch.
+
+---
+
+_Pending — august-plan M3 "Claude lives in τ-mux" (v0.7.0).
+Plan: `doc/august-plan.md` · Tracking: `doc/tracking_august-plan.md`._
+
+- **Changelog (en + fr)** — new top section **"0.7.0 — Native Claude Code
+  pane"**:
+  - **A first-class Claude Code surface.** Command palette → "New Claude
+    Code Pane" (or split right/down) opens a native chat pane hosting a
+    Claude Code session via the official Agent SDK — streamed responses,
+    tool cards (command + file summaries), permission-mode switcher,
+    live model/cost pills, interrupt (Esc or Stop), and a Sessions
+    picker that resumes any previous Claude Code session in a split.
+    Uses your own `claude` install and login; falls back to the SDK's
+    bundled CLI.
+  - **Tool approvals inside the pane** ride the same τ-mux modal (and
+    Telegram forward) as the hook-level remote approvals; no answer →
+    deny with a timeout message.
+  - **Layout restore** re-mounts Claude panes as fresh sessions (resume
+    from the Sessions picker) instead of leaking shells.
+  - **Skill v2** — the plan section now defers to the automatic task
+    mirror; shorter, more reliable activation.
+- **features/ new page "Claude Code pane" (en + fr)** — screenshots,
+  the resume flow, permission modes, and the trust note (the pane runs
+  with `canUseTool` gating; approvals default to ask).
