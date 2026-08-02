@@ -67,7 +67,9 @@ export type WebviewRpc = ReturnType<typeof BrowserView.defineRPC<TauMuxRPC>>;
  *  handler-shape so that adding a new wire message without a matching
  *  handler produces a compile error via `satisfies BunMessageHandlers`. */
 export type BunMessageHandlers = {
-  [K in keyof TauMuxRPC["bun"]["messages"]]: TauMuxRPC["bun"]["messages"][K] extends void
+  [
+    K in keyof TauMuxRPC["bun"]["messages"]
+  ]: TauMuxRPC["bun"]["messages"][K] extends void
     ? () => void | Promise<void>
     : (payload: TauMuxRPC["bun"]["messages"][K]) => void | Promise<void>;
 };
@@ -149,6 +151,21 @@ export interface WebviewHandlerContext {
   ) => void;
   createTelegramWorkspaceSurface: () => void;
   splitTelegramSurface: (direction: "horizontal" | "vertical") => void;
+  /** august-plan M3 — native Claude Code pane. Manager owns the Agent
+   *  SDK sessions; the factory creates the surface + wires event fan-out;
+   *  the session lister feeds the resume picker. */
+  claudeAgentManager: import("../claude-agent-manager").ClaudeAgentManager;
+  createClaudeWorkspaceSurface: (opts: {
+    cwd?: string;
+    model?: string;
+    resume?: string;
+    fork?: boolean;
+    split?: boolean;
+    direction?: "right" | "down" | "left" | "up";
+  }) => void;
+  listClaudeSessions: (
+    cwd?: string,
+  ) => Promise<import("../../shared/types").ClaudeAgentSessionWire[]>;
   createEditorWorkspaceSurface: (
     path?: string,
     cwd?: string,

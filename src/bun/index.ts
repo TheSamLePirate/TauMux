@@ -50,6 +50,9 @@ import { SurfaceMetadataPoller } from "./surface-metadata";
 import { WebServer } from "./web-server";
 import { createRpcHandler } from "./rpc-handler";
 import { createClaudeIntegration } from "./claude-integration";
+import { ClaudeAgentManager } from "./claude-agent-manager";
+import { listSessions as sdkListSessions } from "@anthropic-ai/claude-agent-sdk";
+import type { ClaudeAgentSessionWire } from "../shared/types";
 import {
   buildApplicationMenu,
   ELECTROBUN_DOCS_URL,
@@ -630,6 +633,33 @@ function readPiSessionTree(
 //
 // (Imports live at the top of the file alongside the rest.)
 
+// august-plan M3 — native Claude Code pane manager. Constructed before
+// the webview-handler context (which carries it). canUseTool routes
+// through the same ask-user modal + Telegram forward WS3 uses for
+// hook-level approvals; timeout → null → the manager denies with a
+// "timed out" message (the SDK requires a resolution either way).
+const claudeAgentManager = new ClaudeAgentManager({
+  askUser: async ({ agentId, toolName, input }) => {
+    const body = JSON.stringify(input, null, 2);
+    const { response } = askUser.create({
+      surface_id: agentId,
+      kind: "choice",
+      title: `Claude Code · ${toolName}`,
+      body: body.length > 900 ? body.slice(0, 899) + "…" : body,
+      choices: [
+        { id: "allow", label: "Allow" },
+        { id: "deny", label: "Deny" },
+      ],
+      timeout_ms: 570_000,
+    });
+    const r = await response;
+    if (r.action === "ok" && (r.value === "allow" || r.value === "deny")) {
+      return r.value;
+    }
+    return r.action === "cancel" ? "deny" : null;
+  },
+});
+
 const {
   ctx: webviewHandlerContext,
   setLateBindings: setWebviewHandlerLateBindings,
@@ -662,6 +692,9 @@ const {
   splitAgentSurface,
   createTelegramWorkspaceSurface,
   splitTelegramSurface,
+  claudeAgentManager,
+  createClaudeWorkspaceSurface,
+  listClaudeSessions,
   createEditorWorkspaceSurface,
   splitEditorSurface,
   createExtensionWorkspaceSurface,
@@ -1143,6 +1176,63 @@ function splitTelegramSurface(direction: "horizontal" | "vertical"): void {
   });
   app.webServer?.broadcast({ type: "telegramSurfaceCreated", surfaceId });
   sendTelegramStateToWebview();
+}
+
+// ── Native Claude Code pane (august-plan M3 / WS5) ──
+
+function createClaudeWorkspaceSurface(opts: {
+  cwd?: string;
+  model?: string;
+  resume?: string;
+  fork?: boolean;
+  split?: boolean;
+  direction?: "right" | "down" | "left" | "up";
+}): void {
+  const splitFrom = opts.split
+    ? (app.focusedSurfaceId ?? undefined)
+    : undefined;
+  const inst = claudeAgentManager.create({
+    cwd: opts.cwd,
+    model: opts.model,
+    resume: opts.resume,
+    forkSession: opts.fork,
+  });
+  const surfaceId = inst.id;
+  inst.onEvent = (event) => {
+    rpc.send("claudeAgentEvent", { surfaceId, event });
+  };
+  inst.onExit = (error) => {
+    rpc.send("claudeAgentExit", { surfaceId, error });
+  };
+  app.focusedSurfaceId = surfaceId;
+  rpc.send("claudeAgentSurfaceCreated", {
+    surfaceId,
+    splitFrom,
+    direction:
+      opts.direction === "down" || opts.direction === "up"
+        ? ("vertical" as const)
+        : opts.direction
+          ? ("horizontal" as const)
+          : undefined,
+    cwd: opts.cwd,
+  });
+}
+
+async function listClaudeSessions(
+  cwd?: string,
+): Promise<ClaudeAgentSessionWire[]> {
+  const infos = await sdkListSessions({
+    ...(cwd ? { dir: cwd } : {}),
+    limit: 30,
+  });
+  return infos.map((s) => ({
+    sessionId: s.sessionId,
+    summary: (s.customTitle || s.summary) ?? null,
+    firstPrompt: s.firstPrompt ?? null,
+    cwd: s.cwd ?? null,
+    gitBranch: s.gitBranch ?? null,
+    lastModified: new Date(s.lastModified as unknown as string).getTime() || 0,
+  }));
 }
 
 // ── Telegram service lifecycle ──

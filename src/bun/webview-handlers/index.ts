@@ -12,6 +12,7 @@
 import { registerAgentWebviewHandlers } from "./agent";
 import { registerAskUserWebviewHandlers } from "./ask-user";
 import { registerBrowserWebviewHandlers } from "./browser";
+import { registerClaudeWebviewHandlers } from "./claude";
 import { registerClipboardWebviewHandlers } from "./clipboard";
 import { registerEditorWebviewHandlers } from "./editor";
 import { registerExtensionWebviewHandlers } from "./extension";
@@ -49,6 +50,7 @@ export function buildBunMessageHandlers(
     ...registerBrowserWebviewHandlers(ctx),
     ...registerAgentWebviewHandlers(ctx),
     ...registerTelegramWebviewHandlers(ctx),
+    ...registerClaudeWebviewHandlers(ctx),
     ...registerEditorWebviewHandlers(ctx),
     ...registerExtensionWebviewHandlers(ctx),
     ...registerAskUserWebviewHandlers(ctx),

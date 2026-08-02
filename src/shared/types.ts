@@ -19,6 +19,7 @@ export interface PaneLeaf {
    *  "telegram" = telegram chat pane.
    *  "editor" = CodeMirror file editor pane.
    *  "extension" = extension-app pane (Bun backend + Vite frontend iframe).
+   *  "claude" = native Claude Code pane (Agent SDK session).
    *  See `SurfaceKind` for the canonical literal-string union. */
   surfaceType?: SurfaceKind;
 }
@@ -30,7 +31,8 @@ export type SurfaceKind =
   | "agent"
   | "telegram"
   | "editor"
-  | "extension";
+  | "extension"
+  | "claude";
 
 export type PaneNode = PaneSplit | PaneLeaf;
 
@@ -245,10 +247,7 @@ export type PositionType = "inline" | "float" | "overlay" | "fixed";
 
 /** Non-flush content / op type — everything except the data-channel reset. */
 export type SidebandContentKind =
-  | "update"
-  | "clear"
-  | BuiltinContentType
-  | (string & {});
+  "update" | "clear" | BuiltinContentType | (string & {});
 
 export interface SidebandFlushMessage {
   id: string;
@@ -289,12 +288,7 @@ export type SidebandMetaMessage = SidebandFlushMessage | SidebandContentMessage;
 // to each event kind.
 
 export type PanelPointerEventName =
-  | "mousedown"
-  | "mouseup"
-  | "click"
-  | "mousemove"
-  | "mouseenter"
-  | "mouseleave";
+  "mousedown" | "mouseup" | "click" | "mousemove" | "mouseenter" | "mouseleave";
 
 export interface PanelPointerEvent {
   id: string;
@@ -376,8 +370,7 @@ export interface SurfaceContextMenuRequest {
 }
 
 export type NativeContextMenuRequest =
-  | WorkspaceContextMenuRequest
-  | SurfaceContextMenuRequest;
+  WorkspaceContextMenuRequest | SurfaceContextMenuRequest;
 
 // === RPC Schema ===
 // bun.messages = what bun RECEIVES from webview
@@ -878,6 +871,32 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       /** Request the current chat list + service status. */
       telegramRequestState: void;
 
+      // ── august-plan M3 / WS5: native Claude Code pane (webview → bun) ──
+      /** Create a Claude agent surface (optionally as a split). `resume`
+       *  reopens an existing Claude Code session id; `fork` resumes into
+       *  a new session id. */
+      claudeAgentCreate: {
+        cwd?: string;
+        model?: string;
+        resume?: string;
+        fork?: boolean;
+        split?: boolean;
+        direction?: "right" | "down" | "left" | "up";
+      };
+      /** Send a user turn into the pane's session. */
+      claudeAgentPrompt: { surfaceId: string; text: string };
+      /** Stop the in-flight turn. */
+      claudeAgentInterrupt: { surfaceId: string };
+      /** Switch model mid-session (undefined → session default). */
+      claudeAgentSetModel: { surfaceId: string; model?: string };
+      /** Switch permission mode mid-session. */
+      claudeAgentSetMode: { surfaceId: string; mode: string };
+      /** Ask bun for recent Claude Code sessions (drives the resume
+       *  picker); answered with a `claudeAgentSessions` push. */
+      claudeAgentListSessions: { cwd?: string };
+      /** Tear down the agent behind a closing pane. */
+      claudeAgentClose: { surfaceId: string };
+
       // ── Plan #10 commit C: ask-user (webview → bun) ──
       /** Resolve a pending agent → user question with the user's
        *  answer. The bun-side queue's `resolved` subscriber fans out
@@ -1128,8 +1147,37 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
         status: TelegramStatusWire;
         chats: TelegramChatWire[];
       };
+
+      // ── august-plan M3 / WS5: native Claude Code pane (bun → webview) ──
+      /** Mount a Claude agent pane for a freshly-created agent. */
+      claudeAgentSurfaceCreated: {
+        surfaceId: string;
+        splitFrom?: string;
+        direction?: "horizontal" | "vertical";
+        cwd?: string;
+      };
+      /** One SDK message from the session's stream. `event` is the raw
+       *  JSON-safe SDKMessage; the pane renders the types it knows and
+       *  ignores the rest (SDK adds message types faster than we do). */
+      claudeAgentEvent: { surfaceId: string; event: unknown };
+      /** The SDK stream ended — session over (error non-null on crash). */
+      claudeAgentExit: { surfaceId: string; error: string | null };
+      /** Reply to `claudeAgentListSessions` — recent sessions for the
+       *  resume picker. */
+      claudeAgentSessions: { sessions: ClaudeAgentSessionWire[] };
     };
   };
+}
+
+/** Wire shape of one resumable Claude Code session (SDK SDKSessionInfo,
+ *  flattened + JSON-friendly). */
+export interface ClaudeAgentSessionWire {
+  sessionId: string;
+  summary: string | null;
+  firstPrompt: string | null;
+  cwd: string | null;
+  gitBranch: string | null;
+  lastModified: number;
 }
 
 /** Wire shape for a single Telegram message — flat, JSON-friendly. */

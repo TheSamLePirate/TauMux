@@ -47,6 +47,43 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 | Tests | ✅ | +37: permission pure/registry/subprocess-e2e (fake ht), plan mirror, installer fixtures |
 | Gates | ✅ | 3280 pass / typecheck / lint / emoji / module-size all green |
 
+## M3 detail (in progress)
+
+| Item | Status | Notes |
+|---|---|---|
+| Skill v2 (2.0.0) — mirror-aware, slimmed | ✅ | committed `0ada7222` |
+| `@anthropic-ai/claude-agent-sdk` pinned 0.3.220 | ✅ | bundles CC 2.1.220 — matches user's installed CLI |
+| `src/bun/claude-agent-manager.ts` + 7 fake-query tests | ✅ | committed `0ada7222` |
+| Shared types: `SurfaceKind` + RPC messages for the pane | 🔄 | NEXT — see continuation map |
+| Webview: `claude-agent-pane.ts` view + controller + SurfaceManager methods + CSS | ⏸ | |
+| Bun: index.ts wiring (manager, message handlers, event fan-out, `tryRestoreLayout` branch) | ⏸ | |
+| canUseTool → ask-user queue wiring (same modal as WS3) | ⏸ | |
+| Session browser (SDK `listSessions` → picker; resume/fork) | ⏸ | |
+| Gates + `bun start` + commit 0.7.0 | ⏸ | |
+| MCP spike (WS8) | ⏸ | time-boxed; may be recorded as evaluated-and-skipped |
+
+**Continuation map (exact wiring steps, CLAUDE.md non-PTY checklist):**
+1. `src/shared/types.ts`: add `"claude"` to `SurfaceKind`; webview→bun
+   messages `claudeAgentCreate {cwd?, model?, resume?, split?, direction?}`,
+   `claudeAgentPrompt {surfaceId, text}`, `claudeAgentInterrupt {surfaceId}`,
+   `claudeAgentSetModel {surfaceId, model}`, `claudeAgentSetMode {surfaceId,
+   mode}`, `claudeAgentListSessions {}`; bun→webview `claudeAgentSurfaceCreated
+   {surfaceId, split?}`, `claudeAgentEvent {surfaceId, event}`,
+   `claudeAgentExit {surfaceId, error}`, `claudeAgentSessions {sessions}`.
+2. Webview: `claude-agent-pane.ts` (header: model/mode/cost pills + interrupt;
+   transcript: user/assistant/tool cards; composer) + `claude-agent-surface-
+   controller.ts` (htEvents emit like TelegramSurfaceController) + Surface-
+   Manager `addClaudeSurface/addClaudeSurfaceAsSplit/removeClaudeSurface` +
+   `applyLayout` skip-fit + CSS (reuse `agent-panel` classes where possible).
+3. Bun `index.ts`: construct `ClaudeAgentManager` with `askUser` bridged to
+   the ask-user queue (kind "choice", allow/deny — same as WS3), handlers for
+   the new messages gated by `satisfies BunMessageHandlers`, event fan-out
+   `claudeAgentEvent`, `tryRestoreLayout` branch `surfType === "claude"` →
+   re-mount pane (fresh session; resume affordance in-pane).
+4. `ht` CLI: `claude pane [--cwd]` → RPC `claude.open_pane` (optional v1).
+5. Tests: pane view DOM smoke (happy-dom like telegram-pane tests), message
+   handler roundtrip, restore branch.
+
 ## Deviations from plan
 
 1. **⚠️ Module-size baseline promoted (+7 lines on `src/bun/index.ts`, 3209 → 3216).**
