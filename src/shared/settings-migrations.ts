@@ -14,8 +14,9 @@
 
 /** Current on-disk settings schema version. Bump this (and add the matching
  *  `SETTINGS_MIGRATIONS[N]`) whenever a field is renamed/removed/reshaped in
- *  a way that a plain merge-over-defaults can't recover. */
-export const SETTINGS_SCHEMA_VERSION = 1;
+ *  a way that a plain merge-over-defaults can't recover — or when a security
+ *  default flips and existing installs must be carried over to it (v2). */
+export const SETTINGS_SCHEMA_VERSION = 2;
 
 /** Top-level JSON key that records the version a settings.json was written
  *  with. Underscore-prefixed so it's visibly "internal" in the file. */
@@ -30,17 +31,66 @@ export type SettingsMigration = (
 
 /**
  * Registry keyed by the version each migration upgrades FROM:
- * `SETTINGS_MIGRATIONS[1]` turns a v1 blob into v2. Empty today — v1 is the
- * current shape. Example for a future rename:
- *
- *   export const SETTINGS_MIGRATIONS = {
- *     1: (s) => {
- *       const { oldName, ...rest } = s;
- *       return { ...rest, newName: oldName };
- *     },
- *   };
+ * `SETTINGS_MIGRATIONS[1]` turns a v1 blob into v2.
  */
-export const SETTINGS_MIGRATIONS: Record<number, SettingsMigration> = {};
+export const SETTINGS_MIGRATIONS: Record<number, SettingsMigration> = {
+  /**
+   * v1 → v2 — opt existing installs into RPC socket token enforcement
+   * (§2.5, full_app_review_2026-08.md).
+   *
+   * `rpcSocketRequireToken` shipped defaulting to `false`, so every install
+   * that has ever written settings.json has `false` on disk. Flipping
+   * `DEFAULT_SETTINGS` alone would therefore only protect *new* installs and
+   * leave every existing user exactly as exposed as before — merge-over-
+   * defaults keeps the persisted value. A security default that only applies
+   * to people who don't have the product yet isn't a fix, so the flip has to
+   * be a migration.
+   *
+   * Safe to do silently because the token is transparent to every
+   * first-party client: `src/cli/rpc-client.ts` (bundled `ht`),
+   * `pi-extensions/ht-bridge`, `packages/tau-mux-sdk`, and
+   * `claude-integration/ht-bridge` (which shells out to `ht`) all read
+   * `socket.token` themselves, and the file is written on every launch
+   * regardless of the setting. Read-only diagnostics stay unauthenticated,
+   * so `ht doctor` / `ht ping` keep working even against a stale token.
+   *
+   * Only rewrite an explicit `false`. A user who had already opted IN keeps
+   * `true` (no-op), and a file that never had the key falls through to the
+   * new default anyway.
+   */
+  1: (s) => {
+    let next = s;
+    if (next["rpcSocketRequireToken"] === false) {
+      next = { ...next, rpcSocketRequireToken: true };
+    }
+
+    /**
+     * Also rescue installs stuck on the known-broken GPU renderer.
+     *
+     * v0.4.9 shipped `terminalRenderer: "webgl"` as the DEFAULT and it
+     * rendered panes blank (the pane paints via DOM for a moment, then the
+     * deferred WebGL attach blanks it). v0.4.11 "fixed" this by flipping
+     * the default back to `"dom"` — but a default only applies to installs
+     * that have never written settings.json. Every user who actually ran
+     * v0.4.9 or v0.4.10 has `"webgl"` persisted, so the revert never
+     * reached the people it was for: they are still looking at a blank
+     * terminal, and the faster they update the more likely they are stuck.
+     * Reproduced live on 2026-08-02 against a dev profile carrying the
+     * v0.4.9 value.
+     *
+     * The underlying WebGL fault is still unconfirmed (see
+     * doc/changes_to_document.md), which is exactly why this resets rather
+     * than preserves: an opt-in to a feature the user never opted into, and
+     * which is known to break the app's core function, is not a preference
+     * worth honouring. One-time and logged — `__schemaVersion` reaches 2 so
+     * this never runs again, and a deliberate re-opt-in afterwards sticks.
+     */
+    if (next["terminalRenderer"] === "webgl") {
+      next = { ...next, terminalRenderer: "dom" };
+    }
+    return next;
+  },
+};
 
 /**
  * Run forward migrations from the blob's recorded version up to `target`.

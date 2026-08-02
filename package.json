@@ -1,6 +1,6 @@
 {
   "name": "tau-mux",
-  "version": "0.4.11",
+  "version": "0.4.12",
   "type": "module",
   "description": "A hybrid terminal emulator with structured rendering channels",
   "bin": {
@@ -29,6 +29,8 @@
     "audit:animations": "bun scripts/audit-animations.ts",
     "audit:guideline": "bun scripts/audit-guideline-do-donts.ts",
     "audit:theming": "bun scripts/audit-theming.ts",
+    "audit:module-size": "bun scripts/audit-module-size.ts",
+    "baseline:module-size": "bun scripts/audit-module-size.ts --promote",
     "build:design-review": "bun scripts/build-design-review.ts",
     "review:agent": "bun scripts/run-code-review-agent.ts",
     "review:agent:watch": "bun scripts/run-code-review-watch.ts",
@@ -91,7 +93,7 @@
     "@types/node": "^20.19.0",
     "ws": "^8.21.0",
     "ip-address": "^10.2.0",
-    "brace-expansion": "^5.0.6",
+    "brace-expansion": "^5.0.8",
     "basic-ftp": "^6.0.1"
   }
 }

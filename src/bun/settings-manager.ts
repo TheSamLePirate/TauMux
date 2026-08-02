@@ -116,6 +116,23 @@ export class SettingsManager {
       // version = pre-versioning file (treated as v0). `validateSettings`
       // (inside mergeSettings) drops the `__schemaVersion` key afterward.
       const { data: versioned, from, to } = migrateSettings(parsed);
+      if (from !== to) {
+        // Migrations can change security- and rendering-relevant values
+        // (v1→v2 enables RPC token enforcement and resets the broken GPU
+        // renderer). Silently rewriting a user's settings is exactly the
+        // kind of thing that must leave a trace they can find later.
+        console.log(
+          `[settings] migrated schema v${from} → v${to}` +
+            (parsed["terminalRenderer"] === "webgl" &&
+            versioned["terminalRenderer"] === "dom"
+              ? "; reset terminalRenderer webgl → dom (v0.4.9 GPU renderer left panes blank)"
+              : "") +
+            (parsed["rpcSocketRequireToken"] === false &&
+            versioned["rpcSocketRequireToken"] === true
+              ? "; enabled rpcSocketRequireToken (see doc/system-security.md)"
+              : ""),
+        );
+      }
       // τ-mux §11 bloom gate: stamp the migration flag + snapshot the
       // user's pre-revamp bloomIntensity into legacyBloomIntensity on
       // the first load after upgrading. Deliberately non-destructive —

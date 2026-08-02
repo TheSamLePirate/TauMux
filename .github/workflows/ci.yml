@@ -43,6 +43,15 @@ jobs:
         # and meaningful; the tree is currently error- and warning-clean.
         run: bun run lint
 
+      - name: Module-size ratchet
+        # §3.6 (full_app_review_2026-08.md) — the four god modules all GREW
+        # through a dedicated decomposition wave. One-off extractions don't
+        # hold; a standing constraint does. Oversized files are baselined at
+        # their current size and may shrink but never grow; a new file over
+        # the cap fails outright. Re-baseline explicitly to record a
+        # deliberate exception.
+        run: bun run audit:module-size
+
       - name: Unit + integration tests
         # Don't run with DEBUG=* etc. — the noisy [session] / [web]
         # logs are already captured by bun:test on failure.

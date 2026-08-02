@@ -1047,10 +1047,17 @@ Extensions (extension app platform):
   extension open <id> [--split]     Open an extension app in a workspace/split
   extension split <id> [--direction right|down]
   extension new <id> --template T [--name N]   Scaffold from a template
-  extension install <path>          Install an extension dir
+  extension install <path>          Install an extension dir (runs its code — see below)
   extension remove <id>             Uninstall an extension
+  extension enable <id>             Allow an extension to be opened
+  extension disable <id>            Stop it and block new surfaces
   extension stop <ext:N>            Stop a running extension backend
   extension reload                  Re-scan the extensions dir
+
+  Extensions are FULLY TRUSTED code: installing one runs 'bun install'
+  (arbitrary postinstall scripts) and opening one runs its backend with a
+  token granting the whole ht control surface. Install only what you would
+  pipe to a shell. See doc/system-security.md.
 
 I/O:
   send [--surface S] "text"         Send text to terminal.

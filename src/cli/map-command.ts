@@ -434,6 +434,10 @@ export function mapCommand(ctx: CliContext): RpcCall {
         return { method: "extension.install", params: { path: target } };
       if (sub === "remove")
         return { method: "extension.remove", params: { id: target } };
+      if (sub === "enable")
+        return { method: "extension.enable", params: { id: target } };
+      if (sub === "disable")
+        return { method: "extension.disable", params: { id: target } };
       if (sub === "reload") return { method: "extension.reload", params: {} };
       if (sub === "stop")
         return {

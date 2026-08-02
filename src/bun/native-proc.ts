@@ -196,6 +196,10 @@ export interface NativeProcApi {
    *  by the poller each tick so a long-running app doesn't accumulate an
    *  entry per process it has ever seen. */
   pruneCpuSamples(livePids: Set<number>): void;
+  /** Test seam — how many per-pid CPU samples are currently retained.
+   *  The only externally observable evidence that `pruneCpuSamples`
+   *  actually pruned, which is what a dead guard silently cost us. */
+  cpuSampleCountForTest(): number;
 }
 
 /**
@@ -382,10 +386,21 @@ class NativeProc implements NativeProcApi {
   }
 
   pruneCpuSamples(livePids: Set<number>): void {
-    if (this.cpuSamples.size <= livePids.size) return;
+    // No size guard here. The obvious one — `if (cpuSamples.size <=
+    // livePids.size) return` — looks like a cheap fast path but is always
+    // true in production and made this function a no-op: `livePids` is the
+    // WHOLE system process table (~1000 pids, see
+    // surface-metadata.ts `createDefaultRunners`), while `cpuSamples` only
+    // gains entries for pids whose lazy `.cpu`/`.rssKb` getter actually
+    // fired — the few dozen descendants of tracked shells. The loop is
+    // O(cpuSamples), cheaper than the Set the caller already built.
     for (const pid of this.cpuSamples.keys()) {
       if (!livePids.has(pid)) this.cpuSamples.delete(pid);
     }
+  }
+
+  cpuSampleCountForTest(): number {
+    return this.cpuSamples.size;
   }
 
   // ── cwd ───────────────────────────────────────────────────────────

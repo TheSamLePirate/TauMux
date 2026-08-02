@@ -55,15 +55,32 @@ export class SettingsPanel {
    *  which keeps the panel usable in test fixtures that don't mount the
    *  full RPC pipeline. */
   private onRevealLogFile?: () => void;
+  /** §4.1 — what is ACTUALLY painting terminals right now, plus why it
+   *  differs from the request. `terminal-renderer.ts` has always computed
+   *  a `RendererFallbackReason`, and its own doc claimed the reason was
+   *  "surfaced for the settings panel's status hint" — but nothing read
+   *  it, so a user whose GPU renderer had silently degraded had no way to
+   *  find out. Optional so test fixtures can omit it. */
+  private getRendererStatus?: () => {
+    active: "webgl" | "dom";
+    fallbackReason: string | null;
+  } | null;
   private visible = false;
   private sections: Section[];
 
   constructor(
     onChange: SettingChangeHandler,
-    options: { onRevealLogFile?: () => void } = {},
+    options: {
+      onRevealLogFile?: () => void;
+      getRendererStatus?: () => {
+        active: "webgl" | "dom";
+        fallbackReason: string | null;
+      } | null;
+    } = {},
   ) {
     this.onChange = onChange;
     this.onRevealLogFile = options.onRevealLogFile;
+    this.getRendererStatus = options.getRendererStatus;
 
     this.sections = [
       {
@@ -412,8 +429,31 @@ export class SettingsPanel {
         { value: "dom", label: "DOM" },
       ],
       "GPU draws glyphs from a texture atlas — far cheaper under heavy " +
-        "output. Falls back to DOM automatically if WebGL is unavailable.",
+        "output. Falls back to DOM automatically if WebGL is unavailable." +
+        this.rendererFallbackHint(s),
     );
+  }
+
+  /**
+   * §4.1 — tell the user when the renderer they asked for is not the one
+   * they got. "Falls back automatically" is only reassuring if the
+   * fallback is visible; silently degrading to DOM and saying nothing
+   * looks identical to the GPU path just being slow.
+   */
+  private rendererFallbackHint(s: AppSettings): string {
+    if (s.terminalRenderer !== "webgl") return "";
+    const status = this.getRendererStatus?.();
+    if (!status || status.active === "webgl") return "";
+    const why: Record<string, string> = {
+      unsupported: "this machine reports no WebGL context",
+      "init-failed": "the WebGL addon failed to initialise",
+      "context-lost":
+        "the GPU context was lost (driver reset or too many panes)",
+    };
+    const detail = status.fallbackReason
+      ? (why[status.fallbackReason] ?? status.fallbackReason)
+      : "WebGL is unavailable";
+    return `  Currently running on DOM — ${detail}.`;
   }
 
   /**

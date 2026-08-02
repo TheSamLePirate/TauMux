@@ -200,11 +200,57 @@ process.on("unhandledRejection", (reason: unknown) => {
       : String(reason);
   console.error("[fatal] unhandledRejection:", msg);
   attributeFault(msg);
+  noteFault();
 });
 process.on("uncaughtException", (err: Error) => {
   console.error("[fatal] uncaughtException:", err.message, err.stack ?? "");
   attributeFault(`${err.message}\n${err.stack ?? ""}`);
+  noteFault();
 });
+
+/**
+ * Fault budget (§4.4, full_app_review_2026-08.md).
+ *
+ * Swallowing every fault and carrying on is right for the case these
+ * handlers were built for — one flaky subsystem (usually the Telegram
+ * long-poll) must not take the socket server down and break `ht`. But
+ * "continue no matter what" also means a process whose state has genuinely
+ * been corrupted keeps serving, and the user's terminal is the last place
+ * that should quietly run on bad state.
+ *
+ * So: tolerate isolated faults, react to a *storm*. Crossing the threshold
+ * inside the window means the failure is not isolated, and we persist state
+ * and exit rather than keep going — the supervisor / user relaunches into a
+ * clean process. Persistence goes through the same `gracefulShutdown` that
+ * ⌘Q uses, so nothing is lost that a normal quit would have kept.
+ */
+const FAULT_BUDGET = 10;
+const FAULT_WINDOW_MS = 60_000;
+const recentFaults: number[] = [];
+let faultBudgetTripped = false;
+
+function noteFault(): void {
+  const now = Date.now();
+  recentFaults.push(now);
+  while (recentFaults.length > 0 && now - recentFaults[0]! > FAULT_WINDOW_MS) {
+    recentFaults.shift();
+  }
+  if (recentFaults.length < FAULT_BUDGET || faultBudgetTripped) return;
+  faultBudgetTripped = true;
+  console.error(
+    `[fatal] fault budget exhausted: ${recentFaults.length} faults in ` +
+      `${FAULT_WINDOW_MS / 1000}s. State is no longer trustworthy — ` +
+      `persisting and exiting so the next launch starts clean.`,
+  );
+  try {
+    void gracefulShutdown();
+  } catch {
+    /* gracefulShutdown has its own watchdog; fall through to exit */
+  }
+  // Backstop in case shutdown itself is what keeps throwing.
+  const bail = setTimeout(() => process.exit(1), 5000);
+  (bail as { unref?: () => void }).unref?.();
+}
 
 /** Best-effort fault attribution: when the stack mentions a subsystem
  *  we've registered, mark its health row as `error` so the user sees

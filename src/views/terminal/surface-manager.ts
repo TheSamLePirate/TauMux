@@ -1399,6 +1399,21 @@ export class SurfaceManager {
     return view.renderer?.active ?? "dom";
   }
 
+  /** §4.1 — the active renderer plus WHY it differs from the requested
+   *  one, for the settings panel's status hint. Null when the focused
+   *  surface isn't a terminal. */
+  getRendererStatus(): {
+    active: TerminalRendererKind;
+    fallbackReason: string | null;
+  } | null {
+    const active = this.getActiveRendererKind();
+    if (!active) return null;
+    const view = this.focusedSurfaceId
+      ? this.surfaces.get(this.focusedSurfaceId)
+      : null;
+    return { active, fallbackReason: view?.renderer?.fallbackReason ?? null };
+  }
+
   setFontSize(size: number): void {
     this.fontSize = size;
     for (const view of this.surfaces.values()) {

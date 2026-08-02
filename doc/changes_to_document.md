@@ -94,3 +94,68 @@ Plan: `doc/desktop-perf-plan.md` · Tracking: `doc/tracking_desktop_perf.md`._
 - **`configuration/settings.md` (en + fr)** — new `terminalRenderer`
   field: values, `dom` default, the experimental caveat, and the
   automatic DOM fallback on unsupported hardware / context loss.
+
+---
+
+_Pending — v0.4.12 audit-remediation wave (`doc/full_app_review_2026-08.md`,
+everything except §2.1 web-mirror defaults, which the user deferred):_
+
+- **`web-mirror/auth-and-hardening.md` (en + fr)** — the **RPC socket token
+  is now ON by default** (`rpcSocketRequireToken: true`, §2.5). Rewrite the
+  section that describes it as opt-in. Cover: the token file is written on
+  every launch regardless; the bundled `ht`, the pi ht-bridge, the extension
+  SDK and the claude-integration bridge all read it automatically, so no
+  first-party workflow changes; read-only diagnostics
+  (`system.ping`/`version`/`identify`/`capabilities`/`health`/`tree`) stay
+  open so `ht doctor` still works against a mismatched token; and the escape
+  hatch for a third-party client that speaks the socket protocol directly.
+- **`configuration/settings.md` (en + fr)** — `rpcSocketRequireToken` default
+  flips `false` → `true`.
+- **NEW page or a large section under `features/` — "Extensions & trust"
+  (en + fr).** This is the important one: the extension platform runs
+  **fully trusted code** (install runs `bun install` incl. postinstall
+  scripts; open runs the backend with a token granting the whole control
+  surface). State the rule plainly — *install an extension only if you would
+  pipe it to a shell*. Then what IS enforced: no network fetch of dev
+  binaries (the `bun x` fallback was removed, §2.4), `enabled` enforcement,
+  id validation, SIGTERM→SIGKILL escalation. And what is not: no
+  install-time consent, no capability scoping, no manifest signing.
+  Mirror `doc/system-security.md` § "Extensions are fully trusted code".
+- **`cli/extension.md` + `api/extension.md` (en + fr)** — two new verbs:
+  `ht extension enable <id>` / `disable <id>` (`extension.enable` /
+  `extension.disable`). Note that disabling also **stops** any surface
+  currently running the extension, and that a disabled extension now
+  refuses to open (it silently launched anyway before v0.4.12).
+- **`cli/extension.md` (en + fr)** — dev-server ports are now allocated
+  per-instance: a manifest's `frontend.devPort` is a *preference*, and τ-mux
+  walks to the next free port when it is occupied. Previously two
+  devPort-less extensions (or any unrelated Vite project on 5173) collided
+  and a pane could load the wrong app.
+- **`changelog.md` (en + fr)** — new top section **"0.4.12 — Audit
+  remediation"**, grouped Security / Correctness / Performance / Tooling:
+  - Security: RPC socket token on by default; extension trust boundary
+    documented + `bun x` network fallback removed; `enabled` enforced.
+  - Correctness: CPU-sample pruning actually runs (was a no-op guard —
+    the sample map never shrank); renderer palette toggle no longer
+    inverted before settings load; `system.identify` reports `null`
+    instead of a stale `/tmp/hyperterm.sock` when unwired; extension
+    backends can no longer outlive the app.
+  - Performance: the webview's 1 Hz status-bar tick is skipped while the
+    window is hidden (it was rebuilding the whole status-key subtree every
+    second to compute a skip-hash, even when occluded).
+  - Tooling: coverage gate now reports files it isn't gating (it had been
+    blind to ~2,000 LOC since 2026-05-16); new module-size ratchet.
+- **`configuration/settings.md` (en + fr)** — the Renderer field now shows a
+  live "Currently running on DOM — <reason>" hint when the GPU renderer has
+  fallen back (unsupported / init-failed / context-lost). Worth a screenshot.
+- **`changelog.md` (en + fr) — ADD to the 0.4.12 section, under a
+  "Fixed for real this time" heading.** v0.4.11 reverted the GPU renderer
+  default to `dom`, but that only helped *new* installs: anyone who ran
+  v0.4.9/v0.4.10 had `"webgl"` written to settings.json, so the revert never
+  reached them and their panes stayed blank. v0.4.12 adds a one-time settings
+  migration (schema v1 → v2) that resets a persisted `webgl` back to `dom`.
+  Worth saying plainly in the changelog, because affected users have been
+  looking at a blank terminal across two releases and won't connect it to a
+  line about defaults. Note that re-enabling the GPU renderer after upgrading
+  sticks (the migration runs once), and that the underlying WebGL fault is
+  still unconfirmed — the renderer remains experimental.

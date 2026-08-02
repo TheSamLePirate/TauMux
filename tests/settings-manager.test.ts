@@ -5,6 +5,11 @@ import {
   validateSettings,
   type AppSettings,
 } from "../src/shared/settings";
+// Assert against the constant, not a literal: these two tests are about
+// "the stamp is written and doesn't leak into get()", not about which
+// version is current. Hardcoding the number made them fail on the v1→v2
+// bump for a reason unrelated to what they cover.
+import { SETTINGS_SCHEMA_VERSION } from "../src/shared/settings-migrations";
 import {
   existsSync,
   mkdirSync,
@@ -53,7 +58,7 @@ describe("SettingsManager persistence recovery", () => {
     mgr.update({ fontSize: 15 });
     mgr.saveNow();
     const onDisk = JSON.parse(readFileSync(file, "utf-8"));
-    expect(onDisk.__schemaVersion).toBe(1);
+    expect(onDisk.__schemaVersion).toBe(SETTINGS_SCHEMA_VERSION);
     // The in-memory object must NOT carry the metadata key.
     expect("__schemaVersion" in mgr.get()).toBe(false);
   });
@@ -66,7 +71,7 @@ describe("SettingsManager persistence recovery", () => {
     expect(mgr.get().fontSize).toBe(20);
     mgr.saveNow();
     const onDisk = JSON.parse(readFileSync(file, "utf-8"));
-    expect(onDisk.__schemaVersion).toBe(1);
+    expect(onDisk.__schemaVersion).toBe(SETTINGS_SCHEMA_VERSION);
     expect(onDisk.fontSize).toBe(20);
   });
 

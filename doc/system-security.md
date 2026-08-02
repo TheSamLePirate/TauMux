@@ -43,11 +43,41 @@ Ten items, each paired to a test or CI grep that catches a regression. A green b
 
 The native Electrobun webview and the LAN-visible mirror have different threat boundaries:
 
-- **Native webview** — same origin as the bun process; same user. Sideband HTML/SVG renders via `innerHTML` directly. The trust model is "the script that wrote to fd 4 is the local user; the local user can already do anything." A future RFC may sandbox the native side too (defense-in-depth against a careless `curl|sh`), but that's an explicit non-goal today.
+- **Native webview** — same origin as the bun process; same user. Since H4 the native side **also** sandboxes: display-only `html`/`svg` (inline `meta.data` or binary fd4) renders inside the same strict-CSP iframe as the mirror, via the shared `src/shared/sideband-sandbox.ts`. The one deliberate escape hatch is `interactive`, which keeps the direct-`innerHTML` path because DOM event forwarding cannot cross an iframe boundary. Note precisely what that buys: `interactive` is set *by the producer*, so this hardens the native sink against a **careless** producer, not a hostile one — a compromised producer sets the flag and gets `innerHTML`. The underlying trust model is unchanged: "the script that wrote to fd 4 is the local user; the local user can already do anything."
 
 - **LAN mirror** — exposed on `0.0.0.0:<webMirrorPort>` with a token gate. The token isn't enough by itself once any process can write to fd 4 of any pane, so every sideband payload renders inside an iframe sandbox (see control #4). The mirror page's origin holds the auth token + `localStorage` + the live WebSocket; the sandbox prevents a sideband injection from reaching any of those.
 
 When in doubt: the native side ships content **at the user**; the mirror ships content **between machines**. Network distance increases the attack surface.
+
+---
+
+## Extensions are fully trusted code
+
+*(§2.4, doc/full_app_review_2026-08.md — added because this boundary existed in the implementation but was written down nowhere.)*
+
+The extension-app platform (`src/bun/extension-manager.ts`) runs third-party code with **no sandbox and no permission model**. Installing and opening an extension does all of this:
+
+1. `cpSync` the source tree into `<configDir>/extensions/<id>/`;
+2. `bun install` in that directory — which executes **arbitrary `postinstall` scripts**;
+3. `bun run <manifest.backend.entry>` with `HT_SOCKET_PATH` and `HT_RPC_TOKEN` in the environment.
+
+That token is the key to the entire control surface: sending keystrokes to any pane, reading screen contents, driving browser panes, installing further extensions, shutting the app down.
+
+**The rule: install an extension only if you would pipe it to a shell.** There is no meaningful difference in privilege.
+
+What we *do* enforce today:
+
+- **No network fetch of dev binaries** (§2.4) — `spawnDevServer` runs only a binary already present in the extension's `node_modules`. There is deliberately no `bun x <bin>` fallback, because that would resolve a package name from the manifest against the registry and execute it, turning "open a pane" into remote code execution against a name the user never reviewed.
+- **`enabled` is enforced** (§2.3) — `ensureBackend` and `extension.open` / `extension.split` refuse a disabled extension, and disabling stops any surface already running it. Toggle with `ht extension enable|disable <id>`.
+- **Id validation** — `isValidExtensionId` gates the on-disk folder name and the URL segment; the static bundle host additionally rejects `..` and unknown ids.
+- **Kill escalation** (§3.5) — `stop()` sends SIGTERM then SIGKILL after `EXTENSION_KILL_GRACE_MS`, so a backend that ignores SIGTERM cannot outlive the app holding a live RPC token.
+
+What is **not** defended (deferred, in value order):
+
+- **No install-time consent.** `extension.install` is reachable over the socket RPC. `rpcSocketRequireToken` now defaults to `true` (§2.5), so a random same-user process can no longer reach it without reading the token file — but a human-visible confirmation for socket-originated installs is still the right control.
+- **No capability scoping.** Every extension backend gets the full-privilege token. The per-domain handler registry under `src/bun/rpc-handlers/` is the natural granularity for a scoped token; that is a design task, not a patch.
+- **No manifest signing / provenance.**
+- **Symlinks are followed on install.** A malicious source tree can plant a symlink that the static bundle host will then serve.
 
 ---
 
@@ -59,7 +89,9 @@ Documented gaps. Each is an explicit deferral with the phase that owns the follo
 
 - **Session cap + manifest-auth + cross-site origin check** (H.9) — the mirror accepts an unbounded number of resume sessions and doesn't validate the `Origin` header on incoming WebSocket upgrades. Owned by **P7**.
 
-- **Native sandbox for sideband HTML/SVG** — see "Native vs mirror" above. The trust model justifies the gap; an RFC would change the trust model.
+- **Native sandbox bypass via `interactive`** — see "Native vs mirror" above. Display-only markup is sandboxed on both sides since H4; `interactive` remains a producer-controlled opt-out on the native side only. Closing it means finding another way to forward DOM events out of an iframe.
+
+- **Extension sandboxing / capability scoping** — see "Extensions are fully trusted code" above.
 
 - **`pi-extensions/ht-bridge` + `claude-integration/ht-bridge` session-state TTL** — the hooks write per-session state under `$TMPDIR` with 24 h pruning. No hard file-count cap. Owned by **P7**.
 

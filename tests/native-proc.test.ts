@@ -277,6 +277,48 @@ d("native CPU sampling", () => {
     api.pruneCpuSamples(new Set([process.pid]));
     expect(api.listProcesses().get(process.pid)).toBeDefined();
   });
+
+  /**
+   * §2.2 (full_app_review_2026-08.md) — regression test.
+   *
+   * `pruneCpuSamples` used to open with
+   * `if (cpuSamples.size <= livePids.size) return`. That reads like a
+   * cheap fast path but was true on every real tick and made the whole
+   * function a no-op: the poller passes the WHOLE system process table
+   * (~1000 pids) as `livePids`, while `cpuSamples` only gains entries for
+   * pids whose lazy `.cpu`/`.rssKb` getter fired — a few dozen. So the
+   * test has to prune against a LARGE live set, which is precisely the
+   * shape the old guard short-circuited on.
+   */
+  test("prunes a dead pid even when the live set is the whole process table", async () => {
+    const api = openNativeProc()!;
+
+    const child = Bun.spawn(["sleep", "30"], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    const childPid = child.pid;
+
+    // Touch the lazy getter so a CPU sample is actually retained for it.
+    const before = api.listProcesses();
+    expect(before.get(childPid)).toBeDefined();
+    void before.get(childPid)!.cpu;
+    const sampledCount = api.cpuSampleCountForTest();
+    expect(sampledCount).toBeGreaterThan(0);
+
+    child.kill();
+    await child.exited;
+
+    // The real caller's argument: every live pid on the machine. This is
+    // far larger than the sample map, so the old guard returned here.
+    const rows = api.listProcesses();
+    const livePids = new Set(rows.keys());
+    expect(livePids.size).toBeGreaterThan(sampledCount);
+    expect(livePids.has(childPid)).toBe(false);
+
+    api.pruneCpuSamples(livePids);
+    expect(api.cpuSampleCountForTest()).toBeLessThan(sampledCount);
+  });
 });
 
 d("createDefaultRunners", () => {

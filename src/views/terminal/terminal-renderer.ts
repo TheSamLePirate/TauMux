@@ -27,7 +27,10 @@ import type { Terminal } from "@xterm/xterm";
 export type TerminalRendererKind = "webgl" | "dom";
 
 /** Reasons a terminal ended up on the DOM renderer. Surfaced for logging
- *  and for the settings panel's status hint. */
+ *  and — since §4.1 (full_app_review_2026-08.md) — actually rendered in the
+ *  settings panel's Renderer hint via `SurfaceManager.getRendererStatus()`.
+ *  It was previously computed and read by nothing, so a user whose GPU
+ *  renderer had silently degraded had no way to find out. */
 export type RendererFallbackReason =
   "setting" | "unsupported" | "init-failed" | "context-lost";
 

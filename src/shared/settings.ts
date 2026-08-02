@@ -131,10 +131,20 @@ export interface AppSettings {
   /** W2 (full_app_review_2026-05.md §6.1): when true, the `ht` RPC socket
    *  requires a per-boot token (written to `socket.token` beside the socket)
    *  for state-mutating methods. Defense-in-depth against an opportunistic
-   *  same-user process speaking JSON-RPC to a well-known socket path. OFF by
-   *  default so existing `ht` / bridge installs keep working until opted in;
-   *  the bundled `ht` + pi bridge always present the token. Read-only
-   *  diagnostics stay open. */
+   *  same-user process speaking JSON-RPC to a well-known socket path —
+   *  which can send keystrokes to any pane, read screen contents, drive
+   *  browser panes, install an extension, or shut the app down.
+   *
+   *  ON by default (§2.5, full_app_review_2026-08.md). The token file is
+   *  written on every launch regardless of this setting, and every first-
+   *  party client reads it automatically — the bundled `ht`
+   *  (`src/cli/rpc-client.ts`), the pi ht-bridge, the extension SDK, and
+   *  the claude-integration bridge (which shells out to `ht`) — so
+   *  enabling it is transparent to them. Read-only diagnostics
+   *  (`UNAUTHENTICATED_RPC_METHODS`) stay open so `ht doctor` can still
+   *  report a mismatch instead of failing opaquely. Turn OFF only for a
+   *  third-party client that speaks the socket protocol directly and has
+   *  not been taught to send `__token`. */
   rpcSocketRequireToken: boolean;
 
   // Scripts
@@ -750,7 +760,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   autoStartWebMirror: false,
   webMirrorBind: "0.0.0.0",
   webMirrorAuthToken: "",
-  rpcSocketRequireToken: false,
+  rpcSocketRequireToken: true,
 
   packageRunner: "bun",
 

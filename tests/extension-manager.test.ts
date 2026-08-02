@@ -2,7 +2,10 @@ import { test, expect } from "bun:test";
 import { mkdtempSync, cpSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ExtensionManager } from "../src/bun/extension-manager";
+import {
+  ExtensionManager,
+  firstFreePort,
+} from "../src/bun/extension-manager";
 
 const EXAMPLES = join(import.meta.dir, "..", "examples", "extensions");
 const HELLO_SRC = join(EXAMPLES, "hello");
@@ -141,4 +144,125 @@ test("remove deletes the extension dir and deregisters it", () => {
     mgr.dispose();
     rmSync(cfg, { recursive: true, force: true });
   }
+});
+
+// ── §2.3 — `enabled` is enforced, not decorative ────────────────────────
+//
+// Before full_app_review_2026-08.md §2.3 this flag was loaded from the
+// registry, reconciled back to disk and reported by `extension.list`, but
+// no code path ever read it as a condition and nothing could set it. A
+// "disabled" extension launched exactly like an enabled one.
+
+test("setEnabled persists across a reload", () => {
+  const cfg = freshConfig();
+  installHello(cfg);
+  const mgr = new ExtensionManager({
+    configDir: cfg,
+    socketPath: join(cfg, "s"),
+  });
+  try {
+    expect(mgr.isEnabled(HELLO_ID)).toBe(true);
+
+    mgr.setEnabled(HELLO_ID, false);
+    expect(mgr.isEnabled(HELLO_ID)).toBe(false);
+
+    // Re-scan reads the registry back off disk — the flag must survive.
+    mgr.reload();
+    expect(mgr.isEnabled(HELLO_ID)).toBe(false);
+
+    // And a completely fresh manager over the same config dir.
+    const mgr2 = new ExtensionManager({
+      configDir: cfg,
+      socketPath: join(cfg, "s"),
+    });
+    try {
+      expect(mgr2.isEnabled(HELLO_ID)).toBe(false);
+    } finally {
+      mgr2.dispose();
+    }
+
+    mgr.setEnabled(HELLO_ID, true);
+    expect(mgr.isEnabled(HELLO_ID)).toBe(true);
+  } finally {
+    mgr.dispose();
+    rmSync(cfg, { recursive: true, force: true });
+  }
+});
+
+test("ensureBackend refuses to start a disabled extension", async () => {
+  const cfg = freshConfig();
+  installHello(cfg);
+  const mgr = new ExtensionManager({
+    configDir: cfg,
+    socketPath: join(cfg, "s"),
+  });
+  try {
+    mgr.setEnabled(HELLO_ID, false);
+    await expect(mgr.ensureBackend(HELLO_ID, "ext:1")).rejects.toThrow(
+      /disabled/i,
+    );
+    // Nothing was registered for the surface, so no orphan instance.
+    expect(mgr.isExtensionSurface("ext:1")).toBe(false);
+    expect(mgr.backendCount).toBe(0);
+  } finally {
+    mgr.dispose();
+    rmSync(cfg, { recursive: true, force: true });
+  }
+});
+
+test("setEnabled(false) rejects an unknown id rather than inventing one", () => {
+  const cfg = freshConfig();
+  const mgr = new ExtensionManager({
+    configDir: cfg,
+    socketPath: join(cfg, "s"),
+  });
+  try {
+    expect(() => mgr.setEnabled("com.test.nope", false)).toThrow(/unknown/i);
+  } finally {
+    mgr.dispose();
+    rmSync(cfg, { recursive: true, force: true });
+  }
+});
+
+// ── §3.4 — dev-server port collision ────────────────────────────────────
+//
+// `waitForPort` only proves SOMETHING accepts TCP. With every manifest
+// defaulting to 5173, a second extension's `--strictPort` Vite failed to
+// bind, the readiness probe saw the FIRST one, and the second pane loaded
+// the first extension's UI. Same against any unrelated Vite project the
+// user had running. So we now claim a known-free port before spawning.
+
+test("firstFreePort skips a port that is already listening", async () => {
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: { data() {} },
+  });
+  const taken = server.port;
+  try {
+    const got = await firstFreePort(taken);
+    expect(got).not.toBe(taken);
+    expect(got).toBeGreaterThan(taken);
+
+    // The port it picked must genuinely be bindable.
+    const probe = Bun.listen({
+      hostname: "127.0.0.1",
+      port: got,
+      socket: { data() {} },
+    });
+    probe.stop(true);
+  } finally {
+    server.stop(true);
+  }
+});
+
+test("firstFreePort returns the requested port when it is free", async () => {
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: { data() {} },
+  });
+  const port = server.port;
+  server.stop(true); // now known-free
+  expect(await firstFreePort(port)).toBe(port);
 });

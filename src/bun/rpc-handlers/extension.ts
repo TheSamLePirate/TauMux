@@ -9,6 +9,22 @@ function pickId(params: Record<string, unknown>): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
 
+/** Resolve an id that is both known AND enabled, or throw with the reason.
+ *  §2.3 — `ExtensionManager.ensureBackend` is the real enforcement point;
+ *  rejecting here too means the CLI/socket caller gets "disabled" instead
+ *  of a pane that opens and then fails asynchronously. */
+function requireOpenable(
+  mgr: { has(id: string): boolean; isEnabled(id: string): boolean },
+  id: string | undefined,
+): string {
+  if (!id || !mgr.has(id)) throw new Error(`unknown extension: ${id ?? ""}`);
+  if (!mgr.isEnabled(id))
+    throw new Error(
+      `extension is disabled: ${id} (enable it with \`ht extension enable ${id}\`)`,
+    );
+  return id;
+}
+
 /** `extension.*` socket/CLI surface for the extension-app platform. The
  *  surface lifecycle (open/split) routes through `dispatch` into the bun
  *  action handler exactly like `editor.*`; registry mutations go straight to
@@ -49,9 +65,7 @@ export function registerExtension(deps: HandlerDeps): Record<string, Handler> {
 
     "extension.open": (params) => {
       const mgr = need();
-      const id = pickId(params);
-      if (!id || !mgr.has(id))
-        throw new Error(`unknown extension: ${id ?? ""}`);
+      const id = requireOpenable(mgr, pickId(params));
       const split = params["split"] === true || params["split"] === "true";
       const direction = normalizeDirection(params["direction"]);
       dispatch(split ? "splitExtensionSurface" : "createExtensionSurface", {
@@ -63,14 +77,30 @@ export function registerExtension(deps: HandlerDeps): Record<string, Handler> {
 
     "extension.split": (params) => {
       const mgr = need();
-      const id = pickId(params);
-      if (!id || !mgr.has(id))
-        throw new Error(`unknown extension: ${id ?? ""}`);
+      const id = requireOpenable(mgr, pickId(params));
       dispatch("splitExtensionSurface", {
         extensionId: id,
         direction: normalizeDirection(params["direction"]),
       });
       return "OK";
+    },
+
+    // §2.3 — the setters that make `enabled` a real control rather than a
+    // field reported by `extension.list` that nothing could change.
+    "extension.enable": (params) => {
+      const mgr = need();
+      const id = pickId(params);
+      if (!id) throw new Error("extension id required");
+      const desc = mgr.setEnabled(id, true);
+      return { id: desc.manifest.id, enabled: desc.enabled };
+    },
+
+    "extension.disable": (params) => {
+      const mgr = need();
+      const id = pickId(params);
+      if (!id) throw new Error("extension id required");
+      const desc = mgr.setEnabled(id, false);
+      return { id: desc.manifest.id, enabled: desc.enabled };
     },
 
     "extension.new": (params) => {

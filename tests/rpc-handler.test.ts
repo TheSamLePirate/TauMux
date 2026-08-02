@@ -66,7 +66,8 @@ describe("RPC Handler", () => {
     // Default fallback when no socketPath option is wired (test fixtures
     // commonly omit it). Production callers must always pass the bound
     // path; that branch is covered by the next test.
-    expect(result["socket_path"]).toBe("/tmp/hyperterm.sock");
+    // Unwired fixture → null, not a plausible-looking wrong path.
+    expect(result["socket_path"]).toBeNull();
     expect(result["log_path"]).toBeNull();
   });
 

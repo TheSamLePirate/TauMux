@@ -252,10 +252,11 @@ export const SETTINGS_FIELD_SCHEMAS = {
     "0.0.0.0",
   ]),
 
-  // W2 — opt-in RPC socket token enforcement. boolStrict so only a real
-  // boolean flips it (a stray truthy value can't silently enable a
-  // security mode).
-  rpcSocketRequireToken: boolStrict(false),
+  // W2 — RPC socket token enforcement, ON by default since §2.5
+  // (full_app_review_2026-08.md). boolStrict so only a real boolean flips
+  // it — with the default now `true`, a stray falsy value must not be able
+  // to silently DISABLE the security mode either.
+  rpcSocketRequireToken: boolStrict(true),
 
   // S15 string-trim batch
   webMirrorAuthToken: stringTrim(""),

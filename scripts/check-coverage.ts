@@ -113,6 +113,35 @@ function printRegression(r: Regression): void {
   );
 }
 
+/**
+ * Files measured now that the baseline has never heard of (§3.2,
+ * full_app_review_2026-08.md).
+ *
+ * `findRegressions` iterates the BASELINE, so a file added after the last
+ * promotion is not compared against anything — it simply isn't examined.
+ * That is the correct behaviour for the regression check itself (there is
+ * no "before" to regress from), but it silently narrows the gate to a
+ * shrinking subset of the codebase as the project grows. Between
+ * 2026-05-16 and 2026-08-02 that came to ~2,000 LOC — the whole extension
+ * platform, the FFI process module, the renderer selector — none of it
+ * gated, with CI reporting success the entire time.
+ *
+ * A quality gate that reports success over an ever-smaller slice is worse
+ * than no gate, so surface the drift instead of hiding it.
+ */
+export function findUnbaselined(
+  baseline: Map<string, FileCoverage>,
+  current: Map<string, FileCoverage>,
+): FileCoverage[] {
+  const out: FileCoverage[] = [];
+  for (const [path, c] of current) {
+    if (baseline.has(path)) continue;
+    out.push(c);
+  }
+  // Biggest blind spots first.
+  return out.sort((a, b) => b.linesFound - a.linesFound);
+}
+
 function main(): void {
   const mode = process.argv[2] === "--promote" ? "promote" : "check";
   const slack = parseSlack(process.argv);
@@ -149,6 +178,28 @@ function main(): void {
 
   const baselineRaw = readFileSync(BASELINE, "utf-8");
   const baseline = parseLcov(baselineRaw);
+
+  // §3.2 — report baseline drift BEFORE the verdict, so it is visible in
+  // CI logs even on a green run. Not fatal: a new file legitimately has no
+  // "before" to regress from, and failing here would block every PR that
+  // adds one. The point is that the gate can no longer silently shrink.
+  const unbaselined = findUnbaselined(baseline, current);
+  if (unbaselined.length > 0) {
+    const totalLines = unbaselined.reduce((n, f) => n + f.linesFound, 0);
+    console.warn(
+      `[coverage] ${unbaselined.length} measured file(s) (${totalLines} lines) are NOT in the baseline ` +
+        `and are therefore ungated. Run \`bun run baseline:coverage\` to fold them in:`,
+    );
+    for (const f of unbaselined.slice(0, 15)) {
+      const pct = (ratio(f) * 100).toFixed(1).padStart(5);
+      console.warn(
+        `  ${pct}%  ${String(f.linesFound).padStart(5)} lines  ${f.path}`,
+      );
+    }
+    if (unbaselined.length > 15) {
+      console.warn(`  … and ${unbaselined.length - 15} more`);
+    }
+  }
 
   const regressions = findRegressions(baseline, current, slack);
   if (regressions.length === 0) {

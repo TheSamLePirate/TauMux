@@ -76,11 +76,16 @@ export interface RpcHandlerOptions {
   restartTelegramService?: () => Promise<void>;
   /** SQLite log used by `telegram.history` / `telegram.chats`. */
   telegramDb?: TelegramDatabase;
-  /** Absolute socket path the SocketServer is bound to. Defaults to
-   *  the legacy `/tmp/hyperterm.sock` placeholder so test fixtures that
-   *  do not exercise the socket can keep their existing setup; the real
-   *  app must pass the bound path so `system.identify` reports truth. */
-  socketPath?: string;
+  /** Absolute socket path the SocketServer is bound to, or omitted when
+   *  the caller has no socket (unit-test fixtures).
+   *
+   *  This used to default to the legacy `/tmp/hyperterm.sock` string. That
+   *  default was a *plausible lie*: `system.identify` reported it as fact,
+   *  so a caller that forgot to wire the real path sent users chasing a
+   *  socket that hasn't existed since the config-dir move. Unset now
+   *  surfaces as `null` — same convention as `logPath` below — which is
+   *  unambiguous rather than confidently wrong. */
+  socketPath?: string | null;
   /** Absolute path of the active log file. Pass null (or omit) when the
    *  caller has no log tee — `system.identify` will report null too. */
   logPath?: string | null;
@@ -155,7 +160,7 @@ export function createRpcHandler(
     getTelegramService: options.getTelegramService,
     restartTelegramService: options.restartTelegramService,
     telegramDb: options.telegramDb,
-    socketPath: options.socketPath ?? "/tmp/hyperterm.sock",
+    socketPath: options.socketPath ?? null,
     logPath: options.logPath ?? null,
     health: options.health,
     autoContinueEngine: options.autoContinue?.engine,

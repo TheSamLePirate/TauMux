@@ -272,16 +272,14 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
         if (payload.action === "editorSave") {
           surfaceManager.saveEditorSurface(
             (payload.payload["surfaceId"] ?? payload.payload["surface_id"]) as
-              | string
-              | undefined,
+              string | undefined,
           );
           return;
         }
         if (payload.action === "editorReload") {
           surfaceManager.reloadEditorSurface(
             (payload.payload["surfaceId"] ?? payload.payload["surface_id"]) as
-              | string
-              | undefined,
+              string | undefined,
           );
           return;
         }
@@ -531,6 +529,9 @@ const settingsPanel = new SettingsPanel(
   },
   {
     onRevealLogFile: () => rpc.send("revealLogFile"),
+    // §4.1 — read live at render time (not captured), so the hint reflects
+    // a context loss that happened after the panel was constructed.
+    getRendererStatus: () => surfaceManager?.getRendererStatus?.() ?? null,
   },
 );
 // Flush any pending settings persist when the panel closes or the window is
@@ -924,9 +925,27 @@ window.addEventListener("ht-statuses-changed", () => {
 // 1 Hz tick so status-keys that depend on the wall clock (time /
 // uptime) and any live metadata snapshot the poll just produced stay
 // fresh without waiting for a workspace / focus event.
+//
+// §3.3 (full_app_review_2026-08.md) — skip the tick entirely while the
+// document is hidden. `refreshStatusBar` already hashes its output to
+// avoid the paint, but it had to BUILD the whole status-key subtree to
+// compute that hash, so an occluded / minimised window still paid
+// `buildStatusContext()` + one `renderStatusKey()` per key + the element
+// allocations, once a second, forever. Nothing can observe the bar while
+// the document is hidden, and `visibilitychange` re-renders on the way
+// back, so the skipped ticks are unobservable. This is the webview
+// counterpart of the poller's idle backoff (§5.3 of the 2026-05 review),
+// which only ever covered the bun side. Core Priority #1: idle CPU ~0.
 setInterval(() => {
+  if (document.hidden) return;
   refreshStatusBar();
 }, 1000);
+
+// Repaint immediately on the way back so the bar is never stale for up
+// to a second after the window is revealed.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) refreshStatusBar();
+});
 
 setTimeout(() => {
   rpc.send("resize", { surfaceId: "__init__", cols: 80, rows: 24 });
@@ -1049,6 +1068,14 @@ function changeFontSize(delta: number): void {
 function resetFontSize(): void {
   surfaceManager.setFontSize(DEFAULT_FONT_SIZE);
   persistFontSize(DEFAULT_FONT_SIZE);
+}
+
+/** The renderer the user is currently configured for, falling back to the
+ *  shipped default rather than a duplicated literal. Used by the palette
+ *  toggle so its label and its action can never disagree with each other or
+ *  with `DEFAULT_SETTINGS`. */
+function activeRendererKind(): "webgl" | "dom" {
+  return currentSettings?.terminalRenderer ?? DEFAULT_SETTINGS.terminalRenderer;
 }
 
 function buildPaletteCommands(): PaletteCommand[] {
@@ -1441,19 +1468,21 @@ function buildPaletteCommands(): PaletteCommand[] {
       // switch is visible without reopening panes.
       id: "toggle-terminal-renderer",
       category: "View",
+      // Read the fallback from DEFAULT_SETTINGS rather than repeating a
+      // literal: v0.4.9 defaulted to "webgl", v0.4.11 reverted to "dom",
+      // and three hardcoded `?? "webgl"` here survived the revert — which
+      // inverted this entry's label and made its action write the value the
+      // user was already on whenever `currentSettings` was still null.
       label:
-        (currentSettings?.terminalRenderer ?? "webgl") === "webgl"
+        activeRendererKind() === "webgl"
           ? "Use DOM Terminal Renderer"
           : "Use GPU Terminal Renderer",
       description:
-        (currentSettings?.terminalRenderer ?? "webgl") === "webgl"
+        activeRendererKind() === "webgl"
           ? "Fall back to xterm's element-per-run renderer."
           : "Draw glyphs from a GPU texture atlas — much cheaper under heavy output.",
       action: () => {
-        const next =
-          (currentSettings?.terminalRenderer ?? "webgl") === "webgl"
-            ? ("dom" as const)
-            : ("webgl" as const);
+        const next = activeRendererKind() === "webgl" ? "dom" : "webgl";
         const base = currentSettings ?? DEFAULT_SETTINGS;
         applySettings(mergeSettings(base, { terminalRenderer: next }));
         rpc.send("updateSettings", { settings: { terminalRenderer: next } });
@@ -1861,10 +1890,7 @@ function clearTypingFocusMode() {
 }
 
 function getEditableTarget():
-  | HTMLInputElement
-  | HTMLTextAreaElement
-  | HTMLElement
-  | null {
+  HTMLInputElement | HTMLTextAreaElement | HTMLElement | null {
   const activeElement = document.activeElement;
   if (
     activeElement instanceof HTMLInputElement ||
@@ -2477,17 +2503,15 @@ const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
   // muscle memory shared with iTerm, Warp, Wezterm, and tmux. The
   // method is a no-op when fewer workspaces exist, so the binding
   // is safe to register unconditionally.
-  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(
-    (n): Binding<KeyCtx> => ({
-      id: `workspace.switch-${n}`,
-      description: `Switch to workspace ${n}`,
-      category: "Workspace",
-      match: keyMatch({ key: String(n), meta: true, shift: false, alt: false }),
-      action: () => {
-        surfaceManager.selectWorkspaceByIndex(n - 1);
-      },
-    }),
-  ),
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n): Binding<KeyCtx> => ({
+    id: `workspace.switch-${n}`,
+    description: `Switch to workspace ${n}`,
+    category: "Workspace",
+    match: keyMatch({ key: String(n), meta: true, shift: false, alt: false }),
+    action: () => {
+      surfaceManager.selectWorkspaceByIndex(n - 1);
+    },
+  })),
 
   // Keyboard cheat-sheet — ⌘? (I.11 / U11). Discoverability for
   // every other binding above. Same array drives the rendered
@@ -2770,16 +2794,14 @@ window.addEventListener("ht-dismiss-notification", (e: Event) => {
 // ── Telegram pane → bun ──
 window.addEventListener("ht-telegram-send", (e: Event) => {
   const detail = (e as CustomEvent).detail as
-    | { chatId?: string; text?: string }
-    | undefined;
+    { chatId?: string; text?: string } | undefined;
   if (!detail?.chatId || !detail.text) return;
   rpc.send("telegramSend", { chatId: detail.chatId, text: detail.text });
 });
 
 window.addEventListener("ht-telegram-request-history", (e: Event) => {
   const detail = (e as CustomEvent).detail as
-    | { chatId?: string; before?: number }
-    | undefined;
+    { chatId?: string; before?: number } | undefined;
   if (!detail?.chatId) return;
   rpc.send("telegramRequestHistory", {
     chatId: detail.chatId,
@@ -2794,8 +2816,7 @@ window.addEventListener("ht-telegram-request-state", () => {
 // ── Editor pane → bun ──
 window.addEventListener("ht-editor-read-file", (e: Event) => {
   const detail = (e as CustomEvent).detail as
-    | { surfaceId?: string; path?: string; create?: boolean }
-    | undefined;
+    { surfaceId?: string; path?: string; create?: boolean } | undefined;
   if (!detail?.surfaceId || !detail.path) return;
   rpc.send("editorReadFile", {
     surfaceId: detail.surfaceId,
@@ -2825,8 +2846,7 @@ window.addEventListener("ht-editor-save-file", (e: Event) => {
 
 window.addEventListener("ht-editor-reload-file", (e: Event) => {
   const detail = (e as CustomEvent).detail as
-    | { surfaceId?: string; path?: string }
-    | undefined;
+    { surfaceId?: string; path?: string } | undefined;
   if (!detail?.surfaceId || !detail.path) return;
   rpc.send("editorReloadFile", {
     surfaceId: detail.surfaceId,
@@ -2836,8 +2856,7 @@ window.addEventListener("ht-editor-reload-file", (e: Event) => {
 
 window.addEventListener("ht-split-editor", (e: Event) => {
   const detail = (e as CustomEvent).detail as
-    | { path?: string; direction?: "horizontal" | "vertical" }
-    | undefined;
+    { path?: string; direction?: "horizontal" | "vertical" } | undefined;
   rpc.send("splitEditorSurface", {
     direction: detail?.direction ?? "horizontal",
     path: detail?.path,
@@ -2846,8 +2865,7 @@ window.addEventListener("ht-split-editor", (e: Event) => {
 
 window.addEventListener("ht-split-extension", (e: Event) => {
   const detail = (e as CustomEvent).detail as
-    | { extensionId?: string; direction?: "horizontal" | "vertical" }
-    | undefined;
+    { extensionId?: string; direction?: "horizontal" | "vertical" } | undefined;
   if (!detail?.extensionId) return;
   rpc.send("splitExtensionSurface", {
     direction: detail.direction ?? "horizontal",
@@ -2857,8 +2875,7 @@ window.addEventListener("ht-split-extension", (e: Event) => {
 
 window.addEventListener("ht-extension-frontend-message", (e: Event) => {
   const detail = (e as CustomEvent).detail as
-    | { surfaceId?: string; payload?: unknown }
-    | undefined;
+    { surfaceId?: string; payload?: unknown } | undefined;
   if (!detail?.surfaceId) return;
   rpc.send("extensionFrontendMessage", {
     surfaceId: detail.surfaceId,
@@ -2868,8 +2885,7 @@ window.addEventListener("ht-extension-frontend-message", (e: Event) => {
 
 window.addEventListener("ht-open-file-in-editor", (e: Event) => {
   const detail = (e as CustomEvent).detail as
-    | { path?: string; create?: boolean }
-    | undefined;
+    { path?: string; create?: boolean } | undefined;
   if (!detail?.path) return;
   rpc.send("splitEditorSurface", {
     direction: "horizontal",
@@ -2880,8 +2896,7 @@ window.addEventListener("ht-open-file-in-editor", (e: Event) => {
 
 window.addEventListener("ht-focus-notification-source", (e: Event) => {
   const detail = (e as CustomEvent).detail as
-    | { surfaceId?: string | null }
-    | undefined;
+    { surfaceId?: string | null } | undefined;
   const surfaceId = detail?.surfaceId;
   if (!surfaceId) return;
   const ws = surfaceManager.findWorkspaceForSurface(surfaceId);

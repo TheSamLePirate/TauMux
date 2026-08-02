@@ -234,6 +234,8 @@ export interface TauMuxApi {
     new: M; // { id, template, name? }
     install: M; // { path }
     remove: M; // { id }
+    enable: M; // { id }
+    disable: M; // { id } — also stops any surfaces running it
     reload: M;
     stop: M; // { surface_id }
   };
@@ -403,6 +405,8 @@ const NAMESPACES: Record<string, [string, string][]> = {
     ["new", "new"],
     ["install", "install"],
     ["remove", "remove"],
+    ["enable", "enable"],
+    ["disable", "disable"],
     ["reload", "reload"],
     ["stop", "stop"],
   ],

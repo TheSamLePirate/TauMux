@@ -140,6 +140,54 @@ function waitForPort(
   });
 }
 
+/**
+ * Is `port` already taken on loopback?
+ *
+ * §3.4 (full_app_review_2026-08.md). `waitForPort` only proves that
+ * *something* accepts TCP — not that it is the server we just spawned.
+ * Two extensions that both omit `frontend.devPort` used to collide on the
+ * 5173 default: `--strictPort` made the second Vite fail to bind, the
+ * readiness probe still saw the FIRST one listening, and the second
+ * extension's iframe silently loaded the first extension's UI. The same
+ * happened against any unrelated Vite project the user had running, and
+ * 5173 is the ecosystem default so that is likely rather than exotic.
+ *
+ * So we probe before spawning and walk to a free port instead. Resolves
+ * `true` when something is already there.
+ */
+function portInUse(port: number, host = "127.0.0.1"): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = connect({ port, host });
+    const done = (taken: boolean) => {
+      sock.removeAllListeners();
+      sock.destroy();
+      resolve(taken);
+    };
+    sock.once("connect", () => done(true));
+    sock.once("error", () => done(false));
+    // A host that neither accepts nor refuses within a beat is not a
+    // usable dev-server port either — treat it as taken.
+    setTimeout(() => done(true), 500).unref?.();
+  });
+}
+
+/** First free loopback port at or after `start`, giving up after `span`
+ *  attempts (in which case `start` is returned and the normal readiness
+ *  timeout reports the failure). Exported for tests — spawning a real Vite
+ *  server to exercise the collision path would be far slower and flakier
+ *  than probing this directly. */
+export async function firstFreePort(start: number, span = 40): Promise<number> {
+  for (let p = start; p < start + span && p <= 65535; p++) {
+    if (!(await portInUse(p))) return p;
+  }
+  return start;
+}
+
+/** How long a backend gets to honour SIGTERM before `stop()` escalates to
+ *  SIGKILL (§3.5). Long enough for a flush-and-exit handler, short enough
+ *  that app shutdown isn't visibly delayed. */
+export const EXTENSION_KILL_GRACE_MS = 2000;
+
 export interface ExtensionManagerDeps {
   configDir: string;
   /** Absolute unix-socket path the SocketServer is bound to. */
@@ -166,6 +214,11 @@ interface ExtensionBackendInstance {
   devProc: ReturnType<typeof Bun.spawn> | null;
   buffer: string;
   dead: boolean;
+  /** The port this instance's Vite server was ACTUALLY told to bind (§3.4),
+   *  which is not necessarily `manifest.frontend.devPort` — that one may
+   *  have been occupied. `handleFor` reads this so the iframe URL and the
+   *  spawned server can never disagree. Null in installed mode. */
+  devPort: number | null;
 }
 
 export class ExtensionManager {
@@ -283,6 +336,46 @@ export class ExtensionManager {
     return this.descriptors.get(id);
   }
 
+  isEnabled(id: string): boolean {
+    return this.descriptors.get(id)?.enabled ?? false;
+  }
+
+  /**
+   * Flip an extension's `enabled` flag and persist it (§2.3).
+   *
+   * Before this existed the flag was loaded, reconciled to disk and
+   * reported by `extension.list` with no way to change it and no code path
+   * that read it — write-only state describing a control that did nothing.
+   * Disabling also stops any surfaces currently running the extension, so
+   * "disabled" means stopped rather than merely "won't start next time".
+   */
+  setEnabled(id: string, enabled: boolean): ExtensionDescriptor {
+    const desc = this.descriptors.get(id);
+    if (!desc) throw new Error(`unknown extension: ${id}`);
+    if (desc.enabled === enabled) return desc;
+    desc.enabled = enabled;
+
+    const reg = this.loadRegistry();
+    const entry = reg.extensions.find((e) => e.id === id);
+    if (entry) entry.enabled = enabled;
+    else
+      reg.extensions.push({
+        id,
+        path: desc.path,
+        enabled,
+        installedAt: 0,
+      });
+    this.saveRegistry(reg);
+
+    if (!enabled) {
+      for (const [sid, inst] of [...this.instances]) {
+        if (inst.extensionId === id) this.stop(sid);
+      }
+    }
+    this.log(`${id} ${enabled ? "enabled" : "disabled"}`);
+    return desc;
+  }
+
   // ── Static bundle host ──────────────────────────────────────────────────
 
   private ensureStaticServer(): number {
@@ -342,11 +435,19 @@ export class ExtensionManager {
   ): Promise<ExtensionSurfaceHandle> {
     const desc = this.descriptors.get(extensionId);
     if (!desc) throw new Error(`unknown extension: ${extensionId}`);
+    // §2.3 — `enabled` used to be loaded, persisted and reported over RPC
+    // without ever being READ as a condition, so a "disabled" extension
+    // launched normally. This is the enforcement point; `extension.open` /
+    // `extension.split` reject earlier so the user gets a clearer error.
+    if (!desc.enabled)
+      throw new Error(
+        `extension is disabled: ${extensionId} (enable it with \`ht extension enable ${extensionId}\`)`,
+      );
 
     // Already running for this surface? Return its existing handle.
     const existing = this.instances.get(surfaceId);
     if (existing && !existing.dead) {
-      return this.handleFor(desc, existing.mode);
+      return this.handleFor(desc, existing.mode, existing.devPort);
     }
 
     // Decide mode: explicit dev override, else dev if no build but a dev cmd.
@@ -363,6 +464,7 @@ export class ExtensionManager {
       devProc: null,
       buffer: "",
       dead: false,
+      devPort: null,
     };
     this.instances.set(surfaceId, inst);
     this.emit(surfaceId, { kind: "lifecycle", state: "starting" });
@@ -380,8 +482,18 @@ export class ExtensionManager {
     // the iframe loads its URL (otherwise the first load races the spawn and
     // the pane shows blank). Built mode → start the static bundle host.
     if (mode === "dev" && desc.manifest.frontend?.dev) {
-      this.spawnDevServer(inst, desc);
-      const port = desc.manifest.frontend?.devPort ?? 5173;
+      // §3.4 — claim a port we know is free BEFORE spawning, and remember
+      // which one, so the readiness probe and the iframe URL can't end up
+      // pointing at someone else's dev server.
+      const wanted = desc.manifest.frontend?.devPort ?? 5173;
+      const port = await firstFreePort(wanted);
+      if (port !== wanted) {
+        this.log(
+          `dev port ${wanted} for ${desc.manifest.id} is taken — using ${port} instead`,
+        );
+      }
+      inst.devPort = port;
+      this.spawnDevServer(inst, desc, port);
       const ready = await waitForPort(port);
       if (!ready)
         this.log(
@@ -392,12 +504,13 @@ export class ExtensionManager {
     }
 
     this.emit(surfaceId, { kind: "lifecycle", state: "ready" });
-    return this.handleFor(desc, mode);
+    return this.handleFor(desc, mode, inst.devPort);
   }
 
   private handleFor(
     desc: ExtensionDescriptor,
     mode: "dev" | "installed",
+    devPort: number | null,
   ): ExtensionSurfaceHandle {
     const handle: ExtensionSurfaceHandle = {
       extensionId: desc.manifest.id,
@@ -405,8 +518,8 @@ export class ExtensionManager {
       icon: desc.manifest.icon,
     };
     if (mode === "dev") {
-      const port = desc.manifest.frontend?.devPort ?? 5173;
-      handle.devUrl = `http://127.0.0.1:${port}`;
+      // The resolved port, never a re-derived manifest guess (§3.4).
+      handle.devUrl = `http://127.0.0.1:${devPort ?? desc.manifest.frontend?.devPort ?? 5173}`;
     } else {
       const port = this.ensureStaticServer();
       handle.bundleUrl = `http://127.0.0.1:${port}/ext/${encodeURIComponent(desc.manifest.id)}/`;
@@ -584,35 +697,38 @@ export class ExtensionManager {
   private spawnDevServer(
     inst: ExtensionBackendInstance,
     desc: ExtensionDescriptor,
+    port: number,
   ): void {
     const devCmd = desc.manifest.frontend?.dev;
     if (!devCmd) return;
-    const port = desc.manifest.frontend?.devPort ?? 5173;
     const [bin, ...rest] = devCmd.split(" ");
     // Run the locally-installed binary via bun. We prefer the package's bin
     // ENTRY (`node_modules/<bin>/<bin-from-package.json>`) over the
     // `node_modules/.bin/<bin>` symlink because bun's first install with a
     // `file:` dep can leave `.bin` unlinked even though the package itself is
-    // present. `bun x <bin>` is the last resort (it may fetch from the network).
+    // present.
+    //
+    // §2.4 — there is deliberately NO `bun x <bin>` fallback. `bun x` fetches
+    // and executes a package from the network chosen by a string in the
+    // extension's manifest, which turns "open a pane" into remote code
+    // execution against a name the user never reviewed. A missing dev binary
+    // is a setup problem with a clear, local fix, so we say so and stop.
     const localBin = this.resolveLocalBin(desc.path, bin);
-    const argv = localBin
-      ? [
-          resolveBunBinary(),
-          localBin,
-          ...rest,
-          "--port",
-          String(port),
-          "--strictPort",
-        ]
-      : [
-          resolveBunBinary(),
-          "x",
-          bin,
-          ...rest,
-          "--port",
-          String(port),
-          "--strictPort",
-        ];
+    if (!localBin) {
+      this.log(
+        `dev server for ${desc.manifest.id}: \`${bin}\` is not installed in ${desc.path}. ` +
+          `Run \`bun install\` there (τ-mux will not fetch it from the network).`,
+      );
+      return;
+    }
+    const argv = [
+      resolveBunBinary(),
+      localBin,
+      ...rest,
+      "--port",
+      String(port),
+      "--strictPort",
+    ];
     try {
       inst.devProc = Bun.spawn(argv, {
         cwd: desc.path,
@@ -653,8 +769,7 @@ export class ExtensionManager {
     inst: ExtensionBackendInstance,
   ): Promise<void> {
     const stream = inst.backendProc?.stdout as
-      | ReadableStream<Uint8Array>
-      | undefined;
+      ReadableStream<Uint8Array> | undefined;
     if (!stream) return;
     const reader = stream.getReader();
     const decoder = new TextDecoder();
@@ -674,8 +789,7 @@ export class ExtensionManager {
     inst: ExtensionBackendInstance,
   ): Promise<void> {
     const stream = inst.backendProc?.stderr as
-      | ReadableStream<Uint8Array>
-      | undefined;
+      ReadableStream<Uint8Array> | undefined;
     if (!stream) return;
     const reader = stream.getReader();
     const decoder = new TextDecoder();
@@ -732,18 +846,48 @@ export class ExtensionManager {
     }
   }
 
-  /** Stop the backend (and dev server) for a surface. SIGTERM then SIGKILL. */
+  /**
+   * Stop the backend (and dev server) for a surface: SIGTERM, then SIGKILL
+   * for anything still alive after {@link EXTENSION_KILL_GRACE_MS}.
+   *
+   * §3.5 — this comment used to promise the escalation while the body only
+   * called `proc.kill()` once, so a backend that ignores SIGTERM outlived
+   * both the pane and the app (`dispose` routes through here too), leaving
+   * an orphan holding `HT_RPC_TOKEN`. Mirrors PtyManager's SIGHUP→SIGKILL
+   * shape. Stays synchronous — callers treat stop as fire-and-forget — with
+   * the escalation on an unref'd timer so it can never hold the process
+   * open on its own.
+   */
   stop(surfaceId: string): void {
     const inst = this.instances.get(surfaceId);
     if (!inst) return;
     inst.dead = true;
-    for (const proc of [inst.backendProc, inst.devProc]) {
-      if (!proc) continue;
+    const procs = [inst.backendProc, inst.devProc].filter(
+      (p): p is ReturnType<typeof Bun.spawn> => !!p,
+    );
+    for (const proc of procs) {
       try {
-        proc.kill();
+        proc.kill(); // SIGTERM
       } catch {
         /* already dead */
       }
+    }
+    if (procs.length > 0) {
+      const timer = setTimeout(() => {
+        for (const proc of procs) {
+          // `exitCode` / `signalCode` stay null while the process lives.
+          if (proc.exitCode !== null || proc.signalCode !== null) continue;
+          try {
+            proc.kill("SIGKILL");
+            this.log(
+              `${inst.extensionId}: pid ${proc.pid} ignored SIGTERM — sent SIGKILL`,
+            );
+          } catch {
+            /* raced with a normal exit */
+          }
+        }
+      }, EXTENSION_KILL_GRACE_MS);
+      (timer as { unref?: () => void }).unref?.();
     }
     this.instances.delete(surfaceId);
   }
