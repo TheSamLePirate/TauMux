@@ -138,6 +138,23 @@
         ]
       }
     ],
+    // OPT-IN — remote approvals (august-plan M2 / WS3). Wiring this block
+    // routes permission prompts to a τ-mux modal (and Telegram when
+    // configured): Allow / Deny / "Answer in terminal". If τ-mux is not
+    // running, the modal times out, or you pick "terminal", Claude Code
+    // falls back to its own prompt — the hook can only ADD an answer
+    // path. Escape hatch without unwiring: HT_CLAUDE_APPROVALS=0.
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /Users/olivierveinand/.claude/scripts/ht-bridge/src/index.ts permission-request",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "idle_prompt",

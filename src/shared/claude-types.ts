@@ -40,6 +40,8 @@ export type ClaudeBridgeEventType =
   | "cwd-changed"
   | "notify-idle"
   | "notify-permission"
+  | "permission-request"
+  | "permission-resolved"
   | "task-created"
   | "task-completed";
 
@@ -176,6 +178,9 @@ export interface ClaudeSessionState {
   prNumber: number | null;
   prUrl: string | null;
   prReviewState: string | null;
+  /** What is waiting for approval (tool name / prompt message) while
+   *  phase === "waiting-approval". Cleared on resolution or next turn. */
+  approvalMessage: string | null;
   errorType: string | null;
   errorMessage: string | null;
   subagents: ClaudeSubagent[];
@@ -223,6 +228,7 @@ export function newClaudeSessionState(
     prNumber: null,
     prUrl: null,
     prReviewState: null,
+    approvalMessage: null,
     errorType: null,
     errorMessage: null,
     subagents: [],

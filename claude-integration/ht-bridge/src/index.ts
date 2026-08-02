@@ -31,15 +31,29 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildBridgeEvent } from "./build-event";
+import {
+  DEFAULT_ASK_TIMEOUT_MS,
+  PERMISSION_CHOICES,
+  buildPermissionDecision,
+  decisionFromAskResult,
+  formatPermissionAsk,
+} from "./permission";
 
 interface Config {
   enabled: boolean;
   htBinary: string;
+  /** WS3 — route PermissionRequest to the τ-mux ask modal. The real
+   *  opt-in is wiring the hook at all; this flag is the escape hatch
+   *  that turns an installed hook into a pure pass-through. */
+  approvalsEnabled: boolean;
+  approvalTimeoutMs: number;
 }
 
 const DEFAULT_CONFIG: Config = {
   enabled: true,
   htBinary: "ht",
+  approvalsEnabled: true,
+  approvalTimeoutMs: DEFAULT_ASK_TIMEOUT_MS,
 };
 
 function loadConfig(): Config {
@@ -60,6 +74,13 @@ function loadConfig(): Config {
       env["HT_CLAUDE_ENABLED"].toLowerCase() !== "false";
   }
   if (env["HT_CLAUDE_HT_BIN"]) c.htBinary = env["HT_CLAUDE_HT_BIN"];
+  if (env["HT_CLAUDE_APPROVALS"] !== undefined) {
+    c.approvalsEnabled =
+      env["HT_CLAUDE_APPROVALS"] !== "0" &&
+      env["HT_CLAUDE_APPROVALS"].toLowerCase() !== "false";
+  }
+  const t = Number(env["HT_CLAUDE_APPROVAL_TIMEOUT_MS"]);
+  if (Number.isFinite(t) && t > 0) c.approvalTimeoutMs = t;
   return c;
 }
 
@@ -100,6 +121,112 @@ function sendEvent(cfg: Config, event: Record<string, unknown>): void {
   }
 }
 
+/**
+ * WS3 — the one SYNCHRONOUS path. Routes Claude Code's PermissionRequest
+ * to the τ-mux ask modal (which also forwards to Telegram when
+ * configured) and prints the decision JSON on stdout. Prints NOTHING on
+ * timeout / no τ-mux / "Answer in terminal" / any error, which hands the
+ * question back to Claude Code's own prompt — the gate can only ever
+ * add an answer path, never remove one.
+ */
+async function handlePermissionRequest(
+  cfg: Config,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (!cfg.approvalsEnabled) return;
+  // Outside a τ-mux pane there is no modal to route to.
+  if (!process.env["HT_SURFACE"]) return;
+  const ask = formatPermissionAsk(payload);
+  if (!ask) return;
+
+  // Shadow event: pill → red "Approval needed" while the modal is up.
+  const shadow = buildBridgeEvent(
+    "permission-request",
+    payload,
+    process.env,
+    Date.now(),
+  );
+  if (shadow) sendEvent(cfg, shadow);
+
+  const { exitCode, stdout } = await runHtAskChoice(cfg, ask.title, ask.body);
+  const behavior = decisionFromAskResult(exitCode, stdout);
+  if (behavior) {
+    process.stdout.write(buildPermissionDecision(behavior));
+    const resolved = buildBridgeEvent(
+      "permission-resolved",
+      payload,
+      process.env,
+      Date.now(),
+    );
+    if (resolved) sendEvent(cfg, resolved);
+  }
+  // No decision → no output; Claude Code's Notification hook will keep
+  // the pill red when its own prompt appears.
+}
+
+/** Blocking `ht ask choice` with a hard watchdog slightly past the ask
+ *  timeout, so a wedged app can never hold the hook to Claude Code's
+ *  own limit. */
+function runHtAskChoice(
+  cfg: Config,
+  title: string,
+  body: string,
+): Promise<{ exitCode: number | null; stdout: string }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let stdout = "";
+    const finish = (exitCode: number | null) => {
+      if (settled) return;
+      settled = true;
+      resolve({ exitCode, stdout });
+    };
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(
+        cfg.htBinary,
+        [
+          "ask",
+          "choice",
+          "--title",
+          title,
+          "--body",
+          body,
+          "--choices",
+          PERMISSION_CHOICES,
+          "--timeout",
+          String(cfg.approvalTimeoutMs),
+        ],
+        { stdio: ["ignore", "pipe", "ignore"] },
+      );
+    } catch (err) {
+      debugLog(
+        `ask spawn failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return finish(null);
+    }
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        /* already gone */
+      }
+      finish(null);
+    }, cfg.approvalTimeoutMs + 5_000);
+    child.stdout?.on("data", (b: Buffer) => {
+      stdout += b.toString("utf-8");
+    });
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      debugLog(`ask error: ${err.message}`);
+      finish(null);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      finish(code);
+    });
+  });
+}
+
 async function main(): Promise<void> {
   const cfg = loadConfig();
   if (!cfg.enabled) return;
@@ -118,6 +245,10 @@ async function main(): Promise<void> {
   }
 
   try {
+    if (eventName === "permission-request") {
+      await handlePermissionRequest(cfg, payload);
+      return;
+    }
     const event = buildBridgeEvent(eventName, payload, process.env, Date.now());
     if (event) sendEvent(cfg, event);
     else debugLog(`skipped event: ${eventName}`);

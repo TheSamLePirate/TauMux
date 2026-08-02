@@ -163,7 +163,9 @@ export function decideNotification(
   if (s.phase === "waiting-approval" && prev.phase !== "waiting-approval") {
     return {
       title: "Claude Code · approval needed",
-      body: "A tool needs permission — check the pane.",
+      body: s.approvalMessage
+        ? `${s.approvalMessage} — answer the modal or check the pane.`
+        : "A tool needs permission — check the pane.",
     };
   }
 

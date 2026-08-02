@@ -31,6 +31,8 @@ export type BridgeEventName =
   | "cwd-changed"
   | "notify-idle"
   | "notify-permission"
+  | "permission-request"
+  | "permission-resolved"
   | "task-created"
   | "task-completed";
 
@@ -47,6 +49,8 @@ export const BRIDGE_EVENT_NAMES: readonly BridgeEventName[] = [
   "cwd-changed",
   "notify-idle",
   "notify-permission",
+  "permission-request",
+  "permission-resolved",
   "task-created",
   "task-completed",
 ];
@@ -134,6 +138,16 @@ export function buildBridgeEvent(
       if (message) ev["message"] = message.slice(0, 500);
       break;
     }
+    // WS3 — the fire-and-forget shadow of the synchronous approval flow
+    // (index.ts drives the modal; these just keep the pill honest).
+    // `message` carries the tool name for the sidebar.
+    case "permission-request": {
+      const tool = s(payload["tool_name"]);
+      if (tool) ev["message"] = tool;
+      break;
+    }
+    case "permission-resolved":
+      break;
     case "task-created":
     case "task-completed": {
       const taskId = s(payload["task_id"]);

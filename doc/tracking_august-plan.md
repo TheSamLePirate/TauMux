@@ -8,8 +8,8 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 
 | Milestone | Target | Status | Version | Commit |
 |---|---|---|---|---|
-| M1 — "τ-mux sees Claude" (WS1 + WS1b + WS2) | 0.5.0 | ✅ | 0.5.0 | _pending commit_ |
-| M2 — "τ-mux acts for Claude" (WS3 + WS4 + WS7) | 0.6.0 | ⏸ | — | — |
+| M1 — "τ-mux sees Claude" (WS1 + WS1b + WS2) | 0.5.0 | ✅ | 0.5.0 | `4287936f` |
+| M2 — "τ-mux acts for Claude" (WS3 + WS4 + WS7) | 0.6.0 | ✅ | 0.6.0 | _see below_ |
 | M3 — "Claude lives in τ-mux" (WS5 + WS8) | 0.7.0 | ⏸ | — | — |
 | M4 — "AAA" (WS6 + WS9) | 0.8.0 | ⏸ | — | — |
 
@@ -32,6 +32,21 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 | Gates | ✅ | `bun test` 3243/3243 · typecheck clean · lint 0 errors · emoji audit clean · module-size ratchet green |
 | `bun start` + live E2E | ✅ | dev app boots; `claude event` → phase working; statusline tee → title/cost/ctx in `ht claude sessions`; `stop` → notification `"Claude · E2E smoke · 11s · $0.05"` through the real pipeline |
 
+## M2 detail
+
+| Item | Status | Notes |
+|---|---|---|
+| WS3 — `permission-request` sync bridge path (`permission.ts` + handler) | ✅ | exact decision JSON locked against docs schema; watchdog past ask timeout |
+| WS3 — registry `permission-request` / `permission-resolved` phases + `approvalMessage` | ✅ | |
+| WS3 — modal via existing `ht ask choice` (+ Telegram forward for free) | ✅ | Allow / Deny / "Answer in terminal" |
+| WS3 — fail-safe paths (timeout / hang / no-surface / disabled / terminal) | ✅ | subprocess tests prove empty stdout + exit 0 on every one |
+| WS4 — `claude-plan-mirror.ts` → PlanStore (`claude:<short-id>` slot) | ✅ | dedup fingerprint; workspace-move retraction; session-end clear |
+| WS4 — auto-continue synergy | ✅ (composition) | presenter's turn-end notification + mirrored plan feed the existing engine — no new code path; the native Stop-hook `decision:block` variant deferred (see deviations) |
+| WS7 — `ht claude install/uninstall` (settings.json surgery) | ✅ | backup, additive, idempotent, refuse-on-parse-failure, `--dry-run`, feature buckets lifecycle/tasks/statusline/approvals (approvals opt-in) |
+| WS7 — `ht claude doctor` | ✅ | binary version, hooks wired/missing, approvals, statusline (ours/other/none), skill, app reachability incl. "pre-0.5.0" detection |
+| Tests | ✅ | +37: permission pure/registry/subprocess-e2e (fake ht), plan mirror, installer fixtures |
+| Gates | ✅ | 3280 pass / typecheck / lint / emoji / module-size all green |
+
 ## Deviations from plan
 
 1. **⚠️ Module-size baseline promoted (+7 lines on `src/bun/index.ts`, 3209 → 3216).**
@@ -46,7 +61,21 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
    (WS9) where the webview work is batched. Plan §5/WS1 acceptance otherwise met.
 3. **Drive-by fix:** `bin/ht` used `readFileSync` without importing it —
    piped `ht telegram send` would have thrown ReferenceError. Import added.
-4. **Transition note:** the bridge is symlink-installed, so v2 went live for
+4. **⚠️ M2: Settings → Claude Code GUI tab deferred to M4/WS9.** The
+   installer shipped as `ht claude install/uninstall/doctor` (CLI) instead:
+   same function, fully fixture-tested, and it works for headless/SSH
+   installs too. The GUI tab batches with M4's webview wave (sessions
+   panel) so the webview gets one coherent change set.
+5. **⚠️ M2/WS4: native Stop-hook auto-continue (`decision: "block"`) deferred.**
+   The synergy the plan wanted exists by composition today (mirrored plan +
+   turn-end notification → existing engine, same runaway gates). The
+   in-band Stop-hook variant needs its own runaway-budget design; parked
+   for M4 evaluation rather than rushed.
+6. **⚠️ M2/WS7: bridge is not yet bundled into the .app.** `ht claude
+   install` requires the bridge dir (repo `install.sh` symlink) and says so
+   with a clear error; bundling a copy into Resources + copy-install is an
+   M4 packaging task.
+7. **Transition note:** the bridge is symlink-installed, so v2 went live for
    the user's hooks immediately. Against the still-running 0.4.7 app,
    `claude.event` is an unknown method → `ht` fails silently (fire-and-forget
    holds, verified). Pills resume once the user restarts τ-mux on ≥0.5.0.

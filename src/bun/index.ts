@@ -2619,7 +2619,7 @@ const socketHandler = createRpcHandler(
   },
 );
 
-claudeIntegration.attachPresenter(socketHandler);
+claudeIntegration.attach(socketHandler, plans, () => app.getAppState());
 
 // All late-bound dependencies referenced by the webview handlers now
 // exist; flush them into the context so the registered handlers can

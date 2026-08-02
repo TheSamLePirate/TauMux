@@ -192,3 +192,36 @@ Plan: `doc/august-plan.md` · Tracking: `doc/tracking_august-plan.md`._
 - **claude-integration install docs (en + fr)** — settings.snippet.jsonc
   now carries the full 14-hook block + statusLine; v1 installs only need
   the new blocks added (the four v1 event names are unchanged).
+
+---
+
+_Pending — august-plan M2 "τ-mux acts for Claude" (v0.6.0).
+Plan: `doc/august-plan.md` · Tracking: `doc/tracking_august-plan.md`._
+
+- **Changelog (en + fr)** — new top section **"0.6.0 — Claude Code
+  integration, milestone 2"**:
+  - **Remote approvals (opt-in).** Wiring the `PermissionRequest` hook
+    (`ht claude install --features approvals`) routes Claude Code
+    permission prompts to a τ-mux modal — and to Telegram when the
+    bridge is configured — with Allow / Deny / "Answer in terminal".
+    Fail-safe by construction: timeout, τ-mux absent, or any error →
+    Claude Code's own terminal prompt appears, exactly as before.
+  - **Native task-list mirror.** Claude Code's TaskCreated/TaskCompleted
+    now project into the sidebar plan panel automatically (per session,
+    `claude:<id>` slot) — no skill cooperation needed. Session end
+    clears the panel. Works alongside pi plans (distinct agent slots).
+  - **One-command install.** `ht claude install` wires hooks + statusline
+    into `~/.claude/settings.json` with a timestamped backup, additive
+    merge, idempotence, and refuse-on-parse-failure. `ht claude
+    uninstall` removes exactly the managed entries. `ht claude doctor`
+    reports binary/hooks/statusline/skill/app health in one screen.
+  - **Auto-continue synergy** (composition, no new setting): the mirrored
+    plan + the turn-end notification feed the existing auto-continue
+    engine, so plan-anchored continuation now works for Claude Code
+    sessions under the same engine gates.
+- **`cli/` Claude Code page (en + fr)** — add `install` / `uninstall` /
+  `doctor` verbs with the feature buckets
+  (lifecycle / tasks / statusline / approvals) and the safety contract.
+- **Security note (en + fr)** — approvals are answered from the modal or
+  Telegram; the modal shows the exact tool + input (ground truth, no
+  summarization); `HT_CLAUDE_APPROVALS=0` is the kill switch.

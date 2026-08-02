@@ -46,16 +46,21 @@ App-side counterparts live in the main tree: `src/bun/claude-session-registry.ts
 ./claude-integration/install.sh
 ```
 
-Then merge `settings.snippet.jsonc` into `~/.claude/settings.json`:
+Then wire the hooks + statusline into `~/.claude/settings.json` with the
+managed installer (timestamped backup, additive merge, idempotent,
+refuses to touch a file it cannot parse):
 
-1. the `statusLine` block (or keep your own statusline and lose the
-   cost/context/rate-limit feed), and
-2. the `hooks` entries — all fourteen are optional; the four v1 names
-   (`prompt`, `stop`, `notify-idle`, `notify-permission`) are unchanged,
-   so an existing install only needs the new blocks added.
+```bash
+ht claude install               # lifecycle + tasks + statusline
+ht claude install --features approvals   # opt-in: permission prompts → modal/Telegram
+ht claude install --dry-run     # show the diff without writing
+ht claude uninstall             # remove every managed entry
+ht claude doctor                # full health report
+```
 
-A one-click installer in the app (Settings → Claude Code) is planned for
-M2 (`doc/august-plan.md` WS7).
+`settings.snippet.jsonc` stays as the hand-merge reference for people
+who prefer editing the file themselves. A user-defined `statusLine` is
+never clobbered — the installer reports it as kept.
 
 ## Verify
 

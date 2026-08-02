@@ -4,7 +4,9 @@
  * Controls τ-mux via Unix socket (JSON-RPC).
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { parseFlags, unescapeText } from "../src/cli/flags";
 import { SOCKET_PATH, runRpc } from "../src/cli/rpc-client";
@@ -13,6 +15,18 @@ import {
   parseStatuslinePayload,
   renderStatusline,
 } from "../src/shared/claude-statusline";
+import {
+  ALL_FEATURES,
+  DEFAULT_BRIDGE_DIR,
+  DEFAULT_FEATURES,
+  DEFAULT_SETTINGS_PATH,
+  type Feature,
+  computeStatus,
+  planInstall,
+  planUninstall,
+  readSettingsFile,
+  writeSettingsFile,
+} from "../src/cli/claude-settings-edit";
 import type { ClaudeSessionState } from "../src/shared/claude-types";
 import {
   formatClaudeCost,
@@ -497,11 +511,153 @@ function formatClaudeSessions(result: unknown): void {
   }
 }
 
+/** `ht claude install|uninstall|status|doctor` — settings.json surgery +
+ *  health report (august-plan M2 / WS7). All local fs, no RPC required
+ *  (doctor pings the socket best-effort). */
+function claudePaths(): { settingsPath: string; bridgeDir: string } {
+  return {
+    settingsPath: flags["settings-path"] || DEFAULT_SETTINGS_PATH,
+    bridgeDir: flags["bridge-path"] || DEFAULT_BRIDGE_DIR,
+  };
+}
+
+function parseFeatures(): readonly Feature[] {
+  const raw = flags["features"];
+  if (!raw) return DEFAULT_FEATURES;
+  const wanted = raw.split(",").map((s) => s.trim()) as Feature[];
+  for (const f of wanted) {
+    if (!(ALL_FEATURES as readonly string[]).includes(f)) {
+      console.error(
+        `ht claude install: unknown feature "${f}" (expected: ${ALL_FEATURES.join(",")})`,
+      );
+      process.exit(1);
+    }
+  }
+  return wanted;
+}
+
+function runClaudeInstall(uninstall: boolean): void {
+  const { settingsPath, bridgeDir } = claudePaths();
+  const { settings, error } = readSettingsFile(settingsPath);
+  if (!settings) {
+    console.error(`ht claude: ${error}`);
+    process.exit(1);
+  }
+  if (!uninstall && !existsSync(join(bridgeDir, "src", "index.ts"))) {
+    console.error(
+      `ht claude install: bridge not found at ${bridgeDir} — run claude-integration/install.sh from the τ-mux repo first (or pass --bridge-path).`,
+    );
+    process.exit(1);
+  }
+  const plan = uninstall
+    ? planUninstall(settings)
+    : planInstall(settings, parseFeatures(), bridgeDir);
+  for (const a of plan.added) console.log(`  + ${a}`);
+  for (const r of plan.removed) console.log(`  - ${r}`);
+  for (const u of plan.unchanged) console.log(`  = ${u}`);
+  if (plan.added.length === 0 && plan.removed.length === 0) {
+    console.log(uninstall ? "Nothing managed to remove." : "Already installed.");
+    return;
+  }
+  if (flags["dry-run"] === "true") {
+    console.log("(dry run — nothing written)");
+    return;
+  }
+  const backup = writeSettingsFile(settingsPath, plan.next);
+  console.log(`Wrote ${settingsPath}`);
+  if (backup) console.log(`Backup: ${backup}`);
+  if (!uninstall) {
+    console.log(
+      "Restart running Claude Code sessions to pick up the new hooks.",
+    );
+  }
+}
+
+async function runClaudeDoctor(): Promise<void> {
+  const { settingsPath, bridgeDir } = claudePaths();
+  const { settings, error } = readSettingsFile(settingsPath);
+  const st = computeStatus(settings, settingsPath, bridgeDir);
+  const line = (key: string, val: string) =>
+    console.log(`${(key + ":").padEnd(20)} ${val}`);
+
+  // Claude Code binary — best-effort, capped so doctor never hangs.
+  try {
+    const r = spawnSync("claude", ["--version"], {
+      encoding: "utf-8",
+      timeout: 5000,
+      env: { ...process.env, LC_ALL: "C", LANG: "C" },
+    });
+    line(
+      "claude_binary",
+      r.status === 0 ? (r.stdout ?? "").trim() : "found but errored",
+    );
+  } catch {
+    line("claude_binary", "NOT FOUND on PATH");
+  }
+
+  line("settings_file", error ? `PARSE ERROR — ${error}` : settingsPath);
+  line("bridge_dir", st.bridgePresent ? bridgeDir : `MISSING (${bridgeDir})`);
+  line(
+    "hooks_wired",
+    st.wiredEvents.length === 0
+      ? "none — run `ht claude install`"
+      : `${st.wiredEvents.length}/${st.wiredEvents.length + st.missingEvents.length} (${st.wiredEvents.join(", ")})`,
+  );
+  if (st.missingEvents.length > 0 && st.wiredEvents.length > 0) {
+    line("hooks_missing", st.missingEvents.join(", "));
+  }
+  line(
+    "approvals",
+    st.approvalsWired
+      ? "wired (PermissionRequest → τ-mux modal)"
+      : "not wired (opt-in: ht claude install --features approvals)",
+  );
+  line(
+    "statusline",
+    st.statusline === "ours"
+      ? "ht claude statusline"
+      : st.statusline === "other"
+        ? "user-defined (τ-mux data feed inactive)"
+        : "none — add it for cost/context/rate-limit pills",
+  );
+  const skill = join(homedir(), ".claude", "skills", "tau-mux", "SKILL.md");
+  line("skill", existsSync(skill) ? skill : "not installed");
+
+  try {
+    await runRpc("system.ping", {}, 1500);
+    const res = (await runRpc("claude.sessions", { all: true }, 1500)) as {
+      sessions: unknown[];
+    };
+    line("app", `reachable (${res.sessions.length} session(s) observed)`);
+  } catch (err) {
+    const e = err as Error;
+    line(
+      "app",
+      /Unknown method/.test(e.message)
+        ? "reachable but pre-0.5.0 — restart τ-mux on the new build"
+        : `unreachable (${SOCKET_PATH})`,
+    );
+  }
+}
+
 async function main(): Promise<void> {
   // `claude statusline` reads stdin + must print before (and regardless
   // of) the RPC tee — it can't go through the single-RPC pipeline.
   if (command === "claude" && positional[0] === "statusline") {
     await runClaudeStatusline();
+    return;
+  }
+  // Local settings.json surgery + diagnostics — no RPC mapping.
+  if (command === "claude" && positional[0] === "install") {
+    runClaudeInstall(false);
+    return;
+  }
+  if (command === "claude" && positional[0] === "uninstall") {
+    runClaudeInstall(true);
+    return;
+  }
+  if (command === "claude" && positional[0] === "doctor") {
+    await runClaudeDoctor();
     return;
   }
   // Telegram send needs a multi-step flow (stdin / default-chat
@@ -1203,6 +1359,14 @@ Claude Code (see claude-integration/README.md):
                                         Install: {"statusLine": {"type":
                                         "command", "command": "ht claude statusline"}}
   claude sessions [--all]               List observed Claude Code sessions
+  claude install [--features lifecycle,tasks,statusline,approvals]
+                                        Wire the hook bridge + statusline into
+                                        ~/.claude/settings.json (timestamped
+                                        backup; additive; --dry-run supported).
+                                        "approvals" routes permission prompts
+                                        to a τ-mux modal + Telegram — opt-in.
+  claude uninstall                      Remove every managed entry (backup kept)
+  claude doctor                         Full integration health report
   claude event --json '<payload>'       (internal) hook-bridge event ingestion
 
 Live Metadata (reads from polled surface state):
