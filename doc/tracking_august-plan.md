@@ -85,6 +85,35 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 5. Tests: pane view DOM smoke (happy-dom like telegram-pane tests), message
    handler roundtrip, restore branch.
 
+## Pane v3 — design-system alignment (user-requested, 0.9.0)
+
+User: "make the UI/UX much better, better color theme, better visual effects,
+best integration possible." Root cause found by reading the design system
+first: **the pane used a Catppuccin palette inherited from the v1 hook
+bridge**, and `surfaceIdentity()` mapped `claude` → `human` (cyan), so an
+agent session rendered in the human identity colour — a §7 violation.
+
+| Item | Status | Notes |
+|---|---|---|
+| §7 identity — `surfaceIdentity("claude") === "agent"` | ✅ | amber propagates free to focus ring, sidebar card, status bar, notification dot |
+| Shared primitives — `IdentityDot` + `TabBadge` status | ✅ | pulse (`tauPulse`) + focus glow inherited; dot stays pure identity, phase moves to a badge |
+| Full TAU palette (no raw hex) | ✅ | every colour a `--tau-*` token; theming audit clean |
+| §3 radius scale + 4 px grid | ✅ | `--tau-r-pane/btn/chip`, nothing > 12 px |
+| §10 canonical motion only | ✅ | `tauPulse` / `tauBlink` / existing `agent-msg-in`; no new keyframes |
+| §4.1 typography roles | ✅ | sans chrome, mono for telemetry/paths/commands (tabular numerals) |
+| Grouped control strip (§5.1) | ✅ | identity+config left, meters+actions right |
+| Queued-message feedback | ✅ | dashed bubble + footer chip; clears when the turn drains |
+| Copy affordance on assistant messages | ✅ | hover, carries markdown source |
+| cwd everywhere (header + surface chip + sidebar card) | ✅ | seeded at create, refreshed from SDK `init`; synthetic metadata for a pid-less pane |
+| `ht claude pane` / `claude.pane` RPC / SDK namespace | ✅ | closes the gap vs `agent.create`; also how this pass was screenshot-verified |
+| Tests | ✅ | +8 design-conformance (palette/radius/motion/identity/primitives) +3 behaviour; 3331 green |
+| Gates | ✅ | typecheck · lint · emoji · animations · guideline do/don'ts · theming · module-size |
+| Visual verification | ✅ | live screenshots of the pane in-app (empty state + full window) |
+
+**Deviation:** ratchet promotes on `surface-manager.ts` (+7 wiring) and
+`bun/index.ts` (+1); the synthetic-metadata builder was extracted to
+`claude-surface-controller.ts` rather than left inline in the god module.
+
 ## Pane v2 (user-requested, 0.8.0)
 
 The user judged the M3 pane "not good enough" — full-feature pass:

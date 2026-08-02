@@ -7,6 +7,18 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.9.0 — The Claude Code pane, on the τ-mux design system
+
+The pane now looks and behaves like a native τ-mux agent surface rather than a guest app.
+
+- **Amber agent identity (§7).** A Claude session is a robot's session, so the pane now carries the same **amber** identity signal as the pi agent pane — identity dot, focused pane border, sidebar workspace card, and status-bar entry. At a glance you can tell an agent pane from your own cyan shells. (It previously rendered in the human cyan, with a Catppuccin palette inherited from the v1 hook bridge.)
+- **Full palette/shape/motion alignment.** Every colour now comes from a TAU design token, radii use the token scale, telemetry is monospace with tabular numerals, and animation is limited to the canonical τ-mux keyframes. A new conformance test suite pins all of it so the palette can't drift again.
+- **Grouped control strip.** Identity + status badge + model + permission mode on the left, live token/cost/elapsed meters and New · Sessions · Stop on the right. The phase is now spelled out in a status badge (`idle`, `working`, `approval needed`, `ended`) instead of being encoded only in a dot colour.
+- **Working directory everywhere.** The pane shows its cwd immediately on open — in the header and as the same cwd chip terminal panes get — and it feeds the sidebar workspace card, so a Claude pane no longer sits at "resolving…".
+- **Queued-message feedback.** Sending while a turn is in flight marks the message as queued and shows a footer chip, instead of appearing to do nothing.
+- **Copy affordance** on finished assistant messages (hover), alongside the existing copy buttons on tool input/output.
+- **`ht claude pane`** — open a Claude Code pane from the CLI or a script (`--cwd`, `--split`, `--direction`, `--resume`), mirroring `agent.create` for the pi pane. Also exposed as `claude.pane` over JSON-RPC and in the extension SDK.
+
 ## 0.8.0 — The Claude Code pane, full-featured
 
 The [native pane](/features/claude-code-pane/) grows from a working v1 into the flagship surface:

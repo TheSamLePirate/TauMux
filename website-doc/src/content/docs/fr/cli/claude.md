@@ -29,6 +29,18 @@ registre de sessions restent exacts. L'impression a toujours lieu et
 vient toujours en premier — une app absente ou bloquée ne dégrade jamais
 la ligne ; le code de sortie est toujours 0.
 
+## claude pane
+
+```bash
+ht claude pane [--cwd P] [--split] [--direction right|down] [--resume ID]
+```
+
+Ouvre un [panneau Claude Code natif](/fr/features/claude-code-pane/) — le
+même point d'entrée que la palette de commandes, scriptable. `--cwd`
+définit le dossier de la session (par défaut celui du panneau focalisé),
+`--split` l'ouvre à côté du panneau courant, `--resume ID` rouvre une
+session précédente. À l'image de `agent.create` pour le panneau pi.
+
 ## claude sessions
 
 ```bash

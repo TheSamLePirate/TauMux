@@ -8,14 +8,39 @@ import type { ClaudeAgentSessionWire } from "../../shared/types";
 import {
   type ClaudePaneView,
   claudePaneApplyEvent,
+  digestClaudeEvent,
   claudePaneApplyExit,
   claudePaneApplyHistory,
   claudePaneApplySessions,
   claudePaneReset,
+  claudePaneSetCwd,
   createClaudePaneView,
   destroyClaudePaneView,
 } from "./claude-agent-pane";
 import type { SurfaceView } from "./surface-manager";
+import type { SurfaceMetadata } from "../../shared/types";
+
+/** Minimal metadata snapshot for a Claude pane: it owns no process, so
+ *  everything except the cwd is empty. Lets the sidebar card, cwd chip,
+ *  and status bar show the session's real directory instead of
+ *  "resolving…" — the metadata poller never emits for a pane with no
+ *  pid, so nothing overwrites this. */
+export function syntheticClaudeMetadata(
+  cwd: string,
+  now = Date.now(),
+): SurfaceMetadata {
+  return {
+    pid: 0,
+    foregroundPid: 0,
+    cwd,
+    tree: [],
+    listeningPorts: [],
+    git: null,
+    packageJson: null,
+    cargoToml: null,
+    updatedAt: now,
+  };
+}
 
 export interface ClaudeControllerDeps {
   getSurface: (id: string) => SurfaceView | undefined;
@@ -24,6 +49,11 @@ export interface ClaudeControllerDeps {
   /** Pulse the glow ring on an unfocused pane whose turn just ended. */
   notifyGlow: (surfaceId: string) => void;
   getFocusedSurfaceId: () => string | null;
+  /** Publish the session's cwd as surface metadata so the sidebar card,
+   *  cwd chip, and status bar show the real directory instead of
+   *  "resolving…". Claude panes have no pid, so the metadata poller
+   *  never produces a snapshot for them. */
+  publishCwd: (surfaceId: string, cwd: string) => void;
 }
 
 export class ClaudeSurfaceController {
@@ -76,6 +106,14 @@ export class ClaudeSurfaceController {
     });
   }
 
+  /** Seed the pane's cwd from the create payload so it reads correctly
+   *  before the first turn (the SDK only reports cwd on `init`). */
+  setInitialCwd(surfaceId: string, cwd: string): void {
+    const view = this.deps.getSurface(surfaceId);
+    if (view?.claudeView) claudePaneSetCwd(view.claudeView, cwd);
+    this.deps.publishCwd(surfaceId, cwd);
+  }
+
   destroyView(view: ClaudePaneView): void {
     destroyClaudePaneView(view);
   }
@@ -85,6 +123,11 @@ export class ClaudeSurfaceController {
     const view = this.deps.getSurface(surfaceId);
     if (!view?.claudeView) return;
     claudePaneApplyEvent(view.claudeView, event);
+    // The SDK's init message is the first place the session's real cwd
+    // appears — mirror it into surface metadata for the sidebar.
+    for (const op of digestClaudeEvent(event)) {
+      if (op.kind === "meta" && op.cwd) this.deps.publishCwd(surfaceId, op.cwd);
+    }
     const type = (event as { type?: string } | null)?.type;
     if (type === "result" && surfaceId !== this.deps.getFocusedSurfaceId()) {
       this.deps.notifyGlow(surfaceId);

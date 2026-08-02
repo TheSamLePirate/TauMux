@@ -2614,6 +2614,7 @@ const socketHandler = createRpcHandler(
     piAgentManager,
     extensionManager,
     claudeRegistry: claudeIntegration.registry,
+    claudeOpenPane: (opts) => claudePaneHost.createClaudeWorkspaceSurface(opts),
     shutdown: () => gracefulShutdown(),
     testModeEnabled: HT_TEST_MODE,
     telegramDb,

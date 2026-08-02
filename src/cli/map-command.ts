@@ -470,6 +470,17 @@ export function mapCommand(ctx: CliContext): RpcCall {
         }
         return { method: "claude.event", params: { event } };
       }
+      if (sub === "pane") {
+        return {
+          method: "claude.pane",
+          params: {
+            cwd: flags["cwd"],
+            resume: flags["resume"],
+            split: flags["split"] === "true",
+            direction: flags["direction"],
+          },
+        };
+      }
       if (sub === "sessions") {
         return {
           method: "claude.sessions",
@@ -482,7 +493,7 @@ export function mapCommand(ctx: CliContext): RpcCall {
         );
       }
       throw new Error(
-        `Unknown claude subcommand: ${sub ?? "(none)"} (expected event|sessions|statusline)`,
+        `Unknown claude subcommand: ${sub ?? "(none)"} (expected pane|sessions|statusline|install|uninstall|doctor|event)`,
       );
     }
 

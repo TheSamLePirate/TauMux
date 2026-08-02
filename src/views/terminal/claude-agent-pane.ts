@@ -28,6 +28,7 @@
 import { createIcon, type IconName } from "./icons";
 import type { ClaudeAgentSessionWire } from "../../shared/types";
 import { autoResize, escapeHtml, fmtK, mdLite } from "./agent-panel-utils";
+import { IdentityDot, TabBadge } from "./tau-primitives";
 
 // ---------------------------------------------------------------------------
 // Pure: SDK event → transcript ops
@@ -336,6 +337,7 @@ export interface ClaudePaneView {
   sendBtn: HTMLButtonElement;
   interruptBtn: HTMLButtonElement;
   stateDotEl: HTMLSpanElement;
+  stateBadgeEl: HTMLSpanElement;
   modelSelectEl: HTMLSelectElement;
   modeSelectEl: HTMLSelectElement;
   costPillEl: HTMLSpanElement;
@@ -345,6 +347,7 @@ export interface ClaudePaneView {
   resumeMenuEl: HTMLDivElement;
   jumpBtn: HTMLButtonElement;
   welcomeEl: HTMLDivElement;
+  queuedEl: HTMLSpanElement;
 
   _live: {
     assistantEl: HTMLDivElement | null;
@@ -356,6 +359,8 @@ export interface ClaudePaneView {
   _permRowEl: HTMLDivElement | null;
   /** Locally-echoed sends awaiting their SDK user-message replay. */
   _pendingLocalUser: string[];
+  /** Messages sent mid-turn (queued SDK-side until the turn ends). */
+  _queuedCount: number;
   _stick: boolean;
   _streaming: boolean;
   _turnStartedAt: number;
@@ -431,13 +436,26 @@ export function createClaudePaneView(
   container.appendChild(bar);
 
   // ── Header toolbar ──
+  // §5.1: controls live in grouped strips, not as loose widgets. Left
+  // group = session identity + config; right group = telemetry + actions.
   const toolbar = document.createElement("div");
   toolbar.className = "claude-pane-toolbar";
 
-  const stateDotEl = document.createElement("span");
-  stateDotEl.className = "claude-state-dot claude-state-idle";
+  const idGroup = document.createElement("div");
+  idGroup.className = "claude-pane-group claude-pane-id-group";
+
+  // §7/§8.1 — the identity dot IS the agent signal. Shared primitive so
+  // the pulse + focus glow behave exactly like every other τ-mux pane.
+  const stateDotEl = IdentityDot({ kind: "agent" });
+  stateDotEl.classList.add("claude-state-dot");
   stateDotEl.title = "idle";
-  toolbar.appendChild(stateDotEl);
+  idGroup.appendChild(stateDotEl);
+
+  // §8.1 tab badge — the phase in words. The dot stays pure identity
+  // (§7: "the colour IS the identity"); state is carried by the badge.
+  const stateBadgeEl = TabBadge({ kind: "status", text: "idle" });
+  stateBadgeEl.classList.add("claude-state-badge");
+  idGroup.appendChild(stateBadgeEl);
 
   const modelSelectEl = document.createElement("select");
   modelSelectEl.className = "claude-pane-select claude-pane-model-select";
@@ -451,10 +469,10 @@ export function createClaudePaneView(
   modelSelectEl.addEventListener("change", () => {
     callbacks.onSetModel(surfaceId, modelSelectEl.value || undefined);
   });
-  toolbar.appendChild(modelSelectEl);
+  idGroup.appendChild(modelSelectEl);
 
   const modeSelectEl = document.createElement("select");
-  modeSelectEl.className = "claude-pane-select";
+  modeSelectEl.className = "claude-pane-select claude-pane-mode-select";
   modeSelectEl.setAttribute("aria-label", "Permission mode");
   for (const mode of PERMISSION_MODES) {
     const opt = document.createElement("option");
@@ -469,33 +487,41 @@ export function createClaudePaneView(
     );
     callbacks.onSetMode(surfaceId, modeSelectEl.value);
   });
-  toolbar.appendChild(modeSelectEl);
+  idGroup.appendChild(modeSelectEl);
+  toolbar.appendChild(idGroup);
 
   const cwdEl = document.createElement("span");
-  cwdEl.className = "claude-pane-cwd";
+  cwdEl.className = "claude-pane-cwd tau-mono";
   toolbar.appendChild(cwdEl);
 
   const spacer = document.createElement("div");
   spacer.className = "claude-pane-toolbar-spacer";
   toolbar.appendChild(spacer);
 
+  // Telemetry reads as instrumentation (§5.3): mono, tabular numerals.
+  const meterGroup = document.createElement("div");
+  meterGroup.className = "claude-pane-group claude-pane-meters";
   const tokenPillEl = pill("claude-pane-tokens", "Context tokens (last turn)");
   const costPillEl = pill("claude-pane-cost", "Session cost");
   const timePillEl = pill("claude-pane-time", "Turn duration");
-  toolbar.append(tokenPillEl, costPillEl, timePillEl);
+  meterGroup.append(tokenPillEl, costPillEl, timePillEl);
+  toolbar.appendChild(meterGroup);
+
+  const actionGroup = document.createElement("div");
+  actionGroup.className = "claude-pane-group claude-pane-actions";
 
   const newBtn = document.createElement("button");
   newBtn.className = "claude-pane-btn";
   newBtn.textContent = "New";
   newBtn.title = "Start a fresh session in this pane";
   newBtn.addEventListener("click", () => callbacks.onNewSession(surfaceId));
-  toolbar.appendChild(newBtn);
+  actionGroup.appendChild(newBtn);
 
   const resumeBtn = document.createElement("button");
   resumeBtn.className = "claude-pane-btn";
   resumeBtn.textContent = "Sessions";
   resumeBtn.title = "Resume a previous Claude Code session in this pane";
-  toolbar.appendChild(resumeBtn);
+  actionGroup.appendChild(resumeBtn);
 
   const interruptBtn = document.createElement("button");
   interruptBtn.className = "claude-pane-btn claude-pane-interrupt";
@@ -505,7 +531,8 @@ export function createClaudePaneView(
   interruptBtn.addEventListener("click", () =>
     callbacks.onInterrupt(surfaceId),
   );
-  toolbar.appendChild(interruptBtn);
+  actionGroup.appendChild(interruptBtn);
+  toolbar.appendChild(actionGroup);
 
   container.appendChild(toolbar);
 
@@ -530,17 +557,39 @@ export function createClaudePaneView(
   welcomeEl.className = "claude-pane-welcome";
   const welcomeMark = document.createElement("div");
   welcomeMark.className = "claude-welcome-mark";
-  welcomeMark.appendChild(createIcon("bolt", "", 30));
-  welcomeEl.appendChild(welcomeMark);
-  welcomeEl.innerHTML +=
-    `<div class="claude-welcome-title">Claude Code</div>` +
-    `<div class="claude-welcome-sub">A native session in this pane — ` +
-    `streamed answers, tool cards, approvals in the τ-mux modal.</div>`;
+  welcomeMark.appendChild(createIcon("bolt", "", 26));
+  const welcomeTitle = document.createElement("div");
+  welcomeTitle.className = "claude-welcome-title";
+  welcomeTitle.textContent = "Claude Code";
+  const welcomeSub = document.createElement("div");
+  welcomeSub.className = "claude-welcome-sub";
+  welcomeSub.textContent =
+    "A native session in this pane. Streamed answers, tool cards, and approvals in the τ-mux modal.";
+  welcomeEl.append(welcomeMark, welcomeTitle, welcomeSub);
+
+  const welcomeKeys = document.createElement("div");
+  welcomeKeys.className = "claude-welcome-keys";
+  for (const [k, label] of [
+    ["Enter", "send"],
+    ["Shift+Enter", "newline"],
+    ["Esc", "interrupt"],
+  ] as const) {
+    const row = document.createElement("span");
+    row.className = "claude-welcome-key";
+    const kbd = document.createElement("kbd");
+    kbd.textContent = k;
+    const txt = document.createElement("span");
+    txt.textContent = label;
+    row.append(kbd, txt);
+    welcomeKeys.appendChild(row);
+  }
+  welcomeEl.appendChild(welcomeKeys);
+
   const welcomeBtns = document.createElement("div");
   welcomeBtns.className = "claude-welcome-actions";
   const browseBtn = document.createElement("button");
   browseBtn.className = "claude-pane-btn";
-  browseBtn.textContent = "Browse sessions";
+  browseBtn.textContent = "Resume a session";
   browseBtn.addEventListener("click", () => {
     resumeMenuEl.style.display = "block";
     callbacks.onListSessions();
@@ -569,11 +618,16 @@ export function createClaudePaneView(
   sendBtn.textContent = "Send";
   composerWrap.appendChild(sendBtn);
   container.appendChild(composerWrap);
+  const footer = document.createElement("div");
+  footer.className = "claude-pane-footer";
   const hint = document.createElement("div");
   hint.className = "claude-pane-hint";
-  hint.textContent =
-    "Enter to send · Shift+Enter newline · Esc interrupt · sending mid-turn queues";
-  container.appendChild(hint);
+  hint.textContent = "Enter send · Shift+Enter newline · Esc interrupt";
+  const queuedEl = document.createElement("span");
+  queuedEl.className = "claude-pane-queued";
+  queuedEl.style.display = "none";
+  footer.append(hint, queuedEl);
+  container.appendChild(footer);
 
   const view: ClaudePaneView = {
     id: surfaceId,
@@ -589,6 +643,7 @@ export function createClaudePaneView(
     sendBtn,
     interruptBtn,
     stateDotEl,
+    stateBadgeEl,
     modelSelectEl,
     modeSelectEl,
     costPillEl,
@@ -598,6 +653,7 @@ export function createClaudePaneView(
     resumeMenuEl,
     jumpBtn,
     welcomeEl,
+    queuedEl,
     _live: {
       assistantEl: null,
       assistantText: "",
@@ -607,6 +663,7 @@ export function createClaudePaneView(
     _tools: new Map(),
     _permRowEl: null,
     _pendingLocalUser: [],
+    _queuedCount: 0,
     _stick: true,
     _streaming: false,
     _turnStartedAt: 0,
@@ -633,12 +690,19 @@ export function createClaudePaneView(
   const send = () => {
     const text = composerEl.value.trim();
     if (!text || view._exited) return;
+    // Sending while a turn is in flight queues the message SDK-side —
+    // say so, otherwise the send looks like it did nothing.
+    const queued = view._streaming;
     composerEl.value = "";
     autoResize(composerEl);
     // Optimistic local echo — the SDK's user-message replay is deduped
     // against this in the user-text op handler.
     view._pendingLocalUser.push(text);
-    appendUserBubble(view, text);
+    appendUserBubble(view, text, queued);
+    if (queued) {
+      view._queuedCount += 1;
+      renderQueued(view);
+    }
     beginTurn(view);
     callbacks.onPrompt(surfaceId, text);
   };
@@ -675,8 +739,24 @@ function setState(
   view: ClaudePaneView,
   state: "idle" | "working" | "waiting" | "ended",
 ): void {
-  view.stateDotEl.className = `claude-state-dot claude-state-${state}`;
-  view.stateDotEl.title = state;
+  // Preserve the primitive's classes — `tau-identity-dot` carries the
+  // §7 amber colour and the focus glow, `is-running` the §10 tauPulse.
+  view.stateDotEl.className =
+    "tau-identity-dot tau-identity-agent claude-state-dot" +
+    ` claude-state-${state}` +
+    (state === "working" || state === "waiting" ? " is-running" : "");
+  const label =
+    state === "waiting"
+      ? "approval needed"
+      : state === "working"
+        ? "working"
+        : state === "ended"
+          ? "ended"
+          : "idle";
+  view.stateDotEl.title = label;
+  view.stateBadgeEl.textContent = label;
+  view.stateBadgeEl.className =
+    `tau-badge tau-badge-status claude-state-badge claude-badge-${state}`;
 }
 
 function beginTurn(view: ClaudePaneView): void {
@@ -702,16 +782,54 @@ function endTurn(view: ClaudePaneView): void {
     clearInterval(view._timer);
     view._timer = null;
   }
+  // Queued messages are delivered by the SDK once the turn ends.
+  if (view._queuedCount > 0) {
+    view._queuedCount = 0;
+    renderQueued(view);
+    for (const el of view.transcriptEl.querySelectorAll(".claude-msg-queued")) {
+      el.classList.remove("claude-msg-queued");
+      el.removeAttribute("title");
+    }
+  }
 }
 
-function appendUserBubble(view: ClaudePaneView, text: string): void {
+function appendUserBubble(
+  view: ClaudePaneView,
+  text: string,
+  queued = false,
+): void {
   hideWelcome(view);
   finalizeLive(view);
   const el = document.createElement("div");
-  el.className = "claude-msg claude-msg-user";
+  el.className = `claude-msg claude-msg-user${queued ? " claude-msg-queued" : ""}`;
   el.textContent = text;
+  if (queued) el.title = "Queued — delivered when the current turn ends";
   view.transcriptEl.appendChild(el);
   maybeScroll(view);
+}
+
+/** Footer chip: "2 queued" while messages wait for the turn to end. */
+export function renderQueued(view: ClaudePaneView): void {
+  const n = view._queuedCount;
+  view.queuedEl.textContent = n > 0 ? `${n} queued` : "";
+  view.queuedEl.style.display = n > 0 ? "" : "none";
+}
+
+/** Hover affordance: copy an assistant message's markdown source. */
+function attachCopyAffordance(el: HTMLDivElement, getText: () => string): void {
+  const btn = document.createElement("button");
+  btn.className = "claude-msg-copy";
+  btn.textContent = "copy";
+  btn.title = "Copy this message";
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void navigator.clipboard?.writeText(getText());
+    btn.textContent = "copied";
+    setTimeout(() => {
+      btn.textContent = "copy";
+    }, 1200);
+  });
+  el.appendChild(btn);
 }
 
 /** Close any open streaming elements (assistant text / thinking). */
@@ -950,6 +1068,15 @@ function appendResultRow(
   maybeScroll(view);
 }
 
+/** Show a cwd in the header. Used both by the SDK `init` message and,
+ *  earlier, by the create payload so the pane says where it will run
+ *  before the first turn. */
+export function claudePaneSetCwd(view: ClaudePaneView, cwd: string): void {
+  const parts = cwd.split("/").filter(Boolean);
+  view.cwdEl.textContent = parts[parts.length - 1] ?? cwd;
+  view.cwdEl.title = cwd;
+}
+
 function applyMeta(
   view: ClaudePaneView,
   op: Extract<ClaudeTranscriptOp, { kind: "meta" }>,
@@ -967,11 +1094,7 @@ function applyMeta(
     view.modelSelectEl.value = op.model;
   }
   if (op.mode) view.modeSelectEl.value = op.mode;
-  if (op.cwd) {
-    const parts = op.cwd.split("/").filter(Boolean);
-    view.cwdEl.textContent = parts[parts.length - 1] ?? op.cwd;
-    view.cwdEl.title = op.cwd;
-  }
+  if (op.cwd) claudePaneSetCwd(view, op.cwd);
   if (op.sessionId) view._sessionId = op.sessionId;
 }
 
@@ -1006,11 +1129,16 @@ export function claudePaneApplyOps(
       case "assistant-final": {
         const live = view._live;
         if (live.assistantEl) {
+          const finalText = op.text || live.assistantText;
           const content = live.assistantEl.querySelector(
             ".claude-msg-content",
           ) as HTMLDivElement;
-          content.innerHTML = mdLite(op.text || live.assistantText);
+          content.innerHTML = mdLite(finalText);
           live.assistantEl.classList.remove("claude-msg-live");
+          live.assistantEl.querySelector(".claude-cursor")?.remove();
+          if (finalText) {
+            attachCopyAffordance(live.assistantEl, () => finalText);
+          }
           live.assistantEl = null;
           live.assistantText = "";
         } else if (op.text) {
@@ -1021,6 +1149,7 @@ export function claudePaneApplyOps(
           content.className = "claude-msg-content";
           content.innerHTML = mdLite(op.text);
           el.appendChild(content);
+          attachCopyAffordance(el, () => op.text);
           view.transcriptEl.appendChild(el);
         }
         maybeScroll(view);
@@ -1110,6 +1239,8 @@ export function claudePaneReset(view: ClaudePaneView): void {
   view._tools.clear();
   view._permRowEl = null;
   view._pendingLocalUser = [];
+  view._queuedCount = 0;
+  renderQueued(view);
   view._exited = false;
   view._sessionId = null;
   view.composerEl.disabled = false;

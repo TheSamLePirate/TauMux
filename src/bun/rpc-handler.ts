@@ -99,6 +99,15 @@ export interface RpcHandlerOptions {
   /** Health aggregator. When wired, `system.health` returns the
    *  current snapshot. */
   health?: import("./health").HealthRegistry;
+  /** august-plan M3 — opens a native Claude Code pane. Wired to the
+   *  pane host so `ht claude pane` reaches the same factory the command
+   *  palette uses. Omitted in tests. */
+  claudeOpenPane?: (opts: {
+    cwd?: string;
+    resume?: string;
+    split?: boolean;
+    direction?: "right" | "down" | "left" | "up";
+  }) => void;
   /** Plan #09 — when wired, `plan.*` handlers register and the
    *  CLI / agents can publish multi-step plans into the store.
    *  Optional in test fixtures that don't need plan handlers. */
@@ -196,7 +205,9 @@ export function createRpcHandler(
     registerTelegram(deps),
     registerEditor(deps),
     registerExtension(deps),
-    options.claudeRegistry ? registerClaude(deps, options.claudeRegistry) : {},
+    options.claudeRegistry
+      ? registerClaude(deps, options.claudeRegistry, options.claudeOpenPane)
+      : {},
     options.audits ? registerAudit(deps, options.audits) : {},
     options.plans ? registerPlan(deps, options.plans) : {},
     options.askUser ? registerAskUser(deps, options.askUser) : {},

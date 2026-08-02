@@ -27,6 +27,18 @@ session registry stay accurate. The print always happens and always
 comes first — a missing or hung app never degrades the line; exit code
 is always 0.
 
+## claude pane
+
+```bash
+ht claude pane [--cwd P] [--split] [--direction right|down] [--resume ID]
+```
+
+Open a [native Claude Code pane](/features/claude-code-pane/) — the same
+entry point as the command palette, scriptable. `--cwd` sets the session
+directory (defaults to the focused pane's), `--split` opens it beside the
+current pane, `--resume ID` reopens a previous session. Mirrors
+`agent.create` for the pi pane.
+
 ## claude sessions
 
 ```bash

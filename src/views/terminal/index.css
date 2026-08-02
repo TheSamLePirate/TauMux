@@ -12469,22 +12469,37 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   color: var(--tau-text-faint);
 }
 
-/* ── Native Claude Code pane (august-plan WS5, v2) ──────────────────── */
+/* ── Native Claude Code pane (august-plan WS5) ──────────────────────────
+ * τ-mux design system: §1 TAU palette, §3 radius scale (pane 8 / button 5
+ * / chip 3), §7 identity (Claude is an AGENT → amber), §10 canonical
+ * motion only. The pane is chrome around a conversation, so it uses the
+ * same graphite-panel + void-body material as a terminal pane and lets
+ * the amber identity carry the accent. */
 
 .surface-claude {
   display: flex;
   flex-direction: column;
-  background: var(--tau-bg-deep, #11111b);
+  background: var(--tau-void);
   position: relative;
 }
 
+/* Header: one 32 px control row, contents grouped (§5.1). */
 .claude-pane-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-bottom: 1px solid var(--tau-border-subtle, #313244);
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 8px 0 12px;
+  background: var(--tau-panel);
+  border-bottom: 1px solid var(--tau-edge);
   flex: 0 0 auto;
+  min-width: 0;
+}
+
+.claude-pane-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -12492,63 +12507,82 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   flex: 1 1 auto;
 }
 
-/* State dot: idle grey · working pink pulse · waiting amber · ended dim */
+/* Identity dot sizing only — colour/pulse/focus-glow come from the
+ * shared `.tau-identity-dot` primitive (§7, §8.1). */
 .claude-state-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-  background: var(--tau-text-faint, #6c7086);
+  margin-right: 2px;
 }
 
-.claude-state-working {
-  background: #f5c2e7;
-  animation: tauNotifyPulse 1.4s ease-in-out infinite;
+.claude-state-badge {
+  text-transform: lowercase;
 }
 
-.claude-state-waiting {
-  background: #f9e2af;
-  animation: tauNotifyPulse 0.9s ease-in-out infinite;
+.claude-badge-idle {
+  background: transparent;
+  border-color: var(--tau-edge);
+  color: var(--tau-text-mute);
 }
 
-.claude-state-ended {
-  background: var(--tau-border-subtle, #313244);
+.claude-badge-waiting {
+  border-color: var(--tau-warn);
+  color: var(--tau-warn);
+}
+
+.claude-badge-ended {
+  background: transparent;
+  border-color: var(--tau-edge);
+  color: var(--tau-text-faint);
 }
 
 .claude-pane-select {
-  font-size: 10px;
-  max-width: 130px;
-  background: var(--tau-bg-raised, #1e1e2e);
-  color: var(--tau-text-muted, #a6adc8);
-  border: 1px solid var(--tau-border-subtle, #313244);
-  border-radius: 6px;
-  padding: 1px 4px;
+  font-family: var(--tau-font-sans);
+  font-size: 10.5px;
+  max-width: 128px;
+  background: var(--tau-panel-hi);
+  color: var(--tau-text-dim);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-btn);
+  padding: 2px 4px;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.claude-pane-select:hover {
+  color: var(--tau-text);
+  border-color: var(--tau-agent-soft);
 }
 
 .claude-pane-model-select {
-  color: #f5c2e7;
+  color: var(--tau-agent);
 }
 
 .claude-mode-bypass {
-  color: #f38ba8;
-  border-color: #f38ba8;
+  color: var(--tau-err);
+  border-color: var(--tau-err);
 }
 
 .claude-pane-cwd {
   font-size: 10px;
-  color: var(--tau-text-faint, #6c7086);
+  color: var(--tau-text-mute);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 140px;
+  max-width: 160px;
+}
+
+/* Telemetry reads as instrumentation: mono, tabular, quiet. */
+.claude-pane-meters {
+  gap: 4px;
 }
 
 .claude-pane-pill {
-  font-size: 10px;
-  padding: 1px 7px;
-  border-radius: 8px;
-  background: var(--tau-bg-raised, #1e1e2e);
-  color: var(--tau-text-muted, #a6adc8);
+  font-family: var(--tau-font-mono);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: var(--tau-r-chip);
+  border: 0.5px solid var(--tau-edge);
+  background: var(--tau-panel-hi);
+  color: var(--tau-text-dim);
   white-space: nowrap;
 }
 
@@ -12557,47 +12591,57 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 }
 
 .claude-pane-time {
-  min-width: 30px;
+  min-width: 34px;
   text-align: center;
 }
 
 .claude-pane-btn {
-  font-size: 10px;
-  padding: 2px 9px;
-  border-radius: 6px;
-  border: 1px solid var(--tau-border-subtle, #313244);
-  background: var(--tau-bg-raised, #1e1e2e);
-  color: var(--tau-text, #cdd6f4);
+  font-family: var(--tau-font-sans);
+  font-size: 10.5px;
+  padding: 3px 9px;
+  border-radius: var(--tau-r-btn);
+  border: 0.5px solid var(--tau-edge);
+  background: var(--tau-panel-hi);
+  color: var(--tau-text-dim);
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.claude-pane-btn:hover {
-  background: var(--tau-bg-hover, #313244);
+.claude-pane-btn:hover:not(:disabled) {
+  background: var(--tau-edge-soft);
+  color: var(--tau-text);
+  border-color: var(--tau-agent-soft);
 }
 
 .claude-pane-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: default;
 }
 
-.claude-pane-interrupt {
-  color: #f38ba8;
+.claude-pane-interrupt:not(:disabled) {
+  color: var(--tau-err);
+  border-color: color-mix(in srgb, var(--tau-err) 40%, var(--tau-edge));
 }
 
-/* Sessions dropdown */
+.claude-pane-interrupt:hover:not(:disabled) {
+  color: var(--tau-err);
+  border-color: var(--tau-err);
+}
+
+/* Sessions sheet — same family as other floating surfaces (§5.4). */
 .claude-pane-resume-menu {
   position: absolute;
-  top: 58px;
+  top: 38px;
   right: 8px;
   z-index: 30;
-  max-height: 55%;
+  max-height: 60%;
   overflow-y: auto;
   min-width: 320px;
-  background: var(--tau-bg-raised, #1e1e2e);
-  border: 1px solid var(--tau-border-subtle, #313244);
-  border-radius: 10px;
-  box-shadow: 0 10px 28px rgb(0 0 0 / 0.5);
+  max-width: calc(100% - 16px);
+  background: var(--tau-panel);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-pane);
+  box-shadow: 0 12px 32px var(--ht-pm-panel-shadow);
   padding: 4px;
 }
 
@@ -12617,35 +12661,38 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   text-align: left;
   padding: 6px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--tau-r-btn);
   background: transparent;
-  color: var(--tau-text, #cdd6f4);
+  color: var(--tau-text);
   cursor: pointer;
+  transition: background 0.12s ease;
 }
 
 .claude-resume-main:hover {
-  background: var(--tau-bg-hover, #313244);
+  background: var(--tau-panel-hi);
 }
 
 .claude-resume-fork {
   flex: 0 0 auto;
   align-self: center;
+  font-family: var(--tau-font-mono);
   font-size: 9px;
   padding: 2px 7px;
-  border-radius: 6px;
-  border: 1px solid var(--tau-border-subtle, #313244);
+  border-radius: var(--tau-r-chip);
+  border: 0.5px solid var(--tau-edge);
   background: transparent;
-  color: var(--tau-text-faint, #6c7086);
+  color: var(--tau-text-mute);
   cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
 }
 
 .claude-resume-fork:hover {
-  color: #f5c2e7;
-  border-color: #f5c2e7;
+  color: var(--tau-agent);
+  border-color: var(--tau-agent-soft);
 }
 
 .claude-resume-title {
-  font-size: 11px;
+  font-size: 11.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -12654,124 +12701,201 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 
 .claude-resume-meta,
 .claude-resume-empty {
+  font-family: var(--tau-font-mono);
   font-size: 9px;
-  color: var(--tau-text-faint, #6c7086);
+  color: var(--tau-text-mute);
 }
 
 .claude-resume-empty {
-  padding: 8px;
+  padding: 10px 8px;
 }
 
-/* Transcript */
+/* Transcript — void body, generous rhythm on the 4 px grid. */
 .claude-pane-transcript {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 12px 14px 18px;
+  padding: 12px 14px 20px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--tau-text);
   scrollbar-width: thin;
 }
 
+/* Empty state */
 .claude-pane-welcome {
   margin: auto;
   text-align: center;
-  color: var(--tau-text-faint, #6c7086);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
-  padding: 24px;
+  padding: 24px 16px;
+  color: var(--tau-text-mute);
 }
 
 .claude-welcome-mark {
-  font-size: 34px;
-  color: #f5c2e7;
-  line-height: 1;
+  color: var(--tau-agent);
+  opacity: 0.85;
+  line-height: 0;
 }
 
 .claude-welcome-title {
-  font-size: 15px;
-  color: var(--tau-text, #cdd6f4);
+  font-size: 14px;
   font-weight: 600;
+  color: var(--tau-text);
 }
 
 .claude-welcome-sub {
-  font-size: 11px;
-  max-width: 340px;
+  font-size: 11.5px;
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+.claude-welcome-keys {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.claude-welcome-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--tau-text-faint);
+}
+
+.claude-welcome-key kbd {
+  font-family: var(--tau-font-mono);
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: var(--tau-r-chip);
+  border: 0.5px solid var(--tau-edge);
+  background: var(--tau-panel-hi);
+  color: var(--tau-text-mute);
 }
 
 .claude-welcome-actions {
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
+/* Messages */
 .claude-msg {
   max-width: 94%;
-  white-space: pre-wrap;
   word-break: break-word;
-  border-radius: 10px;
+  position: relative;
+  animation: agent-msg-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .claude-msg-user {
   align-self: flex-end;
-  background: var(--tau-bg-raised, #1e1e2e);
-  border: 1px solid var(--tau-border-subtle, #313244);
-  color: var(--tau-text, #cdd6f4);
+  white-space: pre-wrap;
+  background: var(--tau-panel-hi);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-pane);
+  border-bottom-right-radius: var(--tau-r-chip);
+  color: var(--tau-text);
   padding: 7px 11px;
-  border-bottom-right-radius: 3px;
+}
+
+.claude-msg-queued {
+  border-style: dashed;
+  border-color: var(--tau-agent-soft);
+  opacity: 0.75;
 }
 
 .claude-msg-assistant {
-  align-self: flex-start;
-  color: var(--tau-text, #cdd6f4);
+  align-self: stretch;
   width: 100%;
+  color: var(--tau-text);
+  padding-left: 10px;
+  border-left: 1px solid var(--tau-agent-dim);
 }
 
-.claude-msg-assistant .claude-msg-content {
-  white-space: normal;
+.claude-msg-content {
+  overflow-wrap: break-word;
+}
+
+.claude-msg-content strong {
+  color: var(--tau-text);
+  font-weight: 600;
+}
+
+.claude-msg-copy {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-family: var(--tau-font-mono);
+  font-size: 9px;
+  padding: 0 5px;
+  border-radius: var(--tau-r-chip);
+  border: 0.5px solid var(--tau-edge);
+  background: var(--tau-panel);
+  color: var(--tau-text-mute);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+
+.claude-msg:hover .claude-msg-copy {
+  opacity: 1;
+}
+
+.claude-msg-copy:hover {
+  color: var(--tau-agent);
 }
 
 .claude-cursor {
   display: inline-block;
-  width: 7px;
-  height: 13px;
+  width: 6px;
+  height: 12px;
   margin-left: 2px;
   vertical-align: text-bottom;
-  background: #f5c2e7;
-  animation: tauBlink 1s steps(1) infinite;
+  background: var(--tau-agent);
+  animation: tauBlink 1.1s steps(2) infinite;
 }
 
 /* Thinking */
 .claude-think {
-  align-self: flex-start;
+  align-self: stretch;
   width: 100%;
 }
 
 .claude-think-head {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  font-family: var(--tau-font-sans);
   font-size: 10px;
-  color: var(--tau-text-faint, #6c7086);
+  color: var(--tau-text-mute);
   background: transparent;
   border: none;
   cursor: pointer;
   padding: 1px 2px;
+  transition: color 0.12s ease;
+}
+
+.claude-think-head:hover {
+  color: var(--tau-text-dim);
 }
 
 .claude-think-star {
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  background: #cba6f7;
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--tau-text-mute);
   transform: rotate(45deg);
   display: inline-block;
 }
 
 .claude-think-live .claude-think-star {
-  animation: tauNotifyPulse 1.2s ease-in-out infinite;
+  background: var(--tau-agent);
+  animation: tauPulse 1.4s ease-in-out infinite;
 }
 
 .claude-think-chev {
@@ -12785,25 +12909,30 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 .claude-think-body {
   margin-top: 4px;
   font-size: 11px;
-  color: var(--tau-text-faint, #6c7086);
+  color: var(--tau-text-mute);
   white-space: pre-wrap;
-  border-left: 2px solid var(--tau-border-subtle, #313244);
+  border-left: 1px solid var(--tau-edge);
   padding-left: 10px;
   max-height: 240px;
   overflow-y: auto;
 }
 
-/* Tool cards */
+/* Tool cards — instrumentation, not badges (§5.3). */
 .claude-tool {
   align-self: stretch;
-  border: 1px solid var(--tau-border-subtle, #313244);
-  border-radius: 8px;
-  background: color-mix(in srgb, #f5c2e7 4%, transparent);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-pane);
+  background: var(--tau-panel);
   overflow: hidden;
+  transition: border-color 0.12s ease;
+}
+
+.claude-tool:hover {
+  border-color: var(--tau-edge-soft);
 }
 
 .claude-tool-failed {
-  border-color: color-mix(in srgb, #f38ba8 45%, transparent);
+  border-color: color-mix(in srgb, var(--tau-err) 40%, var(--tau-edge));
 }
 
 .claude-tool-head {
@@ -12815,39 +12944,43 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   background: transparent;
   border: none;
   cursor: pointer;
-  color: var(--tau-text, #cdd6f4);
+  color: var(--tau-text);
+  font-family: var(--tau-font-sans);
   font-size: 11px;
   min-width: 0;
 }
 
 .claude-tool-status {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex: 0 0 auto;
+  background: var(--tau-text-faint);
 }
 
 .claude-tool-running {
-  background: #f9e2af;
-  animation: tauNotifyPulse 1s ease-in-out infinite;
+  background: var(--tau-agent);
+  animation: tauPulse 1.4s ease-in-out infinite;
 }
 
 .claude-tool-ok {
-  background: #a6e3a1;
+  background: var(--tau-ok);
 }
 
 .claude-tool-error {
-  background: #f38ba8;
+  background: var(--tau-err);
 }
 
 .claude-tool-name {
-  color: #f5c2e7;
+  color: var(--tau-agent);
   font-weight: 600;
   flex: 0 0 auto;
 }
 
 .claude-tool-summary {
-  color: var(--tau-text-muted, #a6adc8);
+  font-family: var(--tau-font-mono);
+  font-size: 10.5px;
+  color: var(--tau-text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -12856,7 +12989,7 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 }
 
 .claude-tool-chev {
-  color: var(--tau-text-faint, #6c7086);
+  color: var(--tau-text-faint);
   transition: transform 0.12s ease;
   flex: 0 0 auto;
 }
@@ -12866,110 +12999,117 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 }
 
 .claude-tool-body {
-  border-top: 1px solid var(--tau-border-subtle, #313244);
-  padding: 6px 9px;
+  border-top: 0.5px solid var(--tau-edge);
+  padding: 6px 9px 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .claude-tool-section-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-family: var(--tau-font-mono);
   font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--tau-text-faint, #6c7086);
-  margin-bottom: 2px;
+  color: var(--tau-text-faint);
+  margin-bottom: 3px;
 }
 
 .claude-tool-copy {
+  font-family: var(--tau-font-mono);
   font-size: 9px;
   background: transparent;
-  border: 1px solid var(--tau-border-subtle, #313244);
-  border-radius: 5px;
-  color: var(--tau-text-faint, #6c7086);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-chip);
+  color: var(--tau-text-mute);
   cursor: pointer;
   padding: 0 6px;
+  transition: color 0.12s ease, border-color 0.12s ease;
 }
 
 .claude-tool-copy:hover {
-  color: var(--tau-text, #cdd6f4);
+  color: var(--tau-agent);
+  border-color: var(--tau-agent-soft);
 }
 
 .claude-tool-pre {
   margin: 0;
+  font-family: var(--tau-font-mono);
   font-size: 10.5px;
-  line-height: 1.45;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 260px;
   overflow-y: auto;
-  background: var(--tau-bg-deep, #11111b);
-  border-radius: 6px;
+  background: var(--tau-void);
+  border: 0.5px solid var(--tau-edge-soft);
+  border-radius: var(--tau-r-btn);
   padding: 6px 8px;
-  color: var(--tau-text-muted, #a6adc8);
+  color: var(--tau-text-dim);
 }
 
 /* Permission + result rows */
 .claude-perm-row {
   align-self: center;
   font-size: 10.5px;
-  color: #f9e2af;
-  background: color-mix(in srgb, #f9e2af 8%, transparent);
-  border: 1px solid color-mix(in srgb, #f9e2af 30%, transparent);
-  border-radius: 8px;
-  padding: 4px 10px;
+  color: var(--tau-warn);
+  background: var(--tau-agent-dim);
+  border: 0.5px solid color-mix(in srgb, var(--tau-warn) 45%, transparent);
+  border-radius: var(--tau-r-pane);
+  padding: 4px 12px;
+  animation: agent-msg-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .claude-perm-denied {
-  color: #f38ba8;
-  background: color-mix(in srgb, #f38ba8 8%, transparent);
-  border-color: color-mix(in srgb, #f38ba8 30%, transparent);
+  color: var(--tau-err);
+  background: color-mix(in srgb, var(--tau-err) 8%, transparent);
+  border-color: color-mix(in srgb, var(--tau-err) 40%, transparent);
 }
 
 .claude-msg-result {
   align-self: center;
-  font-size: 10px;
-  color: var(--tau-text-faint, #6c7086);
+  font-family: var(--tau-font-mono);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--tau-text-faint);
 }
 
 .claude-msg-error {
-  color: #f38ba8;
+  color: var(--tau-err);
 }
 
 .claude-session-divider {
   align-self: center;
-  font-size: 9.5px;
-  color: var(--tau-text-faint, #6c7086);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-family: var(--tau-font-mono);
+  font-size: 9px;
+  color: var(--tau-text-faint);
   padding: 2px 10px;
-  border-top: 1px solid var(--tau-border-subtle, #313244);
-  border-bottom: 1px solid var(--tau-border-subtle, #313244);
-  border-radius: 12px;
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-chip);
   margin: 4px 0;
 }
 
-/* Jump-to-bottom pill */
+/* Jump-to-bottom */
 .claude-pane-jump {
   position: absolute;
-  bottom: 96px;
-  right: 18px;
+  bottom: 84px;
+  right: 16px;
   z-index: 20;
+  font-family: var(--tau-font-sans);
   font-size: 10px;
   padding: 3px 10px;
-  border-radius: 12px;
-  border: 1px solid var(--tau-border-subtle, #313244);
-  background: var(--tau-bg-raised, #1e1e2e);
-  color: var(--tau-text-muted, #a6adc8);
+  border-radius: var(--tau-r-btn);
+  border: 0.5px solid var(--tau-edge);
+  background: var(--tau-panel-hi);
+  color: var(--tau-text-dim);
   cursor: pointer;
-  box-shadow: 0 4px 14px rgb(0 0 0 / 0.4);
+  transition: color 0.12s ease, border-color 0.12s ease;
 }
 
 .claude-pane-jump:hover {
-  color: #f5c2e7;
+  color: var(--tau-agent);
+  border-color: var(--tau-agent-soft);
 }
 
 /* Composer */
@@ -12978,33 +13118,60 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   gap: 6px;
   align-items: flex-end;
   padding: 8px 10px 4px;
-  border-top: 1px solid var(--tau-border-subtle, #313244);
+  background: var(--tau-panel);
+  border-top: 1px solid var(--tau-edge);
   flex: 0 0 auto;
 }
 
 .claude-pane-input {
   flex: 1 1 auto;
   resize: none;
-  font: inherit;
+  font-family: var(--tau-font-sans);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.45;
   max-height: 160px;
-  background: var(--tau-bg-raised, #1e1e2e);
-  color: var(--tau-text, #cdd6f4);
-  border: 1px solid var(--tau-border-subtle, #313244);
-  border-radius: 9px;
+  background: var(--tau-void);
+  color: var(--tau-text);
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-pane);
   padding: 7px 10px;
   transition: border-color 0.12s ease;
 }
 
+.claude-pane-input::placeholder {
+  color: var(--tau-text-faint);
+}
+
 .claude-pane-input:focus {
   outline: none;
-  border-color: #f5c2e7;
+  border-color: var(--tau-agent-soft);
+}
+
+.claude-pane-input:disabled {
+  opacity: 0.5;
+}
+
+.claude-pane-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px 7px;
+  background: var(--tau-panel);
+  flex: 0 0 auto;
 }
 
 .claude-pane-hint {
   font-size: 9px;
-  color: var(--tau-text-faint, #6c7086);
-  padding: 2px 12px 7px;
-  flex: 0 0 auto;
+  color: var(--tau-text-faint);
+}
+
+.claude-pane-queued {
+  font-family: var(--tau-font-mono);
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: var(--tau-r-chip);
+  border: 0.5px solid var(--tau-agent-soft);
+  color: var(--tau-agent);
+  background: var(--tau-agent-dim);
 }

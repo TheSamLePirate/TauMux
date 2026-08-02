@@ -11,9 +11,12 @@ import { applyTauPaneClasses } from "./tau-primitives";
 import type { TauIdentity } from "./tau-tokens";
 
 /** Map a surface kind to the τ-mux §7 identity signal (colour is identity). */
-function surfaceIdentity(kind: SurfaceKind): TauIdentity {
+export function surfaceIdentity(kind: SurfaceKind): TauIdentity {
   // Agents are amber. Everything the user drives (shell, browser, chat) is cyan.
-  return kind === "agent" ? "agent" : "human";
+  // `claude` is the native Claude Code pane — a robot's session, so it carries
+  // the same amber signal as the pi agent pane (§7: "users must, at a glance,
+  // know which cursor is theirs and which is a robot's").
+  return kind === "agent" || kind === "claude" ? "agent" : "human";
 }
 import { TerminalEffects } from "./terminal-effects";
 import {
@@ -53,7 +56,10 @@ import {
 } from "./browser-surface-controller";
 import type { TelegramPaneView } from "./telegram-pane";
 import { TelegramSurfaceController } from "./telegram-surface-controller";
-import { ClaudeSurfaceController } from "./claude-surface-controller";
+import {
+  ClaudeSurfaceController,
+  syntheticClaudeMetadata,
+} from "./claude-surface-controller";
 import type { ClaudePaneView } from "./claude-agent-pane";
 import type { EditorPaneViewRef } from "./editor-pane";
 import { EditorSurfaceController } from "./editor-surface-controller";
@@ -293,6 +299,10 @@ export class SurfaceManager {
       notifyGlow: (id) => this.notifyGlow(id),
     });
     this.claude = new ClaudeSurfaceController({
+      publishCwd: (id, cwd) => {
+        if (this.metadata.get(id)?.cwd === cwd) return;
+        this.setSurfaceMetadata(id, syntheticClaudeMetadata(cwd));
+      },
       getSurface: (id) => this.surfaces.get(id),
       getFocusedSurfaceId: () => this.focusedSurfaceId,
       allSurfaces: () => this.surfaces.values(),

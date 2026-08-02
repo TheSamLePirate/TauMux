@@ -325,6 +325,9 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
         } else {
           surfaceManager.addClaudeSurface(payload.surfaceId);
         }
+        if (payload.cwd) {
+          surfaceManager.claude.setInitialCwd(payload.surfaceId, payload.cwd);
+        }
       },
       claudeAgentEvent: (payload) => {
         surfaceManager.claude.handleEvent(payload.surfaceId, payload.event);

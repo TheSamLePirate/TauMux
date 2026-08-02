@@ -109,6 +109,15 @@ export interface TauMuxApi {
     screenshot: M; // { surface_id? | workspace? | full_window? , output? }
   };
 
+  /** Native Claude Code pane + session observability. */
+  claude: {
+    /** Open a Claude Code pane. `{ cwd?, resume?, split?, direction? }` */
+    pane: M;
+    event: M;
+    statusline: M;
+    sessions: M;
+  };
+
   sidebar: {
     /** Set a sidebar status chip / chart. Encode a chart renderer in the key
      *  suffix (e.g. `mykey_sparkline`) and pass comma-separated samples as
@@ -433,6 +442,7 @@ const NAMESPACES: Record<string, [string, string][]> = {
     ["fix", "fix"],
   ],
   claude: [
+    ["pane", "pane"],
     ["event", "event"],
     ["statusline", "statusline"],
     ["sessions", "sessions"],

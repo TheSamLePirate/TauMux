@@ -554,6 +554,67 @@ describe("ClaudePaneView (DOM)", () => {
     destroyClaudePaneView(view);
   });
 
+  test("status badge tracks the phase; the identity dot keeps its amber classes", () => {
+    const { view } = makeView();
+    expect(view.stateBadgeEl.textContent).toBe("idle");
+    claudePaneApplyEvent(view, delta("x"));
+    expect(view.stateBadgeEl.textContent).toBe("working");
+    expect(view.stateDotEl.className).toContain("is-running");
+    claudePaneApplyEvent(view, {
+      type: "__tau_permission",
+      status: "pending",
+      toolName: "Bash",
+    });
+    expect(view.stateBadgeEl.textContent).toBe("approval needed");
+    claudePaneApplyEvent(view, { type: "result", subtype: "success" });
+    expect(view.stateBadgeEl.textContent).toBe("idle");
+    expect(view.stateDotEl.className).not.toContain("is-running");
+    // Identity is never repainted by state changes (§7).
+    expect(view.stateDotEl.className).toContain("tau-identity-agent");
+    destroyClaudePaneView(view);
+  });
+
+  test("sending mid-turn marks the message queued and shows the footer chip", () => {
+    const { view } = makeView();
+    // First send starts the turn — not queued.
+    view.composerEl.value = "first";
+    view.sendBtn.click();
+    expect(view.queuedEl.style.display).toBe("none");
+    // Second send lands mid-turn → queued.
+    view.composerEl.value = "second";
+    view.sendBtn.click();
+    expect(view.queuedEl.textContent).toBe("1 queued");
+    expect(
+      view.transcriptEl.querySelectorAll(".claude-msg-queued"),
+    ).toHaveLength(1);
+    // Turn ends → the queue drains and the marks clear.
+    claudePaneApplyEvent(view, { type: "result", subtype: "success" });
+    expect(view.queuedEl.style.display).toBe("none");
+    expect(
+      view.transcriptEl.querySelectorAll(".claude-msg-queued"),
+    ).toHaveLength(0);
+    destroyClaudePaneView(view);
+  });
+
+  test("finished assistant messages get a copy affordance carrying the markdown", () => {
+    const { view } = makeView();
+    claudePaneApplyEvent(view, delta("**hi**"));
+    // Live message: no copy button until it's final.
+    expect(view.transcriptEl.querySelector(".claude-msg-copy")).toBeNull();
+    claudePaneApplyEvent(view, {
+      type: "assistant",
+      message: { content: [{ type: "text", text: "**hi** there" }] },
+    });
+    const copy = view.transcriptEl.querySelector(
+      ".claude-msg-copy",
+    ) as HTMLButtonElement;
+    expect(copy).not.toBeNull();
+    expect(copy.textContent).toBe("copy");
+    // The streaming cursor is gone once finalized.
+    expect(view.transcriptEl.querySelector(".claude-cursor")).toBeNull();
+    destroyClaudePaneView(view);
+  });
+
   test("New button resets nothing itself — it only signals (controller resets)", () => {
     const { view, calls } = makeView();
     const newBtn = [...view.container.querySelectorAll("button")].find(

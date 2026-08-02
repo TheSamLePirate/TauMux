@@ -7,6 +7,18 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.9.0 — Le panneau Claude Code, aligné sur le système de design τ-mux
+
+Le panneau ressemble et se comporte désormais comme une surface d'agent native de τ-mux, plus comme une application invitée.
+
+- **Identité agent ambre (§7).** Une session Claude est la session d'un robot : le panneau porte donc le même signal **ambre** que le panneau d'agent pi — point d'identité, bordure du panneau focalisé, carte de la barre latérale et entrée de la barre d'état. D'un coup d'œil, vous distinguez un panneau d'agent de vos shells cyan. (Il s'affichait auparavant en cyan « humain », avec une palette Catppuccin héritée du pont v1.)
+- **Alignement complet palette/formes/mouvement.** Chaque couleur vient d'un token TAU, les rayons suivent l'échelle du système, la télémétrie est en monospace à chiffres tabulaires, et les animations se limitent aux keyframes canoniques de τ-mux. Une nouvelle suite de tests de conformité verrouille l'ensemble pour éviter toute dérive.
+- **Barre de contrôle groupée.** Identité + badge d'état + modèle + mode de permission à gauche ; compteurs tokens/coût/durée et New · Sessions · Stop à droite. La phase est désormais écrite en toutes lettres (`idle`, `working`, `approval needed`, `ended`) au lieu d'être encodée seulement par une couleur.
+- **Répertoire de travail partout.** Le panneau affiche son cwd dès l'ouverture — dans l'en-tête et via la même pastille cwd que les panneaux terminal — et il alimente la carte de la barre latérale : fini le « resolving… » sur un panneau Claude.
+- **Retour visuel sur la file d'attente.** Envoyer pendant un tour en cours marque le message comme mis en file et affiche une pastille en pied de panneau, au lieu de sembler ne rien faire.
+- **Bouton copier** sur les messages terminés de l'assistant (au survol), en plus des boutons de copie sur l'entrée/sortie des outils.
+- **`ht claude pane`** — ouvrez un panneau Claude Code depuis le CLI ou un script (`--cwd`, `--split`, `--direction`, `--resume`), à l'image de `agent.create` pour le panneau pi. Également exposé en `claude.pane` via JSON-RPC et dans le SDK d'extensions.
+
 ## 0.8.0 — Le panneau Claude Code, complet
 
 Le [panneau natif](/fr/features/claude-code-pane/) passe d'un v1 fonctionnel à la surface phare :
