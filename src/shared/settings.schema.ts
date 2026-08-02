@@ -219,7 +219,7 @@ export const SETTINGS_FIELD_SCHEMAS = {
     "bar",
     "underline",
   ]),
-  terminalRenderer: enumStr("webgl" as "webgl" | "dom", ["webgl", "dom"]),
+  terminalRenderer: enumStr("dom" as "webgl" | "dom", ["webgl", "dom"]),
   packageRunner: enumStr("bun" as "bun" | "npm" | "pnpm" | "yarn", [
     "bun",
     "npm",

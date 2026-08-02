@@ -9,22 +9,32 @@ import { test, expect, requireTier2 } from "../fixtures";
  * regression.
  */
 test.describe("terminal renderer", () => {
-  test("defaults to the GPU renderer and actually attaches it", async ({
-    app,
-  }) => {
+  test("defaults to the DOM renderer", async ({ app }) => {
     requireTier2(app);
 
+    // DOM is the default because the GPU renderer shipped on by default
+    // in v0.4.9 and rendered panes blank in the real app. Opt-in until
+    // that is understood and verified on-screen.
     const setting = await app.rpc.ui.readSettingsField("terminalRenderer");
-    expect(setting).toBe("webgl");
+    expect(setting).toBe("dom");
 
     const state = await app.rpc.ui.readState();
-    expect(state.terminalRenderer).toBe("webgl");
+    expect(state.terminalRenderer).toBe("dom");
   });
 
-  test("switching to DOM re-attaches every live terminal in place", async ({
+  test("opting into GPU and back leaves the terminals alive", async ({
     app,
   }) => {
     requireTier2(app);
+
+    await app.rpc.ui.setSettingsField("terminalRenderer", "webgl");
+    // NOTE: this asserts the setting round-trips and the panes survive
+    // the swap. It deliberately does NOT assert `state.terminalRenderer`
+    // becomes "webgl" — attachment is deferred until a pane has non-zero
+    // layout, and "attached" was never the same thing as "painting
+    // pixels", which is exactly the gap that let v0.4.9 ship blank.
+    const surfaces = await app.rpc.surface.list();
+    expect(surfaces.length).toBeGreaterThan(0);
 
     await app.rpc.ui.setSettingsField("terminalRenderer", "dom");
     await expect
@@ -33,16 +43,6 @@ test.describe("terminal renderer", () => {
       })
       .toBe("dom");
 
-    // The terminal must still be alive and driving the PTY after the swap
-    // — the buffer is renderer-independent, so nothing should be lost.
-    const surfaces = await app.rpc.surface.list();
-    expect(surfaces.length).toBeGreaterThan(0);
-
-    await app.rpc.ui.setSettingsField("terminalRenderer", "webgl");
-    await expect
-      .poll(async () => (await app.rpc.ui.readState()).terminalRenderer, {
-        timeout: 5_000,
-      })
-      .toBe("webgl");
+    expect((await app.rpc.surface.list()).length).toBeGreaterThan(0);
   });
 });

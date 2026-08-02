@@ -30,11 +30,17 @@ export interface AppSettings {
   lineHeight: number;
   cursorStyle: "block" | "bar" | "underline";
   cursorBlink: boolean;
-  /** Which xterm renderer to use. "webgl" draws glyphs from a GPU
-   *  texture atlas and is dramatically cheaper under heavy output;
-   *  "dom" forces xterm's element-per-run fallback. WebGL degrades to
-   *  DOM automatically when unavailable or on context loss, so this is
-   *  a preference, not a guarantee. */
+  /** Which xterm renderer to use.
+   *
+   *  "webgl" draws glyphs from a GPU texture atlas and is dramatically
+   *  cheaper under heavy output; "dom" is xterm's element-per-run
+   *  renderer. Default is "dom": WebGL shipped on by default in v0.4.9
+   *  and rendered panes blank in the real app, so it is opt-in until
+   *  that is understood and verified on-screen (not just asserted to
+   *  have attached). See doc/tracking_desktop_perf.md.
+   *
+   *  Either way this is a preference, not a guarantee — WebGL degrades
+   *  to DOM when unavailable or on context loss. */
   terminalRenderer: "webgl" | "dom";
 
   // Theme
@@ -696,7 +702,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   lineHeight: 1.0,
   cursorStyle: "block",
   cursorBlink: true,
-  terminalRenderer: "webgl",
+  terminalRenderer: "dom",
 
   themePreset: THEME_PRESETS[0].id,
   accentColor: THEME_PRESETS[0].accentColor,

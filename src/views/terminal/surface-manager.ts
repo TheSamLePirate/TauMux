@@ -184,7 +184,7 @@ export class SurfaceManager {
   private osc94Enabled = true;
   /** Renderer requested by settings. New terminals attach with this;
    *  changing it re-attaches every live terminal in place. */
-  private rendererKind: TerminalRendererKind = "webgl";
+  private rendererKind: TerminalRendererKind = "dom";
   /** Cached `ht set-status` key order from settings — applied when
    *  building the sidebar workspace cards so user reorder choices
    *  propagate without a full settings re-flow. */
@@ -1281,10 +1281,15 @@ export class SurfaceManager {
       for (const view of this.surfaces.values()) {
         if (!view.term) continue;
         view.renderer?.dispose();
-        view.renderer = attachRenderer(view.term, this.rendererKind);
-        // Repaint so the freshly-attached renderer has the current
-        // screen rather than waiting for the next PTY write.
-        view.term.refresh(0, view.term.rows - 1);
+        view.renderer = null;
+        if (this.rendererKind === "webgl") {
+          // Same size guard as the creation path — a hidden or
+          // not-yet-laid-out pane picks the renderer up on its next
+          // layout pass instead of attaching to a 0x0 canvas.
+          this.ensureRendererAttached(view);
+        } else {
+          view.term.refresh(0, view.term.rows - 1);
+        }
       }
     }
 
@@ -2294,10 +2299,14 @@ export class SurfaceManager {
     term.loadAddon(searchAddon);
     term.open(termLayerEl);
 
-    // Must run after open(): the WebGL addon binds its canvas to the
-    // element xterm just created. Never throws — falls back to the DOM
-    // renderer and reports that through the handle.
-    const renderer = attachRenderer(term, this.rendererKind);
+    // The GPU renderer is attached later, from applyLayout(), NOT here.
+    // At this point the pane container has been added to the DOM but the
+    // layout pass has not sized it, so the terminal element is still
+    // 0x0. The DOM renderer copes with that (it re-measures on the next
+    // frame), but the WebGL renderer sizes its canvas and glyph atlas at
+    // attach time and never recovers from a zero-sized drawing buffer —
+    // the pane renders permanently blank. See ensureRendererAttached().
+    const renderer: RendererHandle | null = null;
 
     const effects = new TerminalEffects(termEl, term);
     effects.setEnabled(this.terminalEffectsEnabled);
@@ -2533,6 +2542,31 @@ export class SurfaceManager {
     });
   }
 
+  /**
+   * Attach the GPU renderer to a terminal that is now laid out.
+   *
+   * Deferred rather than done at creation because the WebGL renderer
+   * captures its drawing-buffer size when it attaches: bring it up
+   * against a 0x0 element and the pane stays blank forever. Called from
+   * applyLayout() after fitSurfaceTerminal(), and cheap to call
+   * repeatedly — it returns immediately once a renderer exists.
+   */
+  private ensureRendererAttached(view: SurfaceView): void {
+    if (this.rendererKind !== "webgl") return;
+    if (view.renderer || !view.term) return;
+
+    // xterm's own screen element is the thing the addon measures.
+    const screen = view.term.element?.querySelector(".xterm-screen");
+    const rect = (screen as HTMLElement | null)?.getBoundingClientRect();
+    if (!rect || rect.width < 1 || rect.height < 1) return;
+
+    view.renderer = attachRenderer(view.term, "webgl");
+    // Commit the current buffer to the freshly-attached renderer rather
+    // than waiting for the next PTY write — otherwise a quiet pane shows
+    // nothing until something happens to type into it.
+    view.term.refresh(0, view.term.rows - 1);
+  }
+
   private applyLayout(): void {
     const rects = this.applyPositions();
     const ws = this.activeWorkspace();
@@ -2558,6 +2592,9 @@ export class SurfaceManager {
         // No xterm fit, no OOPIF sync.
       } else {
         fitSurfaceTerminal(view);
+        // Now that the pane has real dimensions, it is safe to bring up
+        // the GPU renderer. No-op after the first successful attach.
+        this.ensureRendererAttached(view);
         view.effects?.setFocused(view.id === this.focusedSurfaceId);
         if (view.term) {
           this.onResize(surfaceId, view.term.cols, view.term.rows);
