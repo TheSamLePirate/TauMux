@@ -17,6 +17,7 @@ import type { AppState } from "./rpc-handlers/types";
 import { ClaudePlanMirror } from "./claude-plan-mirror";
 import { ClaudeSessionRegistry } from "./claude-session-registry";
 import { ClaudeStatusPresenter } from "./claude-status-presenter";
+import { ClaudeTeamWatcher } from "./claude-team-watcher";
 import type { PlanStore } from "./plan-store";
 
 export interface ClaudeIntegration {
@@ -37,6 +38,10 @@ export function createClaudeIntegration(): ClaudeIntegration {
     registry,
     attach(callRpc, plans, getState) {
       new ClaudeStatusPresenter({ callRpc }).attach(registry);
+      // M4 / WS6 — passive agent-teams pill. Reads ~/.claude/teams on a
+      // slow poll; silent (one stat per tick) when the experimental
+      // feature is unused.
+      new ClaudeTeamWatcher({ callRpc }).start();
       if (plans && getState) {
         new ClaudePlanMirror({
           plans,

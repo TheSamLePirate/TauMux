@@ -10,8 +10,8 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 |---|---|---|---|---|
 | M1 — "τ-mux sees Claude" (WS1 + WS1b + WS2) | 0.5.0 | ✅ | 0.5.0 | `4287936f` |
 | M2 — "τ-mux acts for Claude" (WS3 + WS4 + WS7) | 0.6.0 | ✅ | 0.6.0 | `e2cea5e3` |
-| M3 — "Claude lives in τ-mux" (WS5 + WS8) | 0.7.0 | ✅ | 0.7.0 | _see M3 detail_ |
-| M4 — "AAA" (WS6 + WS9) | 0.8.0 | ⏸ | — | — |
+| M3 — "Claude lives in τ-mux" (WS5 + WS8) | 0.7.0 | ✅ | 0.7.0 | `50cbee6a` |
+| M4 — "AAA" (WS6 + WS9) | 0.8.0 | 🔶 partial (0.7.1) | — | _see M4 detail_ |
 
 ## M1 detail
 
@@ -85,6 +85,21 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
 5. Tests: pane view DOM smoke (happy-dom like telegram-pane tests), message
    handler roundtrip, restore branch.
 
+## M4 detail (partial — 0.7.1)
+
+| Item | Status | Notes |
+|---|---|---|
+| WS6 — `claude-team-watcher.ts` (teams/tasks dirs → sidebar `team` pill) | ✅ | schema-defensive, silent when unused, 5 fixture tests |
+| WS9 — `doc/system-claude-integration.md` (architecture + trust model) | ✅ | |
+| WS9 — palette entries (New Claude Code Pane / splits) | ✅ | shipped with M3 |
+| WS9 — sessions section in the sidebar | ⏸ REMAINING | new module (NOT sidebar.ts growth): list live registry sessions w/ phase dot + ctx meter + cost, click→focus; needs a `claudeSessions` push bun→webview or reuse of `claude.sessions` polling |
+| WS7→M4 — Settings → Claude Code GUI tab | ⏸ REMAINING | `settings-claude.ts` section calling a new `claude.install*` RPC that shells the same `claude-settings-edit.ts` functions |
+| WS9 — keyboard ⌘⌥C, approval sound, a11y pass on new DOM | ⏸ REMAINING | `KEYBOARD_BINDINGS` entry → `claudeAgentCreate`; `claudeApprovalSound` setting per `notificationSound*` pattern |
+| WS9 — pane-header Claude phase chip (deferred from M1) | ⏸ REMAINING | `renderSurfaceChips` + registry state push |
+| M2 deferral — bridge bundling into .app + copy-install | ⏸ REMAINING | electrobun.config copy rule + installer copy path |
+| WS9 — website-doc sweep (EN + FR, version-stamped) | ⏸ ON USER REQUEST | per CLAUDE.md ("update the website-doc on user request"); the full backlog is ready in `doc/changes_to_document.md` (M1+M2+M3 entries) |
+| M4 completion gate (→ 0.8.0) | ⏸ | close the REMAINING rows above, then `bun run bump:minor` |
+
 ## Deviations from plan
 
 1. **⚠️ Module-size baseline promoted (+7 lines on `src/bun/index.ts`, 3209 → 3216).**
@@ -139,7 +154,7 @@ Legend: ✅ done · 🔄 in progress · ⏸ pending · ⚠️ deviation (explain
   install docs, en + fr) — fold on next user-driven docs sweep.
 - website-doc — due at M2 boundary per plan §6.
 
-## Log
+## Log (see git for full detail)
 
 - **2026-08-02** — Plan authored (`doc/august-plan.md`). Tracking file created.
 - **2026-08-02** — M1 implemented end-to-end: shared types + registry +
