@@ -24,3 +24,19 @@ Méthodes du pont Telegram. Nécessite un jeton de bot configuré — voir [Pont
 | `telegram.read` | `ht telegram read --chat <id> --limit N` |
 | `telegram.send` | `ht telegram send --chat <id> "<text>"` |
 | `telegram.settings` | (panneau de paramètres uniquement) |
+
+## Côté lecture
+
+| Méthode | Params | Résultat |
+|---|---|---|
+| `telegram.chats` | `{}` | `{ chats: [{ id, name?, lastMessageAt }] }` — plus récent d'abord |
+| `telegram.history` | `{ chat_id, limit?, before? }` | `{ messages: TelegramWireMessage[] }` |
+| `telegram.restart` | `{}` | `"OK"` — recrée le service de long-poll |
+
+`telegram.history` lit le journal SQLite
+(`~/Library/Application Support/hyperterm-canvas/telegram.db`) : il fonctionne
+donc même quand le polling est désactivé. `before` est un timestamp de message
+pour la pagination.
+
+`telegram.restart` est le remède à un token renouvelé ou à une panne API
+transitoire — sans redémarrer l'application.

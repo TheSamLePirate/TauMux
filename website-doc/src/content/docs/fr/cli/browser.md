@@ -149,3 +149,37 @@ ht browser browser:1 close
 
 - [Panneaux de navigateur](/fr/features/browser-panes/)
 - [Méthodes JSON-RPC du navigateur](/fr/api/browser/)
+
+## Commandes cookies
+
+Ce sont des commandes de premier niveau (pas `ht browser <sous-commande>`) :
+
+```bash
+ht browser-cookie-list [domaine]
+ht browser-cookie-get <url>
+ht browser-cookie-set <nom> <valeur> --domain <d> [--path /] [--secure true]
+ht browser-cookie-delete <domaine> <nom>
+ht browser-cookie-clear [domaine]
+ht browser-cookie-import <fichier> [--format json|netscape]
+ht browser-cookie-export [--format json|netscape]
+ht browser-cookie-capture [--surface S]
+```
+
+Un pot à cookies contient des identifiants — traitez un export comme un fichier
+de mots de passe. Voir l'[API `browser.cookie_*`](/fr/api/browser/).
+
+## Alias historiques
+
+Chaque verbe `ht browser <sous-commande>` existe aussi en commande plate, pour
+que les anciens scripts continuent de fonctionner :
+
+```bash
+ht browser-open [url]        ht browser-navigate <url>    ht browser-url
+ht browser-split [url]       ht browser-back              ht browser-forward
+ht browser-reload            ht browser-close             ht browser-eval <js>
+ht browser-snapshot          ht browser-find <query>      ht browser-devtools
+ht browser-history           ht browser-clear-history
+```
+
+Préférez la forme `ht browser …` dans les nouveaux scripts : c'est elle qui
+reçoit les nouvelles sous-commandes.

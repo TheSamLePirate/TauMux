@@ -56,7 +56,7 @@ import appScreenshot from "../../../../assets/images/App_screenshot.png";
     Floating SVG, HTML, image, and canvas2d overlays driven by extra file descriptors (fd 3/4/5). Independent DOM elements — draggable, resizable, interactive.
   </Card>
   <Card title="Live process metadata" icon="magnifier">
-    1 Hz `ps` + `lsof` observer surfaces cwd, ports, CPU%, RSS, and full argv for every descendant of every shell. Chips, sidebar, and CLI all feed from one pipeline.
+    A 1 Hz observer built on libSystem (`sysctl` + `proc_pidinfo`, ~2 ms/tick) surfaces cwd, ports, CPU%, RSS, and full argv for every descendant of every shell — falling back to `ps`/`lsof` if the kernel ABI ever shifts. Chips, sidebar, and CLI all feed from one pipeline.
   </Card>
   <Card title="`ht` CLI" icon="seti:powershell">
     Spawn panes, send keys, manipulate layouts, open ports in a browser, send signals, inspect trees. Ships as a standalone binary inside the .app.
@@ -66,6 +66,21 @@ import appScreenshot from "../../../../assets/images/App_screenshot.png";
   </Card>
   <Card title="Web mirror" icon="rocket">
     The entire native UI mirrored over WebSocket to anything on the LAN. Token auth, origin checks, resume-on-reconnect.
+  </Card>
+  <Card title="Claude Code, deeply integrated" icon="star">
+    Live session phase, cost, context and rate limits in the sidebar; permission prompts answered from a modal, from Telegram, or automatically; the native task list mirrored into the plan panel; and a [first-class Claude Code pane](/features/claude-code-pane/).
+  </Card>
+  <Card title="Coding-agent panes" icon="rocket">
+    The [pi agent](/integrations/pi/) and [Claude Code](/features/claude-code-pane/) run as real panes — amber identity, streamed transcripts, tool cards, approvals — beside your shells.
+  </Card>
+  <Card title="Extension apps" icon="puzzle">
+    A Bun backend plus a Vite frontend in an iframe, driving every τ-mux control surface through a typed [SDK](/features/extensions/). Fully trusted code — install what you would pipe to a shell.
+  </Card>
+  <Card title="Telegram bridge" icon="comment">
+    A chat pane, notification forwarding, and answer-from-your-phone [ask-user](/features/ask-user/) prompts, with a SQLite log and a fail-closed allowlist.
+  </Card>
+  <Card title="Editor &amp; file explorer" icon="document">
+    CodeMirror [editor panes](/features/file-explorer-and-editor/) and an inline file tree on the workspace card.
   </Card>
 </CardGrid>
 
@@ -92,7 +107,7 @@ import appScreenshot from "../../../../assets/images/App_screenshot.png";
 - **Framework** — [Electrobun](https://electrobun.dev) 1.16+
 - **Terminal** — [xterm.js](https://xtermjs.org) 5.3
 - **PTY** — `Bun.spawn` with `terminal` option (no node-pty)
-- **Process metadata** — `ps` + `lsof` (no tmux, no shell integration)
+- **Process metadata** — libSystem FFI, `ps` + `lsof` fallback (no tmux, no shell integration)
 - **Default theme** — Obsidian (10 built-in presets)
 
 License: MIT.

@@ -18,7 +18,7 @@ System-level introspection methods.
 
 ```json
 { "method": "system.version", "params": {} }
-→ { "result": { "version": "0.10.1", "build": "…" } }
+→ { "result": { "version": "0.10.2", "build": "…" } }
 ```
 
 The version string comes from a single source of truth in `package.json` and is propagated to six additional files by `scripts/bump-version.ts` on every release bump. The script gained five flags in 0.3.143 (Phase 8 release tooling) — see the [release-process page](/development/release-process/) for the full workflow.
@@ -105,3 +105,26 @@ A handful of RPC methods are deliberately **not** wired into the `ht` CLI. They 
 | `surface.rename` | Surfaces don't carry user-visible names today — only the `pane.label` chip does. Method exists so a future labeling UI can wire up cleanly without a schema bump. | Internal webview tooling. |
 | `notification.dismiss` | Equivalent CLI surface would be `ht dismiss <id>`, which is rarely useful interactively (the user just clicks the X). The webview calls it on swipe / X-button. | Notification overlay UI; integration tests. |
 | `browser.stop_find` | Pairs with `browser.find` (`ht browser find-in-page`); the cancel half is exclusively a UI concern (no human types `ht browser stop-find`). | DevTools-style overlays in the webview. |
+
+## system.health
+
+```json
+{ "method": "system.health", "params": {} }
+→ { "status": "ok" | "degraded", "subsystems": [
+     { "id": "pty", "state": "ok", "detail": "Session manager ready" }, … ] }
+```
+
+Aggregated subsystem health: PTY, socket, web mirror, Telegram, plus one row
+per [audit](/api/audit/). This is what [`ht health`](/cli/system/) prints.
+
+## system.shutdown
+
+```json
+{ "method": "system.shutdown", "params": {} }
+→ "OK"
+```
+
+Graceful shutdown: persists the layout and notifications, stops the web mirror
+and Telegram service, reaps extension backends and agent subprocesses, then
+exits. Extensions can call this too — see the
+[trust model](/features/extensions/#trust-model).

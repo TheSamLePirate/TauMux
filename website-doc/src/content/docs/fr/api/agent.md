@@ -5,6 +5,20 @@ sidebar:
   order: 10
 ---
 
+## Cycle de vie du panneau
+
+Le panneau d'agent pi (surfaces `agent:`). Voir [`ht agent`](/fr/cli/surfaces-and-io/).
+
+| Méthode | Params | Résultat |
+|---|---|---|
+| `agent.create` | `{}` | `"OK"` — nouveau panneau dans un nouvel espace |
+| `agent.create_split` | `{ direction? }` | `"OK"` — `"right"`/`"horizontal"` (défaut) ou `"down"`/`"vertical"` |
+| `agent.list` | `{}` | `string[]` — ids des agents vivants |
+| `agent.count` | `{}` | `number` |
+| `agent.close` | `{ agent_id \| surface_id }` | `"OK"` |
+
+## Protocole ask-user
+
 Les agents appellent `agent.ask_user` lorsqu'ils ont besoin d'une réponse humaine structurée (oui/non, choix multiple, texte libre ou « confirmer cette commande »). La file d'attente côté bun conserve la requête jusqu'à ce que la [modale du webview](/fr/features/ask-user/), une CLI sœur ou [Telegram](/fr/features/telegram-bridge/) la résolve. L'appel `agent.ask_user` lui-même est **long-pending** — il retourne la réponse en un seul aller-retour, sans polling requis.
 
 | Méthode | Params | Résultat |

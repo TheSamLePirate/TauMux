@@ -13,7 +13,7 @@ C'est un **logiciel à un stade précoce** qui privilégie la performance et la 
 
 - **Un terminal qui se comporte comme un vrai terminal.** xterm.js pour le rendu, `Bun.spawn` avec `terminal: true` pour les PTY. Couleurs, applications TUI, édition de ligne, rapport de souris — tout fonctionne simplement.
 - **Superpositions canvas flottantes** aux côtés du texte. Les scripts peuvent diffuser du contenu SVG, HTML, des images, et du `canvas2d` via des descripteurs de fichiers supplémentaires et le placer n'importe où dans le panneau.
-- **Une vue en direct, multi-panneaux, de chaque processus.** Un surveillant `ps` + `lsof` à 1 Hz expose le cwd, les ports TCP en écoute, le CPU%, le RSS, et l'argv complet pour chaque descendant de chaque shell. Ce pipeline unique alimente les puces des panneaux, la barre latérale, le Process Manager, le miroir web, et le CLI `ht`.
+- **Une vue en direct, multi-panneaux, de chaque processus.** Un surveillant 1 Hz bâti sur libSystem (`sysctl` + `proc_pidinfo`, ~2 ms par tick ; `ps`/`lsof` restent en repli auto-validé) expose le cwd, les ports TCP en écoute, le CPU%, le RSS, et l'argv complet pour chaque descendant de chaque shell. Ce pipeline unique alimente les puces des panneaux, la barre latérale, le Process Manager, le miroir web, et le CLI `ht`.
 - **Un CLI de premier ordre (`ht`).** Lancez des panneaux, envoyez des touches, ouvrez des ports dans un navigateur, tuez des processus, pilotez un navigateur intégré — tout depuis un shell.
 - **Un navigateur intégré.** Divisez un navigateur WebKit aux côtés des terminaux ; entièrement scriptable pour l'automatisation par agents.
 - **Un miroir web.** L'interface complète diffusée via WebSocket vers tout appareil sur le LAN.

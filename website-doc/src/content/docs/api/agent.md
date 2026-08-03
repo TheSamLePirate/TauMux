@@ -1,9 +1,23 @@
 ---
 title: agent.*
-description: ask_user, ask_pending, ask_answer, ask_cancel — the JSON-RPC surface for the agent → human ask-user protocol.
+description: create, list, close, plus ask_user, ask_pending, ask_answer, ask_cancel — the JSON-RPC surface for the agent → human ask-user protocol.
 sidebar:
   order: 10
 ---
+
+## Pane lifecycle
+
+The pi coding-agent pane (`agent:` surfaces). See [`ht agent`](/cli/surfaces-and-io/).
+
+| Method | Params | Result |
+|---|---|---|
+| `agent.create` | `{}` | `"OK"` — new agent pane in a new workspace |
+| `agent.create_split` | `{ direction? }` | `"OK"` — `"right"`/`"horizontal"` (default) or `"down"`/`"vertical"` |
+| `agent.list` | `{}` | `string[]` — live agent ids |
+| `agent.count` | `{}` | `number` |
+| `agent.close` | `{ agent_id \| surface_id }` | `"OK"` |
+
+## Ask-user protocol
 
 Agents call `agent.ask_user` when they need a structured human answer (yes/no, multiple choice, free text, or "confirm this command"). The bun-side queue holds the request until the [webview modal](/features/ask-user/), a sibling CLI, or [Telegram](/features/telegram-bridge/) resolves it. The `agent.ask_user` call itself is **long-pending** — it returns the response in one round-trip, no polling required.
 

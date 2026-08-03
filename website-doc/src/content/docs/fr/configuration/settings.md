@@ -1,102 +1,160 @@
 ---
-title: Référence des paramètres
-description: Chaque paramètre dans `~/Library/Application Support/hyperterm-canvas/settings.json` — ce qu'il fait et quand il s'applique.
+title: Référence des réglages
+description: Chaque réglage de `~/Library/Application Support/hyperterm-canvas/settings.json` — ce qu'il fait et quand il s'applique.
 sidebar:
   order: 1
 ---
 
-τ-mux persiste les paramètres dans `~/Library/Application Support/hyperterm-canvas/settings.json`. Le panneau de paramètres (`⌘,`) écrit ce fichier ; vous pouvez aussi l'éditer à la main — `SettingsManager` surveille le fichier et le recharge à chaque modification.
+τ-mux persiste ses réglages dans `~/Library/Application Support/hyperterm-canvas/settings.json`. Le panneau de réglages (`⌘,`) écrit ce fichier ; vous pouvez aussi l'éditer à la main — `SettingsManager` surveille le fichier et recharge à chaque changement.
 
-Schéma : `AppSettings` dans `src/shared/settings.ts`. Valeurs par défaut : `DEFAULT_SETTINGS`. Validation : `validateSettings`.
+Schéma : `AppSettings` dans `src/shared/settings.ts`. Défauts : `DEFAULT_SETTINGS`. Validation : `validateSettings` (schémas par champ dans `settings.schema.ts` : une valeur hors bornes ou mal typée retombe sur le défaut au lieu de casser l'application).
 
-## Général
+Cette page liste **tous** les champs, avec le défaut lu depuis `DEFAULT_SETTINGS`.
+
+## Terminal
 
 | Champ | Type | Défaut | Effet |
 |---|---|---|---|
-| `shellPath` | string | `""` (= `$SHELL`) | Chemin vers le binaire du shell. **S'applique uniquement aux nouvelles surfaces** — les shells existants continuent de tourner. |
-| `scrollbackLines` | number | `10000` | Lignes conservées dans le tampon de défilement par surface. |
+| `shellPath` | string | `""` | Shell binary. Empty = `$SHELL`. **New surfaces only** — existing shells keep running. |
+| `scrollbackLines` | number | `10000` | Lines retained in the scrollback buffer per surface. |
+| `fontFamily` | string | `'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Berkeley Mono', 'SF Mono', 'Menlo', monospace` | Terminal font stack. |
+| `fontSize` | number | `13` | Terminal font size in px. |
+| `lineHeight` | number | `1` | Line-height multiplier (0.8–2.0). |
+| `cursorStyle` | `"block"` \| `"bar"` \| `"underline"` | `"block"` | Terminal cursor shape. |
+| `cursorBlink` | boolean | `true` | Blink the terminal cursor. |
+| `terminalRenderer` | `"dom"` \| `"webgl"` | `"dom"` | **Experimental** GPU renderer. Falls back to DOM automatically on unsupported hardware, init failure, or context loss — the settings panel shows a live "running on DOM — reason" hint when it has. It shipped enabled in v0.4.9 and rendered panes blank on some setups; a one-time migration in v0.4.12 reset a persisted `webgl` back to `dom`. Command palette: "Use WebGL/DOM Terminal Renderer". |
+| `terminalOsc94Enabled` | boolean | `true` | Honour OSC 9;4 progress sequences (per-pane progress chip). |
 
 ## Apparence
 
 | Champ | Type | Défaut | Effet |
 |---|---|---|---|
-| `fontFamily` | string | `"JetBrains Mono"` | Police du terminal. Bascule sur la suivante disponible si non installée. |
-| `fontSize` | number | `13` | Taille de police en px. |
-| `lineHeight` | number | `1.2` | Multiplicateur de hauteur de ligne. |
-| `cursorStyle` | enum | `"block"` | `block`, `underline`, `bar`. |
-| `cursorBlink` | boolean | `true` | Si le curseur clignote. |
-| `copyOnSelect` | boolean | `false` | Copie automatique de la sélection. |
+| `themePreset` | string | `"tau"` | Named theme preset. See [Themes](/fr/configuration/themes/). |
+| `chromeTheme` | `"system"` \| `"graphite-dark"` \| `"graphite-light"` \| `"high-contrast"` | `"system"` | App chrome theme, independent of the terminal palette. |
+| `accentColor` | string | `"#6fe9ff"` | Primary accent (cyan — focus, selection, human identity). |
+| `secondaryColor` | string | `"#ffc56b"` | Secondary accent (amber — agent identity). |
+| `foregroundColor` | string | `"#d6e2e8"` | Default terminal foreground. |
+| `bgBase` | string | `"0, 0, 0"` | Terminal background as an `r, g, b` triple, combined with `terminalBgOpacity`. |
+| `terminalBgOpacity` | number | `1` | Terminal background opacity, 0–1. |
+| `ansiColors` | object | 16-colour TAU palette | The full ANSI 16 (`black`…`brightWhite`). |
+| `terminalBloom` | boolean | `false` | WebGL bloom layer over the terminal. |
+| `bloomIntensity` | number | `0` | Bloom strength, 0–2. |
+| `legacyBloomIntensity` | number | `0` | Snapshot of the pre-TAU bloom value, kept so the migration is reversible. |
+| `bloomMigratedToTau` | boolean | `false` | Internal migration marker — do not set by hand. |
+| `paneGap` | number | `2` | Gap between panes in px, 0–20. |
+| `sidebarWidth` | number | `320` | Sidebar width in px, 200–600. |
+| `layoutVariant` | `"bridge"` \| `"cockpit"` \| `"atlas"` | `"bridge"` | Chrome layout variant. |
 
-## Thème
-
-| Champ | Type | Défaut | Effet |
-|---|---|---|---|
-| `themePreset` | enum | `"obsidian"` | L'un des 10 préréglages. Voir [Thèmes](/fr/configuration/themes/). |
-| `themeOverrides` | object | `{}` | Surcharges par couleur ; fusionnées dans le préréglage choisi. |
-| `backgroundOpacity` | number | `1.0` | 0.0–1.0 ; la fenêtre sous-jacente de l'application a un noir uni derrière. |
-| `accentColor`, `secondaryColor`, `foregroundColor` | string | (préréglage) | Surcharges rapides pour les couleurs les plus utilisées. |
-| `ansiPalette` | object | (préréglage) | Palette ANSI 16 couleurs complète. |
-
-## Effets
-
-| Champ | Type | Défaut | Effet |
-|---|---|---|---|
-| `bloomEnabled` | boolean | `false` | Couche de bloom WebGL au-dessus du terminal. |
-| `bloomIntensity` | number | `0.5` | 0.0–1.0. Plus haut = lueur plus brillante. |
-| `legacyBloomIntensity` | number | (snapshot) | Capturée automatiquement lors de la migration depuis l'ancien slider de bloom. Alimente le bouton **Restore previous bloom (X.XX)** dans Paramètres → Effets, qui n'apparaît que si vous avez été migré ET que vous n'avez pas encore choisi un `bloomIntensity` non nul depuis. Un clic règle `bloomIntensity` à la valeur capturée et masque le bouton. |
-
-## Réseau (miroir web)
+## Barre latérale & cartes d'espace
 
 | Champ | Type | Défaut | Effet |
 |---|---|---|---|
-| `autoStartWebMirror` | boolean | `false` | Si le miroir démarre au lancement de l'application. |
-| `webMirrorPort` | number | `3000` | Port TCP. **Redémarre** un miroir en cours d'exécution lors d'un changement. |
-| `webMirrorBind` | string | `"0.0.0.0"` | Adresse de bind. Mettez `"127.0.0.1"` pour rester local uniquement. **Redémarre** lors d'un changement. |
-| `webMirrorAuthToken` | string | `""` | Secret partagé. Vide = pas d'authentification. **Redémarre** lors d'un changement. Depuis la **v0.3.161**, ce paramètre (et `webMirrorBind`) s'applique aussi quand le miroir démarre automatiquement au lancement, et pas seulement lors d'un démarrage manuel. |
-| `rpcSocketRequireToken` | boolean | `true` | **Activé par défaut depuis la v0.4.12.** Le socket Unix `ht` exige un jeton propre au boot pour les commandes qui modifient l'état (saisie dans les panneaux, arrêt de processus, installation d'extensions) ; les diagnostics en lecture seule restent ouverts pour que `ht doctor` fonctionne. Le `ht` fourni, les ponts pi/Claude et le SDK d'extensions le présentent automatiquement — rien ne change pour les usages internes ; ne le désactivez que pour un client tiers qui parle directement le protocole socket sans envoyer `__token`. Défense en profondeur, pas une frontière stricte. Paramètres → Réseau → « Exiger un jeton de socket RPC ». *(ajouté v0.3.163 ; défaut inversé v0.4.12)* |
-| `terminalRenderer` | `"dom"` \| `"webgl"` | `"dom"` | **Expérimental.** Rendu GPU opt-in pour les panneaux terminal (addon WebGL de xterm.js) avec repli DOM automatique (matériel non supporté, échec d'init, perte de contexte) — le panneau de réglages affiche un indice « running on DOM — raison » en cas de repli. Livré activé en v0.4.9, il rendait des panneaux vides sur certaines configurations ; une migration unique en v0.4.12 remet un `webgl` persisté sur `dom` (le réactiver ensuite tient). Palette : « Use WebGL/DOM Terminal Renderer ». *(ajouté v0.4.9)* |
+| `workspaceCardDensity` | `"compact"` \| `"comfortable"` \| `"spacious"` | `"comfortable"` | Vertical density of workspace cards. |
+| `workspaceCardShowMeta` | boolean | `true` | Show the meta row (cwd, branch). |
+| `workspaceCardShowStats` | boolean | `true` | Show CPU / memory / pane stats. |
+| `workspaceCardShowPanes` | boolean | `true` | Show the per-pane list. |
+| `workspaceCardShowManifests` | boolean | `true` | Show the `package.json` / `Cargo.toml` card. |
+| `workspaceCardShowFileExplorer` | boolean | `true` | Show the inline file explorer. |
+| `workspaceFileExplorerShowHidden` | boolean | `false` | Include dotfiles in the file explorer. |
+| `workspaceFileExplorerMaxEntries` | number | `200` | Cap on entries listed per directory. |
+| `workspaceCardShowStatusPills` | boolean | `true` | Show `ht set-status` pills on the card. |
+| `workspaceCardShowProgress` | boolean | `true` | Show the progress bar (`ht set-progress`, OSC 9;4). |
+| `statusBarKeys` | string[] | `["workspace","panes","cpu","mem","procs","fg","cwd","branch","ht-all","ports","time"]` | Which segments the bottom status bar renders, in order. |
+| `htStatusKeyOrder` | string[] | `[]` | Explicit ordering for `ht set-status` keys; unlisted keys follow. |
+| `htStatusKeyHidden` | string[] | `[]` | `ht set-status` keys to hide. |
 
-## Navigateur
+## Notifications
 
 | Champ | Type | Défaut | Effet |
 |---|---|---|---|
-| `searchEngine` | enum | `"google"` | `google`, `duckduckgo`, `bing`, `kagi`. |
-| `homePage` | string | `"about:blank"` | URL à ouvrir dans les nouveaux panneaux navigateur. |
-| `forceDarkMode` | boolean | `false` | Injecte du CSS pour forcer le mode sombre sur les pages. |
-| `interceptTerminalLinks` | boolean | `false` | Si vrai, cliquer sur un lien `http(s)://` dans n'importe quel terminal l'ouvre dans un panneau navigateur τ-mux au lieu du navigateur système par défaut. |
+| `notificationSoundEnabled` | boolean | `true` | Play `finish.mp3` when a sidebar notification arrives. |
+| `notificationSoundVolume` | number | `1` | Arrival-cue volume, 0–1. |
+| `notificationOverlayEnabled` | boolean | `true` | Show the transient on-screen notification overlay. |
+| `notificationOverlayMs` | number | `6000` | How long the overlay stays up, in ms. |
+
+## Claude Code
+
+Voir l'[intégration Claude Code](/fr/integrations/claude-code/).
+
+| Champ | Type | Défaut | Effet |
+|---|---|---|---|
+| `claudeAutoApprove` | boolean | `false` | Auto-accept the permission prompt Claude Code shows in a **terminal** pane by sending Enter. Only fires for that terminal prompt — never the τ-mux approval modal, never the Claude Code pane — pauses itself after a burst, and logs every approval to the pane's sidebar log. Off by default: this grants unattended consent for commands the agent asks to run. |
+| `claudeAutoApproveDelayMs` | number | `700` | Delay before the Enter keystroke, 0–10000 ms. The prompt is re-checked when the delay expires, so a prompt you answered yourself never receives a stray Enter. |
+
+## Panneaux navigateur
+
+| Champ | Type | Défaut | Effet |
+|---|---|---|---|
+| `browserSearchEngine` | `"google"` \| `"duckduckgo"` \| `"bing"` \| `"kagi"` | `"google"` | Engine used when the address bar input isn't a URL. |
+| `browserHomePage` | string | `""` | Page opened for a new browser surface. Empty = blank. |
+| `browserForceDarkMode` | boolean | `false` | Ask pages to render in dark mode. |
+| `browserInterceptTerminalLinks` | boolean | `false` | Open links clicked in a terminal in a browser pane instead of the system browser. |
+| `browserPartitionMode` | `"shared"` \| `"per-surface"` | `"per-surface"` | Cookie/storage partitioning across browser panes. |
+
+## Scripts
+
+| Champ | Type | Défaut | Effet |
+|---|---|---|---|
+| `packageRunner` | `"bun"` \| `"npm"` \| `"pnpm"` \| `"yarn"` | `"bun"` | Command used to run `package.json` scripts from the sidebar. |
+
+## Miroir web & RPC
+
+Voir [auth & durcissement](/fr/web-mirror/auth-and-hardening/).
+
+| Champ | Type | Défaut | Effet |
+|---|---|---|---|
+| `webMirrorPort` | number | `3000` | Mirror listen port, 1–65535. |
+| `autoStartWebMirror` | boolean | `false` | Start the mirror at launch. |
+| `webMirrorBind` | `"127.0.0.1"` \| `"0.0.0.0"` | `"0.0.0.0"` | Bind address. **`0.0.0.0` exposes the mirror to your whole LAN — set `webMirrorAuthToken` before enabling it there.** |
+| `webMirrorAuthToken` | string | `""` | Shared token for mirror access. **Empty means authentication is off.** |
+| `rpcSocketRequireToken` | boolean | `true` | Require the per-boot token for state-mutating `ht` socket calls. On by default since v0.4.12; every first-party client presents it automatically. |
 
 ## Telegram
 
-| Champ | Type | Défaut | Effet |
-|---|---|---|---|
-| `botToken` | string | `""` | Jeton de BotFather. |
-| `accessPolicy` | enum | `"open"` | `open`, `dm-only`, `allowlist`. |
-| `allowedChats` | string[] | `[]` | Identifiants de chat autorisés sous `allowlist`. |
-| `telegramAllowedUserIds` | string[] | `[]` | Identifiants numériques d'utilisateurs Telegram autorisés à joindre le bot. Depuis la **v0.3.161**, ce paramètre est **vide** par défaut, et une liste vide est **fail-closed** — elle rejette *tous* les messages entrants. Vous devez saisir votre propre identifiant Telegram numérique pour recevoir des messages. |
-| `forwardNotifications` | boolean | `false` | Transférer `ht notify` vers Telegram. |
-| `forwardChatId` | string | `""` | Chat cible pour les notifications transférées. |
-
-## Avancé
+Voir le [pont Telegram](/fr/features/telegram-bridge/).
 
 | Champ | Type | Défaut | Effet |
 |---|---|---|---|
-| `paneGap` | number | `4` | Pixels entre les panneaux split. |
-| `sidebarWidth` | number | `260` | Largeur de la barre latérale en px. |
-| `notificationSoundEnabled` | boolean | `true` | Jouer un son sur `ht notify --sound`. |
-| `notificationSoundVolume` | number | `0.5` | 0.0–1.0. |
+| `telegramEnabled` | boolean | `false` | Run the long-poll bot service. |
+| `telegramBotToken` | string | `""` | BotFather token. |
+| `telegramAllowedUserIds` | string | `""` | Comma-separated Telegram user ids allowed to talk to the bot. **Fail-closed: empty rejects everyone.** |
+| `telegramNotificationsEnabled` | boolean | `false` | Forward sidebar notifications to Telegram. |
+| `telegramNotificationButtonsEnabled` | boolean | `false` | Add inline action buttons to forwarded notifications. |
+| `telegramAskUserEnabled` | boolean | `false` | Forward `ht ask` questions to Telegram (answer from your phone). |
+
+## Auto-continue
+
+Objet imbriqué — voir [auto-continue](/fr/features/auto-continue/).
+
+| Champ | Type | Défaut | Effet |
+|---|---|---|---|
+| `autoContinue.engine` | `"off"` \| … | `"off"` | Which decision engine runs. `off` disables the feature entirely. |
+| `autoContinue.dryRun` | boolean | `true` | Decide and log, but never send the continue keystroke. |
+| `autoContinue.cooldownMs` | number | `3000` | Minimum gap between continues. |
+| `autoContinue.maxConsecutive` | number | `5` | Runaway guard — pauses after this many consecutive continues. |
+| `autoContinue.modelProvider` | string | `"anthropic"` | Provider for the model-backed engine. |
+| `autoContinue.modelName` | string | `"claude-haiku-4-5-20251001"` | Model used by the model-backed engine. |
+| `autoContinue.modelApiKeyEnv` | string | `"ANTHROPIC_API_KEY"` | Env var read for that provider's key. |
+
+## Audits
+
+| Champ | Type | Défaut | Effet |
+|---|---|---|---|
+| `auditsGitUserNameExpected` | string \| null | `null` | Expected `git config user.name`; the startup audit warns on drift. `null` disables the check. |
 
 ## Quand les changements s'appliquent
 
-La plupart des champs s'appliquent en direct dans tous les panneaux à l'instant où ils sont enregistrés. Exceptions :
+La plupart des champs s'appliquent en direct dès la sauvegarde. Exceptions :
 
-- `shellPath` — nouvelles surfaces uniquement.
-- `webMirrorPort`, `webMirrorBind`, `webMirrorAuthToken` — redémarrent un miroir en cours d'exécution. Depuis la v0.3.161, `webMirrorBind` et `webMirrorAuthToken` prennent aussi effet lors du démarrage automatique au lancement.
-- `autoStartWebMirror` — uniquement au lancement (basculez le miroir manuellement à tout moment).
-- `rpcSocketRequireToken` — s'applique immédiatement aux nouvelles connexions au socket `ht`.
+- `shellPath` — nouvelles surfaces seulement.
+- `webMirrorPort`, `webMirrorBind`, `webMirrorAuthToken` — redémarrez un miroir actif (pris en compte au démarrage automatique depuis la v0.3.161).
+- `autoStartWebMirror` — au lancement seulement (le miroir se bascule à la main à tout moment).
+- `rpcSocketRequireToken` — s'applique immédiatement aux nouvelles connexions socket `ht`.
+- `terminalRenderer` — s'applique aux panneaux créés ensuite.
 
-## Édition du JSON
+## Éditer le JSON
 
-Sûr à éditer pendant que τ-mux tourne. Le fichier est rechargé à chaque changement. Les champs inconnus sont écartés au chargement avec un avertissement dans le logger.
+Éditable pendant que τ-mux tourne : le fichier est rechargé au changement. Les champs inconnus sont supprimés au chargement (avec un avertissement dans le log) et les valeurs invalides retombent sur leur défaut.
 
 ```bash
 $EDITOR ~/Library/Application\ Support/hyperterm-canvas/settings.json

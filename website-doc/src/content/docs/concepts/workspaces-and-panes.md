@@ -5,7 +5,24 @@ sidebar:
   order: 2
 ---
 
-τ-mux organizes work into **workspaces** containing a binary-tree of **panes**. Each pane hosts a **surface** — currently one of: a terminal, a browser, an agent panel, or a Telegram chat.
+τ-mux organizes work into **workspaces** containing a binary-tree of **panes**.
+
+Each pane hosts a **surface**. There are seven kinds:
+
+| Kind | Backed by | Notes |
+|---|---|---|
+| `terminal` | a real PTY (`Bun.spawn`, `terminal: true`) | the default; the only kind with a shell |
+| `browser` | an embedded webview | [browser panes](/features/browser-panes/) |
+| `agent` | the pi coding agent (`pi --mode rpc`) | [pi integration](/integrations/pi/) |
+| `claude` | a Claude Code session (Agent SDK) | [Claude Code pane](/features/claude-code-pane/) |
+| `telegram` | the Telegram bot service | [Telegram bridge](/features/telegram-bridge/) |
+| `editor` | CodeMirror | [file explorer & editor](/features/file-explorer-and-editor/) |
+| `extension` | a Bun backend + Vite frontend iframe | [extension apps](/features/extensions/) |
+
+Only `terminal` panes own a PTY. Everything else is a DOM (or webview) surface
+that happens to live in the same pane tree — which is why they never appear in
+the process tree and why the metadata poller has nothing to report for them.
+
 
 ## The hierarchy
 
@@ -13,7 +30,7 @@ sidebar:
 Workspace
   └── PaneTree (binary tree of splits)
         └── PaneLeaf
-              └── Surface (terminal | browser | agent | telegram)
+              └── Surface (terminal | browser | agent | claude | telegram | editor | extension)
 ```
 
 - **Workspace** — independent layout. Switch with `⌘⇧]` / `⌘⇧[` or jump directly with `⌘1…9`.
@@ -59,7 +76,7 @@ Closing a workspace (`⌘⇧W`) also kills every shell inside it. The metadata p
 
 ## Persistence
 
-Workspace and pane layout is saved to `~/Library/Application Support/hyperterm-canvas/settings.json`. On restart, terminal surfaces re-spawn shells with the saved cwd and shellPath; non-PTY surfaces (browser, agent, telegram) re-mount with their saved state.
+Workspace and pane layout is saved to `~/Library/Application Support/hyperterm-canvas/layout.json` (settings live separately in `settings.json`). On restart, terminal surfaces re-spawn shells with the saved cwd and `shellPath`; non-PTY surfaces re-mount with their saved state — a browser pane restores its URL, an editor its file, an extension pane its extension id. Agent and Claude panes re-mount as **fresh** sessions (the old subprocess died with the app); a Claude pane offers resume from its Sessions picker. If an extension has since been uninstalled, that slot degrades to a terminal.
 
 ## Read more
 

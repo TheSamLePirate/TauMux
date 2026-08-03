@@ -30,6 +30,71 @@ Crée une nouvelle surface terminal comme split du panneau focalisé (ou ciblé 
 - `--shell <path>` — remplace le binaire shell uniquement pour cette surface.
 - `--ratio 0.6` — ratio du split.
 
+## rename-surface
+
+```bash
+ht rename-surface "build watcher"
+ht rename-surface --surface surface:3 "api server"
+```
+
+Définit le titre affiché du panneau. Sans `--surface`, renomme le panneau où
+vous êtes (`HT_SURFACE`), sinon le panneau focalisé. Un panneau renommé ignore
+ensuite les séquences OSC 0/2 : le nom que vous posez tient.
+
+## list-panes
+
+```bash
+ht list-panes
+```
+
+L'arbre de panneaux de l'espace actif (directions et ratios de split), là où
+`list-surfaces` donne une liste plate.
+
+## list-panels
+
+```bash
+ht list-panels [--surface S]
+```
+
+Les [panneaux canvas](/fr/features/canvas-panels/) ouverts dans une surface.
+
+## list-browsers
+
+```bash
+ht list-browsers
+```
+
+Chaque [panneau navigateur](/fr/features/browser-panes/) avec son id et son URL.
+
+## editor
+
+```bash
+ht edit src/index.ts
+ht editor open|split <path> [--split] [--direction right|down] [--create]
+ht editor list
+ht editor save|reload|close [editor:N]
+```
+
+Panneaux [éditeur CodeMirror](/fr/features/file-explorer-and-editor/).
+
+## agent
+
+```bash
+ht agent create | create-split | list | count | close --agent <id>
+```
+
+Le [panneau d'agent pi](/fr/integrations/pi/). Pour Claude Code, voir
+[`ht claude pane`](/fr/cli/claude/).
+
+## run-script
+
+```bash
+ht run-script --command "bun run dev" --cwd ~/code/app
+```
+
+Exécute une commande comme les boutons de script de la barre latérale — dans un
+vrai panneau que vous voyez tourner.
+
 ## close-surface
 
 ```bash

@@ -9,6 +9,34 @@ bridge and `ht claude statusline`; the read side drives `ht claude
 sessions`, diagnostics, and future UI. Also reachable through the
 extension SDK's `claude` namespace.
 
+## claude.pane
+
+```json
+{ "method": "claude.pane",
+  "params": { "cwd": "/repo", "split": true, "direction": "right" } }
+→ "OK"
+```
+
+Opens a [native Claude Code pane](/features/claude-code-pane/) — the same entry
+point as the command palette. `resume` reopens a previous session id. Without
+`cwd` the pane inherits the focused pane's working directory. Mirrors
+`agent.create` for the pi pane.
+
+## claude.approve
+
+```json
+{ "method": "claude.approve", "params": { "surface_id": "surface:3" } }
+→ { "ok": true, "surfaceId": "surface:3" }
+→ { "ok": false, "reason": "no Claude Code terminal prompt is waiting" }
+```
+
+Accepts the permission prompt Claude Code is showing in a **terminal** pane by
+sending Enter. Without `surface_id` it answers the longest-waiting session.
+Refuses when nothing is waiting, when the approval was routed to the τ-mux
+modal instead (there is no terminal prompt to answer), or when the session is a
+Claude Code pane. See
+[accepting terminal prompts](/integrations/claude-code/#accepting-terminal-prompts).
+
 ## claude.event
 
 ```json

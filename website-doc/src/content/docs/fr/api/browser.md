@@ -96,3 +96,22 @@ Fournissez au plus un seul de `selector`, `text`, `loadState`. Timeout par défa
 ## CLI
 
 Mappé 1:1 par [`ht browser`](/fr/cli/browser/).
+
+## Cookies
+
+Un pot à cookies persistant partagé avec les panneaux navigateur (partitionné
+selon [`browserPartitionMode`](/fr/configuration/settings/)).
+
+| Méthode | Params | Résultat |
+|---|---|---|
+| `browser.cookie_list` | `{ domain? }` | cookies stockés, filtrés par domaine |
+| `browser.cookie_get` | `{ url }` | cookies envoyés pour cette URL |
+| `browser.cookie_set` | `{ name, value, domain, path?, secure?, http_only?, expires? }` | `"OK"` |
+| `browser.cookie_delete` | `{ domain, name }` | `"OK"` |
+| `browser.cookie_clear` | `{ domain? }` | `"OK"` — tout, ou un domaine |
+| `browser.cookie_import` | `{ path, format? }` | nombre importé (`json` ou `netscape`) |
+| `browser.cookie_export` | `{ format? }` | pot sérialisé (`json` par défaut) |
+| `browser.cookie_capture` | `{ surface_id? }` | cookies récoltés sur la page courante |
+
+Les cookies sont des identifiants — traitez un export comme un fichier de mots
+de passe. Voir [`ht browser-cookie-*`](/fr/cli/browser/).

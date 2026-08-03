@@ -18,7 +18,7 @@ Méthodes d'introspection au niveau système.
 
 ```json
 { "method": "system.version", "params": {} }
-→ { "result": { "version": "0.10.1", "build": "…" } }
+→ { "result": { "version": "0.10.2", "build": "…" } }
 ```
 
 La chaîne de version vient d'une unique source de vérité dans `package.json` et est propagée vers six autres fichiers par `scripts/bump-version.ts` à chaque bump de release. Le script a gagné cinq flags en 0.3.143 (outillage de release Phase 8) — voir la [page processus de release](/fr/development/release-process/) pour le workflow complet.
@@ -105,3 +105,26 @@ Quelques méthodes RPC ne sont **délibérément pas** câblées dans le CLI `ht
 | `surface.rename` | Les surfaces ne portent pas de nom visible utilisateur aujourd'hui — seulement le chip `pane.label`. La méthode existe pour qu'une future UI de labeling se câble proprement sans bump de schéma. | Outillage interne webview. |
 | `notification.dismiss` | L'équivalent CLI serait `ht dismiss <id>`, rarement utile interactivement (l'utilisateur clique simplement sur le X). La webview l'appelle au swipe / clic X. | UI overlay des notifications ; tests d'intégration. |
 | `browser.stop_find` | S'apparie avec `browser.find` (`ht browser find-in-page`) ; la moitié « annuler » est exclusivement une préoccupation UI (personne ne tape `ht browser stop-find`). | Overlays type DevTools dans la webview. |
+
+## system.health
+
+```json
+{ "method": "system.health", "params": {} }
+→ { "status": "ok" | "degraded", "subsystems": [
+     { "id": "pty", "state": "ok", "detail": "Session manager ready" }, … ] }
+```
+
+Santé agrégée des sous-systèmes : PTY, socket, miroir web, Telegram, plus une
+ligne par [audit](/fr/api/audit/). C'est ce qu'affiche [`ht health`](/fr/cli/system/).
+
+## system.shutdown
+
+```json
+{ "method": "system.shutdown", "params": {} }
+→ "OK"
+```
+
+Arrêt propre : persiste la disposition et les notifications, arrête le miroir
+web et le service Telegram, récolte les backends d'extensions et les
+sous-processus d'agents, puis quitte. Les extensions peuvent aussi l'appeler —
+voir le [modèle de confiance](/fr/features/extensions/).
