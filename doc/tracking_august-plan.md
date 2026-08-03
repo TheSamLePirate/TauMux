@@ -284,15 +284,10 @@ hung forever with `Do you want to proceed? ❯ 1. Yes` on screen.
 | Statusline tees still inert | done | They don't bump the seq. |
 | Regression tests | done | +6; verified they fail (4/6) against the old guard and pass with the fix. |
 
-**Open finding — not fixed**
+**Open finding — fixed in 0.10.7, see below**
 - Claude Code fires the same `Notification / permission_prompt` hook for
-  **AskUserQuestion** modals as for tool-permission prompts. Auto-approve's
-  guards (tty source, has surface, not ended, not an agent pane) do not
-  distinguish them, so it will answer a question addressed to the user by
-  selecting the default (first) option. Observed live on session 3a1e8c56.
-  Fix needs the in-flight tool name — either `PreToolUse` tool tracking in
-  the registry, or wiring τ-mux's own `PermissionRequest` hook (currently
-  the user's `PermissionRequest` goes to superset/orca, not τ-mux).
+  **AskUserQuestion** modals as for tool-permission prompts. Observed live
+  on session 3a1e8c56.
 
 **Verification notes**
 - The send path was never at fault: `ht claude approve --surface surface:5`
@@ -300,3 +295,27 @@ hung forever with `Do you want to proceed? ❯ 1. Yes` on screen.
 - Live end-to-end auto-approval confirmed earlier the same session
   (`chmod 600 /tmp/tau-probe.txt`, working → waiting-approval → idle, mode
   644 → 600, no human input).
+
+### 0.10.7 — auto-approve no longer answers questions meant for the user
+
+Closes the open finding from 0.10.6.
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Discriminating signal | done | `PreToolUse` / `PostToolUse` scoped by matcher to `AskUserQuestion|ExitPlanMode` → new `ask-start` / `ask-end` bridge events carrying the tool name. |
+| Why matcher-scoped | done | An unscoped `PreToolUse` spawns a bridge process per tool call. Scoped, it fires only for the two tools that put a question in front of a human. |
+| `awaitingUserChoice` state | done | Holds the tool name while a modal is up; reset on restore. |
+| Auto path refuses | done | Guard lives in `canAutoApprove`, the single rule-set function. |
+| Manual path refuses too | done | `ht claude approve` declines as well — Enter on a choice modal picks a default, which is not what "approve" means. |
+| Hook-ordering race | covered | The two hooks are separate processes; the existing delay + live re-check blocks the send when `ask-start` arrives after the notification. Test pins both orders. |
+| Missed `ask-end` cannot wedge | done | `prompt` / `stop` / `session-end` all clear it. |
+| Tests | done | +7; verified 5 fail with the guard removed. 3415 green. |
+
+**Deployment note**
+- Needs `ht claude install` (adds exactly two hooks — dry-run showed `+2`,
+  everything else `=`) plus a restart of running Claude Code sessions.
+  Applied to this machine at 0.10.7; backup written next to settings.json.
+- Rejected alternative: parsing the session transcript to find the
+  in-flight tool. Zero deployment friction, but couples to an
+  upstream-defined JSONL format, and this project deliberately removed its
+  transcript-parsing machinery in an earlier milestone.

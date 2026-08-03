@@ -88,3 +88,27 @@ the backlog by overwriting the pending entries with a fresh
   multiple-choice question addressed to the user by selecting its default
   (first) option. Not yet fixed — needs the in-flight tool name to
   discriminate.
+
+## v0.10.7 — auto-approve no longer answers questions meant for you
+
+- **Fix (the limitation noted under 0.10.6).** Claude Code raises the same
+  `Notification / permission_prompt` hook for an **AskUserQuestion** or
+  **ExitPlanMode** modal as it does for "may I run this command", with the
+  same generic message — so on the hook stream alone the two are
+  indistinguishable, and auto-approve was answering multiple-choice
+  questions addressed to the user by selecting their default option.
+- Two new hooks, `PreToolUse` / `PostToolUse` **scoped by matcher** to
+  `AskUserQuestion|ExitPlanMode`, publish `ask-start` / `ask-end`. The
+  matcher matters: an unscoped PreToolUse would spawn a bridge process on
+  every single tool call. `ClaudeSessionState.awaitingUserChoice` holds the
+  tool name while a modal is up, and both `canAutoApprove` and the manual
+  `ht claude approve` refuse while it is set — pressing Enter on a choice
+  modal picks a default, which is not what "approve" means.
+- Hook ordering between the two processes is not guaranteed; the existing
+  delay + live re-check covers the case where `ask-start` lands after the
+  notification.
+- A missed `ask-end` (crash, timeout) cannot wedge a session: `prompt`,
+  `stop` and `session-end` all clear the flag.
+- **Requires `ht claude install`** to wire the two hooks, then a restart of
+  running Claude Code sessions. `ht claude doctor` reports them as missing
+  until then.

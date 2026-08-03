@@ -353,3 +353,86 @@ describe("consecutive prompts within one turn", () => {
     expect(keySends(calls)).toHaveLength(2);
   });
 });
+
+// ── questions addressed to the human ──────────────────────────────────
+//
+// Claude Code raises the SAME `Notification / permission_prompt` hook for
+// an AskUserQuestion / ExitPlanMode modal as it does for "may I run this
+// command", carrying the same generic message. Observed live: a
+// multiple-choice question put the session into
+// `waiting-approval | tty | "Claude needs your permission"`, which the
+// engine would have answered by pressing Enter — silently selecting the
+// default option on the user's behalf.
+
+describe("never answers a question addressed to the user", () => {
+  test("canAutoApprove refuses while a choice modal is up", () => {
+    const base = state({
+      phase: "waiting-approval",
+      approvalSource: "tty",
+      surfaceId: "surface:2",
+    });
+    expect(canAutoApprove(base)).toBe(true);
+    expect(canAutoApprove({ ...base, awaitingUserChoice: "AskUserQuestion" })).toBe(
+      false,
+    );
+    expect(canAutoApprove({ ...base, awaitingUserChoice: "ExitPlanMode" })).toBe(
+      false,
+    );
+  });
+
+  test("no Enter is sent for a question modal's permission_prompt", () => {
+    const { calls, send, flush } = setup();
+    send({ type: "ask-start", message: "AskUserQuestion" });
+    send({ type: "notify-permission", message: "Claude needs your permission" });
+    flush();
+    expect(keySends(calls)).toHaveLength(0);
+  });
+
+  test("a hook that lands AFTER the notification still blocks the send", () => {
+    // The two hooks are separate processes; ordering is not guaranteed.
+    // The delay + live re-check is what has to save us here.
+    const { calls, send, flush } = setup();
+    send({ type: "notify-permission", message: "Claude needs your permission" });
+    send({ type: "ask-start", message: "AskUserQuestion" });
+    flush();
+    expect(keySends(calls)).toHaveLength(0);
+  });
+
+  test("a real tool prompt right after the modal closes IS answered", () => {
+    const { calls, send, flush } = setup();
+    send({ type: "ask-start", message: "AskUserQuestion" });
+    send({ type: "notify-permission", message: "Claude needs your permission" });
+    flush();
+    expect(keySends(calls)).toHaveLength(0);
+    send({ type: "ask-end", message: "AskUserQuestion" });
+    send({ type: "notify-permission", message: "Claude needs your permission" });
+    flush();
+    expect(keySends(calls)).toHaveLength(1);
+  });
+
+  test("manual `ht claude approve` refuses it too", () => {
+    const { engine, send } = setup();
+    send({ type: "ask-start", message: "AskUserQuestion" });
+    send({ type: "notify-permission", message: "Claude needs your permission" });
+    // Pressing Enter on a choice modal picks a default — that is not what
+    // "approve" means, so the explicit path declines as well.
+    expect(engine.approveNow("surface:2").ok).toBe(false);
+  });
+
+  test("a missed ask-end cannot wedge the session forever", () => {
+    for (const recovery of ["prompt", "stop", "session-end"] as const) {
+      const { registry, send } = setup();
+      send({ type: "ask-start", message: "AskUserQuestion" });
+      expect(registry.get("s1")!.awaitingUserChoice).toBe("AskUserQuestion");
+      send({ type: recovery });
+      expect(registry.get("s1")!.awaitingUserChoice).toBeNull();
+    }
+  });
+
+  test("ordinary tool prompts are unaffected", () => {
+    const { calls, send, flush } = setup();
+    send({ type: "notify-permission", message: "Claude needs your permission" });
+    flush();
+    expect(keySends(calls)).toHaveLength(1);
+  });
+});

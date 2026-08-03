@@ -58,6 +58,13 @@ export function canAutoApprove(s: ClaudeSessionState): boolean {
   if (s.phase !== "waiting-approval") return false;
   if (s.approvalSource !== "tty") return false;
   if (s.ended) return false;
+  // A question addressed to the HUMAN is on screen. Claude Code raises
+  // the same permission_prompt notification for AskUserQuestion and
+  // ExitPlanMode as for "may I run this command", with the same generic
+  // message — so without this the engine answers the user's own
+  // multiple-choice question by taking its default option. Consent to
+  // run a command is not consent to have your answer chosen for you.
+  if (s.awaitingUserChoice) return false;
   const id = s.surfaceId;
   if (!id) return false;
   // The native Claude pane owns no tty; it answers through canUseTool.

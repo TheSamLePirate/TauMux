@@ -40,6 +40,8 @@ export type ClaudeBridgeEventType =
   | "cwd-changed"
   | "notify-idle"
   | "notify-permission"
+  | "ask-start"
+  | "ask-end"
   | "permission-request"
   | "permission-resolved"
   | "task-created"
@@ -201,6 +203,18 @@ export interface ClaudeSessionState {
    *  first prompt of a turn and goes deaf for every one after it. This
    *  counter is what makes "another prompt is up" observable. */
   approvalSeq: number;
+  /** Tool name of a question currently addressed to the HUMAN
+   *  (`AskUserQuestion` / `ExitPlanMode`), or null.
+   *
+   *  Claude Code fires the same `Notification / permission_prompt` hook
+   *  for these modals as it does for tool-permission prompts, with the
+   *  same generic message ("Claude needs your permission") — so on the
+   *  hook stream alone a question to the user is indistinguishable from
+   *  a request to run a command. Auto-approve must never answer the
+   *  former: pressing Enter there silently picks the default option.
+   *  The PreToolUse/PostToolUse pair scoped to those two tools is what
+   *  makes the difference visible. */
+  awaitingUserChoice: string | null;
   errorType: string | null;
   errorMessage: string | null;
   subagents: ClaudeSubagent[];
@@ -251,6 +265,7 @@ export function newClaudeSessionState(
     approvalMessage: null,
     approvalSource: null,
     approvalSeq: 0,
+    awaitingUserChoice: null,
     errorType: null,
     errorMessage: null,
     subagents: [],

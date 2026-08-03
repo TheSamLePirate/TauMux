@@ -63,6 +63,7 @@ export function reduceEvent(
       break;
 
     case "session-end":
+      state.awaitingUserChoice = null;
       state.ended = true;
       state.endedReason = ev.reason ?? "";
       state.phase = "ended";
@@ -73,6 +74,10 @@ export function reduceEvent(
     case "prompt":
       state.approvalSource = null;
       state.approvalMessage = null;
+      // Belt and braces: PostToolUse can be missed (crash, kill -9, a
+      // hook that times out). A turn boundary always means no modal is
+      // up, so the session can never be permanently un-approvable.
+      state.awaitingUserChoice = null;
       state.turnCount += 1;
       state.promptStartedAt = ts;
       state.currentPrompt = (ev.prompt ?? "").slice(0, MAX_PROMPT_CHARS);
@@ -88,6 +93,7 @@ export function reduceEvent(
       state.promptStartedAt = 0;
       state.approvalMessage = null;
       state.approvalSource = null;
+      state.awaitingUserChoice = null;
       break;
 
     case "stop-failure":
@@ -135,6 +141,16 @@ export function reduceEvent(
 
     case "notify-idle":
       state.phase = "waiting-input";
+      break;
+
+    // A question addressed to the human is on screen. Recorded so
+    // auto-approve can refuse it — see `awaitingUserChoice`.
+    case "ask-start":
+      state.awaitingUserChoice = ev.message || "AskUserQuestion";
+      break;
+
+    case "ask-end":
+      state.awaitingUserChoice = null;
       break;
 
     case "notify-permission":

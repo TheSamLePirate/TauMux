@@ -72,6 +72,7 @@ export function sanitizeForRestore(
     approvalMessage: null,
     approvalSource: null,
     approvalSeq: 0,
+    awaitingUserChoice: null,
     errorType: null,
     errorMessage: null,
     ended: false,
