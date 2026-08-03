@@ -168,6 +168,28 @@ describe("ht claude CLI mapping", () => {
     expect(() => mapCommand(ctx(["event"]))).toThrow(/--json/);
   });
 
+  test("claude approve does NOT default to HT_SURFACE (it must target the BLOCKED pane)", () => {
+    // Regression: approve previously fell back to HT_SURFACE like the
+    // sidebar verbs do, so running it from your own pane always asked
+    // the app to answer *that* pane — never the one actually blocked.
+    const prev = process.env["HT_SURFACE"];
+    process.env["HT_SURFACE"] = "surface:1";
+    try {
+      const call = mapCommand(ctx(["approve"]));
+      expect(call.method).toBe("claude.approve");
+      expect(call.params["surface_id"]).toBeUndefined();
+      // An explicit --surface still wins.
+      expect(
+        mapCommand(ctx(["approve"], { surface: "surface:7" })).params[
+          "surface_id"
+        ],
+      ).toBe("surface:7");
+    } finally {
+      if (prev === undefined) delete process.env["HT_SURFACE"];
+      else process.env["HT_SURFACE"] = prev;
+    }
+  });
+
   test("claude sessions maps with the all flag", () => {
     expect(mapCommand(ctx(["sessions"]))).toEqual({
       method: "claude.sessions",

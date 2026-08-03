@@ -482,12 +482,14 @@ export function mapCommand(ctx: CliContext): RpcCall {
         };
       }
       if (sub === "approve") {
+        // NOTE: deliberately does NOT fall back to HT_SURFACE. Unlike
+        // `ht set-status` (act on my own pane), approve must answer
+        // whichever pane is BLOCKED — which is virtually never the pane
+        // you are typing in. Defaulting to the caller's surface pinned
+        // every invocation to the wrong session.
         return {
           method: "claude.approve",
-          params: {
-            surface_id:
-              flags["surface"] || process.env["HT_SURFACE"] || undefined,
-          },
+          params: { surface_id: flags["surface"] || undefined },
         };
       }
       if (sub === "sessions") {
