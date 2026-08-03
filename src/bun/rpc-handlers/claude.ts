@@ -35,8 +35,32 @@ export function registerClaude(
     surfaceId?: string;
     reason?: string;
   },
+  autoApprove?: {
+    get: () => { enabled: boolean; delayMs: number };
+    set: (o: { enabled?: boolean; delayMs?: number }) => {
+      enabled: boolean;
+      delayMs: number;
+    };
+  },
 ): Record<string, Handler> {
   return {
+    /** Read or flip permission auto-approve. No params = read. Applies
+     *  live (settings are persisted + broadcast), so there is no restart
+     *  and no settings.json editing needed. */
+    "claude.auto_approve": (params) => {
+      if (!autoApprove) return { ok: false, reason: "not wired" };
+      const enabled = params["enabled"];
+      const delay = params["delay_ms"] ?? params["delayMs"];
+      if (enabled === undefined && delay === undefined) {
+        return { ok: true, ...autoApprove.get() };
+      }
+      const next = autoApprove.set({
+        ...(typeof enabled === "boolean" ? { enabled } : {}),
+        ...(typeof delay === "number" ? { delayMs: delay } : {}),
+      });
+      return { ok: true, ...next };
+    },
+
     /** Accept the permission prompt Claude Code is showing in a terminal
      *  pane by sending Enter (its default option is "Yes"). Answers the
      *  longest-waiting session, or `surface_id` when given. Refuses when

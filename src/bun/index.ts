@@ -2619,6 +2619,25 @@ const socketHandler = createRpcHandler(
     claudeOpenPane: (opts) => claudePaneHost.createClaudeWorkspaceSurface(opts),
     claudeApprove: (surfaceId) =>
       claudeIntegration.autoApprove.approveNow(surfaceId),
+    claudeAutoApprove: {
+      get: () => ({
+        enabled: settingsManager.get().claudeAutoApprove,
+        delayMs: settingsManager.get().claudeAutoApproveDelayMs,
+      }),
+      set: (o) => {
+        const patch: Record<string, unknown> = {};
+        if (o.enabled !== undefined) patch["claudeAutoApprove"] = o.enabled;
+        if (o.delayMs !== undefined) {
+          patch["claudeAutoApproveDelayMs"] = o.delayMs;
+        }
+        const next = settingsManager.update(patch);
+        rpc.send("settingsChanged", { settings: next });
+        return {
+          enabled: next.claudeAutoApprove,
+          delayMs: next.claudeAutoApproveDelayMs,
+        };
+      },
+    },
     shutdown: () => gracefulShutdown(),
     testModeEnabled: HT_TEST_MODE,
     telegramDb,

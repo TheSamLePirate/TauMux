@@ -481,6 +481,21 @@ export function mapCommand(ctx: CliContext): RpcCall {
           },
         };
       }
+      if (sub === "auto-approve" || sub === "autoapprove") {
+        const arg = (positional[1] ?? "").toLowerCase();
+        const params: Record<string, unknown> = {};
+        if (arg === "on" || arg === "true" || arg === "enable") {
+          params["enabled"] = true;
+        } else if (arg === "off" || arg === "false" || arg === "disable") {
+          params["enabled"] = false;
+        } else if (arg && arg !== "status") {
+          throw new Error(
+            `ht claude auto-approve: expected on|off|status, got "${arg}"`,
+          );
+        }
+        if (flags["delay"]) params["delay_ms"] = Number(flags["delay"]);
+        return { method: "claude.auto_approve", params };
+      }
       if (sub === "approve") {
         // NOTE: deliberately does NOT fall back to HT_SURFACE. Unlike
         // `ht set-status` (act on my own pane), approve must answer
@@ -504,7 +519,7 @@ export function mapCommand(ctx: CliContext): RpcCall {
         );
       }
       throw new Error(
-        `Unknown claude subcommand: ${sub ?? "(none)"} (expected pane|approve|sessions|statusline|install|uninstall|doctor|event)`,
+        `Unknown claude subcommand: ${sub ?? "(none)"} (expected pane|approve|auto-approve|sessions|statusline|install|uninstall|doctor|event)`,
       );
     }
 

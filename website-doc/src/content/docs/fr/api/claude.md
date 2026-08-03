@@ -21,6 +21,24 @@ Ouvre un [panneau Claude Code natif](/fr/features/claude-code-pane/) — le mêm
 point d'entrée que la palette. `resume` rouvre un id de session précédent. Sans
 `cwd`, le panneau hérite du dossier du panneau focalisé.
 
+## claude.auto_approve
+
+```json
+{ "method": "claude.auto_approve", "params": {} }
+→ { "ok": true, "enabled": false, "delayMs": 700 }
+
+{ "method": "claude.auto_approve", "params": { "enabled": true, "delay_ms": 500 } }
+→ { "ok": true, "enabled": true, "delayMs": 500 }
+```
+
+Lit (sans params) ou bascule l'acceptation automatique des invites de
+permission de Claude Code dans les panneaux **terminal**. Les écritures passent
+par le gestionnaire de réglages : le changement est persisté et appliqué
+immédiatement — sans redémarrage ni édition de `settings.json`. Adossé à
+[`claudeAutoApprove`](/fr/configuration/settings/).
+
+Voir [`ht claude auto-approve`](/fr/cli/claude/).
+
 ## claude.approve
 
 ```json

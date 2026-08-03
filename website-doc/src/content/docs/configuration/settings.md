@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-τ-mux persists settings to `~/Library/Application Support/hyperterm-canvas/settings.json`. The settings panel (`⌘,`) writes this file; you can also edit it by hand — `SettingsManager` watches the file and reloads on change.
+τ-mux persists settings to `~/Library/Application Support/hyperterm-canvas/settings.json`. The settings panel (`⌘,`) writes this file, and so do the command palette toggles and RPC verbs like [`claude.auto_approve`](/api/claude/) — those paths persist **and** apply live. Hand-editing the file works too, but τ-mux does **not** watch it: an external edit is only picked up on the next launch (and will be overwritten if the app writes settings first).
 
 Schema: `AppSettings` in `src/shared/settings.ts`. Defaults: `DEFAULT_SETTINGS`. Validation: `validateSettings` (per-field schemas in `settings.schema.ts`, so an out-of-range or wrong-typed value falls back to the default rather than breaking the app).
 
@@ -154,7 +154,7 @@ Most fields apply live across all panes the moment they're saved. Exceptions:
 
 ## Editing the JSON
 
-Safe to edit while τ-mux runs. The file is reloaded on change. Unknown fields are dropped on load with a logger warning, and invalid values fall back to their default.
+τ-mux reads this file at launch and rewrites it whenever settings change; it does **not** watch it. So edit it while the app is closed, or prefer the settings panel / palette / RPC, which apply immediately. Unknown fields are dropped on load with a logger warning, and invalid values fall back to their default.
 
 ```bash
 $EDITOR ~/Library/Application\ Support/hyperterm-canvas/settings.json

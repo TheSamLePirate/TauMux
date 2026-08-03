@@ -41,6 +41,29 @@ définit le dossier de la session (par défaut celui du panneau focalisé),
 `--split` l'ouvre à côté du panneau courant, `--resume ID` rouvre une
 session précédente. À l'image de `agent.create` pour le panneau pi.
 
+## claude auto-approve
+
+```bash
+ht claude auto-approve            # état
+ht claude auto-approve on         # accepter automatiquement
+ht claude auto-approve off
+ht claude auto-approve on --delay 300
+```
+
+Active ou désactive l'acceptation automatique des invites de permission
+**terminal** de Claude Code. S'applique immédiatement et persiste — c'est le
+même réglage que Réglages → *Auto-approve Claude Code prompts* et que la
+bascule de la palette.
+
+`--delay` fixe la pause avant l'envoi d'Entrée (ms). L'invite est revérifiée à
+l'expiration du délai : une invite que vous avez répondue vous-même ne reçoit
+jamais de frappe parasite.
+
+Seule l'invite propre de Claude Code dans le terminal est répondue — jamais la
+modale τ-mux, jamais le panneau Claude Code. Au-delà de huit invites par
+minute, le système se met en pause et vous notifie ; chaque approbation est
+inscrite dans le journal du panneau.
+
 ## claude approve
 
 ```bash

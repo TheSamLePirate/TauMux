@@ -1,6 +1,6 @@
 {
   "scripts/demo_gitdiff.ts": 2157,
-  "src/bun/index.ts": 3260,
+  "src/bun/index.ts": 3279,
   "src/shared/status-render.ts": 1881,
   "src/views/terminal/agent-panel.ts": 1878,
   "src/views/terminal/index.ts": 3142,

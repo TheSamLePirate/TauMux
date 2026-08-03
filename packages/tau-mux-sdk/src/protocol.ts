@@ -115,6 +115,8 @@ export interface TauMuxApi {
     pane: M;
     /** Accept a Claude Code terminal permission prompt. `{ surface_id? }` */
     approve: M;
+    /** Read or flip auto-approve. `{ enabled?, delay_ms? }`; no params reads. */
+    autoApprove: M;
     event: M;
     statusline: M;
     sessions: M;
@@ -446,6 +448,7 @@ const NAMESPACES: Record<string, [string, string][]> = {
   claude: [
     ["pane", "pane"],
     ["approve", "approve"],
+    ["autoApprove", "auto_approve"],
     ["event", "event"],
     ["statusline", "statusline"],
     ["sessions", "sessions"],
