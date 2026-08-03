@@ -138,9 +138,13 @@ export function reduceEvent(
       break;
 
     case "notify-permission":
-      // Claude Code is showing its OWN prompt in the terminal.
+      // Claude Code is showing its OWN prompt in the terminal. Bump the
+      // sequence even when every other field is unchanged — back-to-back
+      // prompts in one turn are otherwise indistinguishable from the
+      // same prompt still being on screen.
       state.phase = "waiting-approval";
       state.approvalSource = "tty";
+      state.approvalSeq += 1;
       if (ev.message) state.approvalMessage = ev.message;
       break;
 
@@ -150,6 +154,7 @@ export function reduceEvent(
       // Routed to a τ-mux modal — there is no terminal prompt to answer.
       state.phase = "waiting-approval";
       state.approvalSource = "modal";
+      state.approvalSeq += 1;
       state.approvalMessage = ev.message ?? null;
       break;
 

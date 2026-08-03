@@ -71,6 +71,7 @@ export function sanitizeForRestore(
     subagents: [],
     approvalMessage: null,
     approvalSource: null,
+    approvalSeq: 0,
     errorType: null,
     errorMessage: null,
     ended: false,

@@ -68,3 +68,23 @@ the backlog by overwriting the pending entries with a fresh
 - **Bug fix — `PlanStore.update` dropped `description`.** `ht plan update
   <id> --state done` silently deleted the step's description, blanking the new
   detail row exactly when a step completed.
+
+## v0.10.6 — auto-approve answered only the first prompt of a turn
+
+- **Fix:** with auto-approve on, a turn that asked permission more than once
+  had only its *first* prompt answered; the second hung indefinitely with
+  `Do you want to proceed? ❯ 1. Yes` on screen. Claude Code ships no
+  "prompt resolved" hook, so answering a prompt emits nothing — the session
+  stays in `waiting-approval` and the next `notify-permission` reduces to a
+  byte-identical state, which the old "fire only on the transition into
+  waiting-approval" guard could not distinguish from the same prompt still
+  being up. `ClaudeSessionState` gained `approvalSeq`, bumped once per
+  prompt announcement, and auto-approve now fires per-prompt rather than
+  per-transition. Statusline tees still don't re-fire it (they don't bump
+  the counter), and the burst guard now counts every prompt.
+- **Known limitation to document:** Claude Code fires the same
+  `Notification / permission_prompt` hook for **AskUserQuestion** modals as
+  for tool-permission prompts, so auto-approve will also answer a
+  multiple-choice question addressed to the user by selecting its default
+  (first) option. Not yet fixed — needs the in-flight tool name to
+  discriminate.

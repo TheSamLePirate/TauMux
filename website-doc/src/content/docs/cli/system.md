@@ -20,7 +20,7 @@ Verifies the socket is reachable. Exit 0 on success; non-zero if the socket isn'
 
 ```bash
 ht version
-# tau-mux 0.10.5 (build: …)
+# tau-mux 0.10.6 (build: …)
 ```
 
 The reported version is stamped at build time from `package.json`. Maintainers cut releases via `scripts/bump-version.ts` (which propagates the version to seven files atomically and can also commit + tag + write `CHANGELOG.md` in one shot). See the [release process page](/development/release-process/) for the full workflow.

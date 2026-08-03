@@ -193,6 +193,14 @@ export interface ClaudeSessionState {
    *             the pane would type into whatever is on screen.
    *  Auto-approve only ever acts on `"tty"`. */
   approvalSource: "tty" | "modal" | null;
+  /** Bumped once per permission-prompt ANNOUNCEMENT. Claude Code has no
+   *  "prompt resolved" hook, so answering a prompt moves nothing: the
+   *  session sits in `waiting-approval` and the next prompt reduces to a
+   *  byte-identical state. Without a discriminator, a consumer that
+   *  (correctly) acts only on the transition into a prompt fires for the
+   *  first prompt of a turn and goes deaf for every one after it. This
+   *  counter is what makes "another prompt is up" observable. */
+  approvalSeq: number;
   errorType: string | null;
   errorMessage: string | null;
   subagents: ClaudeSubagent[];
@@ -242,6 +250,7 @@ export function newClaudeSessionState(
     prReviewState: null,
     approvalMessage: null,
     approvalSource: null,
+    approvalSeq: 0,
     errorType: null,
     errorMessage: null,
     subagents: [],

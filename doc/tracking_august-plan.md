@@ -269,3 +269,34 @@ The user judged the M3 pane "not good enough" — full-feature pass:
 - Module-size ratchet promoted again (`src/bun/index.ts` 3281→3290, `src/views/terminal/index.ts` 3142→3147). Both are single wiring statements in the files that already own every other `ws.on*` hook / panel construction; there is no coherent new module for one hook assignment.
 - `bun run report:design:web` is broken on `main` independent of this change: `tests-e2e/design/demos.spec.ts` imports `./helpers/demos`, which does not exist (only `helpers/snap.ts`), from commit f146a4c0. Visual verification was done by rendering the real shared renderer against the real `index.css`. Not fixed here — separate concern.
 - Tests: +33 (3369 → 3402), 0 fail. typecheck / lint / emoji / animations / guideline / theming / module-size all clean.
+
+### 0.10.6 — auto-approve answered only the first prompt of a turn
+
+Found by live test: three chmods in one turn, prompt 1 auto-approved, prompt 2
+hung forever with `Do you want to proceed? ❯ 1. Yes` on screen.
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Root cause | identified | No prompt-resolved hook exists, so the session never leaves `waiting-approval`; prompt 2 reduces to a byte-identical state and the "fire on transition" guard swallows it. |
+| `approvalSeq` on session state | done | Bumped once per prompt announcement (`notify-permission` + `permission-request`). Reset to 0 on persistence restore. |
+| Auto-approve fires per prompt | done | Seq comparison replaces the phase-transition test; `inFlight` latch re-keyed by seq. |
+| Seq claimed only after the gates | done | A disabled/paused refusal must not consume it, or enabling mid-prompt would be a no-op until the next prompt. |
+| Statusline tees still inert | done | They don't bump the seq. |
+| Regression tests | done | +6; verified they fail (4/6) against the old guard and pass with the fix. |
+
+**Open finding — not fixed**
+- Claude Code fires the same `Notification / permission_prompt` hook for
+  **AskUserQuestion** modals as for tool-permission prompts. Auto-approve's
+  guards (tty source, has surface, not ended, not an agent pane) do not
+  distinguish them, so it will answer a question addressed to the user by
+  selecting the default (first) option. Observed live on session 3a1e8c56.
+  Fix needs the in-flight tool name — either `PreToolUse` tool tracking in
+  the registry, or wiring τ-mux's own `PermissionRequest` hook (currently
+  the user's `PermissionRequest` goes to superset/orca, not τ-mux).
+
+**Verification notes**
+- The send path was never at fault: `ht claude approve --surface surface:5`
+  advanced prompt 2 then prompt 3 on the wedged pane, each landing correctly.
+- Live end-to-end auto-approval confirmed earlier the same session
+  (`chmod 600 /tmp/tau-probe.txt`, working → waiting-approval → idle, mode
+  644 → 600, no human input).

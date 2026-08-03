@@ -11,8 +11,12 @@
  *   approveNow(surfaceId?) — explicit, always available (palette entry,
  *                            `ht claude approve`). Answers the oldest
  *                            waiting session, or a named surface.
- *   auto-approve            — opt-in (`claudeAutoApprove`), fires on the
- *                            transition into a tty-sourced approval.
+ *   auto-approve            — opt-in (`claudeAutoApprove`), fires once per
+ *                            announced tty prompt (`approvalSeq`), NOT per
+ *                            phase transition: Claude Code has no
+ *                            prompt-resolved hook, so a session stays in
+ *                            `waiting-approval` between back-to-back
+ *                            prompts in one turn.
  *
  * Safety rules, all enforced here rather than trusted to the caller:
  *   1. `approvalSource === "tty"` only. A modal-routed approval (WS3) has
@@ -68,8 +72,11 @@ export class ClaudeAutoApprove {
   private recent = new Map<string, number[]>();
   /** Sessions paused by the burst guard until the next turn. */
   private paused = new Set<string>();
-  /** Sessions with an approval already scheduled/sent for this prompt. */
-  private inFlight = new Set<string>();
+  /** sessionId → the `approvalSeq` we have already scheduled/sent an
+   *  approval for. Keyed by seq rather than a bare flag so a NEW prompt
+   *  arriving while the previous one is still settling is not mistaken
+   *  for a duplicate of it. */
+  private inFlightSeq = new Map<string, number>();
   private registry: ClaudeSessionRegistry | null = null;
 
   constructor(deps: ClaudeAutoApproveDeps) {
@@ -82,16 +89,28 @@ export class ClaudeAutoApprove {
     this.unsubscribe = registry.onChange((s, prev) => {
       // Any move away from a pending tty approval re-arms the session.
       if (!canAutoApprove(s)) {
-        this.inFlight.delete(s.sessionId);
+        this.inFlightSeq.delete(s.sessionId);
         if (s.phase === "working" || s.phase === "idle") {
           this.paused.delete(s.sessionId);
         }
         return;
       }
-      // Only act on the TRANSITION into the prompt, not on every
-      // statusline tee that arrives while it is still up.
-      const wasPending = prev != null && canAutoApprove(prev);
-      if (wasPending || this.inFlight.has(s.sessionId)) return;
+      // Act once per PROMPT, not once per event: a statusline tee that
+      // arrives while the prompt is still up leaves `approvalSeq` alone
+      // and must not re-fire, but a second prompt in the same turn bumps
+      // it and must. Comparing phases instead (the obvious "only on the
+      // transition into waiting-approval" test) silently wedges after
+      // the first prompt — Claude Code has no prompt-resolved hook, so
+      // the session never leaves `waiting-approval` in between, and
+      // every later prompt looks like the first one still being up.
+      const seq = s.approvalSeq;
+      if (prev != null && prev.approvalSeq === seq) return;
+      // A new prompt supersedes any approval still in flight for the
+      // previous one; otherwise the latch below blocks it forever.
+      if (this.inFlightSeq.get(s.sessionId) === seq) return;
+      // Claim the seq only AFTER the gates below: a refusal must not
+      // consume it, or flipping auto-approve on mid-prompt would do
+      // nothing until the next prompt arrives.
       if (!this.deps.isEnabled()) return;
       if (this.paused.has(s.sessionId)) return;
       if (this.burst(s.sessionId)) {
@@ -99,7 +118,7 @@ export class ClaudeAutoApprove {
         this.notifyPaused(s);
         return;
       }
-      this.inFlight.add(s.sessionId);
+      this.inFlightSeq.set(s.sessionId, seq);
       const sessionId = s.sessionId;
       const fire = () => {
         // Re-check against LIVE state: during the delay the user may have
@@ -108,7 +127,7 @@ export class ClaudeAutoApprove {
         // showing a different prompt) is exactly what must not happen.
         const fresh = this.registry?.get(sessionId);
         if (!fresh || !canAutoApprove(fresh)) {
-          this.inFlight.delete(sessionId);
+          this.inFlightSeq.delete(sessionId);
           return;
         }
         this.send(fresh.surfaceId!, fresh, true);

@@ -267,3 +267,89 @@ describe("approveNow (manual path)", () => {
     expect(String(log.params["message"])).not.toContain("auto-approved");
   });
 });
+
+// ── back-to-back prompts in a single turn ─────────────────────────────
+//
+// Regression for a live failure: with auto-approve on, a turn that asked
+// permission three times had ONLY its first prompt answered and then hung
+// forever on the second, with "Do you want to proceed? ❯ 1. Yes" sitting
+// on screen and nothing pressing Enter.
+//
+// Root cause: Claude Code ships no "prompt resolved" hook, so answering a
+// prompt emits nothing. The session stays in `waiting-approval`, and the
+// next `notify-permission` reduces to a byte-identical state — which the
+// old "only fire on the transition into waiting-approval" guard could not
+// tell apart from the same prompt still being up.
+
+describe("consecutive prompts within one turn", () => {
+  test("every prompt is answered, not just the first", () => {
+    const { calls, send, flush } = setup();
+    for (let i = 0; i < 3; i++) {
+      send({ type: "notify-permission", message: "Claude needs your permission" });
+      flush();
+    }
+    expect(keySends(calls)).toHaveLength(3);
+  });
+
+  test("the phase never leaves waiting-approval in between (the live shape)", () => {
+    const { registry, send, flush, calls } = setup();
+    send({ type: "notify-permission", message: "Claude needs your permission" });
+    flush();
+    expect(registry.get("s1")!.phase).toBe("waiting-approval");
+    // Second prompt: identical message, identical phase, identical source.
+    send({ type: "notify-permission", message: "Claude needs your permission" });
+    flush();
+    expect(registry.get("s1")!.phase).toBe("waiting-approval");
+    expect(keySends(calls)).toHaveLength(2);
+  });
+
+  test("a statusline tee arriving mid-prompt still does not re-fire", () => {
+    const { calls, send, flush, registry } = setup();
+    send({ type: "notify-permission", message: "Claude needs your permission" });
+    flush();
+    // The tee bumps cost/context but announces no new prompt.
+    registry.applyStatusline({
+      sessionId: "s1",
+      surfaceId: "surface:2",
+      costUsd: 0.5,
+      contextUsedPct: 40,
+    } as never);
+    flush();
+    expect(keySends(calls)).toHaveLength(1);
+  });
+
+  test("the burst guard still counts them and pauses at the cap", () => {
+    const { calls, send, flush } = setup();
+    for (let i = 0; i < 12; i++) {
+      send({ type: "notify-permission", message: "prompt" });
+      flush();
+    }
+    // MAX_BURST = 8 approvals, then the session pauses and notifies.
+    expect(keySends(calls)).toHaveLength(8);
+    expect(
+      calls.filter((c) => c.method === "notification.create"),
+    ).not.toHaveLength(0);
+  });
+
+  test("flipping auto-approve on mid-prompt still answers the NEXT prompt", () => {
+    const { calls, send, flush, setEnabled } = setup({ enabled: false });
+    send({ type: "notify-permission", message: "prompt one" });
+    flush();
+    expect(keySends(calls)).toHaveLength(0);
+    setEnabled(true);
+    send({ type: "notify-permission", message: "prompt two" });
+    flush();
+    expect(keySends(calls)).toHaveLength(1);
+  });
+
+  test("a new turn re-arms cleanly", () => {
+    const { calls, send, flush } = setup();
+    send({ type: "notify-permission", message: "prompt" });
+    flush();
+    send({ type: "stop" });
+    send({ type: "prompt", prompt: "next" });
+    send({ type: "notify-permission", message: "prompt" });
+    flush();
+    expect(keySends(calls)).toHaveLength(2);
+  });
+});
