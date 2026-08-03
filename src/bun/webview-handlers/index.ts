@@ -17,6 +17,7 @@ import { registerClipboardWebviewHandlers } from "./clipboard";
 import { registerEditorWebviewHandlers } from "./editor";
 import { registerExtensionWebviewHandlers } from "./extension";
 import { registerNotificationWebviewHandlers } from "./notification";
+import { registerPlanWebviewHandlers } from "./plan";
 import { registerReplyWebviewHandlers } from "./reply";
 import { registerSurfaceWebviewHandlers } from "./surface";
 import { registerSystemWebviewHandlers } from "./system";
@@ -46,6 +47,7 @@ export function buildBunMessageHandlers(
     ...registerReplyWebviewHandlers(ctx),
     ...registerWorkspaceWebviewHandlers(ctx),
     ...registerNotificationWebviewHandlers(ctx),
+    ...registerPlanWebviewHandlers(ctx),
     ...registerSystemWebviewHandlers(ctx),
     ...registerBrowserWebviewHandlers(ctx),
     ...registerAgentWebviewHandlers(ctx),

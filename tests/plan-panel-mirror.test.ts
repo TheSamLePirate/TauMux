@@ -147,3 +147,63 @@ describe("PlanPanelMirror — empty-state placeholder (C.3)", () => {
     expect(host.querySelector(".sb-plan-audit-title")).not.toBeNull();
   });
 });
+
+describe("web-mirror plan interaction", () => {
+  beforeEach(() => {
+    document.body.innerHTML = `<div id="host"></div>`;
+  });
+
+  test("no clear control unless the host wired onClearPlan", async () => {
+    const { createPlanPanelMirror } = await loadModule();
+    const view = createPlanPanelMirror({
+      hostEl: document.getElementById("host")!,
+      onSelectWorkspace: () => {},
+    });
+    view.setPlans([samplePlan]);
+    // A read-only embed must not paint a button that goes nowhere.
+    expect(document.querySelector("[data-plan-clear]")).toBeNull();
+  });
+
+  test("clear relays workspace + agent to the host", async () => {
+    const { createPlanPanelMirror } = await loadModule();
+    const cleared: Array<[string, string | undefined]> = [];
+    const view = createPlanPanelMirror({
+      hostEl: document.getElementById("host")!,
+      onSelectWorkspace: () => {},
+      onClearPlan: (ws, agent) => cleared.push([ws, agent]),
+    });
+    view.setPlans([samplePlan]);
+    document.querySelector<HTMLElement>("[data-plan-clear]")!.click();
+    expect(cleared).toEqual([["ws-1", "claude:1"]]);
+    // The card stays until the host echoes a new snapshot.
+    expect(document.querySelector(".spp-card")).not.toBeNull();
+  });
+
+  test("step detail expands locally without touching the wire", async () => {
+    const { createPlanPanelMirror } = await loadModule();
+    const sent: string[] = [];
+    const view = createPlanPanelMirror({
+      hostEl: document.getElementById("host")!,
+      onSelectWorkspace: (ws) => sent.push(ws),
+      onClearPlan: () => sent.push("clear"),
+    });
+    view.setPlans([
+      {
+        ...samplePlan,
+        steps: [
+          {
+            id: "M1",
+            title: "Explore",
+            state: "active",
+            description: "Read the reducer.",
+          },
+        ],
+      },
+    ]);
+    document.querySelector<HTMLElement>("[data-plan-step]")!.click();
+    expect(document.querySelector(".spp-step-desc")?.textContent).toContain(
+      "Read the reducer.",
+    );
+    expect(sent).toEqual([]);
+  });
+});

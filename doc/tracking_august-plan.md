@@ -249,3 +249,23 @@ The user judged the M3 pane "not good enough" — full-feature pass:
   SDK coverage → claude namespace). Full suite 3243 pass / 0 fail. Live E2E
   against a dev instance verified (event → sessions → notification with
   duration + cost; statusline render < 130 ms wall incl. bun startup).
+
+### 0.10.5 — plan panel: clear control + step detail (user request)
+
+> "Allow to clear plan when done and view plan detail better"
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Per-card clear control | done | Hover `×`; promoted to labelled `Clear` + `--tau-ok` outline when every step is done. Routes through `plan.clear` — same handler as the CLI. |
+| No optimistic removal | done | The store broadcast repaints; a clear that didn't land can't blank the card. |
+| Web-mirror parity | done | New `planClear` client envelope + `WebServer.onPlanClear`. A host that omits `onClearPlan` renders no button rather than a dead one. |
+| Inline step descriptions | done | Steps with a description become `aria-expanded` toggles; expanded rows stop ellipsizing. Was a hover tooltip only. |
+| Expansion state | done | Local view state keyed per (workspace, agent, step); pruned when a step disappears; never on the wire. |
+| Progress bar + `updated Nm ago` | done | Card footer drops out entirely for a missing timestamp. |
+| a11y restructure | done | Card was one `<button>`; the new controls would have been illegal nested buttons. Now an inert container with three real controls. |
+| `PlanStore.update` dropped `description` | fixed | A state-only patch deleted the description — blanking the detail row exactly when a step completed. |
+
+**Deviations / notes**
+- Module-size ratchet promoted again (`src/bun/index.ts` 3281→3290, `src/views/terminal/index.ts` 3142→3147). Both are single wiring statements in the files that already own every other `ws.on*` hook / panel construction; there is no coherent new module for one hook assignment.
+- `bun run report:design:web` is broken on `main` independent of this change: `tests-e2e/design/demos.spec.ts` imports `./helpers/demos`, which does not exist (only `helpers/snap.ts`), from commit f146a4c0. Visual verification was done by rendering the real shared renderer against the real `index.css`. Not fixed here — separate concern.
+- Tests: +33 (3369 → 3402), 0 fail. typecheck / lint / emoji / animations / guideline / theming / module-size all clean.

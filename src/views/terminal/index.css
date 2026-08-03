@@ -12022,19 +12022,21 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   font-style: italic;
 }
 
-/* Plan card */
+/* Plan card. The card itself is an inert container: the workspace
+ * switch, the clear control and each expandable step are their own
+ * buttons, so every action is reachable by keyboard and screen
+ * readers announce three distinct controls instead of one opaque
+ * "plan card" button (which is what this used to be). */
 .spp-card {
-  appearance: none;
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 8px 10px;
   text-align: left;
-  border-radius: 8px;
+  border-radius: var(--tau-r-pane);
   border: 1px solid var(--ht-panel-border-soft);
   background: var(--ht-package-header-bg-hover);
   color: inherit;
-  cursor: pointer;
   font: inherit;
   transition:
     background 120ms ease,
@@ -12042,13 +12044,87 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
 }
 .spp-card:hover {
   background: var(--ht-agent-row-bg-hover-card);
-  border-color: var(--tau-cyan);
+  border-color: var(--tau-agent);
+}
+/* Every step done — the plan has nothing left to say, so the card
+ * recedes and its clear control steps forward. */
+.spp-card-complete {
+  border-color: var(--tau-ok);
 }
 .spp-card-header {
   display: flex;
   align-items: baseline;
   gap: 6px;
   font-size: 11px;
+}
+.spp-card-goto {
+  appearance: none;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.spp-card-clear {
+  appearance: none;
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--tau-r-chip);
+  background: none;
+  color: var(--tau-text-mute);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.4;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+.spp-card:hover .spp-card-clear,
+.spp-card-clear:focus-visible {
+  opacity: 1;
+}
+/* A finished plan advertises its clear control permanently: that is
+ * the one moment the user actually wants it. */
+.spp-card-clear-ready {
+  opacity: 1;
+  border-color: var(--ht-panel-border-soft);
+  color: var(--tau-ok);
+  letter-spacing: 0.04em;
+}
+.spp-card-clear:hover {
+  color: var(--tau-err);
+  border-color: var(--tau-err);
+}
+.spp-card-progress {
+  height: 2px;
+  border-radius: var(--tau-r-chip);
+  background: var(--ht-panel-border-soft);
+  overflow: hidden;
+}
+.spp-card-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--tau-agent);
+  transition: width 200ms ease;
+}
+.spp-card-complete .spp-card-progress-fill {
+  background: var(--tau-ok);
+}
+.spp-card-foot {
+  color: var(--tau-text-mute);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
 }
 .spp-card-ws {
   color: var(--text-strong);
@@ -12075,13 +12151,59 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   flex-direction: column;
   gap: 2px;
 }
+.spp-step-group {
+  display: flex;
+  flex-direction: column;
+}
 .spp-step {
   display: grid;
-  grid-template-columns: 14px 36px 1fr;
+  grid-template-columns: 14px 36px 1fr auto;
   align-items: baseline;
   gap: 6px;
   font-size: 11px;
   line-height: 1.4;
+  width: 100%;
+}
+/* Only steps that carry a description become buttons. */
+button.spp-step {
+  appearance: none;
+  padding: 1px 2px;
+  border: 0;
+  border-radius: var(--tau-r-chip);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.spp-step:hover {
+  background: var(--ht-panel-border-soft);
+}
+.spp-step-caret {
+  color: var(--tau-text-mute);
+  font-size: 10px;
+  transition: transform 120ms ease;
+  transform-origin: 50% 50%;
+}
+.spp-step-open .spp-step-caret {
+  transform: rotate(90deg);
+}
+/* Expanded rows stop ellipsizing — the point of opening the row is to
+ * read the whole thing. */
+.spp-step-open .spp-step-title {
+  white-space: normal;
+  overflow: visible;
+}
+.spp-step-desc {
+  grid-column: 3 / -1;
+  margin: 2px 0 4px 56px;
+  padding-left: 8px;
+  border-left: 1px solid var(--ht-panel-border-soft);
+  color: var(--tau-text-mute);
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .spp-step-icon {
   text-align: center;

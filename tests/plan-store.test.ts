@@ -186,3 +186,34 @@ describe("PlanStore", () => {
     expect(calls).toBe(0);
   });
 });
+
+describe("update() field preservation", () => {
+  test("a state-only patch keeps the step's description", () => {
+    const store = new PlanStore({ now: () => 1 });
+    store.set(
+      { workspaceId: "ws-1", agentId: "claude:1" },
+      [{ id: "M1", title: "Explore", state: "active", description: "why" }],
+    );
+    const next = store.update(
+      { workspaceId: "ws-1", agentId: "claude:1" },
+      "M1",
+      { state: "done" },
+    );
+    // `ht plan update --state done` used to silently delete the
+    // description, blanking the panel's detail row for that step.
+    expect(next!.steps[0]!.description).toBe("why");
+    expect(next!.steps[0]!.state).toBe("done");
+  });
+
+  test("a title patch keeps it too", () => {
+    const store = new PlanStore({ now: () => 1 });
+    store.set({ workspaceId: "ws-1" }, [
+      { id: "M1", title: "Explore", state: "active", description: "why" },
+    ]);
+    const next = store.update({ workspaceId: "ws-1" }, "M1", {
+      title: "Explore more",
+    });
+    expect(next!.steps[0]!.description).toBe("why");
+    expect(next!.steps[0]!.title).toBe("Explore more");
+  });
+});

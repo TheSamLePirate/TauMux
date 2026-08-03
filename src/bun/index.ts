@@ -2766,6 +2766,15 @@ function setupWebServerCallbacks(ws: WebServer) {
     // so native webview + web clients stay in sync on the same id.
     socketHandler("notification.dismiss", { id });
   };
+  ws.onPlanClear = (workspaceId, agentId) => {
+    // Same handler the native panel and `ht plan clear` reach, so the
+    // store broadcast is what repaints every surface — including the
+    // mirror that asked.
+    socketHandler("plan.clear", {
+      workspace_id: workspaceId,
+      ...(agentId ? { agent_id: agentId } : {}),
+    });
+  };
   ws.onTelegramSend = (chatId, text) => {
     void sendTelegramAndBroadcast(chatId, text);
   };

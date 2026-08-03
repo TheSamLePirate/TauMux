@@ -40,3 +40,31 @@ What the audit found and fixed (EN + FR throughout):
 _(Always add new items below this line. When folding into the website, clear
 the backlog by overwriting the pending entries with a fresh
 "Backlog cleared <date> — …" summary like the one above.)_
+
+## v0.10.5 — plan panel: clear control + step detail
+
+- **Plan cards can be dismissed from the UI.** Each card now carries a clear
+  control — hover-revealed `×` while work is in flight, promoted to a labelled
+  `Clear` button (with the card outlined in `--tau-ok`) once every step is
+  done. It routes through the same `plan.clear` handler as `ht plan clear`, so
+  the CLI, the native panel and the web mirror can never disagree. The panel
+  does **not** optimistically remove the card: the store's broadcast is what
+  repaints, so a clear that didn't land can't leave a phantom-free panel.
+  Web mirror gained the `planClear` client envelope; a host that doesn't wire
+  `onClearPlan` simply gets no button rather than a dead one.
+- **Step descriptions render inline.** Steps that carry a description (every
+  mirrored Claude Code task does — `task_description`) are now toggles: click
+  to expand the full text under the row, click again to collapse. Expanded
+  rows stop ellipsizing their title. Previously the description existed only
+  as a hover `title` tooltip, which is why a plan "showed only that there is a
+  plan". Expansion is local view state, keyed per `(workspace, agent, step)`,
+  and never goes on the wire — the native panel and the mirror may disagree.
+- **Cards gained a progress bar and an `updated Nm ago` stamp**, so a stale
+  plan is visible as stale.
+- **Accessibility:** the card used to be one big `<button>`, which made the new
+  controls illegal nested buttons. It is now an inert container holding three
+  real controls (workspace switch, clear, per-step toggle) with `aria-expanded`
+  on the toggles.
+- **Bug fix — `PlanStore.update` dropped `description`.** `ht plan update
+  <id> --state done` silently deleted the step's description, blanking the new
+  detail row exactly when a step completed.

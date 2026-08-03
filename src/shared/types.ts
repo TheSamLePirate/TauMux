@@ -649,6 +649,11 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       clearNotifications: void;
       dismissNotification: { id: string };
 
+      // Plan panel — the only plan mutation the UI performs. Steps are
+      // published by agents; the user's single lever is "I'm done with
+      // this card, take it away".
+      planClear: { workspaceId: string; agentId?: string };
+
       // Native menus
       showContextMenu: NativeContextMenuRequest;
 

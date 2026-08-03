@@ -90,6 +90,9 @@ export class WebServer {
   onFocusSurface: ((surfaceId: string) => void) | null = null;
   onClearNotifications: (() => void) | null = null;
   onDismissNotification: ((id: string) => void) | null = null;
+  /** Mirror asked to drop a plan card. Routed to the same
+   *  `plan.clear` handler the native panel and `ht plan clear` use. */
+  onPlanClear: ((workspaceId: string, agentId?: string) => void) | null = null;
   onPanelUpdate:
     | ((
         surfaceId: string,
@@ -1225,6 +1228,17 @@ export class WebServer {
       }
       case "clearNotifications": {
         this.onClearNotifications?.();
+        break;
+      }
+      case "planClear": {
+        const workspaceId = fields["workspaceId"];
+        const agentId = fields["agentId"];
+        if (typeof workspaceId === "string" && workspaceId) {
+          this.onPlanClear?.(
+            workspaceId,
+            typeof agentId === "string" && agentId ? agentId : undefined,
+          );
+        }
         break;
       }
       case "dismissNotification": {
