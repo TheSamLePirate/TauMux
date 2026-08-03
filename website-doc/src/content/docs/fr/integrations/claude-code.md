@@ -106,10 +106,23 @@ apparaissent « done », la première tâche ouverte « active » ; le miroir
 est effacé à la fin de la session, et cohabite avec les plans pi (chaque
 agent a son propre emplacement).
 
+Le miroir survit à un redémarrage de l'application : l'état de session
+(identité, cwd, titre, liste de tâches, dépense) est persisté dans
+`claude-sessions.json` du dossier de config et rechargé au lancement.
+L'état *vivant* n'est délibérément **pas** restauré — une session
+restaurée revient au repos, sans tour en cours ni approbation en attente,
+et le prochain événement de hook corrige le reste. Sans cela, un
+redémarrage laissait une session encore active avec un panneau de plan
+vide en permanence : les hooks ne rapportent que des *transitions*, rien
+ne réannonce les tâches déjà créées.
+
 Comme le plan miroité et la notification de fin de tour alimentent le
 moteur d'[auto-continue](/fr/features/auto-continue/) existant, la
 continuation ancrée sur plan fonctionne pour les sessions Claude Code
-sous les mêmes garde-fous.
+sous les mêmes garde-fous. Le moteur s'exécutant à chaque fin de tour, un
+espace sans plan publié enregistre un « skip » — les skips identiques
+consécutifs sont regroupés en une seule ligne avec un compteur `×N` au
+lieu de remplir le panneau d'audit.
 
 ## Installation
 

@@ -70,6 +70,9 @@ export function renderAuditRowHtml(entry: AutoContinueAuditEntry): string {
     `<span class="spp-audit-outcome">${entry.outcome}</span>`,
     `<span class="spp-audit-engine">${escapeHtml(entry.engine)}${entry.modelConsulted ? "+model" : ""}</span>`,
     `<span class="spp-audit-reason">${escapeHtml(entry.reason)}</span>`,
+    entry.repeated && entry.repeated > 1
+      ? `<span class="spp-audit-repeat">×${entry.repeated}</span>`
+      : "",
     `</div>`,
   ].join("");
 }

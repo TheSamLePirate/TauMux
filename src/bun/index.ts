@@ -2599,7 +2599,9 @@ const autoContinueHost = createAutoContinueHost({
 });
 
 // august-plan M1 — Claude Code integration (see ./claude-integration.ts).
-const claudeIntegration = createClaudeIntegration();
+const claudeIntegration = createClaudeIntegration(
+  join(configDir, "claude-sessions.json"),
+);
 
 const socketHandler = createRpcHandler(
   sessions,

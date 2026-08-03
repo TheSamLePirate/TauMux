@@ -98,9 +98,22 @@ no model cooperation needed. Completed tasks show as done, the first open
 task as active; the mirror is cleared when the session ends, and it
 coexists with pi plans (each agent gets its own slot).
 
+The mirror survives an app restart: session state (identity, cwd, title,
+task list, spend) is persisted to `claude-sessions.json` in the config dir
+and reloaded at launch. Live state is deliberately **not** restored — a
+restored session comes back idle, with no in-flight turn and no pending
+approval, and the next hook event corrects the rest. Without this, a
+restart left a still-running session with a permanently empty plan panel,
+because hooks only report *transitions* and nothing would re-announce the
+tasks it had already created.
+
 Because the mirrored plan and the turn-end notification feed the existing
 [auto-continue](/features/auto-continue/) engine, plan-anchored
 continuation works for Claude Code sessions under the same safety gates.
+Note that the engine runs on every turn end, so a workspace with no
+published plan records a "no plan published" skip — consecutive identical
+skips collapse into a single row with a `×N` count rather than filling
+the audit panel.
 
 ## Install
 

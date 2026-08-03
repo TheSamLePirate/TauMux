@@ -475,6 +475,11 @@ export interface Plan {
 export interface AutoContinueAuditEntry {
   /** Wall-clock ms when the decision landed. */
   at: number;
+  /** How many consecutive times this identical `skipped` decision has
+   *  fired. Absent (or 1) for a one-off. Repeats collapse into a single
+   *  row so a workspace with no plan doesn't flood the panel — every
+   *  Claude Code turn-end runs the engine. */
+  repeated?: number;
   /** Surface that fired the turn-end notification. */
   surfaceId: string;
   /** Optional agent id from the plan, when known. */

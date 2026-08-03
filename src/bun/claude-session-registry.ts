@@ -311,6 +311,16 @@ export class ClaudeSessionRegistry {
     return state;
   }
 
+  /** Seed a session straight into the map (persistence restore only).
+   *  Bypasses the reducer — the caller is responsible for handing over a
+   *  state that is already safe to show; see
+   *  `claude-registry-persistence.sanitizeForRestore`. Never overwrites a
+   *  session the current process has already heard from. */
+  restore(state: ClaudeSessionState): void {
+    if (!state?.sessionId || this.sessions.has(state.sessionId)) return;
+    this.sessions.set(state.sessionId, state);
+  }
+
   get(sessionId: string): ClaudeSessionState | undefined {
     return this.sessions.get(sessionId);
   }

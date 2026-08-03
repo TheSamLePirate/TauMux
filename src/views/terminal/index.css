@@ -13175,3 +13175,13 @@ body.tau-atlas-graph-hidden[data-tau-variant="atlas"] .tau-atlas-tab-rail {
   color: var(--tau-agent);
   background: var(--tau-agent-dim);
 }
+
+/* Collapsed repeat count on an auto-continue audit row (see
+ * AutoContinueAuditEntry.repeated) — consecutive identical skips
+ * render as one row with a count instead of flooding the panel. */
+.spp-audit-repeat {
+  font-family: var(--tau-font-mono);
+  font-size: 9px;
+  color: var(--tau-text-faint);
+  margin-left: 4px;
+}
