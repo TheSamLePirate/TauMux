@@ -215,6 +215,16 @@ export interface ClaudeSessionState {
    *  The PreToolUse/PostToolUse pair scoped to those two tools is what
    *  makes the difference visible. */
   awaitingUserChoice: string | null;
+  /** True when the pending `waiting-approval` was announced BY a choice
+   *  modal rather than by a tool-permission gate.
+   *
+   *  Answering a question emits no "prompt resolved" event either, so
+   *  without this the session stays parked in `waiting-approval | tty`
+   *  forever after every question: the pill lies, and — worse — the
+   *  state passes `canAutoApprove`, so `ht claude approve` would pick it
+   *  and type Enter into a pane showing no prompt at all. `ask-end`
+   *  retracts an announcement it owns; a real tool prompt is untouched. */
+  approvalIsQuestion: boolean;
   errorType: string | null;
   errorMessage: string | null;
   subagents: ClaudeSubagent[];
@@ -266,6 +276,7 @@ export function newClaudeSessionState(
     approvalSource: null,
     approvalSeq: 0,
     awaitingUserChoice: null,
+    approvalIsQuestion: false,
     errorType: null,
     errorMessage: null,
     subagents: [],

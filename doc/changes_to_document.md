@@ -112,3 +112,35 @@ the backlog by overwriting the pending entries with a fresh
 - **Requires `ht claude install`** to wire the two hooks, then a restart of
   running Claude Code sessions. `ht claude doctor` reports them as missing
   until then.
+
+## 0.10.8 — a question that has been answered stops claiming an approval
+
+Follow-on to 0.10.7, found by verifying that fix end-to-end on a live
+session rather than only in tests.
+
+- The 0.10.7 guard works: a trace of a real `AskUserQuestion` form shows
+  `ask-start` landing ~6 s **before** the notification, and auto-approve
+  (enabled) correctly declining to answer it.
+- But answering a question emits no "resolved" event either, so the
+  `Notification / permission_prompt` the question raised **outlived the
+  question**. The session sat at `waiting-approval | tty` while actively
+  working: the sidebar pill claimed an approval was pending, and — the
+  real problem — that state passes `canAutoApprove`, so a bare
+  `ht claude approve` would have selected it and typed Enter into a pane
+  showing no prompt at all. Typing a stray keystroke into a live pane is
+  exactly what safety rule 1 exists to prevent; it was reachable through
+  the manual door.
+- New `ClaudeSessionState.approvalIsQuestion` records whether a pending
+  announcement belongs to a choice modal (set when `notify-permission`
+  arrives while `awaitingUserChoice` is up, and when `ask-start` wins the
+  race the other way round). `ask-end` retracts an announcement it owns —
+  phase back to `working` / `idle`, source and message cleared — and
+  leaves a genuine tool prompt untouched.
+- **Deliberate limitation.** When a notification arrives while a modal is
+  up, it is attributed to the modal. That is unambiguous in practice: a
+  genuine prompt landing in that window would need Claude to receive an
+  answer, run an inference round-trip and hit a permission gate inside
+  the ~200 ms the `PostToolUse` process takes to spawn. Should it ever
+  happen, the failure is a missed auto-approval (the human presses Enter),
+  never a stray keystroke — the safe direction.
+- No new hooks, no `ht claude install` needed. App restart only.

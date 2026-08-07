@@ -319,3 +319,62 @@ Closes the open finding from 0.10.6.
   in-flight tool. Zero deployment friction, but couples to an
   upstream-defined JSONL format, and this project deliberately removed its
   transcript-parsing machinery in an earlier milestone.
+
+### 0.10.8 — an answered question stops claiming a pending approval
+
+_Commit `824cd2e1`._
+
+Found while **verifying 0.10.7 live** (the user had not rebuilt the .app, so
+0.10.7 shipped in source but never ran; the reported symptom was the 0.10.6
+engine still auto-answering forms). After the rebuild, a recorded trace of a
+real `AskUserQuestion` proved the guard end-to-end — and exposed a follow-on
+defect in the same state machine.
+
+**Live trace (session e7e9b921, surface:1, auto-approve ON):**
+
+```
+t+0.0   working          seq=0  ask=None
+t+8.7   working          seq=0  ask=AskUserQuestion    ← PreToolUse fires for the tool
+t+14.6  waiting-approval seq=1  src=tty  ask=AskUserQuestion
+                                 msg="Claude needs your permission"
+t+70.1  waiting-approval seq=1  src=tty  ask=None      ← answered; ask-end landed
+```
+
+This settled the one link 0.10.7 asserted but never observed: `PreToolUse`
+**does** fire for `AskUserQuestion`, ~6 s ahead of the notification. No Enter
+was sent. The premise of the fix is confirmed, not assumed.
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| 0.10.7 guard verified live | done | Form left untouched with auto-approve enabled. Trace above. |
+| Stale `waiting-approval` after a question | fixed | The announcement the question raised outlived it — session parked in `waiting-approval \| tty` while working. |
+| Why it mattered | — | That state **passes** `canAutoApprove`, so a bare `ht claude approve` would target it and send Enter to a pane with no prompt on screen. Rule 1's failure mode, reachable via the manual path. |
+| `approvalIsQuestion` on session state | done | Set when `notify-permission` arrives with a modal up, and when `ask-start` wins the reverse race. Reset on `prompt` / `stop` / `session-end` / `permission-resolved` / restore. |
+| `ask-end` retracts its own announcement | done | Phase → `working`/`idle`, source + message cleared. A genuine tool prompt is left alone (pinned by a test). |
+| Tests | done | +4; verified 3 fail without the fix. The 4th is the over-retraction guard and correctly passes both ways. 3419 green, typecheck + lint clean. |
+
+**Deviation from the stated plan — "Phase 1a (re-arm)" was implemented, then
+removed.** The plan called for re-arming a prompt refused because a modal was
+up, backed by a failing probe. Implementing it alongside the retraction fix
+showed the two make **opposite assumptions about the same ambiguous event**:
+retraction reads a notification-during-a-modal as the modal's, re-arm reads it
+as possibly genuine. They cannot both hold. The window in which a genuine
+prompt could land there is ~200 ms (the `PostToolUse` spawn) and would require
+a full inference round-trip inside it, so retraction's reading is correct and
+re-arm's trigger is unreachable by construction. Shipping it would have been
+dead code guarding an impossible case. Reverted rather than kept "just in
+case"; the probe that motivated it is recorded here instead.
+
+**Known limitation (accepted, not fixed).** If `ask-end` is never delivered —
+the user rejects the form with Esc, or the hook times out — `awaitingUserChoice`
+stays set for the remainder of the turn, and a genuine prompt in that window is
+declined rather than auto-approved. Bounded by `stop` / the next `prompt`, and
+the failure direction is a missed approval, never a stray keystroke. Closing it
+properly needs a `PostToolUseFailure` hook, whose rejection semantics are not
+confirmed — not worth another install cycle on an unverified assumption.
+
+**Phases 2-3 of the analysis remain open and unscheduled:** positive-evidence
+mode via a shadow `PermissionRequest` hook (no longer needed as insurance now
+that `PreToolUse` coverage is confirmed), sidebar audit lines on refusal, and
+`ht claude doctor` build-drift detection — the last of which would have caught
+the stale-app symptom that started this in one command.
