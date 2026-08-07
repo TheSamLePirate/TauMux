@@ -48,11 +48,13 @@ Scripts running inside the terminal can stream structured content (images, chart
 - [Highlights](#highlights)
 - [Quick start](#quick-start)
 - [Architecture](#architecture)
+- [Surface kinds](#surface-kinds)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [CLI (`ht`)](#cli-ht)
 - [Live process metadata](#live-process-metadata)
 - [Process Manager](#process-manager)
 - [Sideband protocol (fd 3/4/5)](#sideband-protocol-fd-345)
+- [Agent integrations](#agent-integrations)
 - [Web mirror](#web-mirror)
 - [Browser panes](#browser-panes)
 - [Settings](#settings)
@@ -64,15 +66,20 @@ Scripts running inside the terminal can stream structured content (images, chart
 ## Highlights
 
 - **Terminal multiplexer.** Workspaces, tiling splits, draggable dividers, per-pane drag-and-drop, workspace colors.
+- **Seven surface kinds in one tiling layout.** A pane can be a terminal, a browser, a pi agent, a Claude Code session, a CodeMirror editor, a Telegram chat, or an extension app — all in the same splits, with the same keyboard navigation. See [surface kinds](#surface-kinds).
 - **Workspace-level package.json card.** The sidebar shows the nearest `package.json` from any pane's cwd — name, type, description, bin chips, and a one-click row per script. Pick `bun` / `npm` / `pnpm` / `yarn` from settings. Script dots: green pulse = running (detected in the process tree), red = last run exited non-zero, grey = idle.
-- **Canvas panels.** Floating SVG / HTML / image / canvas2d overlays driven by sideband file descriptors. Panels are independent DOM elements — draggable, resizable, interactive.
-- **Live process metadata.** A 1 Hz poller observes every descendant of every shell and surfaces cwd, pid, tty, full argv, listening TCP ports, CPU %, and RSS per process. Changes propagate to the pane header, sidebar, Process Manager, web mirror, and `ht` CLI — no tmux, no shell integration, just `ps` + `lsof` against pids we already own.
+- **File explorer + editor.** The sidebar browses the focused pane's cwd with file-type icons; opening a file mounts a CodeMirror editor pane in the layout.
+- **Canvas panels.** Floating SVG / HTML / image / canvas2d overlays driven by sideband file descriptors. Panels are independent DOM elements — draggable, resizable, interactive. Display-only `html`/`svg` renders inside a sandboxed iframe by default.
+- **Live process metadata.** A 1 Hz poller observes every descendant of every shell and surfaces cwd, pid, tty, full argv, listening TCP ports, CPU %, and RSS per process — built on libSystem FFI (`sysctl` + `proc_pidinfo`, ~5 ms per tick) with `ps` / `lsof` kept as a self-validating fallback. Changes propagate to the pane header, sidebar, Process Manager, web mirror, and `ht` CLI. No tmux, no shell integration.
 - **Process Manager.** A full-screen overlay (⌘⌥P) that tabulates every process in every workspace with CPU / memory / kill buttons. Shift-click for SIGKILL.
-- **`ht` CLI.** Control everything from a shell: spawn panes, send keys, manipulate layouts, open ports in a browser (`ht open 3000`), send signals (`ht kill 8080`), inspect trees (`ht ps`), tail metadata (`ht metadata`). Installs via an in-app menu item — no Bun required on other Macs.
+- **`ht` CLI — 83 commands.** Control everything from a shell: spawn panes, send keys, manipulate layouts, open ports in a browser (`ht open 3000`), send signals (`ht kill 8080`), inspect trees (`ht ps`), tail metadata (`ht metadata`), drive a browser, open an editor, run extensions. Installs via an in-app menu item — no Bun required on other Macs.
+- **Agent integrations.** First-class harnesses for [pi](https://github.com/badlogic/pi-mono) and [Claude Code](https://claude.com/claude-code): native agent panes, a sidebar plan panel mirroring the agent's task list, ask-user modals with Telegram fan-out, an auto-continue engine, and remote permission approvals. See [agent integrations](#agent-integrations).
 - **Web mirror.** The entire native UI, including chips and metadata, mirrored over WebSocket to anything on the LAN.
 - **Client libraries.** Python + TypeScript helpers for the sideband protocol. Safe no-ops when not running inside τ-mux.
-- **Built-in browser.** Split a WebKit browser alongside terminals with `⌘⇧L`. Address bar with smart URL detection and configurable search engines. Full scriptable API: click, type, fill, wait, snapshot, eval, console capture — 40+ commands via `ht browser` CLI.
-- **Themeable.** 10 built-in presets (Catppuccin, Tokyo Night, Dracula, Nord, Rosé Pine, Gruvbox, Solarized, Synthwave '84, Everforest, Obsidian) plus per-color overrides.
+- **Built-in browser.** Split a WebKit browser alongside terminals with `⌘⇧L`. Address bar with smart URL detection and configurable search engines. Full scriptable API: click, type, fill, wait, snapshot, eval, console capture, cookie import/export — 47 `browser.*` methods via the `ht browser` CLI.
+- **Extension apps.** Ship a UI + backend as an installable app that mounts as a pane and talks to τ-mux through a typed SDK. Extensions are fully trusted code.
+- **shareBin.** Publish a snippet, a file, or a pane's scrollback to a shareable URL from the CLI or the palette.
+- **Themeable.** 12 built-in presets (τ, Graphite, Obsidian, Catppuccin Mocha, Tokyo Night, Dracula, Nord, Rosé Pine, Gruvbox, Solarized, Synthwave '84, Everforest) plus per-color overrides, plus three layout variants (Bridge / Cockpit / Atlas).
 
 ## Quick start
 
@@ -105,10 +112,14 @@ The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`.
 │                       Electrobun RPC ───┐   ht CLI talks here                         │
 │                                          │                                            │
 │   ┌────────────── SurfaceMetadataPoller ─┘                                            │
-│   │  1 Hz ps + 2 combined lsof calls;                                                 │
+│   │  1 Hz libSystem FFI (sysctl + proc_pidinfo, ~5 ms);                               │
+│   │  ps/lsof fallback if self-validation fails;                                       │
 │   │  diffed snapshot emits to RPC + web mirror                                        │
 │   └────────────────────────────────────────────────────────────────────────────┘    │
 │                                                                                      │
+│  PlanStore · AutoContinueEngine · AskUserHost · AuditRunner                           │
+│  pi-agent-manager (pi --mode rpc over stdio)  ·  claude-agent-manager (Agent SDK)     │
+│  TelegramService (long-poll bot + SQLite log)  ·  ExtensionHost                       │
 │  WebServer (Bun.serve + WebSocket — optional; set autoStartWebMirror=true or env)    │
 │                                                                                      │
 └──────────────────────────────────┬──────────────────────────────────────────────────┘
@@ -116,16 +127,17 @@ The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`.
                                    ▼
 ┌──────────────────── Electrobun webview (src/views/terminal/) ───────────────────────┐
 │                                                                                      │
-│  SurfaceManager (workspaces + PaneLayout + xterm.js + browser + agent + telegram)    │
+│  SurfaceManager (workspaces + PaneLayout + 7 surface kinds)                           │
 │     ├── per-pane chips row  (fg command, cwd, port badges — click to open)           │
-│     ├── Sidebar (workspaces + fg command + port chips + status pills)                │
+│     ├── Sidebar (workspaces + fg command + port chips + status pills + file tree)     │
 │     ├── PlanPanel (multi-step agent plans + auto-continue audit ring)                 │
 │     ├── AskUserModal (agent → human question dialog with telegram fan-out)            │
-│     ├── TelegramPaneView (chat pane: picker, status pill, composer)                   │
+│     ├── ClaudePaneView / AgentPanel (Claude Code + pi agent surfaces)                 │
+│     ├── EditorPane (CodeMirror) · TelegramPaneView · ExtensionPane                    │
 │     ├── ProcessManagerPanel (⌘⌥P overlay, CPU/MEM, kill)                              │
-│     ├── PanelManager (floating canvas overlays)                                       │
+│     ├── PanelManager (floating canvas overlays; sandboxed html/svg)                   │
 │     ├── TerminalEffects (GPU ripple + bloom)                                          │
-│     └── CommandPalette (⌘⇧P)                                                          │
+│     └── CommandPalette (⌘⇧P) · KeyboardCheatsheet (⌘⇧?)                               │
 │                                                                                      │
 └─────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -135,9 +147,30 @@ The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`.
 - **No node-pty.** `Bun.spawn` with `terminal: true` is the only PTY API used.
 - **No React.** Vanilla TS + DOM in the webview. xterm.js is the only significant webview dep.
 - **PTY is the source of truth.** Canvas panels and metadata chips are ephemeral overlays — they never affect terminal state.
-- **Keyboard goes to xterm.js.** Panels + chips are mouse-only (plus keyboard for chip-button focus). Browser panes receive keyboard input when focused.
+- **Keyboard goes to xterm.js.** Panels + chips are mouse-only (plus keyboard for chip-button focus). Browser, editor, agent, and extension panes receive keyboard input when focused.
+- **The metadata pipeline never touches the PTY.** It reads pids we already own; if it breaks, the terminal keeps working.
+
+## Surface kinds
+
+Every leaf in the pane tree is one of seven kinds. They share the tiling layout, workspace membership, focus navigation, and drag-and-drop.
+
+| Kind | What it is | Opened by |
+|------|-----------|-----------|
+| `terminal` | A PTY shell via `Bun.spawn` — the default | `⌘D`, `⌘⇧D`, `ht new-split` |
+| `browser` | WebKit browser with address bar + automation API | `⌘⇧L`, `ht browser open-split` |
+| `agent` | pi coding-agent pane | palette, `ht agent create` |
+| `claude` | Claude Code session on the Agent SDK | palette, `ht claude pane` |
+| `editor` | CodeMirror file editor | sidebar file tree, `ht edit <path>` |
+| `telegram` | Telegram chat pane with picker + composer | palette |
+| `extension` | Installed extension app (UI + backend) | palette, `ht ext open` |
+
+Layouts persist to `layout.json` in the config directory and are re-mounted on launch, so a saved workspace restores its browser URLs and agent panes rather than leaking PTY shells.
 
 ## Keyboard shortcuts
+
+Shortcuts are declared as data (`Binding<KeyCtx>[]`) in `src/views/terminal/index.ts` — `KEYBOARD_BINDINGS` plus `HIGH_PRIORITY_BINDINGS` for the ones that must fire even while the palette is open. Press `⌘⇧?` in the app for the generated cheat-sheet.
+
+**Workspace + pane**
 
 | Shortcut | Action |
 |----------|--------|
@@ -146,23 +179,43 @@ The built `.app` ships a compiled standalone `ht` binary at `Contents/MacOS/ht`.
 | `⌘⇧D` | Split down |
 | `⌘W` | Close focused pane |
 | `⌘⇧W` | Close workspace |
-| `⌘B` | Toggle sidebar |
+| `⌘⌥←↑→↓` | Focus neighboring pane |
+| `⌃⌘]` / `⌃⌘[` | Next / previous workspace |
+| `⌘1…9` | Jump to workspace N |
+
+**Overlays + layout**
+
+| Shortcut | Action |
+|----------|--------|
 | `⌘,` | Settings |
 | `⌘⇧P` | Command palette |
 | `⌘⌥P` | **Process Manager** |
 | `⌘I` | **Pane Info** (full detail view for the focused pane) |
+| `⌘⇧?` | **Keyboard cheat-sheet** |
+| `⌘B` | Toggle sidebar |
+| `⌘\` | Collapse sidebar / icon rail / graph column (layout-variant aware) |
+| `⌘G` | Toggle the graph column (Atlas variant) |
+| `Esc` | Close active overlay (settings, process manager, command palette) |
+
+**Terminal**
+
+| Shortcut | Action |
+|----------|--------|
 | `⌘F` | Find in terminal |
-| `⌘⇧L` | **Open browser in split** |
-| `⌘L` | **Focus browser address bar** (when browser pane focused) |
-| `⌘[` / `⌘]` | **Browser back / forward** (when browser pane focused) |
-| `⌘R` | **Reload browser page** (when browser pane focused) |
-| `⌥⌘I` | **Toggle browser DevTools** (when browser pane focused) |
-| `⌘⌥←↑→↓` | Focus neighboring pane |
-| `⌃⌘]` / `⌃⌘[` | Next / previous workspace |
-| `⌘1…9` | Jump to workspace N |
 | `⌘C` / `⌘V` | Copy / paste |
 | `⌘=` / `⌘-` / `⌘0` | Font size bigger / smaller / reset |
-| `Esc` | Close active overlay (settings, process manager, command palette) |
+
+**Browser** — these fire only when a browser pane is focused.
+
+| Shortcut | Action |
+|----------|--------|
+| `⌘⇧L` | **Open browser in split** (works from anywhere) |
+| `⌘L` | Focus browser address bar |
+| `⌘[` / `⌘]` | Browser back / forward |
+| `⌘R` | Reload browser page |
+| `⌥⌘I` | Toggle browser DevTools |
+| `⌘F` | Find in page |
+| `⌘=` / `⌘-` / `⌘0` | Browser zoom in / out / reset |
 
 ## CLI (`ht`)
 
@@ -175,6 +228,11 @@ ht version
 ht identify                          # focused surface + workspace
 ht tree                              # workspace/pane/surface tree
 ht capabilities --json               # list all API methods
+ht doctor                            # diagnose socket / install / permissions
+ht health                            # subsystem health report
+ht logs --lines 200                  # tail the app log
+ht wait-ready --timeout-ms 10000     # block until the app accepts RPC
+ht shutdown                          # quit the app
 
 # Workspaces
 ht list-workspaces
@@ -186,9 +244,14 @@ ht previous-workspace
 
 # Surfaces & panes
 ht list-surfaces
+ht list-panes                        # every pane, every workspace
+ht list-panels                       # floating sideband panels
+ht list-browsers
 ht new-split right                   # left | right | up | down
 ht close-surface
 ht focus-surface --surface surface:3
+ht rename-surface "build watcher"
+ht screenshot --out shot.png         # capture the focused surface
 
 # I/O
 ht send "echo hello\n"
@@ -253,6 +316,30 @@ ht telegram read --chat <id> --limit 20
 ht telegram send --chat <id> "hello from ht"
 ht telegram restart                   # reload token + restart long-poll
 
+# Claude Code (see Agent integrations below, and website docs/cli/claude)
+ht claude install                     # wire the hooks into ~/.claude/settings.json
+ht claude doctor                      # report exactly which hooks are missing
+ht claude uninstall
+ht claude pane --cwd ~/code --split   # open a native Claude Code pane
+ht claude sessions                    # list known sessions + phase
+ht claude approve                     # answer the longest-waiting permission prompt
+ht claude auto-approve on|off|status  # toggle unattended approvals
+ht claude statusline                  # τ-mux-styled statusline for Claude Code
+
+# Editor
+ht edit src/index.ts                  # open a file in a CodeMirror pane (split)
+ht editor open src/index.ts --create
+ht editor list
+
+# Extension apps
+ht ext list
+ht ext templates
+ht ext open <id>
+ht ext enable <id> / ht ext disable <id>
+
+# Package scripts
+ht run-script --cwd . --command "bun test"
+
 # Browser (see Browser Panes section below)
 ht browser open https://example.com
 ht browser open-split https://example.com
@@ -286,15 +373,22 @@ Every command honors `--surface <id>` to target a specific pane; if omitted, the
 See [`doc/system-process-metadata.md`](doc/system-process-metadata.md) for the full spec. Summary:
 
 - A single `SurfaceMetadataPoller` runs in the Bun process.
-- Per tick (1 Hz while the window is focused, ~3 Hz when hidden): **one** `ps -axo pid,ppid,pgid,stat,%cpu,rss,args -ww` call, **one** combined `lsof -iTCP -sTCP:LISTEN` across the union of tree pids, **one** combined `lsof -d cwd` across foreground pids.
+- Per tick (1 Hz while the window is focused, backing off when hidden or idle) the data comes from **libSystem via `bun:ffi`** (`src/bun/native-proc.ts`) — no subprocesses:
+  - `sysctl(CTL_KERN, KERN_PROC, KERN_PROC_ALL)` — the whole process table (pid / ppid / pgid / tpgid / state / comm), ~1.1 ms.
+  - `proc_pidinfo(PROC_PIDVNODEPATHINFO)` — cwd, ~10 µs per pid.
+  - `proc_pidinfo(PROC_PIDTASKINFO)` — RSS + cumulative CPU ns.
+  - `sysctl(KERN_PROCARGS2)` — full argv, resolved lazily so only pids a tree walk visits pay for it.
+  - `proc_pidinfo(PROC_PIDLISTFDS)` + `proc_pidfdinfo(PROC_PIDFDSOCKETINFO)` — TCP listeners, ~1.5 ms.
+- **The subprocess path is still there as a fallback.** The old `ps -axo …` + two `lsof` calls cost ~200 ms of CPU every second. `openNativeProc()` runs a self-validation probe against live kernel structs and returns `null` on any offset mismatch, in which case the poller silently keeps using `ps` / `lsof` and behaviour is byte-identical. Offsets are additionally asserted against real `ps` / `lsof` output in `tests/native-proc.test.ts`. macOS arm64 + x86_64 only.
 - Per surface we derive: `pid` (shell), `foregroundPid` (tty's foreground pgrp leader), `cwd`, full descendant tree with argv + CPU % + RSS KB, listening TCP ports (dedup by pid/port/address), and — when `cwd` is inside a git work tree — `branch`, `head`, `upstream`, `ahead`/`behind`, `staged`/`unstaged`/`untracked`/`conflicts` file counts, and `insertions`/`deletions` line counts. Git calls are TTL-cached per cwd (3 s) so idle panes don't spam git.
 - Snapshots are diffed against the previous tick; `onMetadata(surfaceId, metadata)` only fires on real change.
 - Emissions fan out to the Electrobun RPC (→ webview chips + sidebar + Process Manager), to the WebSocket web mirror (→ remote clients), and are cached for `ht` CLI queries.
 
 Security / robustness notes:
 
-- The poller runs `ps` / `lsof` as the user, seeing only their own processes.
-- `ps` output parses both `.` and `,` decimal separators and spawns with `LC_ALL=C` for deterministic formatting.
+- The poller reads process info as the user, seeing only their own processes.
+- Nothing in the pipeline throws into the poller — every entry point catches and degrades to an empty result, so a metadata failure can never take down the main process or the terminal.
+- The `ps` fallback parses both `.` and `,` decimal separators and spawns with `LC_ALL=C` for deterministic formatting.
 - Zombie processes (`Z` in STAT) are excluded from the tree.
 - Dead surfaces are drained: when `SessionManager.onSurfaceClosed` fires, the poller's cache is purged on the next tick.
 
@@ -337,11 +431,13 @@ See [`doc/system-sideband-protocol.md`](doc/system-sideband-protocol.md) for the
 | Type | Renderer |
 |------|----------|
 | `image` | `<img>` from blob URL (PNG, JPEG, WebP, GIF) |
-| `svg` | SVG string as innerHTML |
-| `html` | HTML string as innerHTML |
+| `svg` | Strict-CSP `<iframe sandbox>` (no scripts, no same-origin) |
+| `html` | Strict-CSP `<iframe sandbox>` (no scripts, no same-origin) |
 | `canvas2d` | `<canvas>` with `drawImage` |
 
 Custom types register through `registerRenderer()` in `content-renderers.ts`.
+
+**Sandboxing.** Display-only `html` / `svg` renders inside a sandboxed iframe on *both* the native webview and the web mirror, via the shared `src/shared/sideband-sandbox.ts`. A producer that sets `interactive` opts into the legacy direct-`innerHTML` path, which is needed to forward DOM events back over fd 5 — that is the one explicit full-privilege trust boundary on the native webview. Be precise about what this buys you: `interactive` is producer-controlled, so on the native webview a *compromised* producer just sets it and gets `innerHTML` anyway. The sandbox stops accidents there, not attacks. The web mirror has no such escape hatch — it always sandboxes — so the LAN-facing sink *is* hardened against a hostile producer. See [`doc/system-security.md`](doc/system-security.md).
 
 ### Panel options
 
@@ -415,6 +511,33 @@ bun scripts/demo_canvas_life.ts              # Game of life
 bash scripts/test_sideband.sh                # Protocol integration check
 ```
 
+## Agent integrations
+
+τ-mux is built to be a harness for coding agents. Two are integrated first-class; the surfaces they use (plan panel, ask-user modal, auto-continue, sidebar status) are generic and available to any producer over the `ht` CLI.
+
+### Claude Code
+
+See [`doc/system-claude-integration.md`](doc/system-claude-integration.md) and the [integration page](https://thesamlepirate.github.io/TauMux/integrations/claude-code/).
+
+- **Native pane** (`claude` surface kind) hosting an Agent SDK session — streamed markdown transcript, thinking blocks, tool cards with matched input/output, model + permission-mode switchers, cost / token / elapsed meters, and a Sessions picker that resumes or forks a previous session in place.
+- **Hook bridge** — `ht claude install` wires hooks into `~/.claude/settings.json` (timestamped backup, additive merge, idempotent, refuses on parse failure). It forwards the full session lifecycle: start/end, prompt/stop, API failures, subagent start/stop, compaction, cwd changes, task created/completed, permission and idle notifications.
+- **Statusline** — `ht claude statusline` gives Claude Code a τ-mux-styled statusline *and* feeds cost / context % / rate limits / session title into the sidebar ticker (`Opus · 42% ctx · $0.31`). The numbers are Claude Code's own, so the pills always match `/cost` and `/context`.
+- **Task mirror** — Claude Code's native task list projects into the [plan panel](#plan-panel-and-auto-continue) deterministically via hooks, per session, cleared on session end.
+- **Remote approvals** — `ht claude install --features approvals` routes permission prompts to a τ-mux ask-user modal *and* Telegram, with Allow / Deny / "Answer in terminal". Fail-safe: any failure falls back to Claude Code's own prompt, so the gate can only *add* an answer path.
+- **Terminal prompt acceptance** — for Claude Code running in a plain terminal pane, `ht claude approve` presses Enter on the longest-waiting prompt, and `ht claude auto-approve on` does it unattended. This is a consent gate, so it is deliberately narrow: it fires only for Claude Code's own prompt in that pane, re-checks the prompt is still on screen after the configured delay, pauses and notifies after more than eight prompts in a minute, logs every approval to the pane's sidebar log, and **refuses while an `AskUserQuestion` / `ExitPlanMode` modal is up** — pressing Enter on a choice modal picks a default, which is not what "approve" means.
+
+### pi
+
+See [`doc/system-pi-agent.md`](doc/system-pi-agent.md). The `agent` surface kind hosts a pi coding-agent session; `pi-extensions/ht-bridge/` surfaces pi turns into the sidebar via active labels, cost/context ticks, tool badges, plan mirroring with review-first `.pi/plans/*.md` files, ask-user modals, custom LLM-callable tools, and a system-prompt primer.
+
+> pi agents use a different IPC than everything else: `pi --mode rpc` JSONL over **stdin/stdout**, not the fd 3/4/5 sideband. The pi CLI is upstream-defined. See [`doc/system-pty-session.md`](doc/system-pty-session.md) § 9.
+
+### Plan panel and auto-continue
+
+- **Plan panel** — a sidebar widget showing multi-step agent plans (`ht plan set/update/complete/clear`). Cards carry a progress bar and an `updated Nm ago` stamp; steps with a description expand inline on click; a card can be dismissed with a hover `×`, promoted to a labelled **Clear** button once every step is done. Both the native panel and the web mirror route clears through the same `plan.clear` handler, so they can never disagree.
+- **Ask-user** — `ht ask yes-no|choice|text|confirm-command` opens a modal for an agent → human question, fanned out to Telegram when configured.
+- **Auto-continue** — an opt-in engine (`off` / `heuristic` / `model`) that decides whether an idle agent should be nudged to keep going, with an audit ring you can inspect via `ht autocontinue audit`.
+
 ## Browser panes
 
 Open a browser split with `⌘⇧L` or from the command palette. Browser panes sit in the same tiling layout as terminal panes — they share workspaces, splits, and keyboard navigation.
@@ -475,15 +598,17 @@ Under the hood (see [`doc/http-web-ui-refactor.md`](doc/http-web-ui-refactor.md)
 
 ## Settings
 
-All settings persist to `~/Library/Application Support/hyperterm-canvas/settings.json`. Sections:
+All settings persist to `~/Library/Application Support/hyperterm-canvas/settings.json` — 62 fields across nine sections. The [settings reference](https://thesamlepirate.github.io/TauMux/configuration/settings/) is generated from `AppSettings` + `DEFAULT_SETTINGS` and machine-checked against the code by `tests/docs-coverage.test.ts`, so it is the authoritative list.
 
-- **General** — `shellPath` (empty = `$SHELL`), `scrollbackLines`.
-- **Appearance** — font family/size, line height, cursor style, cursor blink.
-- **Theme** — 10 presets + per-color overrides, background opacity, accent / secondary / foreground colors, full 16-color ANSI palette.
-- **Effects** — terminal bloom toggle + intensity.
-- **Network** — web mirror port + auto-start + bind address + optional auth token.
+- **General** — shell path (empty = `$SHELL`), scrollback lines, package-manager choice.
+- **Appearance** — font family/size, line height, cursor style, cursor blink, density.
+- **Theme** — 12 presets + per-color overrides, terminal background opacity, accent / secondary / foreground colors, full 16-color ANSI palette.
+- **Effects** — terminal bloom toggle + intensity, notification sound + volume.
+- **Layout** — layout variant (Bridge / Cockpit / Atlas), pane gap, sidebar width.
+- **Network** — web mirror port + auto-start + bind address + optional auth token, RPC socket token requirement.
 - **Browser** — search engine, home page, force dark mode, terminal link interception.
-- **Advanced** — pane gap (px between splits), sidebar width.
+- **Telegram** — bot token, access policy, allowed chats, notification forwarding.
+- **Advanced** — terminal renderer (GPU / DOM), diagnostics, auto-continue engine.
 
 Every setting takes effect live (no restart), with these caveats:
 - `shellPath` applies to *new* surfaces only (matches the UI note).
@@ -504,21 +629,27 @@ Response:
 {"id":"1","result":"PONG"}
 ```
 
-Errors are returned as `{"id":"1","error":"message"}`. See [`doc/system-rpc-socket.md`](doc/system-rpc-socket.md) for full method docs.
+Errors are returned as `{"id":"1","error":"message"}`. State-mutating calls require the per-boot socket token (`rpcSocketRequireToken` defaults to `true`); every first-party client reads it automatically, and read-only diagnostics stay open so `ht doctor` works regardless.
 
-**System:** `system.ping`, `system.version`, `system.identify`, `system.capabilities`, `system.tree`
+**139 methods across 17 domains.** `ht capabilities --json` enumerates them at runtime; [`doc/system-rpc-socket.md`](doc/system-rpc-socket.md) and the [API reference](https://thesamlepirate.github.io/TauMux/api/overview/) document each one, and `tests/docs-coverage.test.ts` fails CI if a registered method goes undocumented.
 
-**Workspaces:** `workspace.list`, `workspace.current`, `workspace.create`, `workspace.select`, `workspace.close`, `workspace.rename`, `workspace.next`, `workspace.previous`
-
-**Surfaces:** `surface.list`, `surface.split`, `surface.close`, `surface.focus`, `surface.send_text`, `surface.send_key`, `surface.read_text`, `surface.metadata`, `surface.open_port`, `surface.kill_port`, `surface.kill_pid`, `surface.screenshot`
-
-**Sidebar:** `sidebar.set_status`, `sidebar.clear_status`, `sidebar.set_progress`, `sidebar.clear_progress`, `sidebar.log`
-
-**Notifications:** `notification.create`, `notification.list`, `notification.clear`, `notification.dismiss`
-
-**Panes:** `pane.list`
-
-**Browser:** `browser.list`, `browser.open`, `browser.open_split`, `browser.close`, `browser.identify`, `browser.navigate`, `browser.back`, `browser.forward`, `browser.reload`, `browser.url`, `browser.wait`, `browser.click`, `browser.dblclick`, `browser.hover`, `browser.focus`, `browser.check`, `browser.uncheck`, `browser.scroll_into_view`, `browser.type`, `browser.fill`, `browser.press`, `browser.select`, `browser.scroll`, `browser.highlight`, `browser.snapshot`, `browser.get`, `browser.is`, `browser.eval`, `browser.addscript`, `browser.addstyle`, `browser.find`, `browser.stop_find`, `browser.devtools`, `browser.console_list`, `browser.console_clear`, `browser.errors_list`, `browser.errors_clear`, `browser.history`, `browser.clear_history`
+| Domain | Count | What it covers |
+|--------|-------|----------------|
+| `browser.*` | 47 | Navigation, DOM interaction, snapshot, eval, console/errors, history, 8 cookie verbs |
+| `surface.*` | 14 | Split, close, focus, send text/keys, read text, metadata, ports, kill, screenshot, rename |
+| `extension.*` | 11 | List, templates, new, open, split, enable, disable, lifecycle |
+| `agent.*` | 9 | pi agent pane lifecycle + messaging |
+| `workspace.*` | 8 | List, current, create, select, close, rename, next, previous |
+| `system.*` | 7 | Ping, version, identify, capabilities, tree, health, shutdown |
+| `claude.*` | 6 | Pane, approve, auto-approve, sessions, statusline, event |
+| `editor.*` | 6 | Open, split, list, save, reload, close |
+| `autocontinue.*` | 6 | Status, audit, set, fire, pause, resume |
+| `plan.*` | 5 | Set, update, complete, clear, list |
+| `sidebar.*` | 5 | Status pills, progress, log |
+| `telegram.*` | 5 | Status, chats, history, send, restart |
+| `notification.*` | 4 | Create, list, clear, dismiss |
+| `audit.*` | 3 | Design/accessibility audit runs |
+| `pane.*`, `panel.*`, `script.*` | 1 each | Pane list, panel list, package-script run |
 
 ## Project layout
 
@@ -534,14 +665,29 @@ src/
     event-writer.ts             # fd 5 JSONL event writer (incl. system errors)
     socket-server.ts            # Unix socket JSON-RPC server
     rpc-handler.ts              # Dispatcher that merges per-domain handlers
-    rpc-handlers/               # system / workspace / surface / sidebar / pane / notification / agent / browser-* / plan / telegram / audit / auto-continue / ask-user / __test
+    rpc-handlers/               # system / workspace / surface / sidebar / pane / notification / agent / browser-* / plan / telegram / audit / auto-continue / ask-user / claude / editor / extension / script / panel / __test
+      shared.ts                 # METHOD_SCHEMAS + validateParams + geometry helpers
     plan-store.ts               # In-memory agent plan registry (subscribed → broadcast)
     auto-continue-engine.ts     # Heuristic + model-driven engine for agent run-on
     auto-continue-host.ts       # Notification → engine dispatcher; wires audit ring
+    ask-user-queue.ts           # Pending agent → human questions + telegram fan-out
+    claude-agent-manager.ts     # Claude Code pane sessions on the Agent SDK
+    claude-integration.ts       # Hook install / uninstall / doctor
+    claude-session-registry.ts  # Per-session phase tracking (persisted)
+    claude-auto-approve.ts      # Terminal permission-prompt acceptance
+    claude-plan-mirror.ts       # Claude task list → plan panel
+    claude-statusline / -status-presenter / -team-watcher
+    pi-agent-manager.ts         # pi --mode rpc JSONL over stdio
+    extension-manager.ts        # Extension app install / lifecycle / backends
+    editor-files.ts             # Editor pane file IO
+    sidebar-file-explorer.ts    # cwd file tree for the sidebar
+    cookie-store.ts             # Browser cookie import/export/capture
     telegram-service.ts         # Long-poll bot service + dedup + offset persist
     telegram-db.ts              # SQLite log for telegram messages
-      shared.ts                 # METHOD_SCHEMAS + validateParams + geometry helpers
-    surface-metadata.ts         # Poller + ps/lsof parsers + diff + emit
+    native-proc.ts              # libSystem FFI process introspection (+ self-validation)
+    surface-metadata.ts         # Poller + diff + emit (FFI, ps/lsof fallback)
+    health.ts                   # system.health subsystem report
+    logger.ts                   # Daily rotating file log
     settings-manager.ts         # Load/save + debounced persist
     web-server.ts               # Re-export shim → src/bun/web/
     web/
@@ -576,13 +722,26 @@ src/
     toast.ts                    # In-webview toast notifications
     prompt-dialog.ts            # Rename prompts
     agent-panel*.ts             # Pi agent panel: utils / messages / model / response / dialogs / slash
+    claude-agent-pane.ts        # Claude Code pane: transcript, tool cards, meters, switchers
+    claude-pane-bridge.ts       # Claude pane ↔ bun RPC bridge
+    *-surface-controller.ts     # Per-kind mount/unmount/resize (agent, browser, claude, editor, extension, telegram)
+    editor-pane.ts              # CodeMirror editor surface
+    extension-pane.ts           # Extension app host surface
     agent-events.ts             # ht-agent-* CustomEvent → RPC bridge
     browser-events.ts           # ht-browser-* CustomEvent → RPC bridge
     plan-panel.ts               # Multi-step agent plan widget + audit ring (sidebar)
     ask-user-modal.ts           # Agent → human question modal (yes-no/choice/text/confirm-command)
     ask-user-state.ts           # Pure projection used by AskUserModal
     telegram-pane.ts            # Telegram chat pane: picker, status pill, composer
-    variants/controller.ts      # τ-mux §9 layout variant orchestrator (bridge / cockpit / atlas)
+    sidebar-manifest-card.ts    # package.json / Cargo.toml workspace card
+    status-keys.ts              # Bottom status-key strip (+ native-status-keys.ts)
+    osc-progress.ts             # OSC 9;4 progress sequences → UI
+    keyboard-cheatsheet.ts      # ⌘⇧? generated from the bindings arrays
+    keyboard-shortcuts.ts       # Binding<Ctx>[] matchers + dispatch helpers
+    tau-tokens / tau-primitives / tau-icons  # Design-system tokens, primitives, icon set
+    terminal-renderer.ts        # GPU / DOM renderer selection
+    notification-overlay.ts     # Toast + notification surface
+    variants/                   # Layout variant orchestrator (bridge / cockpit / atlas)
     socket-actions.ts           # Socket API action dispatch table
   web-client/                   # Web-mirror client (built into assets/web-client/client.js)
     main.ts                     # Entry; composes transport + views
@@ -609,14 +768,26 @@ doc/
   system-webview-ui.md
   system-process-metadata.md    # Full spec for the metadata pipeline
   system-browser-pane.md        # Browser pane: architecture, API, automation, settings
-tests/                          # 1500+ tests across 100 files (bun test)
-tests-e2e/                      # 10 Playwright web-mirror specs (bun run test:e2e)
+  system-claude-integration.md  # Claude Code: hooks, pane, statusline, approvals
+  system-pi-agent.md            # pi agent pane + ht-bridge extension
+  system-plan-panel.md          # Plan panel data model + rendering
+  system-telegram.md            # Telegram bot service, db, forwarding
+  system-sharebin.md            # shareBin publish flow
+  system-osc-sequences.md       # OSC progress / title sequences
+  system-security.md            # Trust boundaries, sandbox, socket token
+  system-webview-design-guidelines.md
+website-doc/                    # Astro Starlight documentation site (EN + FR)
+tests/                          # 3400+ tests across 278 files (bun test)
+tests-e2e/                      # Playwright web-mirror specs (bun run test:e2e)
+tests-e2e-native/               # Playwright native-webview specs (bun run test:native)
 pi-extensions/
-  ht-bridge/                    # pi coding-agent extension bundled in 0.2.81: sidebar, plans, ask-user, ht_* tools
+  ht-bridge/                    # Bundled pi extension: sidebar, plans, ask-user, ht_* tools
 claude-integration/
-  ht-bridge/                    # Claude Code shell hooks → ht set-status / ht notify
+  ht-bridge/                    # Claude Code hooks → status pills, ticker, plan mirror, approvals
+  skills/tau-mux/               # Claude Code skill for the ht surfaces
   install.sh                    # Symlink into ~/.claude/scripts
   settings.snippet.jsonc        # Drop-in hook blocks for ~/.claude/settings.json
+examples/extensions/            # Sample extension apps (http-client, nebula, three-demo)
 ```
 
 ## Development
@@ -625,10 +796,13 @@ claude-integration/
 bun install                # dependencies
 bun start                  # dev: build + launch once
 bun dev                    # dev: build + launch with watch
-bun test                   # unit + integration suite (1500+ tests across 100 files, ~10s)
-bun run test:e2e           # Playwright web-mirror e2e (43 tests)
-bun run test:all           # both
+bun test                   # unit + integration suite (3400+ tests across 278 files, ~30s)
+bun run test:e2e           # Playwright web-mirror e2e
+bun run test:native        # Playwright native-webview e2e
+bun run test:all           # unit + web-mirror e2e
+bun run test:full-suite    # typecheck + unit + e2e + native + design report + audit
 bun run typecheck          # TypeScript check
+bun run report:design:web  # regenerate test-results/design-report/index.html (fast)
 bun run review:agent       # run the crazyShell Reviewer once
 bun run review:agent:watch # continuously review new commits into code_reviews/
 bun run build:cli          # standalone ./build/ht-cli binary (for other Macs)
@@ -651,7 +825,16 @@ See [`doc/code-review-agent.md`](doc/code-review-agent.md) for the workflow and 
 
 ### Continuous integration
 
-GitHub Actions (`.github/workflows/ci.yml`) runs `typecheck + bun test` and `Playwright e2e` on every push and PR. Both jobs run on `macos-latest` — the PTY / `ps` / `lsof` integration tests rely on macOS behavior, and the e2e boot script spawns a Bun subprocess that drives the real `WebServer` + `SessionManager`. Playwright only targets Chromium for now; add Firefox/WebKit under `projects:` in `playwright.config.ts` if you want wider render coverage.
+GitHub Actions (`.github/workflows/ci.yml`) runs four jobs on every push and PR, all on `macos-14` — the PTY, FFI, and `ps` / `lsof` integration tests rely on macOS behavior, and the e2e boot script spawns a Bun subprocess that drives the real `WebServer` + `SessionManager`:
+
+| Job | What it does |
+|-----|--------------|
+| **Typecheck + Bun tests** | `tsc --noEmit`, lint, module-size ratchet, then the full unit + integration suite |
+| **Coverage gate** | Generates coverage and checks it against a per-file baseline to catch regressions |
+| **Functional e2e (web mirror)** | Playwright against a real Chromium |
+| **Dependency vulnerability scan** | Non-blocking advisory report |
+
+Playwright only targets Chromium for now; add Firefox/WebKit under `projects:` in `playwright.config.ts` if you want wider render coverage. `.github/workflows/docs.yml` builds and publishes the Starlight site; `release.yml` handles packaging.
 
 ### End-to-end tests
 
@@ -672,17 +855,26 @@ The `tests-e2e/` suite exercises the web mirror (HTTP + WebSocket + xterm.js ren
 - [`doc/system-webview-ui.md`](doc/system-webview-ui.md) — workspaces, panes, sidebar, process manager, keyboard UX
 - [`doc/system-process-metadata.md`](doc/system-process-metadata.md) — live process metadata: poller, parsers, diff, renderers, CLI
 - [`doc/system-browser-pane.md`](doc/system-browser-pane.md) — built-in browser pane: architecture, automation API, CLI, settings
+- [`doc/system-claude-integration.md`](doc/system-claude-integration.md) — Claude Code: hook bridge, native pane, statusline, approvals, auto-approve
+- [`doc/system-pi-agent.md`](doc/system-pi-agent.md) — pi agent pane and the bundled `ht-bridge` extension
+- [`doc/system-plan-panel.md`](doc/system-plan-panel.md) — plan panel data model, clear semantics, step detail
+- [`doc/system-telegram.md`](doc/system-telegram.md) — Telegram bot service, SQLite log, forwarding
+- [`doc/system-security.md`](doc/system-security.md) — trust boundaries: sideband sandbox, socket token, extensions
+- [`doc/system-sharebin.md`](doc/system-sharebin.md) — shareBin publish flow
+- [`doc/system-osc-sequences.md`](doc/system-osc-sequences.md) — OSC progress + title sequences
 - [`doc/code-review-agent.md`](doc/code-review-agent.md) — crazyShell Reviewer workflow, outputs, watch loop
+- [`doc/design-report.md`](doc/design-report.md) — visual regression + design report workflow
 - [`scripts/README_python.md`](scripts/README_python.md), [`scripts/README_typescript.md`](scripts/README_typescript.md) — client library reference
 
 ## Tech stack
 
-- **Runtime** — [Bun](https://bun.sh) 1.3.9
+- **Runtime** — [Bun](https://bun.sh) 1.3.14
 - **Framework** — [Electrobun](https://electrobun.dev) 1.16.0
-- **Terminal** — [xterm.js](https://xtermjs.org) 5.3.0
+- **Terminal** — [xterm.js](https://xtermjs.org) (`@xterm/xterm` 6.0)
+- **Editor** — [CodeMirror](https://codemirror.net) 6
 - **PTY** — `Bun.spawn` with `terminal` option (no node-pty)
-- **Process metadata** — `ps` + `lsof` (no tmux, no shell integration)
-- **Theme default** — Obsidian (10 built-in presets)
+- **Process metadata** — libSystem via `bun:ffi` (`sysctl` + `proc_pidinfo`), with `ps` / `lsof` as a self-validating fallback. No tmux, no shell integration.
+- **Theme default** — τ (12 built-in presets)
 - **Font** — JetBrains Mono Nerd Font
 
 

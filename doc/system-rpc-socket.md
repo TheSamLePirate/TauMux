@@ -22,7 +22,7 @@ ht ping
 # Output: PONG
 
 ht version
-# Output: tau-mux 0.0.1
+# Output: tau-mux 0.10.9
 ```
 
 If something is off, `ht doctor` is the canonical diagnostic — it reports the resolved socket path, whether `HT_SOCKET_PATH` was set, socket reachability, the active log file path, and the local Bun runtime version. Run it first when bug-reporting:
@@ -31,13 +31,13 @@ If something is off, `ht doctor` is the canonical diagnostic — it reports the 
 ht doctor
 # socket_path:        /Users/olivier/Library/Application Support/hyperterm-canvas/hyperterm.sock
 # HT_SOCKET_PATH:     set
-# bun_version:        1.3.9
+# bun_version:        1.3.14
 # socket_reachable:   yes
 # socket_path_bound:  /Users/olivier/Library/Application Support/hyperterm-canvas/hyperterm.sock
 # log_path:           /Users/olivier/Library/Logs/tau-mux/app-2026-04-26.log
 # focused_surface:    surface:1
 # active_workspace:   ws:1
-# app_version:        tau-mux 0.2.0
+# app_version:        tau-mux 0.10.9
 ```
 
 The bound `socket_path` reported by the running app is the source of truth — if it differs from the path the CLI resolved, `ht doctor` prints a warning telling you which `HT_SOCKET_PATH` to export.

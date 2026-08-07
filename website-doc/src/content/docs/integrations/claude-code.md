@@ -73,8 +73,9 @@ command, τ-mux can press Enter for you (its prompt's default answer is
   permission prompt"*, or [`ht claude approve`](/cli/claude/) (answers the
   longest-waiting session, or `--surface`).
 - **Automatically** — Settings → *Auto-approve Claude Code prompts*
-  (**off by default**). Every approval is written to that pane's sidebar
-  log, so there is a record of what was accepted unattended.
+  (**off by default**), or [`ht claude auto-approve on|off|status`](/cli/claude/).
+  Every approval is written to that pane's sidebar log, so there is a
+  record of what was accepted unattended.
 
 This is deliberately narrow. It only fires when Claude Code is showing
 its **own prompt in that pane's terminal**; it never answers the
@@ -85,6 +86,36 @@ is still on screen after the configured delay, so it can't fire a stray
 Enter into a pane where you already answered. And if more than eight
 prompts arrive in a minute it pauses itself and notifies you — a prompt
 storm is not something to rubber-stamp.
+
+### Questions addressed to you are never auto-answered
+
+Claude Code raises the **same** permission-prompt hook for an
+**AskUserQuestion** or **ExitPlanMode** modal as it does for "may I run
+this command", with the same generic message — on the hook stream alone
+the two are indistinguishable. Two hooks scoped to
+`AskUserQuestion|ExitPlanMode` tell τ-mux when a choice modal is open, and
+**both auto-approve and the manual `ht claude approve` refuse to act while
+one is up**: pressing Enter on a choice modal picks its default option,
+which is not what "approve" means.
+
+When the modal closes, τ-mux retracts the approval announcement it raised
+— so an answered question stops showing a pending-approval pill, and a
+later `ht claude approve` can't type Enter into a pane with no prompt on
+screen. A genuine tool prompt is left untouched.
+
+A notification arriving while a modal is open is attributed to the modal.
+If that ever misfires the result is a *missed* auto-approval — you press
+Enter yourself — never a stray keystroke.
+
+:::note
+These two hooks need [`ht claude install`](/cli/claude/) and a restart of
+any running Claude Code session. `ht claude doctor` reports them as
+missing until then.
+:::
+
+A turn that asks permission more than once has **every** prompt answered,
+not just the first — τ-mux counts prompt announcements rather than state
+transitions, because Claude Code ships no "prompt resolved" hook.
 
 Auto-approve hands a coding agent unattended consent for the commands it
 asks to run. Turn it on when you are supervising the pane, not as a

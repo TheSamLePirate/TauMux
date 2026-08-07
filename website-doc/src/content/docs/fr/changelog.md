@@ -7,6 +7,50 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.10.8 — Une question déjà répondue cesse de réclamer une approbation
+
+Suite de 0.10.7, découverte en vérifiant ce correctif sur une session réelle plutôt qu'en tests seulement. Répondre à une question n'émet aucun événement de « résolution » non plus : la notification de permission déclenchée par la question **survivait donc à la question**. La session restait en « en attente d'approbation » alors qu'elle travaillait, la pastille de la barre latérale annonçait une approbation en attente, et — le vrai problème — un simple [`ht claude approve`](/fr/cli/claude/) l'aurait sélectionnée et aurait tapé Entrée dans un panneau n'affichant aucune invite.
+
+- τ-mux enregistre désormais si une annonce en attente appartient à une fenêtre de choix, et la retire à la fermeture de celle-ci — retour en phase travail/inactif, message effacé — sans toucher à une véritable invite d'outil.
+- **Limitation assumée :** une notification qui arrive pendant qu'une fenêtre de choix est ouverte lui est attribuée. En cas d'erreur, le résultat est une auto-approbation *manquée* (vous appuyez sur Entrée vous-même), jamais une frappe parasite — le sens sûr.
+- Aucun nouveau hook, aucune réinstallation : redémarrez l'application.
+
+## 0.10.7 — L'auto-approbation ne répond plus aux questions qui vous sont adressées
+
+Claude Code déclenche **le même** hook d'invite de permission pour une fenêtre **AskUserQuestion** ou **ExitPlanMode** que pour « puis-je exécuter cette commande », avec le même message générique — sur le flux de hooks seul, les deux sont indiscernables, et l'auto-approbation répondait donc aux questions à choix multiples qui *vous* étaient adressées en prenant leur option par défaut.
+
+- Deux nouveaux hooks limités à `AskUserQuestion|ExitPlanMode` signalent à τ-mux qu'une fenêtre de choix est ouverte. L'auto-approbation **et** le [`ht claude approve`](/fr/cli/claude/) manuel refusent désormais d'agir tant qu'elle l'est : appuyer sur Entrée sur une fenêtre de choix sélectionne une valeur par défaut, ce qui n'est pas ce que « approuver » signifie.
+- Un événement de fermeture manqué ne peut pas bloquer une session — l'invite suivante, la fin du tour ou la fin de session réinitialisent l'indicateur.
+- **Nécessite [`ht claude install`](/fr/cli/claude/)** pour câbler les deux hooks, puis un redémarrage des sessions Claude Code en cours. `ht claude doctor` les signale comme manquants jusque-là.
+
+## 0.10.6 — L'auto-approbation répond à toutes les invites d'un tour
+
+**Correctif :** avec l'auto-approbation activée, un tour demandant la permission plus d'une fois ne voyait que sa *première* invite traitée ; la seconde restait bloquée indéfiniment avec `Do you want to proceed?` à l'écran. Claude Code ne fournit aucun hook « invite résolue » : la session reste donc en « en attente d'approbation » entre deux invites consécutives, et la seconde annonce était identique à la première toujours affichée. τ-mux compte désormais les annonces d'invite plutôt que les transitions d'état, et se déclenche donc une fois par invite. Le garde-fou anti-rafale compte lui aussi chaque invite.
+
+## 0.10.5 — Panneau de plan : contrôle d'effacement + détail des étapes
+
+- **Les cartes de plan peuvent être écartées depuis l'interface.** Chaque carte porte un contrôle d'effacement — une `×` révélée au survol pendant le travail, promue en bouton **Clear** libellé une fois toutes les étapes terminées. Il passe par le même gestionnaire que `ht plan clear` : la CLI, le panneau natif et le [miroir web](/fr/features/web-mirror/) ne peuvent donc jamais diverger.
+- **Les descriptions d'étape s'affichent en ligne.** Les étapes porteuses d'une description (c'est le cas de chaque tâche Claude Code mise en miroir) sont désormais des bascules : cliquez pour déplier le texte complet sous la ligne, cliquez à nouveau pour replier. Auparavant la description n'existait que comme infobulle au survol — d'où l'impression qu'un plan « montrait seulement qu'il y a un plan ».
+- **Les cartes gagnent une barre de progression et un horodatage `updated Nm ago`**, pour qu'un plan périmé se voie comme tel.
+- **Accessibilité :** la carte était un unique gros bouton, ce qui rendait les nouveaux contrôles illégaux (boutons imbriqués). C'est désormais un conteneur inerte contenant trois vrais contrôles, avec `aria-expanded` sur les bascules d'étape.
+- **Correctif :** `ht plan update <id> --state done` supprimait silencieusement la description de l'étape, vidant la nouvelle ligne de détail précisément au moment où une étape se terminait.
+
+## 0.10.4 — Le registre de sessions Claude survit aux redémarrages
+
+Le registre par session est désormais persisté : phases, attribution des panneaux et listes de tâches mises en miroir survivent à un redémarrage de l'application au lieu de repartir de zéro. Les décisions « ignorées » répétées se regroupent dans le journal au lieu de l'inonder.
+
+## 0.10.3 — `ht claude auto-approve on|off`
+
+L'auto-approbation n'existait que dans les réglages, ce qui la rendait peu pratique à activer pour une seule exécution sans surveillance. C'est désormais un verbe CLI à part entière — [`ht claude auto-approve on|off|status`](/fr/cli/claude/) — qui passe par le même pipeline de réglages que la case à cocher.
+
+## 0.10.2 — La documentation est désormais vérifiée par rapport au code
+
+Un audit complet code-vs-docs, plus une barrière CI pour qu'il ne se dégrade plus. L'audit a trouvé 42 méthodes RPC non documentées (six domaines entiers), 22 commandes CLI non documentées, 38 réglages non documentés, 11 réglages documentés qui **n'existaient pas**, et 14 valeurs par défaut erronées. Tout est corrigé en EN et en FR. `tests/docs-coverage.test.ts` fait désormais échouer le build si une méthode enregistrée, une commande `ht` ou un champ d'`AppSettings` n'est pas documenté, si un réglage documenté est fantôme, si une valeur par défaut documentée diverge du code, si un type de surface manque à la page concepts, ou si EN et FR divergent en inventaire de pages.
+
+## 0.10.1 — L'approbation cible le panneau bloqué
+
+**Correctif :** `ht claude approve` répondait à l'invite du panneau *appelant* plutôt qu'à celui réellement bloqué. Il résout désormais la session en attente depuis le plus longtemps, ou un `--surface` explicite.
+
 ## 0.10.0 — Accepter les invites de permission de Claude Code
 
 Quand Claude Code tourne dans un panneau terminal et demande la permission d'exécuter une commande, τ-mux peut désormais y répondre pour vous.

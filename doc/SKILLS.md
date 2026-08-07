@@ -17,7 +17,7 @@ Quick check:
 
 ```bash
 ht ping        # → PONG
-ht version     # → tau-mux 0.0.1
+ht version     # → tau-mux 0.10.9
 ```
 
 ---
