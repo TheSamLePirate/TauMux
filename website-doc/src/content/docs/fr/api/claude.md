@@ -9,6 +9,50 @@ pont de hooks et `ht claude statusline` ; la lecture alimente `ht claude
 sessions`, les diagnostics, et l'UI future. Aussi accessible via
 l'espace de noms `claude` du SDK d'extensions.
 
+## claude.pane
+
+```json
+{ "method": "claude.pane",
+  "params": { "cwd": "/repo", "split": true, "direction": "right" } }
+→ "OK"
+```
+
+Ouvre un [panneau Claude Code natif](/fr/features/claude-code-pane/) — le même
+point d'entrée que la palette. `resume` rouvre un id de session précédent. Sans
+`cwd`, le panneau hérite du dossier du panneau focalisé.
+
+## claude.auto_approve
+
+```json
+{ "method": "claude.auto_approve", "params": {} }
+→ { "ok": true, "enabled": false, "delayMs": 700 }
+
+{ "method": "claude.auto_approve", "params": { "enabled": true, "delay_ms": 500 } }
+→ { "ok": true, "enabled": true, "delayMs": 500 }
+```
+
+Lit (sans params) ou bascule l'acceptation automatique des invites de
+permission de Claude Code dans les panneaux **terminal**. Les écritures passent
+par le gestionnaire de réglages : le changement est persisté et appliqué
+immédiatement — sans redémarrage ni édition de `settings.json`. Adossé à
+[`claudeAutoApprove`](/fr/configuration/settings/).
+
+Voir [`ht claude auto-approve`](/fr/cli/claude/).
+
+## claude.approve
+
+```json
+{ "method": "claude.approve", "params": { "surface_id": "surface:3" } }
+→ { "ok": true, "surfaceId": "surface:3" }
+→ { "ok": false, "reason": "no Claude Code terminal prompt is waiting" }
+```
+
+Accepte l'invite de permission affichée par Claude Code dans un panneau
+**terminal** en envoyant Entrée. Sans `surface_id`, répond à la session qui
+attend depuis le plus longtemps. Refuse si rien n'attend, si l'approbation a
+été routée vers la modale τ-mux (il n'y a alors pas d'invite terminal), ou s'il
+s'agit d'un panneau Claude Code.
+
 ## claude.event
 
 ```json

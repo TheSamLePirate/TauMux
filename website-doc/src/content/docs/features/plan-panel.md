@@ -45,9 +45,11 @@ The sidebar widget shows the card the moment `set` lands; updates animate in 100
 ## Anatomy of a plan card
 
 ```
-ws:5  claude:1                       ← header (workspace · agent)
-0/3 done · 1 active                  ← progress summary
-●  M1   Explore                      ← step rows
+ws:5  claude:1                    ×  ← header (workspace · agent · clear)
+0/3 done · 1 active · updated 2m ago ← progress summary + freshness stamp
+▓▓▓▓▓░░░░░░░░░░░░░░░                 ← progress bar
+●  M1   Explore                   ⌄  ← step rows (⌄ = has description)
+   Read the poller and map every…    ← expanded description
 ○  M2   Implement
 ○  M3   Test
 AUTO-CONTINUE · LAST 3               ← audit ring header
@@ -55,6 +57,10 @@ fired      next plan step: M2
 skipped    cooldown — 1842ms
 dry-run    would continue: M2
 ```
+
+**Clearing a card.** The `×` appears on hover while work is in flight, and is promoted to a labelled **Clear** button — with the card outlined in the success colour — once every step is done. It routes through the same handler as `ht plan clear`, so the CLI, the native panel and the [web mirror](/features/web-mirror/) can never disagree about what exists. The panel doesn't optimistically remove the card: the store's broadcast is what repaints, so a clear that didn't land can't leave you with a panel that looks clean but isn't.
+
+**Step detail.** Steps that carry a description — every mirrored Claude Code task does — are toggles. Click to expand the full text under the row; click again to collapse. Expanded rows stop truncating their title. Expansion is local view state and never goes on the wire, so the native panel and the mirror can legitimately show different rows expanded.
 
 Empty plans are hidden — when nothing is published in any workspace, the native panel collapses to zero height.
 

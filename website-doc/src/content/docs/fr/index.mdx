@@ -56,7 +56,7 @@ import appScreenshot from "../../../../../assets/images/App_screenshot.png";
     Superpositions flottantes SVG, HTML, image et canvas2d pilotées par des descripteurs de fichier supplémentaires (fd 3/4/5). Éléments DOM indépendants — déplaçables, redimensionnables, interactifs.
   </Card>
   <Card title="Métadonnées de processus en direct" icon="magnifier">
-    Un observateur `ps` + `lsof` à 1 Hz expose le cwd, les ports, le %CPU, la RSS et la ligne argv complète pour chaque descendant de chaque shell. Les puces, la barre latérale et la CLI s'alimentent toutes au même pipeline.
+    Un observateur 1 Hz bâti sur libSystem (`sysctl` + `proc_pidinfo`, ~2 ms/tick) expose le cwd, les ports, le %CPU, la RSS et l'argv complet de chaque descendant de chaque shell — avec repli sur `ps`/`lsof` si l'ABI noyau change. Les puces, la barre latérale et la CLI s'alimentent au même pipeline.
   </Card>
   <Card title="CLI `ht`" icon="seti:powershell">
     Crée des panneaux, envoie des touches, manipule les layouts, ouvre des ports dans un navigateur, envoie des signaux, inspecte des arbres. Livré en binaire autonome dans le `.app`.
@@ -66,6 +66,21 @@ import appScreenshot from "../../../../../assets/images/App_screenshot.png";
   </Card>
   <Card title="Miroir web" icon="rocket">
     Toute l'interface native diffusée sur WebSocket vers n'importe quoi sur le LAN. Auth par jeton, contrôles d'origine, reprise à la reconnexion.
+  </Card>
+  <Card title="Claude Code, intégré en profondeur" icon="star">
+    Phase de session, coût, contexte et rate limits en direct dans la barre latérale ; invites de permission répondues depuis une modale, depuis Telegram, ou automatiquement ; liste de tâches native reflétée dans le panneau de plan ; et un [panneau Claude Code de premier rang](/fr/features/claude-code-pane/).
+  </Card>
+  <Card title="Panneaux d'agents" icon="rocket">
+    L'[agent pi](/fr/integrations/pi/) et [Claude Code](/fr/features/claude-code-pane/) tournent comme de vrais panneaux — identité ambre, transcripts streamés, cartes d'outils, approbations — à côté de vos shells.
+  </Card>
+  <Card title="Applications d'extension" icon="puzzle">
+    Un backend Bun plus un frontend Vite en iframe, pilotant toute la surface de contrôle de τ-mux via un [SDK typé](/fr/features/extensions/). Code totalement de confiance — n'installez que ce que vous enverriez dans un shell.
+  </Card>
+  <Card title="Pont Telegram" icon="comment">
+    Un panneau de chat, le relais de notifications et des invites [ask-user](/fr/features/ask-user/) répondables depuis votre téléphone, avec journal SQLite et allowlist fail-closed.
+  </Card>
+  <Card title="Éditeur &amp; explorateur" icon="document">
+    Panneaux [éditeur CodeMirror](/fr/features/file-explorer-and-editor/) et arborescence de fichiers intégrée à la carte d'espace.
   </Card>
 </CardGrid>
 
@@ -92,7 +107,7 @@ import appScreenshot from "../../../../../assets/images/App_screenshot.png";
 - **Framework** — [Electrobun](https://electrobun.dev) 1.16+
 - **Terminal** — [xterm.js](https://xtermjs.org) 5.3
 - **PTY** — `Bun.spawn` avec l'option `terminal` (sans node-pty)
-- **Métadonnées de processus** — `ps` + `lsof` (sans tmux, sans intégration shell)
+- **Métadonnées de processus** — libSystem FFI, repli `ps` + `lsof` (sans tmux, sans intégration shell)
 - **Thème par défaut** — Obsidian (10 préréglages intégrés)
 
 Licence : MIT.

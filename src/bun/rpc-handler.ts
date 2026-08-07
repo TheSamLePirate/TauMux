@@ -110,6 +110,14 @@ export interface RpcHandlerOptions {
     surfaceId?: string;
     reason?: string;
   };
+  /** Read/flip Claude permission auto-approve at runtime (settings-backed). */
+  claudeAutoApprove?: {
+    get: () => { enabled: boolean; delayMs: number };
+    set: (o: { enabled?: boolean; delayMs?: number }) => {
+      enabled: boolean;
+      delayMs: number;
+    };
+  };
   claudeOpenPane?: (opts: {
     cwd?: string;
     resume?: string;
@@ -219,6 +227,7 @@ export function createRpcHandler(
           options.claudeRegistry,
           options.claudeOpenPane,
           options.claudeApprove,
+          options.claudeAutoApprove,
         )
       : {},
     options.audits ? registerAudit(deps, options.audits) : {},

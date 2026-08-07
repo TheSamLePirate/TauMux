@@ -53,7 +53,7 @@ The panel is read-only by design: the agent owns the plan. Editing in-UI is out 
 
 ### Webview side
 
-- **`src/views/terminal/plan-panel.ts`** — `PlanPanel` class. Self-contained DOM mounted into the sidebar host; `setPlans(plans)` / `setAudit(audit)` setters. Click delegation on `data-plan-workspace` calls `SurfaceManager.selectWorkspaceById`.
+- **`src/views/terminal/plan-panel.ts`** — `PlanPanel` class. Self-contained DOM mounted into the sidebar host; `setPlans(plans)` / `setAudit(audit)` setters. Click delegation on `data-plan-workspace` calls `SurfaceManager.selectWorkspaceById`; `data-plan-clear` routes to `plan.clear`; `data-plan-step` toggles inline step detail.
 - **`src/views/terminal/surface-manager.ts`** — `selectWorkspaceById(id)` is the public sibling of the private `switchToWorkspace(idx)` that the panel uses.
 - **`src/views/terminal/index.ts`** — instantiates `PlanPanel`; wires `restorePlans` + `autoContinueAudit` RPC handlers to `panel.setPlans` / `panel.setAudit`.
 - **`src/views/terminal/index.css`** — `.spp-*` classes for plan cards, step rows, audit rows. Plan panel hides itself when there's nothing to show.
@@ -81,6 +81,36 @@ The panel is read-only by design: the agent owns the plan. Editing in-UI is out 
 4. `PlanStore` notifies subscribers; the bun bootstrap's debounced broadcaster pushes `restorePlans` to the webview rpc and `plansSnapshot` to every web mirror client (100 ms after the last write).
 5. Webview `PlanPanel.setPlans` re-renders the panel (full diff at the panel level; the plan card HTML is built from scratch each time — there are typically ≤3 plans).
 6. Web mirror `createPlanPanelMirror` does the same.
+
+### Card controls (0.10.5)
+
+A plan card is an **inert container holding three real controls** — a
+workspace-switch button, a clear button, and a per-step toggle. It used to
+be one big `<button>`, which made the new controls illegal nested buttons;
+the toggles carry `aria-expanded`.
+
+- **Clear.** Hover-revealed `×` while work is in flight, promoted to a
+  labelled `Clear` button (card outlined in `--tau-ok`) once every step is
+  done. It routes through the same `plan.clear` handler as `ht plan clear`,
+  so the CLI, the native panel and the web mirror can never disagree. The
+  panel does **not** optimistically remove the card — the store's broadcast
+  is what repaints, so a clear that didn't land can't leave a phantom-free
+  panel. The web mirror gained a `planClear` client envelope; a host that
+  doesn't wire `onClearPlan` simply gets no button rather than a dead one.
+- **Inline step detail.** Steps carrying a description (every mirrored
+  Claude Code task does — `task_description`) are toggles: click to expand
+  the full text under the row, click again to collapse. Expanded rows stop
+  ellipsizing their title. Previously the description existed only as a
+  hover `title` tooltip, which is why a plan "showed only that there is a
+  plan". Expansion is **local view state**, keyed per
+  `(workspace, agent, step)`, and never goes on the wire — so the native
+  panel and the mirror may legitimately disagree about what is expanded.
+- **Progress bar + `updated Nm ago` stamp**, so a stale plan is visible as
+  stale.
+
+> `PlanStore.update` used to drop `description`, so `ht plan update <id>
+> --state done` silently deleted a step's description — blanking the detail
+> row exactly when a step completed. Fixed in 0.10.5.
 
 ### Status-key bridge
 

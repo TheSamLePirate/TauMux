@@ -639,9 +639,13 @@ describe("AutoContinueEngine — audit ring", () => {
       getSettings: () => settings({ engine: "off" }),
       sendText: () => {},
     });
+    // Distinct surfaces on purpose: consecutive *identical* skips now
+    // collapse into one counted row (see the de-dupe describe below), so
+    // 60 dispatches at the same surface would legitimately produce 1
+    // entry. The cap governs distinct rows, which is what this pins.
     for (let i = 0; i < 60; i++) {
       await engine.dispatch({
-        surfaceId: "s1",
+        surfaceId: `s${i}`,
         plan: null,
         surfaceTail: [],
       });
@@ -673,5 +677,59 @@ describe("AutoContinueEngine — settings re-read on every dispatch", () => {
       surfaceTail: [],
     });
     expect(sendText).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AutoContinueEngine — consecutive identical skips collapse", () => {
+  test("five no-plan skips render as ONE row carrying a count", async () => {
+    // Reported by the user: the panel showed five identical
+    // "No plan published; refusing to nudge agent without anchor."
+    // rows — every Claude Code turn-end runs the engine, so a workspace
+    // with no plan floods the ring and pushes real decisions out of it.
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings({}),
+      sendText: () => {},
+    });
+    for (let i = 0; i < 5; i++) {
+      const out = await engine.dispatch({
+        surfaceId: "s1",
+        plan: null,
+        surfaceTail: [],
+      });
+      expect(out.kind).toBe("skipped");
+    }
+    const audit = engine.getAudit();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!.repeated).toBe(5);
+    expect(audit[0]!.reason).toContain("No plan published");
+  });
+
+  test("a different surface, reason, or a non-skip gets its own row", async () => {
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings({}),
+      sendText: () => {},
+    });
+    await engine.dispatch({ surfaceId: "s1", plan: null, surfaceTail: [] });
+    await engine.dispatch({ surfaceId: "s2", plan: null, surfaceTail: [] });
+    await engine.dispatch({ surfaceId: "s1", plan: null, surfaceTail: [] });
+    // Same reason, but the surface alternated — three distinct rows.
+    expect(engine.getAudit()).toHaveLength(3);
+    for (const e of engine.getAudit()) expect(e.repeated ?? 1).toBe(1);
+  });
+
+  test("real continues are never collapsed", async () => {
+    const engine = new AutoContinueEngine({
+      getSettings: () => settings({ maxConsecutive: 10 }),
+      sendText: () => {},
+    });
+    for (let i = 0; i < 3; i++) {
+      await engine.dispatch({
+        surfaceId: "s1",
+        plan: samplePlan,
+        surfaceTail: [],
+      });
+    }
+    const fired = engine.getAudit().filter((e) => e.outcome !== "skipped");
+    expect(fired.length).toBeGreaterThanOrEqual(2);
   });
 });

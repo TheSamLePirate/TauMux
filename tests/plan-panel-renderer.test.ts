@@ -5,6 +5,8 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  formatUpdatedAt,
+  planStepKey,
   renderAuditRowHtml,
   renderPlanCardHtml,
   renderStepRowHtml,
@@ -118,10 +120,20 @@ describe("renderStepRowHtml", () => {
 // ── renderPlanCardHtml ───────────────────────────────────────
 
 describe("renderPlanCardHtml", () => {
-  test("emits a button with the workspace id as a data-attribute", () => {
+  test("card is an inert container; the workspace switch is its own button", () => {
     const html = renderPlanCardHtml(samplePlan);
-    expect(html).toContain('data-plan-workspace="ws-1"');
-    expect(html.startsWith("<button")).toBe(true);
+    expect(html.startsWith('<div class="spp-card"')).toBe(true);
+    // The card used to BE the button, which made the clear control and
+    // the step toggles illegal nested buttons.
+    expect(html).toContain(
+      '<button type="button" class="spp-card-goto" data-plan-workspace="ws-1"',
+    );
+  });
+
+  test("card carries its store key so a host can route clear/expand", () => {
+    const html = renderPlanCardHtml(samplePlan);
+    expect(html).toContain('data-plan-ws="ws-1"');
+    expect(html).toContain('data-plan-agent="claude:1"');
   });
 
   test("includes workspace + agent + summary in the header", () => {
@@ -151,6 +163,144 @@ describe("renderPlanCardHtml", () => {
     const html = renderPlanCardHtml(evil);
     expect(html).not.toContain("<script>alert");
     expect(html).toContain("&quot;&gt;&lt;script&gt;");
+  });
+});
+
+// ── clear control ────────────────────────────────────────────
+
+describe("plan card clear control", () => {
+  test("not rendered unless the host opted in — never a dead button", () => {
+    expect(renderPlanCardHtml(samplePlan)).not.toContain("data-plan-clear");
+    expect(renderPlanCardHtml(samplePlan, { clearable: true })).toContain(
+      "data-plan-clear",
+    );
+  });
+
+  test("an unfinished plan gets the quiet × glyph", () => {
+    const html = renderPlanCardHtml(samplePlan, { clearable: true });
+    expect(html).toContain(">×</button>");
+    expect(html).not.toContain("spp-card-clear-ready");
+    expect(html).not.toContain("spp-card-complete");
+  });
+
+  test("a finished plan promotes it to a labelled control", () => {
+    const done: Plan = {
+      ...samplePlan,
+      steps: samplePlan.steps.map((s) => ({ ...s, state: "done" as const })),
+    };
+    const html = renderPlanCardHtml(done, { clearable: true });
+    expect(html).toContain("spp-card-complete");
+    expect(html).toContain("spp-card-clear-ready");
+    expect(html).toContain(">Clear</button>");
+  });
+
+  test("the clear label is escaped into an aria-label, not raw markup", () => {
+    const evil: Plan = { ...samplePlan, workspaceId: '"><img src=x>' };
+    const html = renderPlanCardHtml(evil, { clearable: true });
+    expect(html).not.toContain("<img");
+    expect(html).toContain("aria-label=");
+  });
+
+  test("an empty plan renders no progress bar (nothing to divide by)", () => {
+    const empty: Plan = { ...samplePlan, steps: [] };
+    const html = renderPlanCardHtml(empty, { clearable: true });
+    expect(html).not.toContain("spp-card-progress");
+    expect(html).not.toContain("spp-card-complete");
+  });
+
+  test("progress fill tracks the done ratio", () => {
+    expect(renderPlanCardHtml(samplePlan)).toContain("width:33%");
+  });
+});
+
+// ── step detail ──────────────────────────────────────────────
+
+describe("step detail expansion", () => {
+  const withDesc = {
+    id: "M2",
+    title: "Implement",
+    state: "active",
+    description: "Wire the reducer and repaint on change.",
+  };
+
+  test("a step with no description stays an inert div", () => {
+    const html = renderStepRowHtml({ id: "M1", title: "X", state: "done" });
+    expect(html.startsWith("<div")).toBe(true);
+    expect(html).not.toContain("data-plan-step");
+    expect(html).not.toContain("spp-step-caret");
+  });
+
+  test("a step with a description becomes a labelled toggle", () => {
+    const html = renderStepRowHtml(withDesc);
+    expect(html).toContain('data-plan-step="M2"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain("spp-step-expandable");
+  });
+
+  test("collapsed rows do not ship the description text", () => {
+    expect(renderStepRowHtml(withDesc)).not.toContain("Wire the reducer");
+  });
+
+  test("expanded rows render it inline", () => {
+    const html = renderStepRowHtml(withDesc, { expanded: true });
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain("spp-step-open");
+    expect(html).toContain("Wire the reducer and repaint on change.");
+  });
+
+  test("descriptions are escaped (XSS guard)", () => {
+    const html = renderStepRowHtml(
+      { ...withDesc, description: "<script>alert(1)</script>" },
+      { expanded: true },
+    );
+    expect(html).not.toContain("<script>alert");
+    expect(html).toContain("&lt;script&gt;");
+  });
+
+  test("whitespace-only descriptions do not create a toggle", () => {
+    const html = renderStepRowHtml({ ...withDesc, description: "   \n  " });
+    expect(html).not.toContain("data-plan-step");
+  });
+
+  test("the card threads expansion through by scoped key", () => {
+    const plan: Plan = {
+      ...samplePlan,
+      steps: [{ ...withDesc, state: "active" as const }],
+    };
+    const key = planStepKey(plan, "M2");
+    expect(renderPlanCardHtml(plan)).not.toContain("Wire the reducer");
+    expect(
+      renderPlanCardHtml(plan, { expanded: new Set([key]) }),
+    ).toContain("Wire the reducer");
+  });
+
+  test("expansion keys are scoped per agent, not per step id", () => {
+    const a = planStepKey({ workspaceId: "ws-1", agentId: "claude:1" }, "M1");
+    const b = planStepKey({ workspaceId: "ws-1", agentId: "pi:1" }, "M1");
+    expect(a).not.toBe(b);
+  });
+});
+
+// ── formatUpdatedAt ──────────────────────────────────────────
+
+describe("formatUpdatedAt", () => {
+  const now = 1_754_000_000_000;
+  test("sub-minute reads 'just now'", () => {
+    expect(formatUpdatedAt(now - 30_000, now)).toBe("just now");
+  });
+  test("minutes / hours / days", () => {
+    expect(formatUpdatedAt(now - 5 * 60_000, now)).toBe("5m ago");
+    expect(formatUpdatedAt(now - 3 * 3_600_000, now)).toBe("3h ago");
+    expect(formatUpdatedAt(now - 50 * 3_600_000, now)).toBe("2d ago");
+  });
+  test("clock skew from the future is not rendered as negative", () => {
+    expect(formatUpdatedAt(now + 10_000, now)).toBe("just now");
+  });
+  test("a missing timestamp drops the footer entirely", () => {
+    expect(formatUpdatedAt(0, now)).toBe("");
+    expect(renderPlanCardHtml(samplePlan, { now })).not.toContain(
+      "spp-card-foot",
+    );
   });
 });
 

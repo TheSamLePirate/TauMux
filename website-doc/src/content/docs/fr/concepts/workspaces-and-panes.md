@@ -5,7 +5,21 @@ sidebar:
   order: 2
 ---
 
-τ-mux organise le travail en **espaces de travail** contenant un arbre binaire de **panneaux**. Chaque panneau héberge une **surface** — actuellement parmi : un terminal, un navigateur, un panneau d'agent, ou un chat Telegram.
+τ-mux organise le travail en **espaces de travail** contenant un arbre binaire de **panneaux**. Chaque panneau héberge une **surface**. Il en existe sept types :
+
+| Type | Porté par | Notes |
+|---|---|---|
+| `terminal` | un vrai PTY (`Bun.spawn`, `terminal: true`) | le défaut ; le seul type avec un shell |
+| `browser` | une webview embarquée | [panneaux navigateur](/fr/features/browser-panes/) |
+| `agent` | l'agent pi (`pi --mode rpc`) | [intégration pi](/fr/integrations/pi/) |
+| `claude` | une session Claude Code (SDK Agent) | [panneau Claude Code](/fr/features/claude-code-pane/) |
+| `telegram` | le service bot Telegram | [pont Telegram](/fr/features/telegram-bridge/) |
+| `editor` | CodeMirror | [explorateur & éditeur](/fr/features/file-explorer-and-editor/) |
+| `extension` | backend Bun + iframe Vite | [applications d'extension](/fr/features/extensions/) |
+
+Seuls les panneaux `terminal` possèdent un PTY. Tout le reste est une surface
+DOM (ou webview) qui vit dans le même arbre de panneaux — d'où leur absence de
+l'arbre de processus et le fait que le poller de métadonnées n'a rien à en dire.
 
 ## La hiérarchie
 
@@ -13,7 +27,7 @@ sidebar:
 Workspace
   └── PaneTree (binary tree of splits)
         └── PaneLeaf
-              └── Surface (terminal | browser | agent | telegram)
+              └── Surface (terminal | browser | agent | claude | telegram | editor | extension)
 ```
 
 - **Espace de travail** — disposition indépendante. Basculez avec `⌘⇧]` / `⌘⇧[` ou sautez directement avec `⌘1…9`.

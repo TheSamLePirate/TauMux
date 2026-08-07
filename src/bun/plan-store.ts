@@ -79,7 +79,10 @@ export class PlanStore {
     if (idx === -1) return null;
     const step = plan.steps[idx]!;
     const next: PlanStep = {
-      id: step.id,
+      // Spread first so fields this patch doesn't address survive —
+      // notably `description`, which an `ht plan update --state done`
+      // used to silently delete out from under the panel's detail row.
+      ...step,
       title: patch.title !== undefined ? patch.title.trim() : step.title,
       state: patch.state ?? step.state,
     };

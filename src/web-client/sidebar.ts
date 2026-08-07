@@ -98,6 +98,12 @@ export function createSidebarView(deps: SidebarDeps): SidebarView {
       sendMsg("selectWorkspace", { workspaceId });
       sendMsg("subscribeWorkspace", { workspaceId });
     },
+    onClearPlan: (workspaceId, agentId) => {
+      sendMsg("planClear", {
+        workspaceId,
+        ...(agentId ? { agentId } : {}),
+      });
+    },
   });
 
   // Persistent workspace-list host inside the main zone. The card

@@ -63,6 +63,8 @@ export function reduceEvent(
       break;
 
     case "session-end":
+      state.awaitingUserChoice = null;
+      state.approvalIsQuestion = false;
       state.ended = true;
       state.endedReason = ev.reason ?? "";
       state.phase = "ended";
@@ -73,6 +75,11 @@ export function reduceEvent(
     case "prompt":
       state.approvalSource = null;
       state.approvalMessage = null;
+      // Belt and braces: PostToolUse can be missed (crash, kill -9, a
+      // hook that times out). A turn boundary always means no modal is
+      // up, so the session can never be permanently un-approvable.
+      state.awaitingUserChoice = null;
+      state.approvalIsQuestion = false;
       state.turnCount += 1;
       state.promptStartedAt = ts;
       state.currentPrompt = (ev.prompt ?? "").slice(0, MAX_PROMPT_CHARS);
@@ -88,6 +95,8 @@ export function reduceEvent(
       state.promptStartedAt = 0;
       state.approvalMessage = null;
       state.approvalSource = null;
+      state.awaitingUserChoice = null;
+      state.approvalIsQuestion = false;
       break;
 
     case "stop-failure":
@@ -137,10 +146,52 @@ export function reduceEvent(
       state.phase = "waiting-input";
       break;
 
+    // A question addressed to the human is on screen. Recorded so
+    // auto-approve can refuse it — see `awaitingUserChoice`.
+    case "ask-start":
+      state.awaitingUserChoice = ev.message || "AskUserQuestion";
+      // Reversed hook order: the notification beat this hook's process to
+      // the socket. A tty approval pending at the instant a choice modal
+      // opens is that modal's — no other tool can be at a permission gate
+      // in this session while AskUserQuestion is the tool in flight.
+      if (
+        state.phase === "waiting-approval" &&
+        state.approvalSource === "tty"
+      ) {
+        state.approvalIsQuestion = true;
+      }
+      break;
+
+    // The question is answered. If the pending approval was announced by
+    // THIS modal, retract it: nothing is waiting any more, and leaving it
+    // armed both lies in the pill and makes `ht claude approve` type a
+    // stray Enter into a pane showing no prompt. A real tool prompt that
+    // happens to be pending is left alone.
+    case "ask-end":
+      state.awaitingUserChoice = null;
+      if (state.approvalIsQuestion) {
+        state.approvalIsQuestion = false;
+        if (state.phase === "waiting-approval") {
+          state.phase = state.promptStartedAt > 0 ? "working" : "idle";
+          state.approvalSource = null;
+          state.approvalMessage = null;
+        }
+      }
+      break;
+
     case "notify-permission":
-      // Claude Code is showing its OWN prompt in the terminal.
+      // Claude Code is showing its OWN prompt in the terminal. Bump the
+      // sequence even when every other field is unchanged — back-to-back
+      // prompts in one turn are otherwise indistinguishable from the
+      // same prompt still being on screen.
       state.phase = "waiting-approval";
       state.approvalSource = "tty";
+      state.approvalSeq += 1;
+      // A choice modal already on screen means THIS announcement is that
+      // modal's, not a tool gate's — remember it so `ask-end` can retract
+      // it. (Hook order is not guaranteed; `ask-start` landing after the
+      // notification is handled by the auto-approve re-arm path.)
+      state.approvalIsQuestion = state.awaitingUserChoice !== null;
       if (ev.message) state.approvalMessage = ev.message;
       break;
 
@@ -150,6 +201,7 @@ export function reduceEvent(
       // Routed to a τ-mux modal — there is no terminal prompt to answer.
       state.phase = "waiting-approval";
       state.approvalSource = "modal";
+      state.approvalSeq += 1;
       state.approvalMessage = ev.message ?? null;
       break;
 
@@ -160,6 +212,7 @@ export function reduceEvent(
       state.phase = state.promptStartedAt > 0 ? "working" : "idle";
       state.approvalMessage = null;
       state.approvalSource = null;
+      state.approvalIsQuestion = false;
       break;
 
     case "task-created": {
@@ -309,6 +362,16 @@ export class ClaudeSessionRegistry {
     reduceStatusline(state, d, t);
     this.emit(state, prev);
     return state;
+  }
+
+  /** Seed a session straight into the map (persistence restore only).
+   *  Bypasses the reducer — the caller is responsible for handing over a
+   *  state that is already safe to show; see
+   *  `claude-registry-persistence.sanitizeForRestore`. Never overwrites a
+   *  session the current process has already heard from. */
+  restore(state: ClaudeSessionState): void {
+    if (!state?.sessionId || this.sessions.has(state.sessionId)) return;
+    this.sessions.set(state.sessionId, state);
   }
 
   get(sessionId: string): ClaudeSessionState | undefined {

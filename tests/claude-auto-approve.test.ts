@@ -267,3 +267,265 @@ describe("approveNow (manual path)", () => {
     expect(String(log.params["message"])).not.toContain("auto-approved");
   });
 });
+
+// ── back-to-back prompts in a single turn ─────────────────────────────
+//
+// Regression for a live failure: with auto-approve on, a turn that asked
+// permission three times had ONLY its first prompt answered and then hung
+// forever on the second, with "Do you want to proceed? ❯ 1. Yes" sitting
+// on screen and nothing pressing Enter.
+//
+// Root cause: Claude Code ships no "prompt resolved" hook, so answering a
+// prompt emits nothing. The session stays in `waiting-approval`, and the
+// next `notify-permission` reduces to a byte-identical state — which the
+// old "only fire on the transition into waiting-approval" guard could not
+// tell apart from the same prompt still being up.
+
+describe("consecutive prompts within one turn", () => {
+  test("every prompt is answered, not just the first", () => {
+    const { calls, send, flush } = setup();
+    for (let i = 0; i < 3; i++) {
+      send({
+        type: "notify-permission",
+        message: "Claude needs your permission",
+      });
+      flush();
+    }
+    expect(keySends(calls)).toHaveLength(3);
+  });
+
+  test("the phase never leaves waiting-approval in between (the live shape)", () => {
+    const { registry, send, flush, calls } = setup();
+    send({
+      type: "notify-permission",
+      message: "Claude needs your permission",
+    });
+    flush();
+    expect(registry.get("s1")!.phase).toBe("waiting-approval");
+    // Second prompt: identical message, identical phase, identical source.
+    send({
+      type: "notify-permission",
+      message: "Claude needs your permission",
+    });
+    flush();
+    expect(registry.get("s1")!.phase).toBe("waiting-approval");
+    expect(keySends(calls)).toHaveLength(2);
+  });
+
+  test("a statusline tee arriving mid-prompt still does not re-fire", () => {
+    const { calls, send, flush, registry } = setup();
+    send({
+      type: "notify-permission",
+      message: "Claude needs your permission",
+    });
+    flush();
+    // The tee bumps cost/context but announces no new prompt.
+    registry.applyStatusline({
+      sessionId: "s1",
+      surfaceId: "surface:2",
+      costUsd: 0.5,
+      contextUsedPct: 40,
+    } as never);
+    flush();
+    expect(keySends(calls)).toHaveLength(1);
+  });
+
+  test("the burst guard still counts them and pauses at the cap", () => {
+    const { calls, send, flush } = setup();
+    for (let i = 0; i < 12; i++) {
+      send({ type: "notify-permission", message: "prompt" });
+      flush();
+    }
+    // MAX_BURST = 8 approvals, then the session pauses and notifies.
+    expect(keySends(calls)).toHaveLength(8);
+    expect(
+      calls.filter((c) => c.method === "notification.create"),
+    ).not.toHaveLength(0);
+  });
+
+  test("flipping auto-approve on mid-prompt still answers the NEXT prompt", () => {
+    const { calls, send, flush, setEnabled } = setup({ enabled: false });
+    send({ type: "notify-permission", message: "prompt one" });
+    flush();
+    expect(keySends(calls)).toHaveLength(0);
+    setEnabled(true);
+    send({ type: "notify-permission", message: "prompt two" });
+    flush();
+    expect(keySends(calls)).toHaveLength(1);
+  });
+
+  test("a new turn re-arms cleanly", () => {
+    const { calls, send, flush } = setup();
+    send({ type: "notify-permission", message: "prompt" });
+    flush();
+    send({ type: "stop" });
+    send({ type: "prompt", prompt: "next" });
+    send({ type: "notify-permission", message: "prompt" });
+    flush();
+    expect(keySends(calls)).toHaveLength(2);
+  });
+});
+
+// ── questions addressed to the human ──────────────────────────────────
+//
+// Claude Code raises the SAME `Notification / permission_prompt` hook for
+// an AskUserQuestion / ExitPlanMode modal as it does for "may I run this
+// command", carrying the same generic message. Observed live: a
+// multiple-choice question put the session into
+// `waiting-approval | tty | "Claude needs your permission"`, which the
+// engine would have answered by pressing Enter — silently selecting the
+// default option on the user's behalf.
+
+describe("never answers a question addressed to the user", () => {
+  test("canAutoApprove refuses while a choice modal is up", () => {
+    const base = state({
+      phase: "waiting-approval",
+      approvalSource: "tty",
+      surfaceId: "surface:2",
+    });
+    expect(canAutoApprove(base)).toBe(true);
+    expect(
+      canAutoApprove({ ...base, awaitingUserChoice: "AskUserQuestion" }),
+    ).toBe(false);
+    expect(
+      canAutoApprove({ ...base, awaitingUserChoice: "ExitPlanMode" }),
+    ).toBe(false);
+  });
+
+  test("no Enter is sent for a question modal's permission_prompt", () => {
+    const { calls, send, flush } = setup();
+    send({ type: "ask-start", message: "AskUserQuestion" });
+    send({
+      type: "notify-permission",
+      message: "Claude needs your permission",
+    });
+    flush();
+    expect(keySends(calls)).toHaveLength(0);
+  });
+
+  test("a hook that lands AFTER the notification still blocks the send", () => {
+    // The two hooks are separate processes; ordering is not guaranteed.
+    // The delay + live re-check is what has to save us here.
+    const { calls, send, flush } = setup();
+    send({
+      type: "notify-permission",
+      message: "Claude needs your permission",
+    });
+    send({ type: "ask-start", message: "AskUserQuestion" });
+    flush();
+    expect(keySends(calls)).toHaveLength(0);
+  });
+
+  test("a real tool prompt right after the modal closes IS answered", () => {
+    const { calls, send, flush } = setup();
+    send({ type: "ask-start", message: "AskUserQuestion" });
+    send({
+      type: "notify-permission",
+      message: "Claude needs your permission",
+    });
+    flush();
+    expect(keySends(calls)).toHaveLength(0);
+    send({ type: "ask-end", message: "AskUserQuestion" });
+    send({
+      type: "notify-permission",
+      message: "Claude needs your permission",
+    });
+    flush();
+    expect(keySends(calls)).toHaveLength(1);
+  });
+
+  test("manual `ht claude approve` refuses it too", () => {
+    const { engine, send } = setup();
+    send({ type: "ask-start", message: "AskUserQuestion" });
+    send({
+      type: "notify-permission",
+      message: "Claude needs your permission",
+    });
+    // Pressing Enter on a choice modal picks a default — that is not what
+    // "approve" means, so the explicit path declines as well.
+    expect(engine.approveNow("surface:2").ok).toBe(false);
+  });
+
+  test("a missed ask-end cannot wedge the session forever", () => {
+    for (const recovery of ["prompt", "stop", "session-end"] as const) {
+      const { registry, send } = setup();
+      send({ type: "ask-start", message: "AskUserQuestion" });
+      expect(registry.get("s1")!.awaitingUserChoice).toBe("AskUserQuestion");
+      send({ type: recovery });
+      expect(registry.get("s1")!.awaitingUserChoice).toBeNull();
+    }
+  });
+
+  test("ordinary tool prompts are unaffected", () => {
+    const { calls, send, flush } = setup();
+    send({
+      type: "notify-permission",
+      message: "Claude needs your permission",
+    });
+    flush();
+    expect(keySends(calls)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Answering a question emits no "prompt resolved" event either, so the
+// announcement it raised outlives it. Found live: with the guard working
+// correctly, the session sat at `waiting-approval | tty` while actively
+// working — a state that PASSES canAutoApprove, so `ht claude approve`
+// would have typed Enter into a pane showing no prompt at all.
+
+describe("ask-end retracts the announcement the question raised", () => {
+  const ev = (p: Partial<ClaudeBridgeEvent>): ClaudeBridgeEvent =>
+    ({ sessionId: "s1", surfaceId: "surface:2", ...p }) as ClaudeBridgeEvent;
+
+  test("the session does not stay parked in waiting-approval", () => {
+    const reg = new ClaudeSessionRegistry(() => T0);
+    reg.applyEvent(ev({ type: "prompt", prompt: "do a thing" }));
+    reg.applyEvent(ev({ type: "ask-start", message: "AskUserQuestion" }));
+    reg.applyEvent(
+      ev({ type: "notify-permission", message: "Claude needs your permission" }),
+    );
+    expect(reg.get("s1")!.phase).toBe("waiting-approval");
+    reg.applyEvent(ev({ type: "ask-end", message: "AskUserQuestion" }));
+    const s = reg.get("s1")!;
+    expect(s.phase).toBe("working"); // mid-turn → back to working
+    expect(s.approvalSource).toBeNull();
+    expect(s.approvalMessage).toBeNull();
+    // …and the manual path no longer sees anything worth answering.
+    expect(canAutoApprove(s)).toBe(false);
+  });
+
+  test("it works whichever hook wins the race", () => {
+    const reg = new ClaudeSessionRegistry(() => T0);
+    reg.applyEvent(ev({ type: "prompt", prompt: "do a thing" }));
+    // Reversed order: the notification beats the PreToolUse process.
+    reg.applyEvent(ev({ type: "notify-permission" }));
+    reg.applyEvent(ev({ type: "ask-start", message: "AskUserQuestion" }));
+    reg.applyEvent(ev({ type: "ask-end", message: "AskUserQuestion" }));
+    expect(reg.get("s1")!.phase).toBe("working");
+    expect(reg.get("s1")!.approvalSource).toBeNull();
+  });
+
+  test("a GENUINE tool prompt is left alone by ask-end", () => {
+    const reg = new ClaudeSessionRegistry(() => T0);
+    reg.applyEvent(ev({ type: "prompt", prompt: "do a thing" }));
+    // Question asked and answered first…
+    reg.applyEvent(ev({ type: "ask-start", message: "AskUserQuestion" }));
+    reg.applyEvent(ev({ type: "ask-end", message: "AskUserQuestion" }));
+    // …then a real gate. A late duplicate ask-end must not retract it.
+    reg.applyEvent(ev({ type: "notify-permission", message: "use Bash" }));
+    reg.applyEvent(ev({ type: "ask-end", message: "AskUserQuestion" }));
+    const s = reg.get("s1")!;
+    expect(s.phase).toBe("waiting-approval");
+    expect(s.approvalSource).toBe("tty");
+    expect(canAutoApprove(s)).toBe(true);
+  });
+
+  test("an idle session falls back to idle, not working", () => {
+    const reg = new ClaudeSessionRegistry(() => T0);
+    reg.applyEvent(ev({ type: "ask-start", message: "ExitPlanMode" }));
+    reg.applyEvent(ev({ type: "notify-permission" }));
+    reg.applyEvent(ev({ type: "ask-end", message: "ExitPlanMode" }));
+    expect(reg.get("s1")!.phase).toBe("idle");
+  });
+});

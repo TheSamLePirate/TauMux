@@ -1,9 +1,9 @@
 {
   "scripts/demo_gitdiff.ts": 2157,
-  "src/bun/index.ts": 3260,
+  "src/bun/index.ts": 3290,
   "src/shared/status-render.ts": 1881,
   "src/views/terminal/agent-panel.ts": 1878,
-  "src/views/terminal/index.ts": 3142,
+  "src/views/terminal/index.ts": 3147,
   "src/views/terminal/settings-panel.ts": 2254,
   "src/views/terminal/sidebar.ts": 3715,
   "src/views/terminal/surface-manager.ts": 2916

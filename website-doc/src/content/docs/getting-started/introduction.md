@@ -13,7 +13,7 @@ It is **early-stage software** and prioritizes performance and correctness over 
 
 - **A terminal that behaves like a real terminal.** xterm.js for rendering, `Bun.spawn` with `terminal: true` for PTYs. Colors, TUI apps, line editing, mouse reporting all just work.
 - **Floating canvas overlays** alongside the text. Scripts can stream SVG, HTML, images, and `canvas2d` content through extra file descriptors and place them anywhere in the pane.
-- **A live, cross-pane view of every process.** A 1 Hz `ps` + `lsof` poller surfaces cwd, listening TCP ports, CPU%, RSS, and full argv for every descendant of every shell. This single pipeline feeds the pane chips, the sidebar, the Process Manager, the web mirror, and the `ht` CLI.
+- **A live, cross-pane view of every process.** A 1 Hz poller built on libSystem (`sysctl` + `proc_pidinfo`, ~2 ms per tick; `ps`/`lsof` remain as a self-validating fallback) surfaces cwd, listening TCP ports, CPU%, RSS, and full argv for every descendant of every shell. This single pipeline feeds the pane chips, the sidebar, the Process Manager, the web mirror, and the `ht` CLI.
 - **A first-class CLI (`ht`).** Spawn panes, send keys, open ports in a browser, kill processes, drive a built-in browser — all from a shell.
 - **A built-in browser.** Split a WebKit browser alongside terminals; fully scriptable for agent automation.
 - **A web mirror.** The full UI streamed over WebSocket to anything on the LAN.

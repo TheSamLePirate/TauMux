@@ -45,16 +45,22 @@ Le widget de la barre latérale affiche la carte dès que `set` arrive ; les mis
 ## Anatomie d'une carte de plan
 
 ```
-ws:5  claude:1                       ← header (workspace · agent)
-0/3 done · 1 active                  ← progress summary
-●  M1   Explore                      ← step rows
+ws:5  claude:1                    ×  ← en-tête (espace · agent · effacer)
+0/3 done · 1 active · updated 2m ago ← résumé + horodatage de fraîcheur
+▓▓▓▓▓░░░░░░░░░░░░░░░                 ← barre de progression
+●  M1   Explore                   ⌄  ← lignes d'étape (⌄ = description)
+   Read the poller and map every…    ← description dépliée
 ○  M2   Implement
 ○  M3   Test
-AUTO-CONTINUE · LAST 3               ← audit ring header
+AUTO-CONTINUE · LAST 3               ← en-tête de l'anneau d'audit
 fired      next plan step: M2
 skipped    cooldown — 1842ms
 dry-run    would continue: M2
 ```
+
+**Effacer une carte.** La `×` apparaît au survol pendant que le travail est en cours, et devient un bouton **Clear** libellé — la carte étant alors soulignée dans la couleur de succès — une fois toutes les étapes terminées. Il passe par le même gestionnaire que `ht plan clear` : la CLI, le panneau natif et le [miroir web](/fr/features/web-mirror/) ne peuvent donc jamais diverger sur ce qui existe. Le panneau ne retire pas la carte de façon optimiste : c'est la diffusion du store qui repeint, donc un effacement qui n'a pas abouti ne peut pas vous laisser un panneau qui semble propre sans l'être.
+
+**Détail des étapes.** Les étapes porteuses d'une description — c'est le cas de chaque tâche Claude Code mise en miroir — sont des bascules. Cliquez pour déplier le texte complet sous la ligne, cliquez à nouveau pour replier. Les lignes dépliées cessent de tronquer leur titre. Le dépliage est un état de vue local qui ne circule jamais sur le réseau : le panneau natif et le miroir peuvent donc légitimement afficher des lignes dépliées différentes.
 
 Les plans vides sont masqués — quand rien n'est publié dans aucun espace de travail, le panneau natif se réduit à hauteur zéro.
 

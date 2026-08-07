@@ -31,6 +31,8 @@ export type BridgeEventName =
   | "cwd-changed"
   | "notify-idle"
   | "notify-permission"
+  | "ask-start"
+  | "ask-end"
   | "permission-request"
   | "permission-resolved"
   | "task-created"
@@ -49,6 +51,8 @@ export const BRIDGE_EVENT_NAMES: readonly BridgeEventName[] = [
   "cwd-changed",
   "notify-idle",
   "notify-permission",
+  "ask-start",
+  "ask-end",
   "permission-request",
   "permission-resolved",
   "task-created",
@@ -136,6 +140,15 @@ export function buildBridgeEvent(
     case "notify-permission": {
       const message = s(payload["message"]);
       if (message) ev["message"] = message.slice(0, 500);
+      break;
+    }
+    // PreToolUse/PostToolUse scoped (by matcher) to the tools that put a
+    // question in front of the HUMAN. Carries the tool name so the app
+    // can say WHICH modal is up rather than just "something is".
+    case "ask-start":
+    case "ask-end": {
+      const tool = s(payload["tool_name"]);
+      if (tool) ev["message"] = tool;
       break;
     }
     // WS3 — the fire-and-forget shadow of the synchronous approval flow

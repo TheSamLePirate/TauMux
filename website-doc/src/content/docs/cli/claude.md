@@ -39,6 +39,28 @@ directory (defaults to the focused pane's), `--split` opens it beside the
 current pane, `--resume ID` reopens a previous session. Mirrors
 `agent.create` for the pi pane.
 
+## claude auto-approve
+
+```bash
+ht claude auto-approve            # status
+ht claude auto-approve on         # accept prompts automatically
+ht claude auto-approve off
+ht claude auto-approve on --delay 300
+```
+
+Turns automatic acceptance of Claude Code's **terminal** permission prompts on
+or off. Applies immediately and persists — this is the same setting as
+Settings → *Auto-approve Claude Code prompts* and the command-palette toggle.
+
+`--delay` sets the pause before Enter is sent (ms). The prompt is re-checked
+when the delay expires, so a prompt you answered yourself never receives a
+stray keystroke.
+
+Only Claude Code's own terminal prompt is ever answered — never the τ-mux
+approval modal, never the Claude Code pane. After more than eight prompts in a
+minute it pauses itself and notifies you, and every approval is written to that
+pane's sidebar log.
+
 ## claude approve
 
 ```bash

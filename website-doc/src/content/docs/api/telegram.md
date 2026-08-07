@@ -24,3 +24,18 @@ Telegram bridge methods. Requires a configured bot token — see [Telegram bridg
 | `telegram.read` | `ht telegram read --chat <id> --limit N` |
 | `telegram.send` | `ht telegram send --chat <id> "<text>"` |
 | `telegram.settings` | (settings panel only) |
+
+## Read side
+
+| Method | Params | Result |
+|---|---|---|
+| `telegram.chats` | `{}` | `{ chats: [{ id, name?, lastMessageAt }] }` — most-recently-active first |
+| `telegram.history` | `{ chat_id, limit?, before? }` | `{ messages: TelegramWireMessage[] }` |
+| `telegram.restart` | `{}` | `"OK"` — tear down and recreate the long-poll service |
+
+`telegram.history` reads the SQLite log at
+`~/Library/Application Support/hyperterm-canvas/telegram.db`, so it works even
+when polling is disabled. `before` is a message timestamp for pagination.
+
+`telegram.restart` is the fix-it path for a rotated token or a transient API
+outage — no app restart required.

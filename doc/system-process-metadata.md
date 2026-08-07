@@ -80,13 +80,13 @@ Nothing else — all derived fields (e.g. the foreground command string) are com
 │  SurfaceMetadataPoller  (src/bun/surface-metadata.ts)               │
 │                                                                     │
 │   setInterval(tick, intervalMs)                                     │
-│     ├─ runPs()            — 1 subprocess, parsed once               │
+│     ├─ runPs()            — FFI sysctl (or 1 subprocess)            │
 │     ├─ for each surface:                                            │
 │     │    walkTree(shellPid, psMap)                                  │
 │     │    findForegroundPid(tree, psMap)                             │
 │     │    collect pids                                               │
-│     ├─ runListeningPorts([...treePids]) — 1 subprocess               │
-│     ├─ runCwds([...fgPids])             — 1 subprocess               │
+│     ├─ runListeningPorts([...treePids]) — FFI (or 1 subprocess)     │
+│     ├─ runCwds([...fgPids])             — FFI (or 1 subprocess)     │
 │     ├─ assemble SurfaceMetadata per surface                         │
 │     └─ diff vs previous snapshot; if changed → onMetadata()         │
 └────────────────┬────────────────────────────────────────────────────┘
@@ -109,9 +109,31 @@ Nothing else — all derived fields (e.g. the foreground command string) are com
 └───────────┘
 ```
 
-Three subprocesses per tick, total — all parsers are pure functions and exported from `surface-metadata.ts` for the test suite.
+### 2.1 Two implementations behind three runners
 
-Every subprocess goes through a shared `runSubprocess()` helper that:
+The poller depends on three *runners* (`runPs`, `runListeningPorts`, `runCwds`) and does not care how they are satisfied. There are two implementations:
+
+| | Native (default) | Subprocess (fallback) |
+|---|---|---|
+| Source | libSystem via `bun:ffi` — `src/bun/native-proc.ts` | `ps` + 2× `lsof` |
+| `runPs` | `sysctl(CTL_KERN, KERN_PROC, KERN_PROC_ALL)`, ~1.1 ms | `ps -axo pid,ppid,pgid,stat,%cpu,rss,args -ww`, ~68 ms |
+| `runCwds` | `proc_pidinfo(PROC_PIDVNODEPATHINFO)`, ~10 µs/pid | `lsof -d cwd`, ~71 ms |
+| `runListeningPorts` | `proc_pidinfo(PROC_PIDLISTFDS)` + `proc_pidfdinfo(PROC_PIDFDSOCKETINFO)`, ~1.5 ms | `lsof -iTCP -sTCP:LISTEN`, ~61 ms |
+| argv | `sysctl(KERN_PROCARGS2)`, resolved **lazily** — only for pids a tree walk visits | included in the `ps` row |
+| Total per tick | **~5 ms** | **~200 ms** |
+
+Measured on an M-series Mac with ~990 live processes. The subprocess path cost roughly 200 ms of CPU every second, forever, whether or not anything on screen changed — which is what motivated the FFI path.
+
+**Reading kernel structs by byte offset is the one genuinely fragile thing here**, so `native-proc.ts` is built to *detect its own breakage* rather than to be trusted:
+
+- `openNativeProc()` runs a self-validation probe (`validate()`) at startup and returns `null` on any mismatch. The poller then keeps the `ps` / `lsof` runners and behaviour is byte-identical to before.
+- Offsets are additionally asserted against live `ps` / `lsof` output in `tests/native-proc.test.ts`.
+- Every public entry point catches and degrades to an empty result — nothing here can throw into the poller, per the CLAUDE.md rule that the metadata pipeline must never take down the main process.
+- macOS arm64 + x86_64 only; `openNativeProc()` returns `null` everywhere else.
+
+All parsers are pure functions and exported from `surface-metadata.ts` for the test suite, and remain in use for the fallback path.
+
+Every subprocess (fallback path) goes through a shared `runSubprocess()` helper that:
 - drains **stderr in parallel** with stdout (macOS pipe buffers are 64 KiB — an unread stderr can wedge the child on write),
 - enforces a **5 s timeout** with an explicit `proc.kill()` on expiration, and
 - returns `null` on spawn error, non-zero exit, or timeout — the outer `tick()` then drops the affected field rather than crashing the poll loop.
@@ -419,18 +441,30 @@ All renderers receive the full `SurfaceMetadata` on every change. The only wirin
 
 ## 8. Performance characteristics
 
-Measured on an Apple Silicon MacBook Pro with ~900 processes in `ps -axo`, 4 active shells, 2 dev servers listening:
+Measured on an Apple Silicon MacBook Pro with ~990 live processes, 4 active shells, 2 dev servers listening.
 
-| Step | Cold | Warm |
-|------|------|------|
-| `ps -axo …` spawn + read + parse | ~18 ms | ~12 ms |
-| `lsof -iTCP` combined (pid list = 22) | ~85 ms | ~60 ms |
-| `lsof -d cwd` combined (pid list = 4) | ~20 ms | ~15 ms |
-| Diff + emit | < 1 ms | < 1 ms |
-| Webview render (chips + sidebar) | ~2 ms | ~1 ms |
-| **Total tick** | ~125 ms | ~90 ms |
+**Native path (default):**
 
-At 1 Hz that's ~0.1 CPU-seconds per wall-second used by metadata — well under a single core's capacity. When the window is hidden, the rate drops to ~3.3 s, so idle background cost is negligible. Most of the wall time is `lsof`; if we ever need more headroom, swapping to `netstat -anv` or `launchctl list` for port discovery would cut ~70 ms.
+| Step | Cost |
+|------|------|
+| `sysctl(KERN_PROC_ALL)` + parse | ~1.1 ms |
+| TCP listeners (`PROC_PIDLISTFDS` + `PROC_PIDFDSOCKETINFO`) | ~1.5 ms |
+| cwd (`PROC_PIDVNODEPATHINFO`), per pid | ~10 µs |
+| argv (`KERN_PROCARGS2`), lazy — only pids the tree walk visits | ~0.1 ms typical |
+| Diff + emit | < 1 ms |
+| Webview render (chips + sidebar) | ~1–2 ms |
+| **Total tick** | **~5 ms** |
+
+**Subprocess fallback**, for comparison — this is what the native path replaced:
+
+| Step | Cost |
+|------|------|
+| `ps -axo …` spawn + read + parse | ~68 ms |
+| `lsof -iTCP` combined | ~61 ms |
+| `lsof -d cwd` combined | ~71 ms |
+| **Total tick** | **~200 ms** |
+
+At 1 Hz the native path costs ~0.005 CPU-seconds per wall-second — effectively free, and the reason the "idle CPU ~0" priority is achievable at all. The fallback burned ~20 % of a core continuously whether or not anything changed. The poller also backs off when the window is hidden or nothing is changing, so idle background cost is lower still.
 
 ---
 
@@ -460,17 +494,22 @@ They shouldn't — `walkTree` explicitly filters `stat` containing `Z`. If you s
 
 ### `lsof: command not found`
 
-Rare, but possible on minimal containers. The poller handles this gracefully (subprocess failure returns an empty map, metadata snapshots without ports / cwds). Install lsof (`brew install lsof` / `apt install lsof`) to recover.
+Only reachable on the fallback path. The poller handles it gracefully (subprocess failure returns an empty map, metadata snapshots without ports / cwds). Install lsof (`brew install lsof` / `apt install lsof`) to recover — or find out why the native path declined to open (below).
+
+### Is the native path actually being used?
+
+`openNativeProc()` returns `null` — silently falling back to `ps` / `lsof` — when the self-validation probe fails, or on any non-macOS / non-x86_64-or-arm64 platform. Symptom: metadata still correct, but tick cost jumps from ~5 ms to ~200 ms. Run `tests/native-proc.test.ts`, which asserts the struct offsets against live `ps` / `lsof` output and will say which field disagrees. A macOS release that moves a kernel struct field is the expected cause; the fallback is there precisely so that is a performance regression rather than a breakage.
 
 ### Why not just use `/proc`?
 
-macOS doesn't have `/proc`. Linux does, but `lsof` is faster at scanning listening sockets than parsing `/proc/net/tcp` + `/proc/<pid>/fd`, and it gives us uniform behavior across macOS and Linux. If a future platform requires `/proc`-based implementation, swap out just the `runPs` / `runListeningPorts` / `runCwds` functions — the rest of the pipeline is platform-agnostic.
+macOS doesn't have `/proc` — it has `sysctl` + `proc_pidinfo`, which is what the native path uses. Linux does have `/proc`; a Linux port would swap out just the `runPs` / `runListeningPorts` / `runCwds` runners, exactly as the FFI implementation does. The rest of the pipeline is platform-agnostic.
 
 ---
 
 ## 10. Files
 
-- `src/bun/surface-metadata.ts` — poller, parsers, diff
+- `src/bun/surface-metadata.ts` — poller, parsers, diff, runner selection
+- `src/bun/native-proc.ts` — libSystem FFI runners + self-validation probe
 - `src/bun/rpc-handler.ts` — `surface.metadata`, `surface.open_port`, `surface.kill_port`, `surface.kill_pid`
 - `src/bun/index.ts` — wiring (construct poller, forward emissions to RPC + web mirror, handle `killPid` + `openExternal` + `windowVisibility` RPC from webview)
 - `src/shared/types.ts` — `ProcessNode`, `ListeningPort`, `SurfaceMetadata`, RPC message shapes
@@ -478,5 +517,6 @@ macOS doesn't have `/proc`. Linux does, but `lsof` is faster at scanning listeni
 - `src/views/terminal/process-manager.ts` — `⌘⌥P` overlay
 - `src/views/terminal/sidebar.ts` — workspace port chips + fg command
 - `src/bun/web/server.ts` + `src/web-client/main.ts` — web-mirror chip parity (server caches metadata, client renders with `renderPaneChips`)
-- `bin/ht` — CLI commands (`metadata`, `cwd`, `ps`, `ports`, `open`, `kill`)
+- `bin/ht` — CLI commands (`metadata`, `cwd`, `ps`, `ports`, `git`, `open`, `kill`)
 - `tests/surface-metadata.test.ts` — parser + tree + fg detection + diff tests
+- `tests/native-proc.test.ts` — FFI struct-offset assertions against live `ps` / `lsof`

@@ -96,3 +96,22 @@ Supply at most one of `selector`, `text`, `loadState`. Default timeout 30 000 ms
 ## CLI
 
 Mapped 1:1 by [`ht browser`](/cli/browser/).
+
+## Cookies
+
+A persistent cookie jar shared with browser panes (partitioned per
+[`browserPartitionMode`](/configuration/settings/#browser-panes)).
+
+| Method | Params | Result |
+|---|---|---|
+| `browser.cookie_list` | `{ domain? }` | stored cookies, optionally filtered by domain |
+| `browser.cookie_get` | `{ url }` | cookies that would be sent for this URL |
+| `browser.cookie_set` | `{ name, value, domain, path?, secure?, http_only?, expires? }` | `"OK"` |
+| `browser.cookie_delete` | `{ domain, name }` | `"OK"` |
+| `browser.cookie_clear` | `{ domain? }` | `"OK"` — all cookies, or one domain |
+| `browser.cookie_import` | `{ path, format? }` | count imported (`json` or `netscape`) |
+| `browser.cookie_export` | `{ format? }` | serialised jar (`json` default, or `netscape`) |
+| `browser.cookie_capture` | `{ surface_id? }` | cookies harvested from the pane's current page |
+
+Cookies are credentials — treat an exported jar like a password file. See
+[`ht browser-cookie-*`](/cli/browser/).

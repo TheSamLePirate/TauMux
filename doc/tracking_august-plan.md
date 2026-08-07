@@ -249,3 +249,132 @@ The user judged the M3 pane "not good enough" — full-feature pass:
   SDK coverage → claude namespace). Full suite 3243 pass / 0 fail. Live E2E
   against a dev instance verified (event → sessions → notification with
   duration + cost; statusline render < 130 ms wall incl. bun startup).
+
+### 0.10.5 — plan panel: clear control + step detail (user request)
+
+> "Allow to clear plan when done and view plan detail better"
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Per-card clear control | done | Hover `×`; promoted to labelled `Clear` + `--tau-ok` outline when every step is done. Routes through `plan.clear` — same handler as the CLI. |
+| No optimistic removal | done | The store broadcast repaints; a clear that didn't land can't blank the card. |
+| Web-mirror parity | done | New `planClear` client envelope + `WebServer.onPlanClear`. A host that omits `onClearPlan` renders no button rather than a dead one. |
+| Inline step descriptions | done | Steps with a description become `aria-expanded` toggles; expanded rows stop ellipsizing. Was a hover tooltip only. |
+| Expansion state | done | Local view state keyed per (workspace, agent, step); pruned when a step disappears; never on the wire. |
+| Progress bar + `updated Nm ago` | done | Card footer drops out entirely for a missing timestamp. |
+| a11y restructure | done | Card was one `<button>`; the new controls would have been illegal nested buttons. Now an inert container with three real controls. |
+| `PlanStore.update` dropped `description` | fixed | A state-only patch deleted the description — blanking the detail row exactly when a step completed. |
+
+**Deviations / notes**
+- Module-size ratchet promoted again (`src/bun/index.ts` 3281→3290, `src/views/terminal/index.ts` 3142→3147). Both are single wiring statements in the files that already own every other `ws.on*` hook / panel construction; there is no coherent new module for one hook assignment.
+- `bun run report:design:web` is broken on `main` independent of this change: `tests-e2e/design/demos.spec.ts` imports `./helpers/demos`, which does not exist (only `helpers/snap.ts`), from commit f146a4c0. Visual verification was done by rendering the real shared renderer against the real `index.css`. Not fixed here — separate concern.
+- Tests: +33 (3369 → 3402), 0 fail. typecheck / lint / emoji / animations / guideline / theming / module-size all clean.
+
+### 0.10.6 — auto-approve answered only the first prompt of a turn
+
+Found by live test: three chmods in one turn, prompt 1 auto-approved, prompt 2
+hung forever with `Do you want to proceed? ❯ 1. Yes` on screen.
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Root cause | identified | No prompt-resolved hook exists, so the session never leaves `waiting-approval`; prompt 2 reduces to a byte-identical state and the "fire on transition" guard swallows it. |
+| `approvalSeq` on session state | done | Bumped once per prompt announcement (`notify-permission` + `permission-request`). Reset to 0 on persistence restore. |
+| Auto-approve fires per prompt | done | Seq comparison replaces the phase-transition test; `inFlight` latch re-keyed by seq. |
+| Seq claimed only after the gates | done | A disabled/paused refusal must not consume it, or enabling mid-prompt would be a no-op until the next prompt. |
+| Statusline tees still inert | done | They don't bump the seq. |
+| Regression tests | done | +6; verified they fail (4/6) against the old guard and pass with the fix. |
+
+**Open finding — fixed in 0.10.7, see below**
+- Claude Code fires the same `Notification / permission_prompt` hook for
+  **AskUserQuestion** modals as for tool-permission prompts. Observed live
+  on session 3a1e8c56.
+
+**Verification notes**
+- The send path was never at fault: `ht claude approve --surface surface:5`
+  advanced prompt 2 then prompt 3 on the wedged pane, each landing correctly.
+- Live end-to-end auto-approval confirmed earlier the same session
+  (`chmod 600 /tmp/tau-probe.txt`, working → waiting-approval → idle, mode
+  644 → 600, no human input).
+
+### 0.10.7 — auto-approve no longer answers questions meant for the user
+
+Closes the open finding from 0.10.6.
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Discriminating signal | done | `PreToolUse` / `PostToolUse` scoped by matcher to `AskUserQuestion|ExitPlanMode` → new `ask-start` / `ask-end` bridge events carrying the tool name. |
+| Why matcher-scoped | done | An unscoped `PreToolUse` spawns a bridge process per tool call. Scoped, it fires only for the two tools that put a question in front of a human. |
+| `awaitingUserChoice` state | done | Holds the tool name while a modal is up; reset on restore. |
+| Auto path refuses | done | Guard lives in `canAutoApprove`, the single rule-set function. |
+| Manual path refuses too | done | `ht claude approve` declines as well — Enter on a choice modal picks a default, which is not what "approve" means. |
+| Hook-ordering race | covered | The two hooks are separate processes; the existing delay + live re-check blocks the send when `ask-start` arrives after the notification. Test pins both orders. |
+| Missed `ask-end` cannot wedge | done | `prompt` / `stop` / `session-end` all clear it. |
+| Tests | done | +7; verified 5 fail with the guard removed. 3415 green. |
+
+**Deployment note**
+- Needs `ht claude install` (adds exactly two hooks — dry-run showed `+2`,
+  everything else `=`) plus a restart of running Claude Code sessions.
+  Applied to this machine at 0.10.7; backup written next to settings.json.
+- Rejected alternative: parsing the session transcript to find the
+  in-flight tool. Zero deployment friction, but couples to an
+  upstream-defined JSONL format, and this project deliberately removed its
+  transcript-parsing machinery in an earlier milestone.
+
+### 0.10.8 — an answered question stops claiming a pending approval
+
+_Commit `824cd2e1`._
+
+Found while **verifying 0.10.7 live** (the user had not rebuilt the .app, so
+0.10.7 shipped in source but never ran; the reported symptom was the 0.10.6
+engine still auto-answering forms). After the rebuild, a recorded trace of a
+real `AskUserQuestion` proved the guard end-to-end — and exposed a follow-on
+defect in the same state machine.
+
+**Live trace (session e7e9b921, surface:1, auto-approve ON):**
+
+```
+t+0.0   working          seq=0  ask=None
+t+8.7   working          seq=0  ask=AskUserQuestion    ← PreToolUse fires for the tool
+t+14.6  waiting-approval seq=1  src=tty  ask=AskUserQuestion
+                                 msg="Claude needs your permission"
+t+70.1  waiting-approval seq=1  src=tty  ask=None      ← answered; ask-end landed
+```
+
+This settled the one link 0.10.7 asserted but never observed: `PreToolUse`
+**does** fire for `AskUserQuestion`, ~6 s ahead of the notification. No Enter
+was sent. The premise of the fix is confirmed, not assumed.
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| 0.10.7 guard verified live | done | Form left untouched with auto-approve enabled. Trace above. |
+| Stale `waiting-approval` after a question | fixed | The announcement the question raised outlived it — session parked in `waiting-approval \| tty` while working. |
+| Why it mattered | — | That state **passes** `canAutoApprove`, so a bare `ht claude approve` would target it and send Enter to a pane with no prompt on screen. Rule 1's failure mode, reachable via the manual path. |
+| `approvalIsQuestion` on session state | done | Set when `notify-permission` arrives with a modal up, and when `ask-start` wins the reverse race. Reset on `prompt` / `stop` / `session-end` / `permission-resolved` / restore. |
+| `ask-end` retracts its own announcement | done | Phase → `working`/`idle`, source + message cleared. A genuine tool prompt is left alone (pinned by a test). |
+| Tests | done | +4; verified 3 fail without the fix. The 4th is the over-retraction guard and correctly passes both ways. 3419 green, typecheck + lint clean. |
+
+**Deviation from the stated plan — "Phase 1a (re-arm)" was implemented, then
+removed.** The plan called for re-arming a prompt refused because a modal was
+up, backed by a failing probe. Implementing it alongside the retraction fix
+showed the two make **opposite assumptions about the same ambiguous event**:
+retraction reads a notification-during-a-modal as the modal's, re-arm reads it
+as possibly genuine. They cannot both hold. The window in which a genuine
+prompt could land there is ~200 ms (the `PostToolUse` spawn) and would require
+a full inference round-trip inside it, so retraction's reading is correct and
+re-arm's trigger is unreachable by construction. Shipping it would have been
+dead code guarding an impossible case. Reverted rather than kept "just in
+case"; the probe that motivated it is recorded here instead.
+
+**Known limitation (accepted, not fixed).** If `ask-end` is never delivered —
+the user rejects the form with Esc, or the hook times out — `awaitingUserChoice`
+stays set for the remainder of the turn, and a genuine prompt in that window is
+declined rather than auto-approved. Bounded by `stop` / the next `prompt`, and
+the failure direction is a missed approval, never a stray keystroke. Closing it
+properly needs a `PostToolUseFailure` hook, whose rejection semantics are not
+confirmed — not worth another install cycle on an unverified assumption.
+
+**Phases 2-3 of the analysis remain open and unscheduled:** positive-evidence
+mode via a shadow `PermissionRequest` hook (no longer needed as insurance now
+that `PreToolUse` coverage is confirmed), sidebar audit lines on refusal, and
+`ht claude doctor` build-drift detection — the last of which would have caught
+the stale-app symptom that started this in one command.

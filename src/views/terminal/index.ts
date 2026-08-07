@@ -579,6 +579,11 @@ const planPanel = new PlanPanel({
   onSelectWorkspace: (workspaceId) => {
     surfaceManager.selectWorkspaceById(workspaceId);
   },
+  onClearPlan: (workspaceId, agentId) => {
+    // Fire-and-forget: the store broadcasts the new snapshot back
+    // through `restorePlans`, which is what actually repaints.
+    rpc.send("planClear", { workspaceId, ...(agentId ? { agentId } : {}) });
+  },
 });
 sidebarEl.appendChild(planPanel.getElement());
 lifecycleDisposers.push(() => planPanel.destroy());

@@ -149,3 +149,38 @@ ht browser browser:1 close
 
 - [Browser panes](/features/browser-panes/)
 - [JSON-RPC browser methods](/api/browser/)
+
+## Cookie commands
+
+These are top-level hyphenated commands (not `ht browser <sub>`):
+
+```bash
+ht browser-cookie-list [domain]
+ht browser-cookie-get <url>
+ht browser-cookie-set <name> <value> --domain <d> [--path /] [--secure true]
+ht browser-cookie-delete <domain> <name>
+ht browser-cookie-clear [domain]
+ht browser-cookie-import <file> [--format json|netscape]
+ht browser-cookie-export [--format json|netscape]
+ht browser-cookie-capture [--surface S]
+```
+
+A cookie jar is credentials — treat an export like a password file. Storage is
+partitioned per [`browserPartitionMode`](/configuration/settings/#browser-panes).
+See the [`browser.cookie_*` API](/api/browser/#cookies).
+
+## Legacy hyphenated aliases
+
+Every `ht browser <sub>` verb also exists as a flat command, kept so older
+scripts keep working. They map to the same RPC:
+
+```bash
+ht browser-open [url]        ht browser-navigate <url>    ht browser-url
+ht browser-split [url]       ht browser-back              ht browser-forward
+ht browser-reload            ht browser-close             ht browser-eval <js>
+ht browser-snapshot          ht browser-find <query>      ht browser-devtools
+ht browser-history           ht browser-clear-history
+```
+
+Prefer the `ht browser …` form in new scripts — it is the one that gets new
+subcommands.

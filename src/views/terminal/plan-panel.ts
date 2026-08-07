@@ -7,10 +7,16 @@
  * in `index.ts`) and re-renders on every change. Pure rendering
  * helpers live in `src/shared/plan-panel-render.ts` so the web
  * mirror can produce the exact same HTML.
+ *
+ * Two bits of local view state live here rather than in the store:
+ * which step descriptions are expanded, and nothing else. Expansion
+ * is per-user and per-surface — the native panel and the web mirror
+ * are allowed to disagree about it, so it never goes on the wire.
  */
 
 import type { AutoContinueAuditEntry, Plan } from "../../shared/types";
 import {
+  planStepKey,
   renderAuditRowHtml,
   renderPlanCardHtml,
 } from "../../shared/plan-panel-render";
@@ -19,6 +25,11 @@ export interface PlanPanelCallbacks {
   /** Click on a plan card → switch to its workspace (and any host
    *  agent surface the user opened it from). */
   onSelectWorkspace: (workspaceId: string) => void;
+  /** Click the card's clear control → drop the plan. The panel does
+   *  not remove the card itself: the store broadcasts the new
+   *  snapshot and `setPlans` repaints, so the UI can never claim a
+   *  clear that didn't land. */
+  onClearPlan: (workspaceId: string, agentId?: string) => void;
 }
 
 export class PlanPanel {
@@ -29,6 +40,7 @@ export class PlanPanel {
   private plans: Plan[] = [];
   private audit: AutoContinueAuditEntry[] = [];
   private autoContinueAuditVisible = true;
+  private expanded = new Set<string>();
   private destroyed = false;
 
   constructor(callbacks: PlanPanelCallbacks) {
@@ -50,13 +62,46 @@ export class PlanPanel {
     this.rootEl.appendChild(this.auditZoneEl);
 
     // Click delegation — keeps event count constant regardless of
-    // how many cards are rendered. Cards carry their workspaceId in
-    // a data-attr so we don't need closures per row.
+    // how many cards are rendered. Controls carry their identity in
+    // data-attrs so we don't need closures per row. Order matters:
+    // clear and step-toggle sit inside the card, and only the
+    // workspace button should fall through to a workspace switch.
     this.rootEl.addEventListener("click", (e) => {
       if (this.destroyed) return;
-      const target = (e.target as HTMLElement).closest(
-        "[data-plan-workspace]",
-      ) as HTMLElement | null;
+      const el = e.target as HTMLElement;
+
+      const clearBtn = el.closest("[data-plan-clear]");
+      if (clearBtn) {
+        const card = clearBtn.closest("[data-plan-ws]");
+        const ws = card?.getAttribute("data-plan-ws");
+        if (ws) {
+          const agent = card?.getAttribute("data-plan-agent") || undefined;
+          this.callbacks.onClearPlan(ws, agent);
+        }
+        return;
+      }
+
+      const stepBtn = el.closest("[data-plan-step]");
+      if (stepBtn) {
+        const card = stepBtn.closest("[data-plan-ws]");
+        const ws = card?.getAttribute("data-plan-ws");
+        const stepId = stepBtn.getAttribute("data-plan-step");
+        if (ws && stepId) {
+          const key = planStepKey(
+            {
+              workspaceId: ws,
+              agentId: card?.getAttribute("data-plan-agent") || undefined,
+            },
+            stepId,
+          );
+          if (this.expanded.has(key)) this.expanded.delete(key);
+          else this.expanded.add(key);
+          this.repaint();
+        }
+        return;
+      }
+
+      const target = el.closest("[data-plan-workspace]") as HTMLElement | null;
       if (!target) return;
       const wsId = target.getAttribute("data-plan-workspace");
       if (wsId) this.callbacks.onSelectWorkspace(wsId);
@@ -72,6 +117,7 @@ export class PlanPanel {
   setPlans(plans: readonly Plan[]): void {
     if (this.destroyed) return;
     this.plans = [...plans];
+    this.pruneExpanded();
     this.repaint();
   }
 
@@ -98,9 +144,24 @@ export class PlanPanel {
     this.destroyed = true;
     this.plans = [];
     this.audit = [];
+    this.expanded.clear();
     this.plansZoneEl.innerHTML = "";
     this.auditZoneEl.innerHTML = "";
     this.rootEl.remove();
+  }
+
+  /** Drop expansion keys for steps that no longer exist. Without this
+   *  a long-lived session accumulates one dead key per step of every
+   *  plan it ever saw. */
+  private pruneExpanded(): void {
+    if (this.expanded.size === 0) return;
+    const live = new Set<string>();
+    for (const plan of this.plans) {
+      for (const step of plan.steps) live.add(planStepKey(plan, step.id));
+    }
+    for (const key of this.expanded) {
+      if (!live.has(key)) this.expanded.delete(key);
+    }
   }
 
   private repaint(): void {
@@ -117,7 +178,9 @@ export class PlanPanel {
       this.plansZoneEl.innerHTML = `<div class="spp-empty">No active agent plans.</div>`;
     } else {
       this.plansZoneEl.innerHTML = this.plans
-        .map((p) => renderPlanCardHtml(p))
+        .map((p) =>
+          renderPlanCardHtml(p, { clearable: true, expanded: this.expanded }),
+        )
         .join("");
     }
 

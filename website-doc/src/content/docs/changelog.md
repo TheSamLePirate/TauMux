@@ -7,6 +7,50 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.10.8 — An answered question stops claiming an approval
+
+Follow-on to 0.10.7, found by verifying that fix on a live session rather than only in tests. Answering a question emits no "resolved" event either, so the permission notification the question raised **outlived the question**: the session sat at "waiting for approval" while actively working, the sidebar pill claimed an approval was pending, and — the real problem — a bare [`ht claude approve`](/cli/claude/) would have selected it and typed Enter into a pane showing no prompt at all.
+
+- τ-mux now records whether a pending announcement belongs to a choice modal, and retracts it when the modal closes — phase back to working/idle, message cleared — while leaving a genuine tool prompt untouched.
+- **Deliberate limitation:** a notification arriving while a modal is up is attributed to the modal. If that ever misfires, the result is a *missed* auto-approval (you press Enter yourself), never a stray keystroke — the safe direction.
+- No new hooks and no re-install needed; restart the app.
+
+## 0.10.7 — Auto-approve no longer answers questions meant for you
+
+Claude Code raises the **same** permission-prompt hook for an **AskUserQuestion** or **ExitPlanMode** modal as it does for "may I run this command", with the same generic message — so on the hook stream alone the two are indistinguishable, and auto-approve was answering multiple-choice questions addressed to *you* by picking their default option.
+
+- Two new hooks scoped to `AskUserQuestion|ExitPlanMode` tell τ-mux when a choice modal is open. Both auto-approve and the manual [`ht claude approve`](/cli/claude/) now refuse while one is up: pressing Enter on a choice modal picks a default, which is not what "approve" means.
+- A missed close event can't wedge a session — the next prompt, turn end, or session end clears the flag.
+- **Requires [`ht claude install`](/cli/claude/)** to wire the two hooks, then a restart of running Claude Code sessions. `ht claude doctor` reports them as missing until then.
+
+## 0.10.6 — Auto-approve answers every prompt in a turn
+
+**Fix:** with auto-approve on, a turn that asked permission more than once had only its *first* prompt answered; the second hung indefinitely with `Do you want to proceed?` on screen. Claude Code ships no "prompt resolved" hook, so the session stays in "waiting for approval" between back-to-back prompts and the second announcement looked identical to the first still being up. τ-mux now counts prompt announcements rather than state transitions, so it fires once per prompt. The burst guard counts every prompt too.
+
+## 0.10.5 — Plan panel: clear control + step detail
+
+- **Plan cards can be dismissed from the UI.** Each card carries a clear control — a hover-revealed `×` while work is in flight, promoted to a labelled **Clear** button once every step is done. It routes through the same handler as `ht plan clear`, so the CLI, the native panel and the [web mirror](/features/web-mirror/) can never disagree.
+- **Step descriptions render inline.** Steps that carry a description (every mirrored Claude Code task does) are now toggles: click to expand the full text under the row, click again to collapse. Previously the description existed only as a hover tooltip, which is why a plan "showed only that there is a plan".
+- **Cards gained a progress bar and an `updated Nm ago` stamp**, so a stale plan is visible as stale.
+- **Accessibility:** the card was one big button, which made the new controls illegal nested buttons. It is now an inert container holding three real controls, with `aria-expanded` on the step toggles.
+- **Bug fix:** `ht plan update <id> --state done` silently deleted the step's description, blanking the new detail row exactly when a step completed.
+
+## 0.10.4 — Claude session registry survives restarts
+
+The per-session registry is now persisted, so phases, pane attribution and mirrored task lists survive an app restart instead of resetting to unknown. Repeated "skipped" decisions collapse in the log instead of flooding it.
+
+## 0.10.3 — `ht claude auto-approve on|off`
+
+Auto-approve was settings-only, which made it awkward to flip for a single unattended run. It is now a first-class CLI verb — [`ht claude auto-approve on|off|status`](/cli/claude/) — routed through the same settings pipeline as the toggle.
+
+## 0.10.2 — The docs are now verified against the code
+
+A full code-vs-docs audit, plus a CI gate so it cannot rot again. The audit found 42 undocumented RPC methods (six whole domains), 22 undocumented CLI commands, 38 undocumented settings, 11 documented settings that **did not exist**, and 14 wrong defaults. All fixed in EN and FR. `tests/docs-coverage.test.ts` now fails the build if a registered method, an `ht` command, or an `AppSettings` field goes undocumented, if a documented setting is a ghost, if a documented default disagrees with the code, if a surface kind is missing from the concepts page, or if EN and FR drift apart in page inventory.
+
+## 0.10.1 — Approve targets the blocked pane
+
+**Fix:** `ht claude approve` answered the prompt in the *caller's* pane rather than the one actually blocked. It now resolves the longest-waiting session, or an explicit `--surface`.
+
 ## 0.10.0 — Accept Claude Code permission prompts
 
 When Claude Code runs in a terminal pane and asks permission to run a command, τ-mux can now answer it for you.

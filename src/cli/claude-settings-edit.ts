@@ -85,6 +85,24 @@ export const HOOK_SPECS: readonly HookSpec[] = [
     matcher: "permission_prompt",
     feature: "lifecycle",
   },
+  // Scoped by matcher to the two tools that ask the HUMAN something.
+  // Without these, auto-approve cannot tell a question addressed to the
+  // user apart from "may I run this command" — Claude Code raises the
+  // same permission_prompt notification for both — and would answer it
+  // by taking the default option. PreToolUse fires for every tool, so
+  // the matcher is what keeps this from spawning a hook per tool call.
+  {
+    bridgeEvent: "ask-start",
+    ccEvent: "PreToolUse",
+    matcher: "AskUserQuestion|ExitPlanMode",
+    feature: "lifecycle",
+  },
+  {
+    bridgeEvent: "ask-end",
+    ccEvent: "PostToolUse",
+    matcher: "AskUserQuestion|ExitPlanMode",
+    feature: "lifecycle",
+  },
   { bridgeEvent: "task-created", ccEvent: "TaskCreated", feature: "tasks" },
   { bridgeEvent: "task-completed", ccEvent: "TaskCompleted", feature: "tasks" },
   {

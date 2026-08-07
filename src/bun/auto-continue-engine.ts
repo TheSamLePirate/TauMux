@@ -410,6 +410,35 @@ export class AutoContinueEngine {
   }
 
   private pushAudit(entry: AutoContinueAuditEntry): void {
+    // Collapse consecutive identical no-op decisions. Every Claude Code
+    // turn-end fires the engine, so a workspace with no published plan
+    // produced one "No plan published; refusing to nudge agent without
+    // anchor." row per turn — five identical lines is not five pieces of
+    // information, and it pushed the real decisions out of the ring.
+    // Only `skipped` collapses: an actual continue (or an error) is
+    // always worth its own row, even when repeated.
+    const last = this.audit[this.audit.length - 1];
+    if (
+      last &&
+      entry.outcome === "skipped" &&
+      last.outcome === "skipped" &&
+      last.reason === entry.reason &&
+      last.surfaceId === entry.surfaceId &&
+      last.engine === entry.engine
+    ) {
+      // Keep the ring at one row, refreshed to the latest timestamp and
+      // carrying how many times it has now happened.
+      last.at = entry.at;
+      last.repeated = (last.repeated ?? 1) + 1;
+      for (const fn of this.subscribers) {
+        try {
+          fn(this.audit.slice());
+        } catch {
+          /* don't let a buggy subscriber take down the engine */
+        }
+      }
+      return;
+    }
     this.audit.push(entry);
     while (this.audit.length > AUDIT_CAP) this.audit.shift();
     for (const fn of this.subscribers) {

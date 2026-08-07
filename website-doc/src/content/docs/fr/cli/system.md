@@ -20,7 +20,7 @@ Vérifie que le socket est joignable. Sortie 0 en cas de succès ; non-zéro si 
 
 ```bash
 ht version
-# tau-mux 0.10.0 (build: …)
+# tau-mux 0.10.9 (build: …)
 ```
 
 La version rapportée est estampillée au moment du build depuis `package.json`. Les mainteneurs cuisent les releases via `scripts/bump-version.ts` (qui propage la version vers sept fichiers atomiquement et peut aussi commiter + taguer + écrire `CHANGELOG.md` en un seul appel). Voir la [page processus de release](/fr/development/release-process/) pour le workflow complet.
@@ -60,3 +60,13 @@ Liste chaque méthode JSON-RPC que le τ-mux en cours d'exécution prend en char
 
 - [Méthodes JSON-RPC system](/fr/api/system/)
 - [Vue d'ensemble de `ht`](/fr/cli/overview/)
+
+## shutdown
+
+```bash
+ht shutdown
+```
+
+Arrêt propre : persiste la disposition et les notifications, arrête le miroir
+web et Telegram, récolte les backends d'extensions et les sous-processus
+d'agents, puis quitte.

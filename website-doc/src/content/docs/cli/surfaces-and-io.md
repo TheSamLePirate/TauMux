@@ -30,6 +30,79 @@ Creates a new terminal surface as a split of the focused (or `--surface`-targete
 - `--shell <path>` — override the shell binary for this surface only.
 - `--ratio 0.6` — split ratio.
 
+## rename-surface
+
+```bash
+ht rename-surface "build watcher"
+ht rename-surface --surface surface:3 "api server"
+```
+
+Sets the pane's display title. Without `--surface` it renames the pane you are
+in (`HT_SURFACE`), falling back to the focused pane. A renamed pane ignores
+OSC 0/2 title escapes from then on, so the name you set sticks.
+
+## list-panes
+
+```bash
+ht list-panes
+```
+
+The pane tree of the active workspace (split directions and ratios), as
+opposed to `list-surfaces` which is a flat list.
+
+## list-panels
+
+```bash
+ht list-panels
+ht list-panels --surface surface:2
+```
+
+[Canvas panels](/features/canvas-panels/) currently open in a surface.
+
+## list-browsers
+
+```bash
+ht list-browsers
+```
+
+Every [browser pane](/features/browser-panes/) with its id and current URL.
+
+## editor
+
+```bash
+ht edit src/index.ts                    # open in an editor split
+ht editor open src/index.ts [--split]
+ht editor split src/index.ts [--direction right|down] [--create]
+ht editor list
+ht editor save|reload|close [editor:N]
+```
+
+CodeMirror [editor panes](/features/file-explorer-and-editor/). `--create`
+makes a missing file, `--cwd` resolves a relative path.
+
+## agent
+
+```bash
+ht agent create                  # pi agent pane in a new workspace
+ht agent create-split [right|down]
+ht agent list
+ht agent count
+ht agent close --agent <id>
+```
+
+The [pi coding-agent pane](/integrations/pi/). For Claude Code panes see
+[`ht claude pane`](/cli/claude/).
+
+## run-script
+
+```bash
+ht run-script --command "bun run dev" --cwd ~/code/app
+```
+
+Runs a command the way the sidebar's script buttons do — in a real pane you can
+watch. `--workspace` targets a workspace, `--script-key` sets the key used to
+track running state on the workspace card.
+
 ## close-surface
 
 ```bash

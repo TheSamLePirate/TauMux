@@ -40,6 +40,8 @@ export type ClaudeBridgeEventType =
   | "cwd-changed"
   | "notify-idle"
   | "notify-permission"
+  | "ask-start"
+  | "ask-end"
   | "permission-request"
   | "permission-resolved"
   | "task-created"
@@ -193,6 +195,36 @@ export interface ClaudeSessionState {
    *             the pane would type into whatever is on screen.
    *  Auto-approve only ever acts on `"tty"`. */
   approvalSource: "tty" | "modal" | null;
+  /** Bumped once per permission-prompt ANNOUNCEMENT. Claude Code has no
+   *  "prompt resolved" hook, so answering a prompt moves nothing: the
+   *  session sits in `waiting-approval` and the next prompt reduces to a
+   *  byte-identical state. Without a discriminator, a consumer that
+   *  (correctly) acts only on the transition into a prompt fires for the
+   *  first prompt of a turn and goes deaf for every one after it. This
+   *  counter is what makes "another prompt is up" observable. */
+  approvalSeq: number;
+  /** Tool name of a question currently addressed to the HUMAN
+   *  (`AskUserQuestion` / `ExitPlanMode`), or null.
+   *
+   *  Claude Code fires the same `Notification / permission_prompt` hook
+   *  for these modals as it does for tool-permission prompts, with the
+   *  same generic message ("Claude needs your permission") — so on the
+   *  hook stream alone a question to the user is indistinguishable from
+   *  a request to run a command. Auto-approve must never answer the
+   *  former: pressing Enter there silently picks the default option.
+   *  The PreToolUse/PostToolUse pair scoped to those two tools is what
+   *  makes the difference visible. */
+  awaitingUserChoice: string | null;
+  /** True when the pending `waiting-approval` was announced BY a choice
+   *  modal rather than by a tool-permission gate.
+   *
+   *  Answering a question emits no "prompt resolved" event either, so
+   *  without this the session stays parked in `waiting-approval | tty`
+   *  forever after every question: the pill lies, and — worse — the
+   *  state passes `canAutoApprove`, so `ht claude approve` would pick it
+   *  and type Enter into a pane showing no prompt at all. `ask-end`
+   *  retracts an announcement it owns; a real tool prompt is untouched. */
+  approvalIsQuestion: boolean;
   errorType: string | null;
   errorMessage: string | null;
   subagents: ClaudeSubagent[];
@@ -242,6 +274,9 @@ export function newClaudeSessionState(
     prReviewState: null,
     approvalMessage: null,
     approvalSource: null,
+    approvalSeq: 0,
+    awaitingUserChoice: null,
+    approvalIsQuestion: false,
     errorType: null,
     errorMessage: null,
     subagents: [],

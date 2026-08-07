@@ -410,6 +410,14 @@ export interface SelectWorkspaceCwdPayload {
   cwd: string;
 }
 
+/** Clear a plan card from the mirror. The only plan mutation the
+ *  mirror may perform — steps themselves are agent-authored, and the
+ *  host still applies its own `plan.clear` semantics. */
+export interface PlanClearPayload {
+  workspaceId: string;
+  agentId?: string;
+}
+
 export interface PanelMouseEventPayload {
   surfaceId: string;
   id: string;
@@ -438,7 +446,8 @@ export type ClientMessage =
   | ClientEnvelope<"clearNotifications", Record<string, never>>
   | ClientEnvelope<"dismissNotification", DismissNotificationClientPayload>
   | ClientEnvelope<"panelMouseEvent", PanelMouseEventPayload>
-  | ClientEnvelope<"selectWorkspaceCwd", SelectWorkspaceCwdPayload>;
+  | ClientEnvelope<"selectWorkspaceCwd", SelectWorkspaceCwdPayload>
+  | ClientEnvelope<"planClear", PlanClearPayload>;
 
 export type ClientMessageType = ClientMessage["type"];
 

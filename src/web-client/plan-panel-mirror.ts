@@ -7,14 +7,17 @@
  * `setPlans` / `setAudit` setters consumed by the protocol
  * dispatcher.
  *
- * The mirror is read-only — clicking a plan card emits a
- * `selectWorkspace` envelope so the native side switches and
- * broadcasts the result back via `layoutChanged`. We never mutate
- * plan state from the mirror.
+ * The mirror never authors plan content — steps come from agents.
+ * It does relay two user gestures: clicking a card emits a
+ * `selectWorkspace` envelope, and clicking a card's clear control
+ * emits `planClear`. Both are applied host-side and come back as a
+ * fresh snapshot, so the mirror renders only what the host confirmed.
+ * Step expansion is local view state and never goes on the wire.
  */
 
 import type { AutoContinueAuditEntry, Plan } from "../shared/types";
 import {
+  planStepKey,
   renderAuditRowHtml,
   renderPlanCardHtml,
 } from "../shared/plan-panel-render";
@@ -22,6 +25,9 @@ import {
 export interface PlanPanelMirrorDeps {
   hostEl: HTMLElement;
   onSelectWorkspace: (workspaceId: string) => void;
+  /** Relay a clear to the host. Omit to render a read-only panel —
+   *  the clear control is simply not painted, never painted dead. */
+  onClearPlan?: (workspaceId: string, agentId?: string) => void;
 }
 
 export interface PlanPanelMirrorView {
@@ -38,9 +44,10 @@ export interface PlanPanelMirrorView {
 export function createPlanPanelMirror(
   deps: PlanPanelMirrorDeps,
 ): PlanPanelMirrorView {
-  const { hostEl, onSelectWorkspace } = deps;
+  const { hostEl, onSelectWorkspace, onClearPlan } = deps;
   let plans: Plan[] = [];
   let audit: AutoContinueAuditEntry[] = [];
+  const expanded = new Set<string>();
   // C.3 — keep the panel hidden during the brief window between page
   // load and the first plansSnapshot envelope, so a fresh connection
   // doesn't flash the "No active agent plans" empty state for one tick
@@ -75,9 +82,39 @@ export function createPlanPanelMirror(
   hostEl.appendChild(root);
 
   root.addEventListener("click", (e) => {
-    const target = (e.target as HTMLElement).closest(
-      "[data-plan-workspace]",
-    ) as HTMLElement | null;
+    const el = e.target as HTMLElement;
+
+    const clearBtn = el.closest("[data-plan-clear]");
+    if (clearBtn) {
+      const card = clearBtn.closest("[data-plan-ws]");
+      const ws = card?.getAttribute("data-plan-ws");
+      if (ws) {
+        onClearPlan?.(ws, card?.getAttribute("data-plan-agent") || undefined);
+      }
+      return;
+    }
+
+    const stepBtn = el.closest("[data-plan-step]");
+    if (stepBtn) {
+      const card = stepBtn.closest("[data-plan-ws]");
+      const ws = card?.getAttribute("data-plan-ws");
+      const stepId = stepBtn.getAttribute("data-plan-step");
+      if (ws && stepId) {
+        const key = planStepKey(
+          {
+            workspaceId: ws,
+            agentId: card?.getAttribute("data-plan-agent") || undefined,
+          },
+          stepId,
+        );
+        if (expanded.has(key)) expanded.delete(key);
+        else expanded.add(key);
+        repaint();
+      }
+      return;
+    }
+
+    const target = el.closest("[data-plan-workspace]") as HTMLElement | null;
     if (!target) return;
     const wsId = target.getAttribute("data-plan-workspace");
     if (wsId) onSelectWorkspace(wsId);
@@ -106,7 +143,11 @@ export function createPlanPanelMirror(
     if (plans.length === 0) {
       plansZoneEl.innerHTML = `<div class="sb-plan-empty">No active agent plans.</div>`;
     } else {
-      plansZoneEl.innerHTML = plans.map((p) => renderPlanCardHtml(p)).join("");
+      plansZoneEl.innerHTML = plans
+        .map((p) =>
+          renderPlanCardHtml(p, { clearable: Boolean(onClearPlan), expanded }),
+        )
+        .join("");
     }
     if (visibleAudit.length === 0) {
       auditZoneEl.classList.add("hidden");
@@ -124,6 +165,15 @@ export function createPlanPanelMirror(
     setPlans(next) {
       plans = [...next];
       receivedInitialSnapshot = true;
+      // Drop expansion keys whose step is gone, so a long-lived tab
+      // doesn't accumulate one dead key per step it ever saw.
+      if (expanded.size > 0) {
+        const live = new Set<string>();
+        for (const plan of plans) {
+          for (const step of plan.steps) live.add(planStepKey(plan, step.id));
+        }
+        for (const key of expanded) if (!live.has(key)) expanded.delete(key);
+      }
       repaint();
     },
     setAudit(next) {

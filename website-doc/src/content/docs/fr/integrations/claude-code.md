@@ -79,9 +79,10 @@ vous (la réponse par défaut de l'invite est *Yes*) :
   [`ht claude approve`](/fr/cli/claude/) (répond à la session qui attend
   depuis le plus longtemps, ou `--surface`).
 - **Automatiquement** — Réglages → *Auto-approve Claude Code prompts*
-  (**désactivé par défaut**). Chaque approbation est inscrite dans le
-  journal de la barre latérale du panneau : il reste une trace de ce qui
-  a été accepté sans surveillance.
+  (**désactivé par défaut**), ou
+  [`ht claude auto-approve on|off|status`](/fr/cli/claude/). Chaque
+  approbation est inscrite dans le journal de la barre latérale du
+  panneau : il reste une trace de ce qui a été accepté sans surveillance.
 
 C'est volontairement restreint. Cela ne se déclenche que lorsque Claude
 Code affiche **sa propre invite dans le terminal du panneau** ; jamais
@@ -92,6 +93,40 @@ revérifie que l'invite est toujours à l'écran après le délai configuré :
 pas d'Entrée parasite dans un panneau où vous avez déjà répondu. Et
 au-delà de huit invites en une minute, il se met en pause et vous
 notifie — une rafale d'invites ne se tamponne pas à l'aveugle.
+
+### Les questions qui vous sont adressées ne sont jamais auto-répondues
+
+Claude Code déclenche **le même** hook d'invite de permission pour une
+fenêtre **AskUserQuestion** ou **ExitPlanMode** que pour « puis-je
+exécuter cette commande », avec le même message générique — sur le flux
+de hooks seul, les deux sont indiscernables. Deux hooks limités à
+`AskUserQuestion|ExitPlanMode` signalent à τ-mux qu'une fenêtre de choix
+est ouverte, et **l'auto-approbation comme le `ht claude approve` manuel
+refusent d'agir tant qu'elle l'est** : appuyer sur Entrée sur une fenêtre
+de choix sélectionne son option par défaut, ce qui n'est pas ce que
+« approuver » signifie.
+
+À la fermeture de la fenêtre, τ-mux retire l'annonce d'approbation qu'il
+avait levée — une question répondue cesse donc d'afficher une pastille
+d'approbation en attente, et un `ht claude approve` ultérieur ne peut pas
+taper Entrée dans un panneau sans invite à l'écran. Une véritable invite
+d'outil n'est pas touchée.
+
+Une notification qui arrive pendant qu'une fenêtre est ouverte lui est
+attribuée. En cas d'erreur, le résultat est une auto-approbation
+*manquée* — vous appuyez sur Entrée vous-même — jamais une frappe
+parasite.
+
+:::note
+Ces deux hooks nécessitent [`ht claude install`](/fr/cli/claude/) puis un
+redémarrage des sessions Claude Code en cours. `ht claude doctor` les
+signale comme manquants jusque-là.
+:::
+
+Un tour qui demande la permission plusieurs fois voit **toutes** ses
+invites traitées, pas seulement la première — τ-mux compte les annonces
+d'invite plutôt que les transitions d'état, car Claude Code ne fournit
+aucun hook « invite résolue ».
 
 L'auto-approbation donne à un agent un consentement non surveillé pour
 les commandes qu'il demande à exécuter. Activez-la quand vous supervisez
@@ -106,10 +141,23 @@ apparaissent « done », la première tâche ouverte « active » ; le miroir
 est effacé à la fin de la session, et cohabite avec les plans pi (chaque
 agent a son propre emplacement).
 
+Le miroir survit à un redémarrage de l'application : l'état de session
+(identité, cwd, titre, liste de tâches, dépense) est persisté dans
+`claude-sessions.json` du dossier de config et rechargé au lancement.
+L'état *vivant* n'est délibérément **pas** restauré — une session
+restaurée revient au repos, sans tour en cours ni approbation en attente,
+et le prochain événement de hook corrige le reste. Sans cela, un
+redémarrage laissait une session encore active avec un panneau de plan
+vide en permanence : les hooks ne rapportent que des *transitions*, rien
+ne réannonce les tâches déjà créées.
+
 Comme le plan miroité et la notification de fin de tour alimentent le
 moteur d'[auto-continue](/fr/features/auto-continue/) existant, la
 continuation ancrée sur plan fonctionne pour les sessions Claude Code
-sous les mêmes garde-fous.
+sous les mêmes garde-fous. Le moteur s'exécutant à chaque fin de tour, un
+espace sans plan publié enregistre un « skip » — les skips identiques
+consécutifs sont regroupés en une seule ligne avec un compteur `×N` au
+lieu de remplir le panneau d'audit.
 
 ## Installation
 

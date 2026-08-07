@@ -17,6 +17,10 @@ import type { AppState } from "./rpc-handlers/types";
 import { ClaudeAutoApprove } from "./claude-auto-approve";
 import { ClaudePlanMirror } from "./claude-plan-mirror";
 import { ClaudeSessionRegistry } from "./claude-session-registry";
+import {
+  createDebouncedPersister,
+  loadInto,
+} from "./claude-registry-persistence";
 import { ClaudeStatusPresenter } from "./claude-status-presenter";
 import { ClaudeTeamWatcher } from "./claude-team-watcher";
 import type { PlanStore } from "./plan-store";
@@ -40,8 +44,18 @@ export interface ClaudeIntegration {
   ): void;
 }
 
-export function createClaudeIntegration(): ClaudeIntegration {
+export function createClaudeIntegration(
+  /** When given, the registry is seeded from this file on boot and
+   *  re-written (debounced) on every change, so an app restart does not
+   *  lose a live session's mirrored task list. */
+  persistencePath?: string,
+): ClaudeIntegration {
   const registry = new ClaudeSessionRegistry();
+  if (persistencePath) {
+    loadInto(persistencePath, registry);
+    const persist = createDebouncedPersister(persistencePath, registry);
+    registry.onChange(() => persist());
+  }
   // Constructed eagerly (never auto-fires until `attach` supplies the
   // settings readers) so `claude.approve` can be wired before attach.
   let autoApprove!: ClaudeAutoApprove;

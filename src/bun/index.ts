@@ -2599,7 +2599,9 @@ const autoContinueHost = createAutoContinueHost({
 });
 
 // august-plan M1 — Claude Code integration (see ./claude-integration.ts).
-const claudeIntegration = createClaudeIntegration();
+const claudeIntegration = createClaudeIntegration(
+  join(configDir, "claude-sessions.json"),
+);
 
 const socketHandler = createRpcHandler(
   sessions,
@@ -2619,6 +2621,25 @@ const socketHandler = createRpcHandler(
     claudeOpenPane: (opts) => claudePaneHost.createClaudeWorkspaceSurface(opts),
     claudeApprove: (surfaceId) =>
       claudeIntegration.autoApprove.approveNow(surfaceId),
+    claudeAutoApprove: {
+      get: () => ({
+        enabled: settingsManager.get().claudeAutoApprove,
+        delayMs: settingsManager.get().claudeAutoApproveDelayMs,
+      }),
+      set: (o) => {
+        const patch: Record<string, unknown> = {};
+        if (o.enabled !== undefined) patch["claudeAutoApprove"] = o.enabled;
+        if (o.delayMs !== undefined) {
+          patch["claudeAutoApproveDelayMs"] = o.delayMs;
+        }
+        const next = settingsManager.update(patch);
+        rpc.send("settingsChanged", { settings: next });
+        return {
+          enabled: next.claudeAutoApprove,
+          delayMs: next.claudeAutoApproveDelayMs,
+        };
+      },
+    },
     shutdown: () => gracefulShutdown(),
     testModeEnabled: HT_TEST_MODE,
     telegramDb,
@@ -2744,6 +2765,15 @@ function setupWebServerCallbacks(ws: WebServer) {
     // Same shape as clear — let the RPC handler own the splice + dispatch
     // so native webview + web clients stay in sync on the same id.
     socketHandler("notification.dismiss", { id });
+  };
+  ws.onPlanClear = (workspaceId, agentId) => {
+    // Same handler the native panel and `ht plan clear` reach, so the
+    // store broadcast is what repaints every surface — including the
+    // mirror that asked.
+    socketHandler("plan.clear", {
+      workspace_id: workspaceId,
+      ...(agentId ? { agent_id: agentId } : {}),
+    });
   };
   ws.onTelegramSend = (chatId, text) => {
     void sendTelegramAndBroadcast(chatId, text);
