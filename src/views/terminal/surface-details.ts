@@ -1,5 +1,6 @@
 import type { GitInfo, SurfaceMetadata } from "../../shared/types";
 import { createIcon } from "./icons";
+import { ModalHost } from "./a11y/modal-host";
 
 export interface SurfaceDetailsRef {
   id: string;
@@ -31,15 +32,17 @@ export class SurfaceDetailsPanel {
   private visible = false;
   private currentSurfaceId: string | null = null;
   private readonly callbacks: SurfaceDetailsCallbacks;
+  /** Escape-to-close, focus trap, focus restore and dialog semantics.
+   *  This was the one overlay in the app that never adopted ModalHost:
+   *  Escape did nothing, Tab walked straight out into the terminal
+   *  behind it, and screen readers saw a plain div. */
+  private host: ModalHost;
 
   constructor(callbacks: SurfaceDetailsCallbacks) {
     this.callbacks = callbacks;
 
     this.overlay = document.createElement("div");
     this.overlay.className = "surface-details-overlay";
-    this.overlay.addEventListener("click", (e) => {
-      if (e.target === this.overlay) this.hide();
-    });
 
     const panel = document.createElement("div");
     panel.className = "surface-details-panel";
@@ -51,6 +54,7 @@ export class SurfaceDetailsPanel {
     titleWrap.className = "surface-details-header-title";
     titleWrap.append(createIcon("info", "", 14));
     this.titleEl = document.createElement("span");
+    this.titleEl.id = "surface-details-title";
     this.titleEl.textContent = "Pane Info";
     titleWrap.appendChild(this.titleEl);
     header.appendChild(titleWrap);
@@ -74,6 +78,18 @@ export class SurfaceDetailsPanel {
 
     this.overlay.appendChild(panel);
     document.body.appendChild(this.overlay);
+
+    // Scrim click was previously a bare `click` listener on the overlay.
+    // ModalHost uses `mousedown` instead, which matters: a drag that
+    // starts inside the panel (selecting a path to copy) and releases
+    // over the scrim fires `click` on the overlay and used to dismiss
+    // the panel mid-selection.
+    this.host = new ModalHost({
+      overlay: this.overlay,
+      panel,
+      labelledBy: this.titleEl.id,
+      onClose: () => this.hide(),
+    });
   }
 
   isVisible(): boolean {
@@ -89,12 +105,19 @@ export class SurfaceDetailsPanel {
     this.visible = true;
     this.render();
     this.overlay.classList.add("visible");
+    this.host.open();
+    // Land focus inside the dialog so Escape and Tab are live immediately;
+    // otherwise the first keypress still goes to the terminal underneath.
+    this.host.focusFirst();
   }
 
   hide(): void {
+    if (!this.visible) return;
     this.visible = false;
     this.currentSurfaceId = null;
     this.overlay.classList.remove("visible");
+    // Restores focus to whatever was active before the panel opened.
+    this.host.close();
   }
 
   toggleFor(surfaceId: string): void {

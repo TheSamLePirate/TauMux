@@ -6,6 +6,7 @@ import {
   formatWindowTitle,
   MENU_ACTIONS,
 } from "../src/bun/native-menus";
+import { WORKSPACE_COLOR_OPTIONS } from "../src/shared/workspace-colors";
 
 describe("native menus", () => {
   test("buildApplicationMenu exposes essential Mac app sections", () => {
@@ -21,11 +22,15 @@ describe("native menus", () => {
   });
 
   test("workspace context menu includes rename, colors, and close", () => {
+    // Drive this from the palette constant rather than a literal hex, so
+    // retuning WORKSPACE_COLOR_OPTIONS does not require editing a test
+    // that is really about menu structure, not about a specific colour.
+    const selected = WORKSPACE_COLOR_OPTIONS[2].value;
     const menu = buildContextMenu({
       kind: "workspace",
       workspaceId: "ws:2",
       name: "Builds",
-      color: "#34c759",
+      color: selected,
     });
 
     expect((menu[0] as { action: string }).action).toBe(
@@ -37,8 +42,10 @@ describe("native menus", () => {
     };
     expect(colorMenu.submenu.some((item) => item.checked)).toBe(true);
     expect(
-      colorMenu.submenu.some((item) => item.data?.color === "#34c759"),
+      colorMenu.submenu.some((item) => item.data?.color === selected),
     ).toBe(true);
+    // Every palette entry should be offered.
+    expect(colorMenu.submenu.length).toBe(WORKSPACE_COLOR_OPTIONS.length);
 
     const closeItem = menu[menu.length - 1] as { action: string };
     expect(closeItem.action).toBe(MENU_ACTIONS.closeWorkspace);
@@ -51,8 +58,12 @@ describe("native menus", () => {
       title: "Server",
     });
 
-    expect((menu[0] as { action: string }).action).toBe(MENU_ACTIONS.renamePane);
-    expect((menu[2] as { action: string }).action).toBe(MENU_ACTIONS.splitRight);
+    expect((menu[0] as { action: string }).action).toBe(
+      MENU_ACTIONS.renamePane,
+    );
+    expect((menu[2] as { action: string }).action).toBe(
+      MENU_ACTIONS.splitRight,
+    );
     expect((menu[3] as { action: string }).action).toBe(MENU_ACTIONS.splitDown);
     expect((menu[5] as { action: string }).action).toBe(
       MENU_ACTIONS.copySelection,

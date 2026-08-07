@@ -59,11 +59,73 @@ describe("theme-token migration — ask-user modal + workspace badge (P7 S17)", 
     expect(sheet).toContain("var(--ht-ask-sheet-shadow)");
   });
 
-  test("ask-user overlay sits above palette/settings and notification rings", () => {
+  // Rewritten alongside the z-index scale. The assertion used to be
+  // `z > 2147483000`, which pinned the *implementation* (a near-max int)
+  // rather than the requirement. The requirement is an ordering: a
+  // blocking human-in-the-loop prompt must out-stack the ordinary modals.
+  //
+  // Ask-user now sits on --z-modal-nested, and the ordering is checked
+  // against the scale itself so this test fails if someone renumbers a
+  // layer without thinking about ask-user.
+  test("ask-user overlay sits above palette/settings", () => {
     const overlay = matchRule(indexCss, ".ask-user-overlay");
-    const z = /z-index:\s*(\d+)/.exec(overlay)?.[1];
-    expect(z).toBeDefined();
-    expect(Number(z)).toBeGreaterThan(2147483000);
+    expect(overlay).toContain("z-index: var(--z-modal-nested)");
+
+    const scale = matchRule(indexCss, ":root");
+    const layer = (name: string): number => {
+      const raw = new RegExp(`--z-${name}:\\s*(\\d+);`).exec(scale)?.[1];
+      expect(raw).toBeDefined();
+      return Number(raw);
+    };
+
+    // Ask-user's layer must beat the layer the palette and settings use.
+    expect(layer("modal-nested")).toBeGreaterThan(layer("modal"));
+    expect(matchRule(indexCss, ".palette-overlay")).toContain(
+      "z-index: var(--z-modal)",
+    );
+    expect(matchRule(indexCss, ".settings-overlay")).toContain(
+      "z-index: var(--z-modal)",
+    );
+  });
+
+  // Every overlay draws its stacking from the scale rather than from a
+  // hand-picked literal. Before this, the overlays used 200 / 210 / 1800 /
+  // 1900 / 1900 / 2000 / 2010 / 10000 / 2147483600 — which contained a
+  // genuine tie (.settings-overlay and .surface-context-menu both at
+  // 1900, so paint order decided) and left the Process Manager and Pane
+  // Info panels at 200/210, below every other modal in the app.
+  test("all modal overlays stack via the z-index scale", () => {
+    const overlays = [
+      ".process-manager-overlay",
+      ".surface-details-overlay",
+      ".prompt-overlay",
+      ".settings-overlay",
+      ".palette-overlay",
+      ".kbd-cheatsheet",
+      ".ask-user-overlay",
+      ".surface-context-menu",
+      ".toast-container",
+    ];
+    for (const sel of overlays) {
+      const rule = matchRule(indexCss, sel);
+      expect(rule, `${sel} should use a --z-* token`).toMatch(
+        /z-index:\s*var\(--z-[a-z-]+\)/,
+      );
+    }
+  });
+
+  // Toasts are the one thing allowed above a modal: they are transient
+  // and never take focus. Everything else must sit below the modals.
+  test("toasts stay above modals; chrome stays below them", () => {
+    const scale = matchRule(indexCss, ":root");
+    const layer = (name: string): number => {
+      const raw = new RegExp(`--z-${name}:\\s*(\\d+);`).exec(scale)?.[1];
+      expect(raw, `--z-${name} should be defined`).toBeDefined();
+      return Number(raw);
+    };
+    expect(layer("toast")).toBeGreaterThan(layer("modal-nested"));
+    expect(layer("modal")).toBeGreaterThan(layer("titlebar"));
+    expect(layer("titlebar")).toBeGreaterThan(layer("sidebar"));
   });
 
   test("ask-user overlay is visible by default to avoid rAF transparency races", () => {
