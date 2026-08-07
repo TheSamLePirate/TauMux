@@ -26,8 +26,12 @@ the AAA plan does not cover:
 1. **One boot-order bug can brick the whole app** — and it is the user-reported
    Telegram crash.
 2. **The LAN mirror ships with authentication disabled by default.**
-3. **τ-mux is one of the worse terminals to run Claude Code in** — the thing it exists
-   to do — because it lacks the Kitty keyboard protocol and OSC 133.
+3. **The PTY path lags the integration.** τ-mux has by far the deepest Claude Code
+   integration of any terminal (~3,240 lines: dedicated pane, session registry, plan
+   mirror, auto-approve, status presenter, `ht-bridge` hooks). But the *terminal* layer
+   underneath it is missing the Kitty keyboard protocol and OSC 133 — so `claude` run as
+   a CLI in a PTY pane is a worse experience than the same CLI in Ghostty, even though
+   τ-mux's own Claude pane is better than anything else on the market.
 4. **The webview cannot report its own failures.** Zero `try` blocks in 2,915 lines of
    SurfaceManager, no global error handler, nothing tee'd to the log. The bun side has a
    fault budget and health rows; the layer holding 100 % of the UI has neither — which is
@@ -411,16 +415,45 @@ Fix the doc, then close the gaps.
 
 ### 4.2 Kitty keyboard protocol (CSI u) — highest value ÷ effort in this report
 
-Without it, **Enter and Shift+Enter are the same byte**. Every agent TUI's multiline edit
-breaks and users fall back to Ctrl+J. Supported by Kitty, Ghostty, WezTerm, iTerm2,
+Without it, **Enter and Shift+Enter are the same byte**. Agent TUIs lose multiline edit and
+users fall back to Ctrl+J or `\`+Enter. Supported by Kitty, Ghostty, WezTerm, iTerm2,
 Alacritty, Warp, and VS Code since 1.109 (Jan 2026).
 
 τ-mux is pinned to `@xterm/xterm` 6.0.0. The implementation landed in
 [xterm.js PR #5600](https://github.com/xtermjs/xterm.js/pull/5600) and ships in the beta —
 npm dist-tags confirm `beta: 6.1.0-beta.292`.
 
-**τ-mux exists to host Claude Code and pi, and is currently one of the worse terminals to
-run them in.** This is a dependency bump, not a project. **Effort: XS.**
+**Scope this honestly.** It does **not** affect τ-mux's native Claude Code pane or agent
+panel — those are DOM textareas that handle Shift+Enter directly
+(`claude-agent-pane.ts:712`, `agent-panel.ts:1018`). It affects the **PTY path**: running
+`claude`, `pi`, or any other agent CLI in an ordinary terminal pane.
+
+**That path is the project owner's primary workflow** (confirmed during review), so this
+is not a hypothetical papercut — it is daily friction for the person who uses the app
+most. Priority accordingly.
+
+#### Three fixes, ascending effort — the first two need no dependency change
+
+**(1) `macOptionIsMeta: true` — one line.** `surface-manager.ts:2354` constructs
+`new Terminal({…})` **without** `macOptionIsMeta`, and xterm's default is `false`. That
+means Option+Enter — Claude Code's documented macOS multiline shortcut — does not emit the
+meta sequence the TUI expects; the keypress is consumed as an accented character instead.
+Adding the option is the cheapest possible win and should be verified in a pane
+immediately.
+
+**(2) `attachCustomKeyEventHandler` — ~5 lines.** The hook is part of the xterm API and is
+**used nowhere in this codebase** (grep confirms zero call sites). Intercept
+`keydown` + `Enter` + `shiftKey`, write `0x0a` (Ctrl+J, the byte Ink-based TUIs including
+Claude Code treat as newline-without-submit) straight to `onStdin`, and return `false` to
+suppress the default CR. Wire it beside the existing `term.onData` at `:2386`. *Verify the
+exact byte in a live pane before shipping — `0x0a` is the expected mapping but has not
+been empirically confirmed here.*
+
+**(3) Bump to `@xterm/xterm` 6.1.0-beta — the real fix.** Full Kitty keyboard protocol, so
+every modifier combination works for every agent TUI rather than one hand-mapped key.
+Carries normal beta risk; (1) and (2) are the de-risked path to relief today.
+
+**Effort: XS for (1)+(2); XS-S for (3).**
 
 ### 4.3 OSC 133 shell integration — the missing structural layer
 
@@ -762,7 +795,11 @@ token or mirror token on the wire.
 §1.1 telegram boot guard + hoist `mkdirSync` · §1.2 mirror token default · §1.3
 auto-approve `seq` check · §2.1A panel opacity on blur · §2.2 scroll clamp (native +
 mirror) · §10 file modes + `--ignore-scripts` · §9.1 webview error listeners ·
-**§5 tag and push v0.10.8**.
+**§4.2(1)+(2) `macOptionIsMeta` + Shift+Enter key handler** · **§5 tag and push v0.10.8**.
+
+§4.2(1)+(2) are ~6 lines total and remove daily friction from the owner's primary
+workflow (`claude` in a PTY pane). Do them first — they are the cheapest real-world
+improvement in this entire document.
 
 §9.1 belongs in week 1 despite being an architecture item: until the webview can report a
 fault, every other bug in this report is diagnosed by guesswork.
@@ -808,3 +845,26 @@ Two agent claims did not survive checking and are corrected above rather than re
 
 A third framing was corrected: `ClaudeTeamWatcher`'s filesystem burn is **conditional on
 `~/.claude/teams` existing**, which it does not on this machine (§3.4).
+
+**Fourth, and the largest correction — made after review pushback.** The first draft of
+this document claimed τ-mux is "one of the worse terminals to run Claude Code in." That is
+wrong and has been rewritten in the Verdict and §4.2. It generalised a real but narrow
+input-layer gap into a verdict on the whole app, and it ignored the counter-evidence
+sitting in the repo:
+
+- τ-mux ships ~3,240 lines of Claude-Code-specific integration — `claude-agent-pane.ts`
+  (1,331), `claude-session-registry.ts` (382), `claude-agent-manager.ts` (348),
+  `claude-status-presenter.ts` (277), `claude-pane-host.ts` (197),
+  `claude-auto-approve.ts` (199), `claude-plan-mirror.ts` (131),
+  `claude-team-watcher.ts` (187), plus the `ht-bridge` hooks. No other terminal has any
+  equivalent.
+- The Shift+Enter defect does not even reach that pane: `claude-agent-pane.ts:712` and
+  `agent-panel.ts:1018` handle the key in the DOM.
+
+On integration depth τ-mux is plausibly the **best** terminal for Claude Code today. The
+accurate finding is narrower and still worth acting on: the PTY layer beneath that
+integration lags the standards its peers already implement, and closing that gap is XS.
+
+Lesson for future audits of this repo: a competitive-research agent optimises for a sharp
+claim, and a sharp claim about a weakness will skip the strengths that sit one grep away.
+Verify verdicts, not just facts.
