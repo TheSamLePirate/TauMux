@@ -44,3 +44,72 @@ today would destroy the record rather than update it.
 _(Always add new items below this line. When folding into the website, clear
 the backlog by overwriting the pending entries with a fresh
 "Backlog cleared <date> — …" summary like the one above.)_
+---
+
+## Design system consolidation + notification panel rebuild (unreleased)
+
+Visual-system work. No RPC surface changed, so `api/` and `cli/` pages are
+unaffected; this is a look-and-feel note plus one user-visible palette change.
+
+**One token layer instead of six.** `src/views/terminal/index.css` had
+accumulated six top-level `:root` blocks from successive redesign passes, each
+re-declaring the same names. Whichever pass happened to sit last in the file
+won, which is how the app ended up:
+
+- rendering its chrome in **DM Sans** — a font that is not bundled, so it
+  silently fell back to San Francisco while four weights of Inter shipped in
+  `assets/fonts/inter/` and went unused;
+- on a **grey `#181818`-ish body** rather than the `#07090b` the guidelines
+  specify;
+- with an **18 px window radius** and a `--radius-lg: 18px`, against a scale
+  whose documented maximum is 12 px;
+- with a full-window **fractal-noise film** (three separate re-declarations of
+  the same `body::after`), which §0 rules out and which cost a compositor
+  layer on every repaint.
+
+All six are now merged into a single documented `:root`. Geometry that the app
+actually shipped (32 px titlebar, 320 px sidebar) was deliberately preserved,
+so this is a visual-language correction, not a silent relayout.
+
+**Notification panel (left sidebar).** `.notification-copy` had no CSS rule
+anywhere in the 13 000-line stylesheet, and the only global button rule was
+`font: inherit` — so the copy control rendered as a stock macOS grey push
+button inside the flat dark row, next to a dismiss button that was invisible
+until hover. Both are now matched 20 px ghost buttons, always visible, with
+keyboard focus states and a working copy-confirmation tick (the `.copied`
+class was already being set and had never been styled). Rows gained a 2 px
+state bar: amber = unread, cyan = click to focus the emitting pane.
+
+**Button chrome reset.** The UA `appearance` is now neutralised globally for
+`<button>`, so this whole class of bug — a control that sets size and colour
+but never background/border, and therefore inherits macOS chrome — cannot
+recur. It also fixed the Settings and panel close buttons.
+
+**Z-index scale.** Overlays used 200 / 210 / 1800 / 1900 / 1900 / 2000 / 2010 /
+10000 / 2147483600. That contained a genuine tie (settings vs. context menu,
+resolved by DOM order) and left Process Manager and Pane Info below every other
+modal. There is now one documented scale of named layers, and `surface-details`
+finally adopts `ModalHost`, so it gets Escape-to-close, a focus trap, focus
+restore and `role="dialog"` like every other modal.
+
+**USER-VISIBLE — workspace colour palette retuned.** `WORKSPACE_COLOR_OPTIONS`
+was the stock macOS system palette (`#4c8bf5`, `#34c759`, `#ffd60a`, …), which
+is tuned for light-grey chrome and reads as foreign against `#07090b`. The
+eight hue positions are kept — so a user's "green project / red project"
+mapping survives — but re-voiced in the canon's luminous register, four of them
+being the `--tau-*` tokens exactly. Label changes: "Blue" → "Cyan",
+"Yellow" → "Amber", "Purple" → "Violet". Existing workspaces keep the hex they
+were created with; only the picker changes. **Screenshots in the docs that show
+workspace colours or the sidebar will need retaking.**
+
+**Identity rule enforced.** Command-palette categories that spawn an agent
+("Agent", "Claude Code") are now tagged amber per §7, and several cyan→amber
+gradients (progress meter, agent streaming bar, welcome glyph) were flattened
+to a single semantic colour — a bar ramping through both identity colours read
+as the session changing owner as it filled.
+
+**Test-harness fix worth noting.** `tests-e2e-native/client.ts` never sent the
+RPC token, so the entire native e2e suite failed at the first state-mutating
+call once `rpcSocketRequireToken` began defaulting to `true`. It now reads
+`socket.token` beside the socket. This is why `bun run test:native` and the
+design-review gallery work again.

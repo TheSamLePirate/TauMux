@@ -11,6 +11,9 @@
  */
 
 import { connect as netConnect, type Socket } from "node:net";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { RPC_TOKEN_FIELD, RPC_TOKEN_FILENAME } from "../src/shared/rpc-token";
 
 interface PendingCall {
   resolve: (value: unknown) => void;
@@ -302,10 +305,13 @@ class RpcClient implements SocketRpc {
   private pending = new Map<number, PendingCall>();
   private closed = false;
   private defaultTimeoutMs: number;
+  /** Per-boot RPC token, or "" when the app is not enforcing one. */
+  private token: string;
 
-  constructor(socket: Socket, defaultTimeoutMs = 10_000) {
+  constructor(socket: Socket, defaultTimeoutMs = 10_000, token = "") {
     this.socket = socket;
     this.defaultTimeoutMs = defaultTimeoutMs;
+    this.token = token;
     socket.setEncoding("utf8");
     socket.on("data", (chunk) => this.onData(String(chunk)));
     socket.on("close", () => this.onClose(new Error("socket closed")));
@@ -351,7 +357,16 @@ class RpcClient implements SocketRpc {
   ): Promise<T> {
     if (this.closed) return Promise.reject(new Error("client closed"));
     const id = this.seq++;
-    const payload = JSON.stringify({ id, method, params }) + "\n";
+    // `rpcSocketRequireToken` defaults to true, so every state-mutating
+    // method needs the per-boot token that the app writes beside the
+    // socket. Without it the server answers "auth required" and the whole
+    // native suite fails at the first mutating call.
+    const payload =
+      JSON.stringify(
+        this.token
+          ? { id, method, params, [RPC_TOKEN_FIELD]: this.token }
+          : { id, method, params },
+      ) + "\n";
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (this.pending.delete(id)) {
@@ -546,10 +561,26 @@ class RpcClient implements SocketRpc {
 }
 
 /** Connect to a running app's Unix socket. Resolves once the socket is open. */
+/** Read the per-boot RPC token the app writes next to its socket.
+ *  Returns "" when the file is absent — that is the legitimate state for
+ *  an app running with `rpcSocketRequireToken` off, and the server then
+ *  ignores the field entirely. */
+function readSocketToken(socketPath: string): string {
+  try {
+    return readFileSync(
+      join(dirname(socketPath), RPC_TOKEN_FILENAME),
+      "utf8",
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
 export async function connect(
   socketPath: string,
   defaultTimeoutMs = 10_000,
 ): Promise<SocketRpc> {
+  const token = readSocketToken(socketPath);
   return new Promise<SocketRpc>((resolve, reject) => {
     const socket = netConnect({ path: socketPath });
     const onError = (err: Error) => {
@@ -558,7 +589,7 @@ export async function connect(
     };
     const onConnect = () => {
       socket.removeListener("error", onError);
-      resolve(new RpcClient(socket, defaultTimeoutMs));
+      resolve(new RpcClient(socket, defaultTimeoutMs, token));
     };
     socket.once("connect", onConnect);
     socket.once("error", onError);

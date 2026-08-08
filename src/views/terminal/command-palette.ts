@@ -2,6 +2,17 @@ import { ModalHost } from "./a11y/modal-host";
 
 const RECENTS_STORAGE_KEY = "hyperterm-canvas.palette.recents";
 
+/**
+ * Palette categories whose commands start an agent session. Tagged amber
+ * per the §7 identity rule (cyan = human / system, amber = agent), so the
+ * two "Split Right" style entries are told apart before you run one.
+ *
+ * Categories are plain strings supplied by buildPaletteCommands in
+ * index.ts; a category that is not listed here is neutral, which is the
+ * right default for a new non-agent feature.
+ */
+const AGENT_CATEGORIES = new Set(["Agent", "Claude Code"]);
+
 export interface PaletteCommand {
   id: string;
   category?: string;
@@ -328,6 +339,14 @@ export class CommandPalette {
       if (cmd.category) {
         const category = document.createElement("span");
         category.className = "palette-item-category";
+        // §7 identity rule: a command that spawns an agent session is
+        // tagged amber, everything else stays neutral. Running "Split
+        // Agent Right" and "Split Right" are materially different acts —
+        // one starts a robot in your workspace — and the palette is
+        // where that choice is made, so the distinction belongs here.
+        if (AGENT_CATEGORIES.has(cmd.category)) {
+          category.classList.add("is-agent");
+        }
         category.textContent = cmd.category;
         top.appendChild(category);
       }
@@ -381,8 +400,7 @@ export class CommandPalette {
 
     // Scroll selected item into view
     const selectedEl = this.resultsEl.children[this.selectedIndex] as
-      | HTMLElement
-      | undefined;
+      HTMLElement | undefined;
     if (selectedEl) {
       selectedEl.scrollIntoView({ block: "nearest" });
     }

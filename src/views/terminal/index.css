@@ -59,7 +59,7 @@
   right: 0;
   bottom: 0;
   height: 26px;
-  z-index: 78;
+  z-index: var(--z-statusbar);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -220,10 +220,100 @@
   --radius-lg: 12px;
   --radius-md: 8px;
   --radius-sm: 5px;
-  --titlebar-height: 38px;
-  --sidebar-width: 240px;
   --transition-fast: 140ms cubic-bezier(0.22, 1, 0.36, 1);
   --transition-medium: 240ms cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ══════════════════════════════════════════════════════════════════
+   * CONSOLIDATED LAYER — formerly five further `:root` blocks further
+   * down this file ("2026 refinement" / "matte product UI" / t3 passes).
+   * Each pass redeclared the same names, so the file shipped whichever
+   * value happened to be last. That is how the chrome ended up on DM
+   * Sans (never bundled — it silently fell back to San Francisco while
+   * four weights of Inter sat unused in assets/fonts/inter/), an 18 px
+   * window radius, and a near-white window frame — all three directly
+   * against §0/§2/§3 of the guidelines.
+   *
+   * Everything now lives here, once. Geometry keeps the value the app
+   * actually shipped so this is not a silent layout change; the visual
+   * language is pulled back to canon.
+   * ══════════════════════════════════════════════════════════════════ */
+
+  /* Chrome font. Canon §2: Inter, and nothing else. This is the token the
+   * rest of the file references — it must agree with --tau-font-sans. */
+  --font-ui: var(--tau-font-sans);
+  --font-mono: var(--tau-font-mono);
+
+  /* Geometry — effective shipped values, deliberately preserved. */
+  --titlebar-height: 32px;
+  --sidebar-width: 320px;
+
+  /* Radius scale (§3). Nothing exceeds --tau-r-window (12px). */
+  --radius-xl: 12px;
+  --radius-panel: 8px;
+  --radius-control: 8px;
+  --radius-pill: 999px;
+  --window-corner-radius: 12px;
+
+  /* Window frame (§5): an inner hairline, not a light stroke. */
+  --window-frame-width: 1px;
+  --t3-window-frame: var(--tau-edge);
+
+  /* Surfaces. Canon §0 — "black is a material": these resolve to the
+   * flat --tau-* steps rather than translucent grey washes. */
+  --window-hairline: var(--tau-edge-soft);
+  --window-hairline-strong: var(--tau-edge);
+  --window-border: var(--tau-edge-soft);
+  --window-border-strong: var(--tau-edge);
+  --window-surface: var(--tau-panel);
+  --window-surface-muted: var(--tau-panel-hi);
+  --window-surface-subtle: var(--tau-panel);
+  --window-fill: var(--tau-panel);
+  --window-fill-strong: var(--tau-panel-hi);
+  --window-fill-elevated: var(--tau-panel-hi);
+  --window-fill-muted: var(--tau-panel);
+  --window-primary: var(--accent-primary);
+  --window-muted: var(--tau-text-dim);
+
+  --t3-background: var(--tau-bg);
+  --t3-foreground: var(--tau-text);
+  --t3-card: var(--tau-panel);
+  --t3-panel: var(--tau-panel);
+  --t3-border: var(--tau-edge-soft);
+  --t3-border-strong: var(--tau-edge);
+  --t3-input: var(--tau-panel-hi);
+  --t3-muted: var(--tau-panel-hi);
+  --t3-muted-foreground: var(--tau-text-mute);
+
+  /* Shadows (§3) — only the window and the focused pane may cast one. */
+  --shadow-window: 0 30px 80px rgba(0, 0, 0, 0.55);
+  --shadow-panel: 0 18px 40px rgba(0, 0, 0, 0.45);
+  --shadow-sheet: 0 24px 56px rgba(0, 0, 0, 0.55);
+
+  /* ── Z-INDEX SCALE ──
+   * Previously ad hoc: 200 / 210 / 1800 / 1900 / 1900 / 2000 / 2010 /
+   * 10000 / 2147483600. A prompt dialog (1800) rendered *under* the
+   * context menu that spawned it (1900), settings tied with that menu
+   * so DOM order decided, and toasts (10000) covered every modal.
+   *
+   * One ordered scale. Layers are 10 apart so a future sub-layer fits
+   * without a renumber. Modals sit above chrome; the scrim and its
+   * panel share a layer; toasts sit above modals ONLY because they are
+   * transient and never own focus. */
+  --z-pane-overlay: 30;
+  /* The §4 focus ring sits above sideband panels inside its pane: the
+   * focus indicator is the one thing that must never be occluded. */
+  --z-pane-focus-ring: 50;
+  --z-chrome: 60;
+  --z-sidebar: 65;
+  --z-statusbar: 70;
+  --z-titlebar: 80;
+  --z-pane-search: 100;
+  --z-modal-backdrop: 1000;
+  --z-modal: 1010;
+  --z-modal-nested: 1020;
+  --z-context-menu: 1030;
+  --z-window-frame: 1040;
+  --z-toast: 1050;
 }
 
 * {
@@ -269,6 +359,33 @@ textarea {
   font: inherit;
 }
 
+/* ── Button chrome reset ──
+ *
+ * The only global button rule used to be `font: inherit`, which left the
+ * WebKit user-agent appearance in place: a light grey capsule with a
+ * system border. Any button whose CSS set colour and size but never
+ * background/border therefore rendered as a stock macOS push button
+ * sitting inside flat black chrome — `.notification-copy` (which had no
+ * rule at all), `.settings-close-btn` and `.panel-close-btn` were the
+ * visible cases. (`.process-manager-close` and `.surface-details-close`
+ * escaped it only because they happen to declare their own background.)
+ *
+ * Neutralising the UA chrome here makes "no background" the default and
+ * leaves every button that genuinely wants a fill to declare one, which
+ * they already do. `appearance: none` is what actually removes the
+ * capsule; background/border alone do not on WebKit.
+ *
+ * Scoped to plain buttons only — inputs keep their UA behaviour so text
+ * fields, selects and the colour picker are untouched. */
+button {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  color: inherit;
+  margin: 0;
+}
+
 #titlebar {
   /* τ-mux §5 window shell: 38 px title bar, gradient #0d1317 → #0a0e11,
    * 0.5 px hairline below. No outer shadow on the titlebar itself — the
@@ -280,7 +397,7 @@ textarea {
   left: 0;
   right: 0;
   height: var(--titlebar-height);
-  z-index: 80;
+  z-index: var(--z-titlebar);
   display: grid;
   /* Three columns: leading (fills) · center · actions. The pill-style
    * workspace switcher was removed — it pushed the action buttons
@@ -521,7 +638,7 @@ textarea {
   border-right: 0.5px solid var(--tau-edge);
   overflow-y: auto;
   overflow-x: hidden;
-  z-index: 50;
+  z-index: var(--z-sidebar);
   transition:
     width var(--transition-medium),
     padding var(--transition-medium),
@@ -1078,7 +1195,8 @@ body.sidebar-resizing {
   align-items: flex-start;
   justify-content: center;
   padding: 56px 24px 24px;
-  z-index: 210;
+  /* §z-scale. Was 210 — same burial problem as the Process Manager. */
+  z-index: var(--z-modal);
 }
 
 .surface-details-overlay.visible {
@@ -1337,7 +1455,9 @@ body.sidebar-resizing {
   align-items: flex-start;
   justify-content: center;
   padding: 56px 24px 24px;
-  z-index: 200;
+  /* §z-scale. Was 200 — below the palette (2000) and settings (1900), so opening
+   * either while the Process Manager was up buried it silently. */
+  z-index: var(--z-modal);
 }
 
 .process-manager-overlay.visible {
@@ -2018,7 +2138,10 @@ body.sidebar-resizing {
 .progress-fill {
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+  /* §7/§8.4: a meter fills in ONE semantic colour. Ramping cyan → amber
+   * runs straight through the identity axis (cyan = human, amber = agent),
+   * so a half-full bar looked like it was changing owner as it filled. */
+  background: var(--accent-primary);
   transition: width var(--transition-medium);
 }
 
@@ -2191,7 +2314,7 @@ body.sidebar-resizing {
   border: 1px solid transparent;
   border-radius: inherit;
   pointer-events: none;
-  z-index: 2147483000;
+  z-index: var(--z-pane-focus-ring);
   animation: notify-glow-pulse 2s ease-in-out infinite;
 }
 .surface-container.notify-glow.tau-pane-human::after {
@@ -2890,7 +3013,9 @@ body.terminal-typing .panel {
   position: fixed;
   left: 0;
   top: 0;
-  z-index: 1900;
+  /* §z-scale. Menus outrank plain modals (they can be raised over one) but stay
+   * below the window frame and toasts. */
+  z-index: var(--z-context-menu);
   min-width: 184px;
   display: flex;
   flex-direction: column;
@@ -2943,7 +3068,11 @@ body.terminal-typing .panel {
 .prompt-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1800;
+  /* §z-scale. Was 1800, BELOW .surface-context-menu at 1900. A rename prompt opened
+   * from that context menu rendered underneath the menu that spawned it.
+   * Prompts are nested (they open *from* another surface) so they sit on
+   * the nested-modal layer, above both plain modals and the menu. */
+  z-index: var(--z-modal-nested);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -3079,12 +3208,21 @@ body.terminal-typing .panel {
 /* Plan #10 commit C — ask-user modal. Cloned from .prompt-overlay
  * with a darker backdrop. Ask-user also powers ht_plan_set approval,
  * so it is a blocking human-in-the-loop prompt and must sit above all
- * app chrome, settings/palette overlays, browser OOPIF panes (hidden
- * while mounted), and pane notification rings (2147483000). */
+ * app chrome, settings/palette overlays, and browser OOPIF panes
+ * (hidden while mounted).
+ *
+ * It used to also have to out-stack the pane notification rings, which
+ * is where the near-max int came from. Those rings are `::after` on
+ * `.surface-container`, i.e. inside the pane's own stacking context, so
+ * they never actually competed with a `position: fixed` overlay — the
+ * huge number was defending against a problem that could not occur. */
 .ask-user-overlay {
   position: fixed;
   inset: 0;
-  z-index: 2147483600;
+  /* §z-scale. Was 2147483600 — a near-max int used to guarantee it won. It does not
+   * need to outrank a signed 32-bit universe, just the modals; being on
+   * the nested layer is enough and keeps it comparable to its peers. */
+  z-index: var(--z-modal-nested);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -3201,7 +3339,8 @@ body.terminal-typing .panel {
 .palette-overlay {
   position: fixed;
   inset: 0;
-  z-index: 2000;
+  /* §z-scale. Was 2000. */
+  z-index: var(--z-modal);
   display: flex;
   justify-content: center;
   padding-top: 92px;
@@ -3216,7 +3355,9 @@ body.terminal-typing .panel {
 .kbd-cheatsheet {
   position: fixed;
   inset: 0;
-  z-index: 2010;
+  /* §z-scale. Was 2010. The cheatsheet can be opened from the palette, so it is a
+   * nested modal. */
+  z-index: var(--z-modal-nested);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3416,6 +3557,17 @@ body.terminal-typing .panel {
 .palette-item-category,
 .palette-item-recent {
   color: var(--text-dim);
+}
+
+/* §7 identity: commands that start an agent session read amber. The
+ * shape is identical to a neutral chip — per §7 the signal is colour
+ * only, never a different form. Set by CommandPalette from
+ * AGENT_CATEGORIES. --tau-* is correct here: identity is an invariant
+ * and is explicitly exempt from theme overrides. */
+.palette-item-category.is-agent {
+  color: var(--tau-agent);
+  border-color: var(--tau-agent-dim);
+  background: var(--tau-agent-dim);
 }
 
 .palette-item-label {
@@ -4104,7 +4256,10 @@ body.terminal-typing .panel {
   position: fixed;
   bottom: 16px;
   right: 16px;
-  z-index: 10000;
+  /* §z-scale. Was 10000, above every modal including focus-owning ones. Toasts are
+   * transient and never take focus, so they stay top-most by design —
+   * but now by one step, not by four orders of magnitude. */
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column-reverse;
   gap: 8px;
@@ -4162,7 +4317,7 @@ body.terminal-typing .panel {
   position: absolute;
   top: 8px;
   right: 12px;
-  z-index: 200;
+  z-index: var(--z-pane-search);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -4229,7 +4384,9 @@ body.terminal-typing .panel {
 .settings-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1900;
+  /* §z-scale. Was 1900 — an exact tie with .surface-context-menu, so which one won
+   * depended on DOM insertion order rather than on intent. */
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4903,40 +5060,9 @@ body.terminal-typing .panel {
 
 /* 2026 refresh: coherent macOS-oriented chrome */
 
-:root {
-  --font-ui:
-    "SF Pro Text",
-    "SF Pro Display",
-    "Helvetica Neue",
-    "Segoe UI",
-    sans-serif;
-  --font-mono:
-    "SF Mono",
-    "JetBrainsMono Nerd Font Mono",
-    "JetBrains Mono",
-    "Berkeley Mono",
-    "Menlo",
-    monospace;
-  /* τ-mux §5: titlebar is 38 px (was 28 in the 2026-refresh draft). */
-  --titlebar-height: 38px;
-  --radius-xl: 12px;
-  --radius-panel: 8px;
-  --radius-control: 8px;
-  --radius-pill: 999px;
-  --window-hairline: rgba(255, 255, 255, 0.08);
-  --window-hairline-strong: rgba(255, 255, 255, 0.14);
-  --window-border: rgba(255, 255, 255, 0.06);
-  --window-fill: rgba(22, 25, 33, 0.74);
-  --window-fill-strong: rgba(26, 30, 39, 0.88);
-  --window-fill-elevated: rgba(30, 34, 44, 0.92);
-  --window-fill-muted: rgba(255, 255, 255, 0.04);
-  --sidebar-width: 320px;
-  --shadow-window: 0 24px 64px rgba(0, 0, 0, 0.28);
-  --shadow-panel: 0 18px 44px rgba(0, 0, 0, 0.3);
-  --shadow-sheet:
-    0 36px 88px rgba(0, 0, 0, 0.46),
-    0 1px 0 var(--ht-agent-row-bg-hover) inset;
-}
+/* Token layer 2/6 — folded into the consolidated `:root` at the top of
+ * this file. Its --font-mono put "SF Mono" ahead of JetBrains Mono,
+ * which is why terminal-adjacent chrome did not match the terminal. */
 
 html,
 body {
@@ -5272,7 +5398,8 @@ body::before, body::after { content: none; }
 }
 
 .progress-fill {
-  background: linear-gradient(90deg, var(--accent-primary), color-mix(in srgb, var(--accent-primary) 55%, var(--accent-secondary)));
+  /* See the §7/§8.4 note on .progress-fill — single semantic colour. */
+  background: var(--accent-primary);
 }
 
 .progress-inline-label {
@@ -5955,49 +6082,15 @@ body::before, body::after { content: none; }
 
 /* 2026 refinement: t3code-aligned tokens, spacing, and color hierarchy */
 
-:root {
-  --font-ui:
-    "DM Sans",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    system-ui,
-    sans-serif;
-  --titlebar-height: 30px;
-  --radius-panel: 8px;
-  --radius-control: 10px;
-  --radius-md: 10px;
-  --radius-lg: 18px;
-  --sidebar-width: 320px;
-  --window-border: rgba(255, 255, 255, 0.06);
-  --window-border-strong: rgba(255, 255, 255, 0.08);
-  --window-surface: rgba(28, 30, 37, 0.985);
-  --window-surface-muted: rgba(255, 255, 255, 0.04);
-  --window-surface-subtle: rgba(255, 255, 255, 0.03);
-  --window-primary: var(--accent-primary);
-  --window-muted: rgba(245, 247, 251, 0.58);
-  --shadow-window: 0 14px 30px rgba(0, 0, 0, 0.16);
-  --shadow-panel: 0 18px 42px rgba(0, 0, 0, 0.22);
-  --shadow-sheet: 0 26px 60px rgba(0, 0, 0, 0.3);
-}
+/* Token layer 3/6 — folded into the consolidated `:root`. This is the
+ * pass that introduced DM Sans and --radius-lg: 18px. */
 
-body {
-  font-family: var(--font-ui);
-  background: var(--tau-panel);
-}
+/* body background/font re-declaration retired — the single definition
+ * lives at the top of this file (--tau-bg + Inter per §1/§2). */
 
-body::before {
-  display: none;
-}
+/* body::before is the §5 window hairline; it is defined once, below. */
 
-body::after {
-  opacity: 0.03;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px 256px;
-  filter: none;
-  mix-blend-mode: normal;
-}
+/* Noise-film re-declaration retired — see the body::after note below. */
 
 #titlebar {
   gap: 12px;
@@ -6249,17 +6342,26 @@ body::after {
 
 .process-manager-workspace-header,
 .process-manager-surface-header,
+/* Second blanket 10px radius rule (see the §3 note on the later one).
+ * Controls take the button step; the manifest card takes the pane step.
+ * The sidebar list rows are square — they sit in a flush hairline grid. */
 .surface-context-menu-item,
 .prompt-btn,
 .settings-nav-item,
-.theme-card,
-.workspace-package,
-.notification-item,
-.log-item,
 .prompt-input,
 .search-bar-input,
 .settings-input {
-  border-radius: 10px;
+  border-radius: var(--tau-r-btn);
+}
+
+.theme-card,
+.workspace-package {
+  border-radius: var(--tau-r-pane);
+}
+
+.notification-item,
+.log-item {
+  border-radius: 0;
 }
 
 .theme-card {
@@ -6268,33 +6370,13 @@ body::after {
 
 /* 2026 refinement: matte product UI, no chrome/glass treatment */
 
-:root {
-  --window-border: rgba(255, 255, 255, 0.07);
-  --window-border-strong: rgba(255, 255, 255, 0.1);
-  --window-surface: rgba(25, 29, 37, 0.98);
-  --window-surface-muted: rgba(255, 255, 255, 0.035);
-  --window-surface-subtle: rgba(255, 255, 255, 0.025);
-  --shadow-window: 0 14px 32px rgba(0, 0, 0, 0.18);
-  --shadow-panel: 0 18px 40px rgba(0, 0, 0, 0.24);
-  --shadow-sheet: 0 24px 56px rgba(0, 0, 0, 0.32);
-}
+/* Token layer 4/6 — folded into the consolidated `:root`. */
 
-body {
-  background: var(--tau-panel);
-}
+/* body background re-declaration retired — see the single definition above. */
 
-body::before {
-  display: none;
-}
+/* body::before is the §5 window hairline; it is defined once, below. */
 
-body::after {
-  opacity: 0.03;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px 256px;
-  filter: none;
-  mix-blend-mode: normal;
-}
+/* Noise-film re-declaration retired — see the body::after note below. */
 
 #titlebar {
   background: var(--ht-window-titlebar-bg);
@@ -6500,15 +6582,7 @@ body::after {
 
 /* Final alignment: exact t3code-style dark shell plus full window border */
 
-:root {
-  --t3-background: color-mix(in srgb, #0a0a0a 95%, white);
-  --t3-foreground: #f5f5f5;
-  --t3-card: color-mix(in srgb, var(--t3-background) 98%, white);
-  --t3-border: rgba(255, 255, 255, 0.06);
-  --t3-input: rgba(255, 255, 255, 0.08);
-  --t3-muted: rgba(255, 255, 255, 0.04);
-  --t3-muted-foreground: color-mix(in srgb, #737373 90%, white);
-}
+/* Token layer 5/6 — folded into the consolidated `:root`. */
 
 html,
 body {
@@ -6516,23 +6590,9 @@ body {
   color: var(--t3-foreground);
 }
 
-body {
-  background: var(--tau-panel);
-}
+/* body background re-declaration retired — see the single definition above. */
 
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  border: 1px solid var(--t3-border);
-  border-radius: 12px;
-  z-index: 10001;
-}
-
-body::after {
-  opacity: 0.03;
-}
+/* Earlier window-frame draft retired — the §5 hairline is defined once, below. */
 
 #titlebar,
 #sidebar,
@@ -6673,28 +6733,10 @@ body::after {
 
 /* Final alignment: exact t3code shell, monochrome base, full window frame */
 
-:root {
-  --font-ui:
-    "DM Sans",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    system-ui,
-    sans-serif;
-  --titlebar-height: 32px;
-  --t3-background: color-mix(in srgb, #0a0a0a 95%, white);
-  --t3-foreground: #f5f5f5;
-  --t3-card: color-mix(in srgb, var(--t3-background) 98%, white);
-  --t3-panel: color-mix(in srgb, var(--t3-background) 86%, black);
-  --t3-border: rgba(255, 255, 255, 0.06);
-  --t3-border-strong: rgba(255, 255, 255, 0.08);
-  --t3-window-frame: rgba(255, 255, 255, 0.92);
-  --window-frame-width: 1px;
-  --window-corner-radius: 18px;
-  --t3-muted: rgba(255, 255, 255, 0.04);
-  --t3-input: rgba(255, 255, 255, 0.08);
-  --t3-muted-foreground: color-mix(in srgb, #737373 90%, white);
-}
+/* Token layer 6/6 — folded into the consolidated `:root`. This is the
+ * pass that painted a near-white 1 px frame around the window at an
+ * 18 px radius, over a grey (#181818-ish) body. Canon §0/§3/§5: the
+ * window is --tau-bg with an --tau-edge inner hairline at 12 px. */
 
 html,
 body {
@@ -6708,6 +6750,13 @@ body {
   border-radius: var(--window-corner-radius);
 }
 
+/* §5 window shell — the single inner hairline that defines the window
+ * edge. Two earlier drafts of this rule fought over it, and a stray
+ * `display: none` from a third layer meant none of them ever rendered.
+ *
+ * Canon is one hairline in --tau-edge at the 12 px window radius. The
+ * previous draft added `inset 0 1px 0 rgba(255,255,255,.22)` — a bright
+ * top highlight that reads as glassmorphism, which §0 rules out. */
 body::before {
   content: "";
   position: fixed;
@@ -6715,29 +6764,30 @@ body::before {
   pointer-events: none;
   border: var(--window-frame-width) solid var(--t3-window-frame);
   border-radius: var(--window-corner-radius);
-  box-shadow:
-    inset 0 1px 0 var(--ht-window-frame-inset-highlight),
-    0 0 0 1px var(--ht-sidebar-filter-selected-bg-top);
-  z-index: 10001;
+  z-index: var(--z-window-frame);
 }
 
+/* Full-window fractal-noise film, removed per §0 ("black is a material,
+ * not a background" / "no decorative geometry"). Three separate layers
+ * each re-declared this overlay; `content` is the property that decides
+ * whether a pseudo-element renders at all, so neutralising it here —
+ * the last declaration — retires all three at once.
+ *
+ * It also cost a full-viewport composited layer on every repaint, which
+ * works against the "idle CPU ~0" priority in CLAUDE.md. */
 body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px 256px;
-  mix-blend-mode: normal;
-  filter: none;
+  content: none;
 }
 
 #titlebar,
-#sidebar,
-#terminal-container {
+#sidebar {
   background: var(--tau-panel);
+}
+
+/* §1 semantic mapping: pane *body* background is --tau-void, not panel.
+ * The terminal is the deepest surface in the app; chrome sits above it. */
+#terminal-container {
+  background: var(--tau-void);
 }
 
 #titlebar {
@@ -7063,15 +7113,28 @@ body::after {
   border-right-color: var(--t3-border);
 }
 
+/* Radius normalisation back onto the §3 scale.
+ *
+ * This blanket rule is the last border-radius declaration for all of
+ * these selectors, so it decided the shape of most controls in the app —
+ * at 10px, which is not a step on the scale (§3: chip 3 / button 5 /
+ * pane 8 / window 12, nothing above 12). Several of these selectors set
+ * --radius-sm earlier and had it silently overridden here.
+ *
+ * Controls take the button step; the theme card is a card and takes the
+ * pane step. */
 .settings-nav-item,
 .surface-context-menu-item,
 .prompt-btn,
-.theme-card,
 .workspace-script-btn,
 .prompt-input,
 .search-bar-input,
 .settings-input {
-  border-radius: 10px;
+  border-radius: var(--tau-r-btn);
+}
+
+.theme-card {
+  border-radius: var(--tau-r-pane);
 }
 
 .settings-input,
@@ -7453,7 +7516,10 @@ body::after {
 .agent-streaming-bar-hidden { opacity: 0; transform: scaleY(0); }
 .agent-streaming-bar-glow {
   position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent 0%, var(--accent-primary) 25%, var(--accent-secondary) 50%, var(--accent-primary) 75%, transparent 100%);
+  /* §7: this bar reports an AGENT streaming, so it is amber end to end.
+   * It previously swept cyan → amber → cyan, which reads as the session
+   * changing hands several times a second. */
+  background: linear-gradient(90deg, transparent 0%, var(--tau-agent) 50%, transparent 100%);
   background-size: 300% 100%;
   animation: agent-bar-sweep 1.8s linear infinite;
 }
@@ -7484,7 +7550,8 @@ body::after {
 @keyframes agent-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .agent-welcome-glyph {
   font-size: 40px; margin-bottom: 16px;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  /* §7: an agent surface is amber. Was a cyan → amber text gradient. */
+  background: var(--tau-agent);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   filter: drop-shadow(0 0 20px var(--ht-agent-tb-model-hover-border));
   animation: agent-glyph-pulse 4s ease-in-out infinite;
@@ -8051,8 +8118,9 @@ body::after {
 
 .agent-send-btn {
   display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border: none; border-radius: 10px;
-  background: linear-gradient(135deg, var(--accent-primary), var(--ht-contrast-border-cyan-strong));
+  width: 36px; height: 36px; border: none; border-radius: var(--tau-r-btn);
+  /* §11: flat fill, no gradient on a control. */
+  background: var(--accent-primary);
   color: var(--ht-on-accent-fg); cursor: pointer; flex-shrink: 0;
   transition: all 0.15s ease;
 
@@ -8270,7 +8338,8 @@ body::after {
   gap: 8px;
   padding: 9px 10px 8px;
   border-bottom: 0.5px solid var(--sb-hairline);
-  background: linear-gradient(180deg, var(--ht-package-bg), transparent);
+  /* §11: no gradients on panels — the titlebar is the only exception. */
+  background: var(--tau-panel);
 }
 
 #sidebar.sidebar-v2 .sidebar-header-copy {
@@ -8568,6 +8637,11 @@ body::after {
   background: var(--sb-row-bg);
   border: none;
   border-top: 0.5px solid var(--sb-hairline);
+  /* Four earlier layers set this to 9px then 12px three times over. The
+   * v2 sidebar is a flush hairline list — a rounded card inside it leaves
+   * four notches where the row corners pull away from the divider, and
+   * costs horizontal room in a 320 px rail. The grid is the structure. */
+  border-radius: 0;
   cursor: pointer;
   overflow: hidden;
   transition: background 120ms;
@@ -8581,17 +8655,18 @@ body::after {
   background: var(--sb-row-hover);
 }
 
+/* Active row. Was a three-stop vertical gradient plus two inset accent
+ * edges. §11 rules gradients out on panels (the titlebar is the only
+ * exception), and the stripe at the left edge already says "this one is
+ * active" — the gradient was a second, louder answer to a question that
+ * had already been answered.
+ *
+ * Flat tint, one hairline top and bottom. */
 #sidebar.sidebar-v2 .workspace-item.active {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--workspace-accent) 18%, transparent) 0,
-      color-mix(in srgb, var(--workspace-accent) 6%, transparent) 40%,
-      var(--ht-pm-card-bg)
-    );
+  background: color-mix(in srgb, var(--workspace-accent) 10%, var(--sb-row-bg));
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--workspace-accent) 24%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--workspace-accent) 16%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--workspace-accent) 22%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--workspace-accent) 14%, transparent);
 }
 
 #sidebar.sidebar-v2 .workspace-item.keyboard-focus {
@@ -8630,10 +8705,12 @@ body::after {
   width: 3.5px;
 }
 
+/* §4: the focused pane is the only element in the UI allowed to glow.
+ * The active stripe used an 8 px accent halo, which competed with the
+ * pane focus ring for "look here". Width and full opacity carry it. */
 #sidebar.sidebar-v2 .workspace-item.active .workspace-stripe {
   opacity: 1;
   width: 4px;
-  box-shadow: 0 0 8px 0 color-mix(in srgb, var(--workspace-accent) 60%, transparent);
 }
 
 #sidebar.sidebar-v2 .workspace-item.pinned .workspace-stripe {
@@ -9688,19 +9765,30 @@ body::after {
   display: none;
 }
 
+/* §2 uppercase micro-label: 10 px / 700 / wide tracking. Uppercasing is
+ * done in CSS, not in the DOM string, so the "Notifications (N)" text
+ * contract asserted by tests/sidebar-notifications.test.ts is untouched.
+ *
+ * Sticky so the section label stays put while a long list scrolls under
+ * it — with six notifications visible you otherwise lose track of which
+ * section you are in. */
 #sidebar.sidebar-v2 .sidebar-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   width: 100%;
-  padding: 4px 8px;
+  padding: 6px 6px 6px 10px;
   border-bottom: 0.5px solid var(--sb-hairline);
   background: var(--tau-panel);
-  color: var(--sb-ink-soft);
+  color: var(--tau-text-mute);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: none;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
 }
 
 #sidebar.sidebar-v2 .sidebar-section-toggle {
@@ -9727,49 +9815,82 @@ body::after {
   opacity: 0.7;
 }
 
+/* The type treatment has to be restated here, not inherited from the
+ * header. `.sidebar-section-title` (line ~1030) sets font-size / weight /
+ * text-transform directly, and a directly-matched declaration always
+ * beats an inherited one no matter how specific the ancestor's rule is —
+ * which is why the header's uppercase never reached the label. */
 #sidebar.sidebar-v2 .sidebar-section-title {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  flex: 1;
+  gap: 5px;
+  flex: 0 1 auto;
   min-width: 0;
-  letter-spacing: 0.04em;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: inherit;
 }
 
+/* The bell/list glyph should not be uppercased type's size — pin it. */
+#sidebar.sidebar-v2 .sidebar-section-title .ht-icon {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+/* Unread count. Amber, matching the per-row unread bar — one state,
+ * one colour, wherever it appears. (It was --accent-primary/cyan, which
+ * contradicted the amber bar on the very rows it was counting.)
+ * Mono + tabular so the badge does not resize as the count ticks. */
 #sidebar.sidebar-v2 .sidebar-section-badge {
   display: none;
-  min-width: 14px;
-  height: 14px;
+  min-width: 15px;
+  height: 15px;
   padding: 0 4px;
-  background: var(--accent-primary);
+  margin-left: auto;
+  background: var(--ht-sidebar-v2-log-warning-fg);
   color: var(--ht-on-accent-fg);
+  font-family: var(--tau-font-mono);
   font-size: 9px;
   font-weight: 700;
+  line-height: 1;
   align-items: center;
   justify-content: center;
-  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 #sidebar.sidebar-v2 .sidebar-section-badge.visible {
   display: inline-flex;
 }
 
+/* Same 20 px ghost button as the per-row actions, so "clear all" and
+ * "dismiss one" are visibly the same kind of control at two scopes. */
 #sidebar.sidebar-v2 .sidebar-section-clear {
   width: 20px;
   height: 20px;
+  padding: 0;
   display: grid;
   place-items: center;
+  flex-shrink: 0;
   color: var(--sb-ink-faint);
-  background: var(--tau-panel);
-  border: none;
+  background: transparent;
+  border: 0.5px solid transparent;
   cursor: pointer;
-  margin-left: 4px;
-  transition: color 120ms, background 120ms;
+  opacity: 0.55;
+  margin-left: 2px;
+  transition: opacity 120ms, color 120ms, background 120ms, border-color 120ms;
+}
+
+#sidebar.sidebar-v2 .sidebar-section-header:hover .sidebar-section-clear {
+  opacity: 0.85;
 }
 
 #sidebar.sidebar-v2 .sidebar-section-clear:hover {
+  opacity: 1;
   color: var(--ht-pm-kill-fg);
   background: var(--ht-sidebar-v2-dismiss-hover-bg);
+  border-color: var(--ht-pm-kill-fg);
 }
 
 #sidebar.sidebar-v2 .sidebar-section-list {
@@ -9780,43 +9901,90 @@ body::after {
 
 /* ── Notifications ───────────────────────────────────────────────── */
 
+/* Row grid. Two fixed 20 px action columns on the right so the copy and
+ * dismiss buttons align down the whole list regardless of title length —
+ * a flex row let them wander with the text.
+ *
+ * Radius 0 throughout: the 0.5 px hairline grid IS the structure here,
+ * and rounded corners inside a 320 px rail only eat horizontal space. */
 #sidebar.sidebar-v2 .notification-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 4px 6px 4px 10px;
+  display: grid;
+  grid-template-columns: 1fr 20px 20px;
+  align-items: start;
+  column-gap: 2px;
+  padding: 6px 6px 6px 10px;
   background: var(--tau-panel);
   border: none;
   border-bottom: 0.5px solid var(--sb-hairline);
-  border-left: 1px solid transparent;
-  transition: background 120ms, border-left-color 120ms;
+  /* The pre-v2 `.notification-item, .log-item` rule further up this file
+   * sets `box-shadow: inset 1px 1px 0 rgba(255,255,255,.03)`. The v2 rule
+   * overrode background and border but never this, so every row carried a
+   * faint white inner bevel — glassmorphism by leak rather than by
+   * choice, and against §0. Reset it explicitly. */
+  box-shadow: none;
+  transition: background 120ms;
   position: relative;
 }
 
-#sidebar.sidebar-v2 .notification-item.has-source {
-  border-left-color: var(--accent-secondary);
+/* The 2 px identity/state bar. Drawn as a pseudo-element rather than a
+ * border-left so it butts flush against the hairline below instead of
+ * being mitred by it.
+ *
+ * Colour semantics are §1, and only §1 — no third accent:
+ *   amber (--tau-warn) = unread, waiting on you. §1 maps "idle/waiting"
+ *     to warn, which is deliberately the same hue as the agent token.
+ *   cyan  (--tau-cyan) = read, and clicking focuses the emitting pane.
+ *     §1 maps focus to cyan.
+ *   none                = read, no source to jump to.
+ *
+ * The previous rule painted every source-linked notification amber,
+ * which under §7 reads as "an agent sent this" — false for any PTY
+ * pane. That was an identity violation, not just a colour choice. */
+#sidebar.sidebar-v2 .notification-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background 120ms;
+}
+
+#sidebar.sidebar-v2 .notification-item.has-source::before {
+  background: var(--tau-cyan);
+}
+
+#sidebar.sidebar-v2 .notification-item.glow::before {
+  background: var(--tau-warn);
 }
 
 #sidebar.sidebar-v2 .notification-item.glow {
-  background: color-mix(in srgb, var(--accent-secondary) 10%, transparent);
-  border-left-color: var(--accent-secondary);
-  animation: sb-notif-glow 2s ease-in-out infinite;
+  background: color-mix(in srgb, var(--tau-warn) 5%, transparent);
+  animation: sb-notif-glow 2.4s ease-in-out infinite;
 }
 
+#sidebar.sidebar-v2 .notification-item:hover {
+  background: var(--ht-bg-card-raised);
+}
+
+/* Unread cue. §10 permits animation for *state*, and "unread" is state.
+ * It animates background only — no box-shadow — so §4 holds: the focused
+ * pane stays the only element in the UI that glows. */
 @keyframes sb-notif-glow {
-  0%, 100% { background: color-mix(in srgb, var(--accent-secondary) 10%, transparent); }
-  50% { background: color-mix(in srgb, var(--accent-secondary) 22%, transparent); }
+  0%, 100% { background: color-mix(in srgb, var(--tau-warn) 5%, transparent); }
+  50% { background: color-mix(in srgb, var(--tau-warn) 11%, transparent); }
 }
 
 #sidebar.sidebar-v2 .notification-body-btn {
-  flex: 1;
+  grid-column: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 1px;
   padding: 0;
   text-align: left;
-  background: var(--tau-panel);
+  background: transparent;
   border: none;
   color: inherit;
   cursor: pointer;
@@ -9845,36 +10013,92 @@ body::after {
   -webkit-box-orient: vertical;
 }
 
+/* §2: numeric values are Mono, never Inter. Tabular figures keep the
+ * column from twitching as "just now" ticks over to "1m ago". */
 #sidebar.sidebar-v2 .notification-time {
   color: var(--sb-ink-faint);
+  font-family: var(--tau-font-mono);
   font-size: 9px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-  margin-top: 1px;
+  letter-spacing: 0.02em;
+  margin-top: 2px;
 }
 
+/* ── Row actions: copy + dismiss ──
+ *
+ * THE BUG THIS FIXES: `.notification-copy` had no CSS rule anywhere in
+ * this file. The only global button reset is `font: inherit`, so it
+ * rendered as a stock macOS push button — grey capsule, system border —
+ * sitting inside a flat dark row. Its sibling `.notification-dismiss`
+ * was `opacity: 0` until row hover, so the pair read as one grey blob
+ * and one invisible control.
+ *
+ * Both are now the same 20 px ghost button, and both are ALWAYS visible
+ * at rest. Hover-to-reveal is wrong for a destructive control: it hides
+ * the affordance until the pointer is already moving, and it is
+ * unreachable by touch and by keyboard-only scanning. */
+#sidebar.sidebar-v2 .notification-copy,
 #sidebar.sidebar-v2 .notification-dismiss {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
   display: grid;
   place-items: center;
-  flex-shrink: 0;
   color: var(--sb-ink-faint);
-  background: var(--tau-panel);
-  border: none;
+  background: transparent;
+  border: 0.5px solid transparent;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 120ms, color 120ms, background 120ms;
+  opacity: 0.55;
+  transition: opacity 120ms, color 120ms, background 120ms, border-color 120ms;
 }
 
+#sidebar.sidebar-v2 .notification-copy { grid-column: 2; }
+#sidebar.sidebar-v2 .notification-dismiss { grid-column: 3; }
+
+#sidebar.sidebar-v2 .notification-item:hover .notification-copy,
 #sidebar.sidebar-v2 .notification-item:hover .notification-dismiss {
-  opacity: 0.7;
+  opacity: 0.85;
+}
+
+/* Hover/active colours come from the themed --ht-*/--accent-* sets, not
+ * from --tau-*. The --tau-* palette is a dark-only invariant; the --ht-*
+ * tokens are re-declared for graphite-light, prefers-color-scheme: light
+ * and high-contrast. Only genuinely identity-critical chrome (the state
+ * bar above) is allowed to pin --tau-* and ignore the theme — that split
+ * is the rule stated on the accent tokens in the consolidated :root. */
+#sidebar.sidebar-v2 .notification-copy:hover {
+  opacity: 1;
+  color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  border-color: var(--accent-primary-strong);
 }
 
 #sidebar.sidebar-v2 .notification-dismiss:hover {
   opacity: 1;
   color: var(--ht-pm-kill-fg);
   background: var(--ht-sidebar-v2-dismiss-hover-bg);
+  border-color: var(--ht-pm-kill-fg);
+}
+
+/* Keyboard parity — these were reachable by Tab but gave no visible
+ * focus, so a keyboard user could not tell which control was armed. */
+#sidebar.sidebar-v2 .notification-copy:focus-visible,
+#sidebar.sidebar-v2 .notification-dismiss:focus-visible,
+#sidebar.sidebar-v2 .sidebar-section-clear:focus-visible {
+  opacity: 1;
+  outline: none;
+  color: var(--sb-ink);
+  border-color: var(--accent-primary);
+}
+
+/* Copy confirmation. sidebar.ts toggles `.copied` for ~1 s after a
+ * successful clipboard write (see writeNotificationToClipboard) — the
+ * class was already being set, but had no styling anywhere, so the
+ * confirmation was invisible. */
+#sidebar.sidebar-v2 .notification-copy.copied {
+  opacity: 1;
+  color: var(--ht-badge-success-fg);
+  border-color: var(--ht-badge-success-fg);
 }
 
 /* ── Logs ────────────────────────────────────────────────────────── */
@@ -9888,7 +10112,9 @@ body::after {
   background: var(--tau-panel);
   border: none;
   border-bottom: 0.5px solid var(--sb-hairline);
-  border-left: 1px solid transparent;
+  border-left: 2px solid transparent;
+  /* Same inherited white bevel as .notification-item — see the note there. */
+  box-shadow: none;
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   line-height: 1.4;
@@ -10200,7 +10426,7 @@ body.sidebar-resizing #sidebar.sidebar-v2 .sidebar-resize-handle::after {
   border: 1px solid transparent;
   border-radius: inherit;
   pointer-events: none;
-  z-index: 2147483000;
+  z-index: var(--z-pane-focus-ring);
   transition: border-color var(--transition-fast);
 }
 .tau-pane.tau-pane-human.is-focused::after,
