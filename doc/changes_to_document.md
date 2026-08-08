@@ -234,3 +234,50 @@ Still to write:
   `key`. These are new params on existing methods, so the docs-coverage
   gate does not catch them — the API reference pages for
   `notification.*` need updating by hand (EN + FR).
+
+---
+
+## Pending — every `ht` config knob reachable from Settings (2026-08-08)
+
+Settings gained an **Integrations** section, and four `AppSettings` fields
+gained their first renderer. No new RPC methods and no new settings fields, so
+the docs-coverage gate catches none of this — it all needs writing by hand
+(EN + FR).
+
+- **Settings → Integrations (new section).** Covers the three things that were
+  `ht`-only because they edit files outside `settings.json`:
+  - **Claude Code bridge** — per-feature state (lifecycle / tasks / approvals /
+    status line) read live from `~/.claude/settings.json`, tick boxes, and
+    Install selected / Remove all / Re-check. Same planner as `ht claude
+    install|uninstall`, so the two agree by construction: additive merge,
+    timestamped backup, refuses on a settings file it cannot parse, never
+    clobbers a user-defined statusline. The panel distinguishes **partial**
+    from installed (some of a feature's hook events wired, e.g. after an
+    upgrade adds one) — `ht claude doctor` only ever reported a total.
+  - **Shell integration** — rc-file state + Install / Remove, mirroring
+    `ht shell-integration`. Keeps the "already-open shells have not re-read
+    their rc" caveat in the success message.
+  - **Extensions** — per-extension enable toggle, mirroring `ht extension
+    enable|disable`. Disabling stops running backends, it does not merely skip
+    them next launch.
+  - Auto-approve (toggle + delay) is mirrored here next to the bridge that
+    feeds it; it also remains in General. `integrations/claude-code.md` should
+    say the CLI verb and the panel are the same operation.
+- **Sidebar auto-approve pill (USER-VISIBLE).** The sidebar footer gained a
+  third, actionable pill under Telegram / Web Mirror: dot + `Auto-approve` +
+  `On`/`Off`, amber when armed, click (or keyboard — it is a real
+  `aria-pressed` button) to flip. State tracks Settings, the command palette
+  and `ht claude auto-approve` live. **Sidebar screenshots need retaking.**
+- **Four settings that previously required hand-editing `settings.json`** now
+  have controls. The settings reference already lists all four; the prose
+  saying they are file-only (if any) is now wrong:
+  - `webMirrorBind` → Network → Bind Address (LAN / This Mac only).
+  - `browserPartitionMode` → Browser → Cookie Isolation (Per pane / Shared).
+  - `auditsGitUserNameExpected` → Advanced → Expected git user.name (empty
+    disables the startup audit).
+  - `bgBase` → Theme → Customize Colors → Background (swatch + `r, g, b`,
+    accepts hex; sets `themePreset: "custom"`).
+- **New Electrobun webview messages** (not socket RPC, so not in the `api/`
+  CLI-facing reference): `requestIntegrationsStatus`, `claudeIntegrationInstall`,
+  `claudeIntegrationUninstall`, `shellIntegrationSet`, `extensionSetEnabled`,
+  and the `integrationsStatus` push. `extensionList` entries gained `enabled`.

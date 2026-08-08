@@ -15,6 +15,7 @@ import {
   type ManifestActionState,
 } from "./sidebar-manifest-card";
 import { renderStatusEntry, reconcileChildren } from "./status-renderers";
+import { SidebarFooter, type AutoApproveState } from "./sidebar-footer";
 import type { WorkspaceInfo as SharedWorkspaceInfo } from "../../shared/sidebar-state";
 import { htEvents } from "../../shared/event-bus";
 
@@ -107,6 +108,7 @@ function stableWorkspacesSignature(list: unknown): string {
 //    setWorkspaces(list)       acknowledgeBySurface(surfaceId)
 //    toggle() / isVisible()    setWebServerStatus(running, port, url?)
 //    setLogs(list)             setTelegramStatus(status)
+//                              setAutoApprove(settingsSlice)
 //
 // DOM contracts tested elsewhere:
 //   .notification-item / .glow / .notification-title /
@@ -284,12 +286,8 @@ export class Sidebar {
   private listCountEl!: HTMLElement;
   private logsEl: HTMLElement;
   private footerEl: HTMLElement;
-  private telegramDotEl!: HTMLElement;
-  private telegramLabelEl!: HTMLElement;
-  private telegramValueEl!: HTMLElement;
-  private serverDotEl!: HTMLElement;
-  private serverLabelEl!: HTMLElement;
-  private serverUrlEl!: HTMLElement;
+  /** Service strip + the auto-approve control (see sidebar-footer.ts). */
+  private footer: SidebarFooter;
   private resizeHandleEl: HTMLElement;
   private callbacks: SidebarCallbacks;
 
@@ -428,10 +426,11 @@ export class Sidebar {
     this.logsEl.className = "sidebar-logs";
     container.appendChild(this.logsEl);
 
-    // ── Footer (Telegram + Web Mirror, full-width flush strip) ─────
+    // ── Footer (Telegram + Web Mirror + auto-approve, flush strip) ──
     this.footerEl = document.createElement("div");
     this.footerEl.className = "sidebar-footer";
-    this.footerEl.appendChild(this.buildFooter());
+    this.footer = new SidebarFooter();
+    this.footerEl.appendChild(this.footer.root);
     container.appendChild(this.footerEl);
 
     // ── Resize handle ──────────────────────────────────────────────
@@ -594,55 +593,18 @@ export class Sidebar {
   }
 
   setWebServerStatus(running: boolean, port: number, url?: string): void {
-    this.serverDotEl.classList.toggle("online", running);
-    this.serverDotEl.classList.toggle("offline", !running);
-    if (running && url) {
-      this.serverUrlEl.textContent = `:${port}`;
-      this.serverUrlEl.title = url;
-    } else {
-      this.serverUrlEl.textContent = "Offline";
-      this.serverUrlEl.title = "";
-    }
+    this.footer.setWebServerStatus(running, port, url);
   }
 
   setTelegramStatus(status: TelegramStatusWire): void {
-    const dot = this.telegramDotEl;
-    dot.classList.remove("online", "offline", "starting", "error", "conflict");
-    let valueText = "—";
-    switch (status.state) {
-      case "polling":
-        dot.classList.add("online");
-        valueText = "Polling";
-        break;
-      case "starting":
-        dot.classList.add("starting");
-        valueText = "Starting…";
-        break;
-      case "conflict":
-        dot.classList.add("conflict");
-        valueText = "Conflict";
-        break;
-      case "error":
-        dot.classList.add("error");
-        valueText = "Error";
-        break;
-      case "disabled":
-      default:
-        dot.classList.add("offline");
-        valueText = "Disabled";
-        break;
-    }
-    const parts = [`Telegram — ${status.state}`];
-    if (status.botUsername) parts.push(`@${status.botUsername}`);
-    if (status.error) parts.push(status.error);
-    const title = parts.join(" · ");
-    dot.title = title;
-    this.telegramLabelEl.title = title;
-    this.telegramValueEl.textContent = status.botUsername
-      ? `@${status.botUsername}`
-      : valueText;
-    const pill = dot.parentElement;
-    if (pill) pill.title = title;
+    this.footer.setTelegramStatus(status);
+  }
+
+  /** Claude Code permission auto-approve — state for the footer pill.
+   *  Pushed from every settings apply so the sidebar, Settings, the
+   *  command palette and `ht claude auto-approve` never disagree. */
+  setAutoApprove(state: AutoApproveState): void {
+    this.footer.setAutoApprove(state);
   }
 
   setLogs(logs: LogEntry[]): void {
@@ -2973,50 +2935,6 @@ export class Sidebar {
       const target = lastItem;
       requestAnimationFrame(() => target.scrollIntoView({ block: "nearest" }));
     }
-  }
-
-  // ──────────────────────────────────────────────────────────────────
-  // Footer
-  // ──────────────────────────────────────────────────────────────────
-
-  private buildFooter(): HTMLElement {
-    const row = document.createElement("div");
-    row.className = "sidebar-server-row";
-
-    const tgRow = document.createElement("div");
-    tgRow.className = "sidebar-server-pill";
-    this.telegramDotEl = document.createElement("div");
-    this.telegramDotEl.className = "sidebar-server-dot offline";
-    tgRow.appendChild(this.telegramDotEl);
-    tgRow.append(createIcon("messageCircle", "sidebar-server-icon", 11));
-    this.telegramLabelEl = document.createElement("span");
-    this.telegramLabelEl.className = "sidebar-server-label";
-    this.telegramLabelEl.textContent = "Telegram";
-    tgRow.appendChild(this.telegramLabelEl);
-    this.telegramValueEl = document.createElement("span");
-    this.telegramValueEl.className = "sidebar-server-url";
-    this.telegramValueEl.textContent = "Disabled";
-    tgRow.appendChild(this.telegramValueEl);
-    tgRow.title = "Telegram — disabled";
-
-    const wmRow = document.createElement("div");
-    wmRow.className = "sidebar-server-pill";
-    this.serverDotEl = document.createElement("div");
-    this.serverDotEl.className = "sidebar-server-dot offline";
-    wmRow.appendChild(this.serverDotEl);
-    wmRow.append(createIcon("globe", "sidebar-server-icon", 11));
-    this.serverLabelEl = document.createElement("span");
-    this.serverLabelEl.className = "sidebar-server-label";
-    this.serverLabelEl.textContent = "Web Mirror";
-    wmRow.appendChild(this.serverLabelEl);
-    this.serverUrlEl = document.createElement("span");
-    this.serverUrlEl.className = "sidebar-server-url";
-    this.serverUrlEl.textContent = "Offline";
-    wmRow.appendChild(this.serverUrlEl);
-
-    row.appendChild(tgRow);
-    row.appendChild(wmRow);
-    return row;
   }
 
   // ──────────────────────────────────────────────────────────────────

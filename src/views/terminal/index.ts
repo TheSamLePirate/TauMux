@@ -27,6 +27,7 @@ import type { VariantId } from "./variants/types";
 import { showPromptDialog } from "./prompt-dialog";
 import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";
+import { createIntegrationsControl } from "./integrations-control";
 import { PlanPanel } from "./plan-panel";
 import { AskUserState } from "./ask-user-state";
 import { installAskUserModal } from "./ask-user-modal";
@@ -228,7 +229,11 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       extensionList: (payload) => {
         availableExtensions = payload.extensions;
         extensionTemplates = payload.templates;
+        settingsPanel.setExtensions(payload.extensions);
         syncPaletteCommands();
+      },
+      integrationsStatus: (payload) => {
+        settingsPanel.setIntegrations(payload);
       },
       // Agent surface messages are routed via socketAction (proven channel)
       // rather than dedicated RPC message types.
@@ -513,6 +518,14 @@ try {
 let currentSettings: AppSettings | null = null;
 let variantController: VariantController | null = null;
 
+// Settings → Integrations, the sidebar auto-approve pill and the
+// palette entry all write through this one control.
+const integrations = createIntegrationsControl({
+  send: (m, p) => (rpc.send as (m: string, p: unknown) => void)(m, p ?? {}),
+  getSettings: () => currentSettings,
+  apply: (s) => applySettings(s),
+});
+
 // Settings-change pipeline. A slider drag fires `input` many times per
 // frame; applying the full (heavy, O(panes)) `applySettings` synchronously on
 // every event — plus a per-event persist RPC whose echo re-applied AGAIN —
@@ -564,6 +577,7 @@ const settingsPanel = new SettingsPanel(
     // §4.1 — read live at render time (not captured), so the hint reflects
     // a context loss that happened after the panel was constructed.
     getRendererStatus: () => surfaceManager?.getRendererStatus?.() ?? null,
+    integrations: integrations.actions,
   },
 );
 // Flush any pending settings persist when the panel closes or the window is
@@ -626,6 +640,7 @@ function applySettings(settings: AppSettings): void {
   // and `[data-theme="system"]` defers to `prefers-color-scheme: light`.
   document.documentElement.dataset["theme"] = settings.chromeTheme;
   surfaceManager.applySettings(settings);
+  surfaceManager.getSidebar().setAutoApprove(settings);
   planPanel.setAutoContinueAuditVisible(settings.autoContinue.engine !== "off");
   if (settingsPanel.isVisible()) settingsPanel.updateSettings(settings);
   // Plan #03 — push the latest overlay knobs to the manager. A flip
@@ -1716,24 +1731,7 @@ function buildPaletteCommands(): PaletteCommand[] {
         "Press Enter on the permission prompt Claude Code is showing in a terminal pane.",
       action: () => rpc.send("claudeApprove", {}),
     },
-    {
-      id: "claude-toggle-auto-approve",
-      category: "Claude Code",
-      label:
-        (currentSettings?.claudeAutoApprove ?? false)
-          ? "Disable Claude Code auto-approve"
-          : "Enable Claude Code auto-approve",
-      description:
-        (currentSettings?.claudeAutoApprove ?? false)
-          ? "Stop auto-accepting permission prompts in terminal panes."
-          : "Automatically press Enter on permission prompts Claude Code shows in terminal panes.",
-      action: () => {
-        const next = !(currentSettings?.claudeAutoApprove ?? false);
-        const base = currentSettings ?? DEFAULT_SETTINGS;
-        applySettings(mergeSettings(base, { claudeAutoApprove: next }));
-        rpc.send("updateSettings", { settings: { claudeAutoApprove: next } });
-      },
-    },
+    integrations.paletteCommand(),
     {
       id: "claude-new",
       category: "Claude Code",

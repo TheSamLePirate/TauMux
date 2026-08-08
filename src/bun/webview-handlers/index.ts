@@ -16,6 +16,7 @@ import { registerClaudeWebviewHandlers } from "./claude";
 import { registerClipboardWebviewHandlers } from "./clipboard";
 import { registerEditorWebviewHandlers } from "./editor";
 import { registerExtensionWebviewHandlers } from "./extension";
+import { registerIntegrationsWebviewHandlers } from "./integrations";
 import { registerNotificationWebviewHandlers } from "./notification";
 import { registerPlanWebviewHandlers } from "./plan";
 import { registerReplyWebviewHandlers } from "./reply";
@@ -55,6 +56,7 @@ export function buildBunMessageHandlers(
     ...registerClaudeWebviewHandlers(ctx),
     ...registerEditorWebviewHandlers(ctx),
     ...registerExtensionWebviewHandlers(ctx),
+    ...registerIntegrationsWebviewHandlers(ctx),
     ...registerAskUserWebviewHandlers(ctx),
   } satisfies BunMessageHandlers;
 }

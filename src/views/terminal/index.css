@@ -895,6 +895,36 @@ body.sidebar-resizing {
   animation: tauPulse 1.8s ease-in-out infinite;
 }
 
+/* Claude Code permission auto-approve — "armed", not "online". Green
+ * would read as healthy; an agent answering its own permission prompts
+ * unattended is a state to notice. Amber is the agent colour (§7). */
+.sidebar-server-dot.armed {
+  background: var(--tau-agent);
+}
+
+/* The only actionable pill in the footer. Strips the button chrome so
+ * it sits flush with its read-only siblings, and keeps a real focus
+ * ring — it is keyboard-reachable. */
+.sidebar-server-pill-action {
+  appearance: none;
+  border: none;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sidebar-server-pill-action:focus-visible {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: -1px;
+}
+
+.sidebar-auto-approve.active .sidebar-server-url {
+  color: var(--tau-agent);
+}
+
 /* Each service shown on its own row — dot · label · value. Stacking
  * them gives each one room to breathe and lets the value stay legible
  * when the bot username / URL is long. */
@@ -10269,6 +10299,24 @@ body::after {
 
 #sidebar.sidebar-v2 .sidebar-server-dot.online ~ .sidebar-server-url {
   color: var(--ht-badge-success-fg);
+}
+
+/* Auto-approve spans the whole footer width beneath the two service
+ * readouts: it is a control, not a third status, and the extra room
+ * keeps the On/Off legible next to the label. */
+#sidebar.sidebar-v2 .sidebar-server-pill-action {
+  grid-column: 1 / -1;
+  border-right: none;
+  border-top: 0.5px solid var(--sb-hairline);
+}
+
+#sidebar.sidebar-v2 .sidebar-server-dot.armed {
+  background: var(--tau-agent);
+  box-shadow: 0 0 5px var(--ht-tau-agent-dot-glow);
+}
+
+#sidebar.sidebar-v2 .sidebar-auto-approve.active .sidebar-server-url {
+  color: var(--tau-agent);
 }
 
 /* ── Resize handle ───────────────────────────────────────────────── */

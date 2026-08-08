@@ -1,5 +1,6 @@
 import type { ElectrobunRPCSchema } from "electrobun/bun";
 import type { AppSettings } from "./settings";
+import type { IntegrationsStatus } from "./integrations";
 
 // === Pane Layout Types (shared between webview, bun, and web clients) ===
 
@@ -883,6 +884,27 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       /** Uninstall an extension (stops its backends, deletes its dir), then
        *  re-push the list. */
       extensionRemove: { id: string };
+      /** Flip an extension's `enabled` flag (the `ht extension enable |
+       *  disable` pair), then re-push the list. Disabling stops the
+       *  extension's running backends, it does not merely stop it from
+       *  starting next launch. */
+      extensionSetEnabled: { id: string; enabled: boolean };
+
+      // ── Integrations (webview → bun) ──
+      // Host wiring that lives OUTSIDE settings.json: the Claude Code
+      // hook bridge (~/.claude/settings.json) and the OSC 133 shell
+      // integration (~/.zshrc | ~/.bashrc). Both were `ht`-only until
+      // Settings → Integrations; each mutation replies with a fresh
+      // `integrationsStatus` carrying a `lastAction` banner.
+      /** Read the current integration wiring. Sent when the panel opens. */
+      requestIntegrationsStatus: void;
+      /** Merge the ticked features into ~/.claude/settings.json. Values
+       *  are `ClaudeBridgeFeature`s; unknown entries are dropped bun-side. */
+      claudeIntegrationInstall: { features: string[] };
+      /** Remove every τ-mux-managed hook + statusline entry. */
+      claudeIntegrationUninstall: void;
+      /** Add / remove the shell-integration block in the user's rc file. */
+      shellIntegrationSet: { install: boolean };
 
       /** Send a message via the bot. */
       telegramSend: { chatId: string; text: string };
@@ -1153,10 +1175,19 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
           path: string;
           /** Relative backend entry (e.g. "src/index.ts") when present. */
           backendEntry?: string;
+          /** Registry `enabled` flag (`ht extension enable | disable`).
+           *  Optional for back-compat with older bun builds; the UI
+           *  treats a missing value as enabled, matching the manager's
+           *  own default. */
+          enabled?: boolean;
         }[];
         /** Bundled scaffold-template names (e.g. hello / three-demo). */
         templates: string[];
       };
+
+      /** Reply to `requestIntegrationsStatus` and to every integration
+       *  mutation. Drives Settings → Integrations. */
+      integrationsStatus: IntegrationsStatus;
 
       // ── Telegram (bun → webview) ──
       /** Open the Telegram pane in the webview. The pane manages its

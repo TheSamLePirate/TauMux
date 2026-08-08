@@ -160,6 +160,14 @@ export interface SidebarResizeCommitPayload {
   width: number;
 }
 
+/** Flip Claude Code permission auto-approve. Fired by the sidebar
+ *  footer pill; the host writes `claudeAutoApprove` through the same
+ *  `updateSettings` path Settings and `ht claude auto-approve` use, so
+ *  every surface showing the state agrees. */
+export interface SetAutoApprovePayload {
+  enabled: boolean;
+}
+
 /** Focus the surface that emitted a sidebar notification. Fired by
  *  the sidebar item body click. */
 export interface FocusNotificationSourcePayload {
@@ -514,6 +522,7 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-statuses-changed": StatusesChangedPayload;
   "ht-sidebar-toggle": SidebarTogglePayload;
   "ht-sidebar-resize-commit": SidebarResizeCommitPayload;
+  "ht-set-auto-approve": SetAutoApprovePayload;
   "ht-focus-notification-source": FocusNotificationSourcePayload;
   // P7 S10 — A6 batch 3 channels.
   "ht-agent-set-model": AgentSetModelPayload;

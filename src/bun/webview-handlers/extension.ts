@@ -10,7 +10,8 @@ type Keys =
   | "extensionFrontendMessage"
   | "requestExtensionList"
   | "extensionScaffold"
-  | "extensionRemove";
+  | "extensionRemove"
+  | "extensionSetEnabled";
 
 /** Extension-app surface lifecycle + the frontend⇄host bridge.
  *
@@ -80,6 +81,18 @@ export function registerExtensionWebviewHandlers(
       }
       pushExtensionList(ctx);
     },
+    /** Settings → Integrations parity with `ht extension enable|disable`.
+     *  `setEnabled` persists the flag AND stops running backends when
+     *  disabling, so a disabled extension is stopped, not just barred
+     *  from the next launch. */
+    extensionSetEnabled: (payload) => {
+      try {
+        ctx.extensionManager.setEnabled(payload.id, payload.enabled === true);
+      } catch (err) {
+        console.error("[ext] setEnabled failed:", err);
+      }
+      pushExtensionList(ctx);
+    },
   };
 }
 
@@ -95,6 +108,7 @@ function pushExtensionList(ctx: WebviewHandlerContext): void {
       hasBackend: !!d.manifest.backend?.entry,
       path: d.path,
       backendEntry: d.manifest.backend?.entry,
+      enabled: d.enabled,
     })),
     templates: ctx.extensionManager.listTemplates(),
   });

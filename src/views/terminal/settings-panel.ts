@@ -9,12 +9,31 @@ import { ModalHost } from "./a11y/modal-host";
 import { createIcon } from "./icons";
 import { htEvents } from "../../shared/event-bus";
 import {
-  STATUS_KEY_GROUPS,
-  getStatusKeyMeta,
-  type StatusKeyMeta,
-} from "./status-keys";
+  renderLayoutSection,
+  type SettingsSectionHost,
+} from "./settings-layout-section";
+import {
+  renderIntegrationsSection,
+  type IntegrationExtension,
+  type IntegrationsActions,
+  type IntegrationsView,
+} from "./settings-integrations";
+import type {
+  ClaudeBridgeFeature,
+  IntegrationsStatus,
+} from "../../shared/integrations";
 
 type SettingChangeHandler = (partial: Partial<AppSettings>) => void;
+
+/** Stand-in when no bun bridge was wired (test fixtures). The section
+ *  still renders — read-only — instead of throwing on a click. */
+const NOOP_INTEGRATIONS: IntegrationsActions = {
+  refresh: () => {},
+  installClaude: () => {},
+  uninstallClaude: () => {},
+  setShellIntegration: () => {},
+  setExtensionEnabled: () => {},
+};
 
 interface Section {
   id: string;
@@ -67,6 +86,21 @@ export class SettingsPanel {
   } | null;
   private visible = false;
   private sections: Section[];
+  /** Host wiring read from disk by bun (Claude Code hook bridge + shell
+   *  rc), pushed on `integrationsStatus`. Null until the first push —
+   *  the section says "reading…" rather than claiming "not installed",
+   *  which would be a lie the user might act on. */
+  private integrations: IntegrationsStatus | null = null;
+  /** Installed extensions, from the same `extensionList` push that feeds
+   *  the command palette. */
+  private integrationExtensions: IntegrationExtension[] = [];
+  /** Feature checkboxes the user has ticked but not yet submitted. Kept
+   *  on the panel (not in the section renderer) so a status push mid-
+   *  selection doesn't wipe the ticks. Seeded from what is already
+   *  installed the first time a status arrives. */
+  private selectedBridgeFeatures = new Set<ClaudeBridgeFeature>();
+  private integrationsSeeded = false;
+  private integrationsActions?: IntegrationsActions;
 
   constructor(
     onChange: SettingChangeHandler,
@@ -76,11 +110,15 @@ export class SettingsPanel {
         active: "webgl" | "dom";
         fallbackReason: string | null;
       } | null;
+      /** Bridge for the Integrations section. Omitted in test fixtures,
+       *  which renders the section read-only. */
+      integrations?: IntegrationsActions;
     } = {},
   ) {
     this.onChange = onChange;
     this.onRevealLogFile = options.onRevealLogFile;
     this.getRendererStatus = options.getRendererStatus;
+    this.integrationsActions = options.integrations;
 
     this.sections = [
       {
@@ -136,6 +174,12 @@ export class SettingsPanel {
         label: "Auto-continue",
         icon: "rocket",
         render: (c, s) => this.renderAutoContinue(c, s),
+      },
+      {
+        id: "integrations",
+        label: "Integrations",
+        icon: "package",
+        render: (c, s) => this.renderIntegrations(c, s),
       },
       {
         id: "advanced",
@@ -218,6 +262,10 @@ export class SettingsPanel {
     if (this.visible) return;
     this.settings = { ...settings, ansiColors: { ...settings.ansiColors } };
     this.visible = true;
+    // Integration state is external files, so it can change while the
+    // panel is closed (a `ht claude install` in a pane, an editor). Read
+    // it fresh on every open rather than trusting the last push.
+    this.integrationsActions?.refresh();
     this.renderActiveSection();
     this.overlay.classList.add("visible");
     this.host.open();
@@ -262,6 +310,38 @@ export class SettingsPanel {
     this.htKeysSeen = [...keys];
     // The discovered-keys block lives in the Layout section.
     if (this.visible && this.activeSection === "layout") {
+      this.renderActiveSection();
+    }
+  }
+
+  /** Host integration wiring, pushed by bun on `integrationsStatus`. */
+  setIntegrations(status: IntegrationsStatus): void {
+    this.integrations = status;
+    // Seed the install checkboxes from what is already wired, ONCE.
+    // Re-seeding on every push would fight the user: they untick a
+    // feature, the status arrives, the tick comes back.
+    if (!this.integrationsSeeded) {
+      this.integrationsSeeded = true;
+      for (const f of status.claude.features) {
+        if (f.state !== "missing") this.selectedBridgeFeatures.add(f.feature);
+      }
+      // Nothing installed yet — offer the same default set
+      // `ht claude install` uses (approvals stays opt-in).
+      if (this.selectedBridgeFeatures.size === 0) {
+        this.selectedBridgeFeatures.add("lifecycle");
+        this.selectedBridgeFeatures.add("tasks");
+        this.selectedBridgeFeatures.add("statusline");
+      }
+    }
+    if (this.visible && this.activeSection === "integrations") {
+      this.renderActiveSection();
+    }
+  }
+
+  /** Installed extensions, from the `extensionList` push. */
+  setExtensions(extensions: IntegrationExtension[]): void {
+    this.integrationExtensions = extensions;
+    if (this.visible && this.activeSection === "integrations") {
       this.renderActiveSection();
     }
   }
@@ -481,378 +561,49 @@ export class SettingsPanel {
   }
 
   /**
-   * τ-mux §9 Layout picker — three variant cards with inline SVG
-   * miniatures of the layouts. Selection is persisted via the same
-   * onChange callback every other setting flows through, so the
-   * active variant survives a restart and is visible to bun.
+   * τ-mux §9 Layout picker + status-bar keys + workspace-card options.
+   * Content lives in `settings-layout-section.ts`; selection is
+   * persisted via the same onChange callback every other setting flows
+   * through, so the active variant survives a restart.
    */
   private renderLayout(c: HTMLElement, s: AppSettings): void {
-    this.sectionTitle(c, "Layout");
-    this.sectionDesc(
-      c,
-      "Pick a layout variant. The choice persists across sessions.",
-    );
-
-    const variants: {
-      id: AppSettings["layoutVariant"];
-      name: string;
-      blurb: string;
-      preview: () => SVGSVGElement;
-    }[] = [
-      {
-        id: "bridge",
-        name: "Bridge",
-        blurb:
-          "Refined default. 240 px sidebar, 3-pane split, Codex/Week/$ status meters.",
-        preview: renderBridgeMiniature,
-      },
-      {
-        id: "cockpit",
-        name: "Cockpit",
-        blurb:
-          "Dense. 52 px icon rail, per-pane HUD (model · state · tok/s · $), up to 4 panes.",
-        preview: renderCockpitMiniature,
-      },
-      {
-        id: "atlas",
-        name: "Atlas",
-        blurb:
-          "Radical. Workspace graph sidebar with per-node CPU, configurable status keys.",
-        preview: renderAtlasMiniature,
-      },
-    ];
-
-    const wrap = document.createElement("div");
-    wrap.className = "layout-cards";
-    for (const v of variants) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = `layout-card${v.id === s.layoutVariant ? " active" : ""}`;
-      const preview = document.createElement("div");
-      preview.className = "layout-card-preview";
-      preview.appendChild(v.preview());
-      card.appendChild(preview);
-      const label = document.createElement("div");
-      label.className = "layout-card-label";
-      label.textContent = v.name;
-      card.appendChild(label);
-      const blurb = document.createElement("div");
-      blurb.className = "layout-card-blurb";
-      blurb.textContent = v.blurb;
-      card.appendChild(blurb);
-      card.addEventListener("click", () => {
-        this.emit({ layoutVariant: v.id });
-        setTimeout(() => this.renderActiveSection(), 20);
-      });
-      wrap.appendChild(card);
-    }
-    c.appendChild(wrap);
-
-    // ── Status bar keys picker ──
-    // The bottom status bar is key-driven (src/views/terminal/status-keys.ts).
-    // Users pick which keys show and in what order. Current order is
-    // preserved when toggling; disabled keys are appended at the
-    // bottom of the pool so enabling them re-adds them at the end.
-    this.sectionTitle(c, "Status bar keys");
-    this.sectionDesc(
-      c,
-      "Pick which status keys appear in the bottom bar. Reorder by toggling; active keys render left-to-right in the order below. Keys that have no data to show at the moment are silently skipped.",
-    );
-
-    const activeKeys = s.statusBarKeys ?? [];
-    const allMeta = getStatusKeyMeta();
-    const grouped: Record<string, StatusKeyMeta[]> = {};
-    for (const g of STATUS_KEY_GROUPS) grouped[g] = [];
-    for (const meta of allMeta) grouped[meta.group]!.push(meta);
-
-    const grid = document.createElement("div");
-    grid.className = "status-key-grid";
-    for (const group of STATUS_KEY_GROUPS) {
-      const header = document.createElement("div");
-      header.className = "status-key-group";
-      header.textContent = group;
-      grid.appendChild(header);
-      const groupWrap = document.createElement("div");
-      groupWrap.className = "status-key-group-items";
-      for (const meta of grouped[group]!) {
-        const row = document.createElement("button");
-        row.type = "button";
-        const active = activeKeys.includes(meta.id);
-        row.className = `status-key-row${active ? " active" : ""}`;
-        row.title = meta.description;
-        const check = document.createElement("span");
-        check.className = "status-key-check";
-        check.textContent = active ? "●" : "○";
-        row.appendChild(check);
-        const label = document.createElement("span");
-        label.className = "status-key-label";
-        label.textContent = meta.label;
-        row.appendChild(label);
-        const id = document.createElement("span");
-        id.className = "status-key-id tau-mono";
-        id.textContent = meta.id;
-        row.appendChild(id);
-        row.addEventListener("click", () => {
-          const next = active
-            ? activeKeys.filter((k) => k !== meta.id)
-            : [...activeKeys, meta.id];
-          this.emit({ statusBarKeys: next });
-          setTimeout(() => this.renderActiveSection(), 20);
-        });
-        groupWrap.appendChild(row);
-      }
-      grid.appendChild(groupWrap);
-    }
-    c.appendChild(grid);
-
-    // Reorder controls — per-key ↑/↓ shuffle the active list.
-    if (activeKeys.length > 1) {
-      this.sectionDesc(
-        c,
-        `Order (${activeKeys.length} active). The leftmost entry renders nearest the workspace-colour dot.`,
-      );
-      const orderList = document.createElement("div");
-      orderList.className = "status-key-order";
-      activeKeys.forEach((id, i) => {
-        const meta = allMeta.find((m) => m.id === id);
-        if (!meta) return;
-        const row = document.createElement("div");
-        row.className = "status-key-order-row";
-        const label = document.createElement("span");
-        label.className = "status-key-order-label";
-        label.textContent = meta.label;
-        const idSpan = document.createElement("span");
-        idSpan.className = "status-key-id tau-mono";
-        idSpan.textContent = meta.id;
-        const up = document.createElement("button");
-        up.type = "button";
-        up.className = "status-key-order-btn";
-        up.textContent = "↑";
-        up.disabled = i === 0;
-        up.addEventListener("click", () => {
-          if (i === 0) return;
-          const next = activeKeys.slice();
-          [next[i - 1], next[i]] = [next[i]!, next[i - 1]!];
-          this.emit({ statusBarKeys: next });
-          setTimeout(() => this.renderActiveSection(), 20);
-        });
-        const down = document.createElement("button");
-        down.type = "button";
-        down.className = "status-key-order-btn";
-        down.textContent = "↓";
-        down.disabled = i === activeKeys.length - 1;
-        down.addEventListener("click", () => {
-          if (i === activeKeys.length - 1) return;
-          const next = activeKeys.slice();
-          [next[i], next[i + 1]] = [next[i + 1]!, next[i]!];
-          this.emit({ statusBarKeys: next });
-          setTimeout(() => this.renderActiveSection(), 20);
-        });
-        row.append(label, idSpan, up, down);
-        orderList.appendChild(row);
-      });
-      c.appendChild(orderList);
-    }
-
-    // ── Discovered ht keys ──
-    // Live list of every `ht set-status <key>` the running session has
-    // seen. Lets users hide noisy keys or reorder them without
-    // touching the registry. Empty until at least one script publishes
-    // a key — render a hint in that case so the section isn't silently
-    // missing.
-    this.renderDiscoveredHtKeys(c, s);
-
-    // Plan #06 — workspace-card density + per-section toggles.
-    this.renderWorkspaceCardBlock(c, s);
+    renderLayoutSection(c, s, this.sectionHost());
   }
 
-  private renderWorkspaceCardBlock(c: HTMLElement, s: AppSettings): void {
-    this.sectionTitle(c, "Workspace card");
-    this.sectionDesc(
+  /** Host wiring that lives outside `settings.json` — the Claude Code
+   *  hook bridge, shell integration, extension enablement. Content in
+   *  `settings-integrations.ts`. */
+  private renderIntegrations(c: HTMLElement, s: AppSettings): void {
+    const view: IntegrationsView = {
+      status: this.integrations,
+      extensions: this.integrationExtensions,
+      selectedFeatures: this.selectedBridgeFeatures,
+    };
+    renderIntegrationsSection(
       c,
-      "Density + which sections render in each sidebar workspace card. The header (name + pin + close) is always visible.",
-    );
-
-    this.segmentedField(
-      c,
-      "Density",
-      s.workspaceCardDensity,
-      "workspaceCardDensity",
-      [
-        { value: "compact", label: "Compact" },
-        { value: "comfortable", label: "Comfortable" },
-        { value: "spacious", label: "Spacious" },
-      ],
-    );
-
-    this.toggleField(
-      c,
-      "Show meta row",
-      s.workspaceCardShowMeta,
-      "workspaceCardShowMeta",
-      { note: "Foreground command + listening port chips." },
-    );
-    this.toggleField(
-      c,
-      "Show stats row",
-      s.workspaceCardShowStats,
-      "workspaceCardShowStats",
-      { note: "Aggregate CPU bar + memory chip across the workspace's panes." },
-    );
-    this.toggleField(
-      c,
-      "Show panes list",
-      s.workspaceCardShowPanes,
-      "workspaceCardShowPanes",
-      { note: "Collapsible per-pane list (only when >1 panes)." },
-    );
-    this.toggleField(
-      c,
-      "Show manifests",
-      s.workspaceCardShowManifests,
-      "workspaceCardShowManifests",
-      {
-        note: "package.json + Cargo.toml cards with quick-launch script chips.",
-      },
-    );
-    this.toggleField(
-      c,
-      "Show CWD file explorer",
-      s.workspaceCardShowFileExplorer,
-      "workspaceCardShowFileExplorer",
-      {
-        note: "Native sidebar-only collapsible explorer rooted at the selected CWD.",
-      },
-    );
-    this.toggleField(
-      c,
-      "Explorer shows hidden files",
-      s.workspaceFileExplorerShowHidden,
-      "workspaceFileExplorerShowHidden",
-      {
-        note: "Dotfiles are hidden by default; heavy folders like .git and node_modules stay excluded.",
-      },
-    );
-    this.numberField(
-      c,
-      "Explorer max entries",
-      s.workspaceFileExplorerMaxEntries,
-      "workspaceFileExplorerMaxEntries",
-      {
-        min: 20,
-        max: 1000,
-        step: 10,
-        note: "Per-directory cap to keep huge folders responsive.",
-      },
-    );
-    this.toggleField(
-      c,
-      "Show ht status pills",
-      s.workspaceCardShowStatusPills,
-      "workspaceCardShowStatusPills",
-      { note: "`ht set-status` entries displayed in the workspace card." },
-    );
-    this.toggleField(
-      c,
-      "Show progress bar",
-      s.workspaceCardShowProgress,
-      "workspaceCardShowProgress",
-      {
-        note: "Workspace progress bar driven by `ht set-progress` and OSC 9;4.",
-      },
+      s,
+      view,
+      this.integrationsActions ?? NOOP_INTEGRATIONS,
+      this.sectionHost(),
     );
   }
 
-  private renderDiscoveredHtKeys(c: HTMLElement, s: AppSettings): void {
-    this.sectionTitle(c, "Discovered ht keys");
-    this.sectionDesc(
-      c,
-      "Every `ht set-status` key seen since this session started. Toggle visibility, reorder. New keys default to visible at the end.",
-    );
-
-    if (this.htKeysSeen.length === 0) {
-      this.infoNote(
-        c,
-        "No keys yet. Run `ht set-status <key> <value>` from any pane and the key will appear here.",
-      );
-      return;
-    }
-
-    const hidden = new Set(s.htStatusKeyHidden ?? []);
-    const orderRaw = (s.htStatusKeyOrder ?? []).slice();
-    // Compose the rendered list: known order first, then any
-    // newly-seen keys appended (matches the runtime resolver in
-    // `applyHtStatusKeySettings`). Keys in `htStatusKeyOrder` that
-    // aren't in `htKeysSeen` are listed last and dimmed so the user
-    // sees their stale customisation.
-    const seenSet = new Set(this.htKeysSeen);
-    const visited = new Set<string>();
-    const composed: { key: string; stale: boolean }[] = [];
-    for (const k of orderRaw) {
-      if (visited.has(k)) continue;
-      visited.add(k);
-      composed.push({ key: k, stale: !seenSet.has(k) });
-    }
-    for (const k of this.htKeysSeen) {
-      if (visited.has(k)) continue;
-      visited.add(k);
-      composed.push({ key: k, stale: false });
-    }
-
-    const list = document.createElement("div");
-    list.className = "status-key-order";
-    composed.forEach(({ key, stale }, i) => {
-      const row = document.createElement("div");
-      row.className = `status-key-order-row ht-key${stale ? " stale" : ""}`;
-
-      const check = document.createElement("button");
-      check.type = "button";
-      check.className = "status-key-order-btn";
-      const isVisible = !hidden.has(key);
-      check.textContent = isVisible ? "●" : "○";
-      check.title = isVisible ? "Hide this key" : "Show this key";
-      check.addEventListener("click", () => {
-        const next = isVisible
-          ? [...new Set([...(s.htStatusKeyHidden ?? []), key])]
-          : (s.htStatusKeyHidden ?? []).filter((k) => k !== key);
-        this.emit({ htStatusKeyHidden: next });
-        setTimeout(() => this.renderActiveSection(), 20);
-      });
-
-      const label = document.createElement("span");
-      label.className = "status-key-order-label";
-      label.textContent = stale ? `${key} (not seen this session)` : key;
-
-      const up = document.createElement("button");
-      up.type = "button";
-      up.className = "status-key-order-btn";
-      up.textContent = "↑";
-      up.disabled = i === 0;
-      up.addEventListener("click", () => {
-        if (i === 0) return;
-        const ordered = composed.map((c) => c.key);
-        [ordered[i - 1], ordered[i]] = [ordered[i]!, ordered[i - 1]!];
-        this.emit({ htStatusKeyOrder: ordered });
-        setTimeout(() => this.renderActiveSection(), 20);
-      });
-
-      const down = document.createElement("button");
-      down.type = "button";
-      down.className = "status-key-order-btn";
-      down.textContent = "↓";
-      down.disabled = i === composed.length - 1;
-      down.addEventListener("click", () => {
-        if (i === composed.length - 1) return;
-        const ordered = composed.map((c) => c.key);
-        [ordered[i], ordered[i + 1]] = [ordered[i + 1]!, ordered[i]!];
-        this.emit({ htStatusKeyOrder: ordered });
-        setTimeout(() => this.renderActiveSection(), 20);
-      });
-
-      row.append(check, label, up, down);
-      list.appendChild(row);
-    });
-    c.appendChild(list);
+  /** Field builders + dispatch, handed to the extracted section
+   *  renderers. Bound methods rather than the panel itself: a section
+   *  can draw rows, it cannot reach into panel state. */
+  private sectionHost(): SettingsSectionHost {
+    return {
+      sectionTitle: (c, t) => this.sectionTitle(c, t),
+      sectionDesc: (c, t) => this.sectionDesc(c, t),
+      infoNote: (c, t) => this.infoNote(c, t),
+      toggleField: (c, l, v, k, o) => this.toggleField(c, l, v, k, o),
+      numberField: (c, l, v, k, o) => this.numberField(c, l, v, k, o),
+      segmentedField: (c, l, v, k, o, n) =>
+        this.segmentedField(c, l, v, k, o, n),
+      emit: (partial) => this.emit(partial),
+      rerender: () => this.renderActiveSection(),
+      htKeysSeen: () => this.htKeysSeen,
+    };
   }
 
   private renderTheme(c: HTMLElement, s: AppSettings): void {
@@ -973,6 +724,11 @@ export class SettingsPanel {
       s.foregroundColor,
       "foregroundColor",
     );
+
+    // Terminal background tint. Stored as "r, g, b" (it is composed with
+    // `terminalBgOpacity` into an rgba()), so it can't ride `colorField`
+    // — presets were the only way to change it until now.
+    this.bgBaseField(customWrap, s.bgBase);
 
     this.sliderField(
       customWrap,
@@ -1127,6 +883,21 @@ export class SettingsPanel {
       s.autoStartWebMirror,
       "autoStartWebMirror",
       { note: "Start the web mirror server when the app launches." },
+    );
+
+    // Bind address. Was settings.json-only, which meant the one control
+    // that decides whether your terminal is reachable from the network
+    // at all was the least discoverable thing in the app.
+    this.segmentedField(
+      c,
+      "Bind Address",
+      s.webMirrorBind,
+      "webMirrorBind",
+      [
+        { value: "0.0.0.0", label: "LAN" },
+        { value: "127.0.0.1", label: "This Mac only" },
+      ],
+      "LAN makes the mirror reachable from other devices on your network — pair it with an auth token. This Mac only refuses every non-loopback connection. Changing this restarts a running mirror.",
     );
 
     // P7 S8 / H.9 — manifest-auth ergonomics. The token has lived as
@@ -1288,6 +1059,18 @@ export class SettingsPanel {
       {
         note: "Open ⌘-clicked URLs in the built-in browser instead of the system browser.",
       },
+    );
+
+    this.segmentedField(
+      c,
+      "Cookie Isolation",
+      s.browserPartitionMode,
+      "browserPartitionMode",
+      [
+        { value: "per-surface", label: "Per pane" },
+        { value: "shared", label: "Shared" },
+      ],
+      "Per pane gives every browser pane its own cookie jar, so two panes can hold two logins to the same site. Shared is the legacy single jar. Applies to NEW panes — existing ones keep the partition they were created with.",
     );
 
     // ── Cookies subsection ──
@@ -1704,6 +1487,27 @@ export class SettingsPanel {
       },
     );
 
+    // Startup audit expectation. Was settings.json-only, so the only
+    // way to silence a false alarm ("your git user.name is wrong") was
+    // to hand-edit the file the alarm was complaining about.
+    const gitRow = this.fieldRow(
+      c,
+      "Expected git user.name",
+      "Startup audit compares `git config --global user.name` against this. Leave empty to skip the audit entirely.",
+      "auditsGitUserNameExpected",
+    );
+    const gitInput = document.createElement("input");
+    gitInput.type = "text";
+    gitInput.className = "settings-input";
+    gitInput.placeholder = "(audit disabled)";
+    gitInput.value = s.auditsGitUserNameExpected ?? "";
+    gitInput.setAttribute("aria-label", "Expected git user.name");
+    gitInput.addEventListener("change", () => {
+      const v = gitInput.value.trim();
+      this.emit({ auditsGitUserNameExpected: v === "" ? null : v });
+    });
+    gitRow.appendChild(gitInput);
+
     // Diagnostic paths — read-only. Useful when bug-reporting; the
     // "Reveal" button matches the App-menu item of the same name.
     this.diagnosticPathsBlock(c);
@@ -1954,6 +1758,50 @@ export class SettingsPanel {
     row.appendChild(group);
   }
 
+  /** `bgBase` is an "r, g, b" triplet, not a hex string — it is composed
+   *  with `terminalBgOpacity` into the pane background. Renders as a
+   *  colour swatch plus the raw triplet, and accepts either. */
+  private bgBaseField(c: HTMLElement, value: string): void {
+    const row = this.fieldRow(
+      c,
+      "Background",
+      "Terminal background tint, blended with Background Opacity.",
+      "bgBase",
+    );
+    const wrap = document.createElement("div");
+    wrap.className = "settings-color-wrap";
+
+    const swatch = document.createElement("input");
+    swatch.type = "color";
+    swatch.className = "settings-color-swatch settings-color-accent";
+    swatch.value = rgbTripletToHex(value);
+    swatch.setAttribute("aria-label", "Terminal background colour");
+    swatch.addEventListener("input", () => {
+      const triplet = hexToRgbTriplet(swatch.value);
+      raw.value = triplet;
+      this.emit({ themePreset: "custom", bgBase: triplet });
+    });
+
+    const raw = document.createElement("input");
+    raw.type = "text";
+    raw.className = "settings-input settings-input-hex";
+    raw.value = value;
+    raw.setAttribute("aria-label", "Terminal background r, g, b");
+    raw.addEventListener("change", () => {
+      const triplet = normalizeRgbTriplet(raw.value);
+      if (!triplet) {
+        raw.value = value;
+        return;
+      }
+      raw.value = triplet;
+      swatch.value = rgbTripletToHex(triplet);
+      this.emit({ themePreset: "custom", bgBase: triplet });
+    });
+
+    wrap.append(swatch, raw);
+    row.appendChild(wrap);
+  }
+
   private colorField(
     c: HTMLElement,
     label: string,
@@ -2085,140 +1933,40 @@ function settingsEqual(a: AppSettings, b: AppSettings): boolean {
   return true;
 }
 
-// ─────────────────────────────────────────────────────────────
-// τ-mux §9 layout miniatures — inline SVG thumbnails for the
-// Settings > Layout picker. Keeps the bundle free of raster
-// assets and lets the previews inherit the --tau-* tokens so
-// they automatically match the active theme.
-// ─────────────────────────────────────────────────────────────
-const NS_SVG_LAYOUT = "http://www.w3.org/2000/svg";
-
-function mkRect(
-  svg: SVGSVGElement,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  fill: string,
-  stroke?: string,
-): SVGRectElement {
-  const r = document.createElementNS(NS_SVG_LAYOUT, "rect");
-  r.setAttribute("x", String(x));
-  r.setAttribute("y", String(y));
-  r.setAttribute("width", String(w));
-  r.setAttribute("height", String(h));
-  r.setAttribute("fill", fill);
-  if (stroke) {
-    r.setAttribute("stroke", stroke);
-    r.setAttribute("stroke-width", "0.5");
+/** "7, 7, 10" → "#07070a". Falls back to black on anything unparseable
+ *  so the swatch always has a legal value to show. */
+export function rgbTripletToHex(triplet: string): string {
+  const parts = triplet.split(",").map((p) => Number.parseInt(p.trim(), 10));
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) {
+    return "#000000";
   }
-  svg.appendChild(r);
-  return r;
+  return (
+    "#" +
+    parts
+      .map((n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, "0"))
+      .join("")
+  );
 }
 
-function baseSvg(): SVGSVGElement {
-  const svg = document.createElementNS(NS_SVG_LAYOUT, "svg");
-  svg.setAttribute("viewBox", "0 0 160 96");
-  svg.setAttribute("width", "100%");
-  svg.setAttribute("height", "auto");
-  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-  // Outer window (12 px radius mirrored at 160×96 scale).
-  const outer = document.createElementNS(NS_SVG_LAYOUT, "rect");
-  outer.setAttribute("x", "1");
-  outer.setAttribute("y", "1");
-  outer.setAttribute("width", "158");
-  outer.setAttribute("height", "94");
-  outer.setAttribute("rx", "4");
-  outer.setAttribute("fill", "var(--tau-bg)");
-  outer.setAttribute("stroke", "var(--tau-edge)");
-  outer.setAttribute("stroke-width", "0.5");
-  svg.appendChild(outer);
-  // Titlebar strip.
-  mkRect(svg, 1, 1, 158, 8, "var(--tau-panel)");
-  const tau = document.createElementNS(NS_SVG_LAYOUT, "circle");
-  tau.setAttribute("cx", "6");
-  tau.setAttribute("cy", "5");
-  tau.setAttribute("r", "1.2");
-  tau.setAttribute("fill", "var(--tau-cyan)");
-  svg.appendChild(tau);
-  return svg;
+/** "#07070a" → "7, 7, 10". */
+export function hexToRgbTriplet(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return "0, 0, 0";
+  const n = Number.parseInt(m[1]!, 16);
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
 }
 
-function renderBridgeMiniature(): SVGSVGElement {
-  const svg = baseSvg();
-  // 240 px sidebar ≈ 28 px slot here.
-  mkRect(svg, 1, 9, 28, 80, "var(--tau-panel)");
-  // Three pane split: top-left utility, top-right terminal, wide bottom.
-  mkRect(svg, 30, 11, 60, 40, "var(--tau-void)", "var(--tau-edge)");
-  mkRect(svg, 92, 11, 66, 40, "var(--tau-void)", "var(--tau-cyan)");
-  mkRect(svg, 30, 53, 128, 34, "var(--tau-void)", "var(--tau-edge)");
-  // Status bar.
-  mkRect(svg, 1, 90, 158, 5, "var(--tau-panel)");
-  return svg;
-}
-
-function renderCockpitMiniature(): SVGSVGElement {
-  const svg = baseSvg();
-  // 52 px icon rail ≈ 10 px slot.
-  mkRect(svg, 1, 9, 10, 80, "var(--tau-void)", "var(--tau-edge)");
-  // 2x2 pane grid with HUD strip (2 px band inside each).
-  const panes: [number, number][] = [
-    [12, 11],
-    [86, 11],
-    [12, 50],
-    [86, 50],
-  ];
-  for (const [px, py] of panes) {
-    mkRect(svg, px, py, 72, 37, "var(--tau-void)", "var(--tau-edge)");
-    // Header
-    mkRect(svg, px, py, 72, 4, "var(--tau-panel)");
-    // HUD (22 px / 96 ≈ 2 px here)
-    mkRect(svg, px, py + 4, 72, 2, "var(--tau-panel-hi)");
-  }
-  // Status bar.
-  mkRect(svg, 1, 90, 158, 5, "var(--tau-panel)");
-  return svg;
-}
-
-function renderAtlasMiniature(): SVGSVGElement {
-  const svg = baseSvg();
-  // 220 px graph column ≈ 26 px slot + 4 px tab rail.
-  mkRect(svg, 1, 9, 26, 74, "var(--tau-void)", "var(--tau-edge)");
-  mkRect(svg, 27, 9, 5, 74, "var(--tau-void)", "var(--tau-edge)");
-  // Graph nodes.
-  const nodes: [number, number, string][] = [
-    [10, 18, "var(--tau-cyan)"],
-    [10, 34, "var(--tau-text)"],
-    [10, 48, "var(--tau-agent)"],
-    [10, 62, "var(--tau-text-dim)"],
-  ];
-  for (const [cx, cy, fill] of nodes) {
-    const c = document.createElementNS(NS_SVG_LAYOUT, "circle");
-    c.setAttribute("cx", String(cx));
-    c.setAttribute("cy", String(cy));
-    c.setAttribute("r", "1.5");
-    c.setAttribute("fill", fill);
-    svg.appendChild(c);
-  }
-  // Dashed active edge to the agent node.
-  const edge = document.createElementNS(NS_SVG_LAYOUT, "path");
-  edge.setAttribute("d", "M 10 18 L 10 48");
-  edge.setAttribute("stroke", "var(--tau-cyan)");
-  edge.setAttribute("stroke-width", "0.6");
-  edge.setAttribute("stroke-dasharray", "1.5 1.5");
-  edge.setAttribute("fill", "none");
-  svg.appendChild(edge);
-  // Pane area.
-  mkRect(svg, 33, 11, 125, 72, "var(--tau-void)", "var(--tau-edge)");
-  // Ticker strip (32 px instead of 26; ≈ 6 px here).
-  mkRect(svg, 1, 89, 158, 6, "var(--tau-void)", "var(--tau-edge)");
-  const brand = document.createElementNS(NS_SVG_LAYOUT, "circle");
-  brand.setAttribute("cx", "6");
-  brand.setAttribute("cy", "92");
-  brand.setAttribute("r", "1.2");
-  brand.setAttribute("fill", "var(--tau-cyan)");
-  svg.appendChild(brand);
-  return svg;
+/** Accept "7,7,10", "7, 7, 10" or "#07070a" and normalise to the stored
+ *  triplet form. Returns null when the input is not one of those — the
+ *  caller reverts the field rather than persisting nonsense. */
+export function normalizeRgbTriplet(input: string): string | null {
+  const text = input.trim();
+  if (/^#?[0-9a-f]{6}$/i.test(text)) return hexToRgbTriplet(text);
+  const parts = text.split(",").map((p) => p.trim());
+  if (parts.length !== 3) return null;
+  const nums = parts.map((p) => Number.parseInt(p, 10));
+  if (nums.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) return null;
+  return nums.join(", ");
 }
 
 /** P7 S8 / H.9 — generate a fresh web-mirror auth token. 32 bytes of
