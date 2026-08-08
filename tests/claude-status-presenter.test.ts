@@ -132,6 +132,49 @@ describe("decideNotification", () => {
     expect(decideNotification(appr, appr, T0)).toBeNull();
   });
 
+  test("only the approval notification carries a retraction key", () => {
+    // The key is what lets auto-approve pull this exact alert back once
+    // it answers the prompt. A turn-summary or an API error has nothing
+    // to retract — nobody answers those on the user's behalf — so
+    // tagging them would just invite a stray keyed dismiss.
+    const prevWorking = state({ phase: "working", promptStartedAt: T0 });
+    const appr = decideNotification(
+      state({ phase: "waiting-approval" }),
+      prevWorking,
+      T0,
+    )!;
+    expect(appr.key).toBe("claude:approval:s1");
+
+    const err = decideNotification(
+      state({ phase: "error", errorType: "rate_limit" }),
+      prevWorking,
+      T0,
+    )!;
+    expect(err.key).toBeUndefined();
+
+    const done = decideNotification(
+      state({ phase: "idle", promptStartedAt: 0 }),
+      prevWorking,
+      T0 + 1000,
+    )!;
+    expect(done.key).toBeUndefined();
+  });
+
+  test("the key is per session, so two panes don't retract each other", () => {
+    const prevWorking = state({ phase: "working" });
+    const a = decideNotification(
+      { ...state({ phase: "waiting-approval" }), sessionId: "a" },
+      prevWorking,
+      T0,
+    )!;
+    const b = decideNotification(
+      { ...state({ phase: "waiting-approval" }), sessionId: "b" },
+      prevWorking,
+      T0,
+    )!;
+    expect(a.key).not.toBe(b.key);
+  });
+
   test("waiting-input does NOT notify (pill is enough)", () => {
     const prev = state({ phase: "working", promptStartedAt: T0 });
     const cur = state({ phase: "waiting-input", promptStartedAt: T0 });
@@ -210,6 +253,29 @@ describe("ClaudeStatusPresenter (shell)", () => {
     expect(notif).toBeDefined();
     expect(String(notif.params["title"])).toContain("Claude");
     expect(notif.params["subtitle"]).toBe("Claude Code");
+  });
+
+  test("the approval alert is created with its retraction key", () => {
+    // End-to-end through the presenter, not just the pure decider —
+    // auto-approve dismisses by this exact key, so a create that drops
+    // it silently reverts to leaving stale "approval needed" cards on
+    // screen after every unattended approval.
+    const { calls, send } = setup();
+    send({ type: "prompt", prompt: "Fix bug" });
+    calls.length = 0;
+    send({ type: "notify-permission", message: "use Bash" });
+    const notif = calls.find((c) => c.method === "notification.create")!;
+    expect(notif).toBeDefined();
+    expect(notif.params["key"]).toBe("claude:approval:s1");
+  });
+
+  test("a turn summary is created with no key at all", () => {
+    const { calls, send } = setup();
+    send({ type: "prompt", prompt: "Fix bug" });
+    calls.length = 0;
+    send({ type: "stop" });
+    const notif = calls.find((c) => c.method === "notification.create")!;
+    expect(notif.params).not.toHaveProperty("key");
   });
 
   test("session-end clears both pills", () => {

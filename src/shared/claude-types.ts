@@ -304,6 +304,15 @@ export function sessionTitle(s: ClaudeSessionState): string {
   return s.sessionName || s.label || "Claude";
 }
 
+/** Correlation tag stamped on the "approval needed" notification the
+ *  presenter raises, and used by auto-approve to retract that exact
+ *  notification once it answers the prompt. Keyed per session rather
+ *  than per prompt: only one approval can be outstanding per session,
+ *  so the newest live entry under this key is always the right one. */
+export function claudeApprovalNotificationKey(sessionId: string): string {
+  return `claude:approval:${sessionId}`;
+}
+
 export function formatClaudeDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "";
   const sec = ms / 1000;

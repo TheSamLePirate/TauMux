@@ -69,8 +69,11 @@ import { TelegramDatabase } from "./telegram-db";
 import {
   TelegramService,
   type TelegramServiceStatus,
-  planNotificationForwarding,
 } from "./telegram-service";
+import {
+  forwardNotificationToTelegram,
+  resolveForwardedNotification,
+} from "./telegram-notification-bridge";
 import { wireMessage as wireTelegramMessage } from "./rpc-handlers/telegram";
 import { setupLogging } from "./logger";
 import {
@@ -2235,52 +2238,21 @@ function dispatch(action: string, payload: Record<string, unknown>) {
         title: latest["title"] ?? "",
         body: latest["body"] ?? "",
       });
-      // Phase 2: forward to Telegram when the user opted in. The plan
-      // function is pure — it returns the {chatId, text} deliveries to
-      // perform; we just wire them through sendTelegramAndBroadcast so
-      // the live service handles rate limiting + persistence.
-      // Plan #08: when `telegramNotificationButtonsEnabled` is on,
-      // route through the buttons-aware send so each forwarded
-      // notification carries OK / Continue / Stop and persists a
-      // notification_links row for the inbound callback handler.
-      if (telegramService) {
-        const settings = settingsManager.get();
-        const surfaceId = (latest["surfaceId"] as string | null) ?? null;
-        const ws = surfaceId
-          ? (app.workspaceState.find((w) => w.surfaceIds.includes(surfaceId)) ??
-            null)
-          : null;
-        const deliveries = planNotificationForwarding({
-          enabled: settings.telegramNotificationsEnabled,
-          allowedUserIds: settings.telegramAllowedUserIds,
-          title: String(latest["title"] ?? ""),
-          body: String(latest["body"] ?? ""),
-          workspace: ws?.name ?? undefined,
-          pane: (ws?.surfaceTitles?.[surfaceId ?? ""] as string) ?? undefined,
-        });
-        const notificationId = String(latest["id"] ?? "");
-        const buttonsOn =
-          settings.telegramNotificationButtonsEnabled && !!notificationId;
-        for (const { chatId, text } of deliveries) {
-          if (buttonsOn) {
-            void sendTelegramNotificationWithButtons({
-              chatId,
-              text,
-              notificationId,
-              surfaceId,
-            });
-          } else {
-            // Notification forwarder — chatId is sourced from the
-            // user's `telegramAllowedUserIds` allow-list, so a target
-            // not yet in `db.listChats()` (just-paired user) is OK.
-            void sendTelegramAndBroadcast(chatId, text, {
-              allowUnknownChat: true,
-            });
-          }
-        }
-      }
+      // Forward to Telegram when the user opted in; see
+      // ./telegram-notification-bridge.ts for the delivery rules.
+      forwardNotificationToTelegram(latest, {
+        live: !!telegramService,
+        settings: settingsManager.get(),
+        workspaces: app.workspaceState,
+        sendWithButtons: (o) => void sendTelegramNotificationWithButtons(o),
+        send: (chatId, text, o) =>
+          void sendTelegramAndBroadcast(chatId, text, o),
+      });
     } else if (dismissed) {
       app.webServer?.broadcast({ type: "notificationDismiss", id: dismissed });
+      // A dismiss carrying a resolution was ANSWERED here, not swiped
+      // away — the forwarded copy's buttons must not outlive it.
+      resolveForwardedNotification(p, dismissed, telegramDb, telegramService);
     } else if (notifications && notifications.length === 0) {
       app.webServer?.broadcast({ type: "notificationClear" });
     }

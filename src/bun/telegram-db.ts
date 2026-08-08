@@ -219,8 +219,7 @@ export class TelegramDatabase {
             LIMIT 1`,
         )
         .get(input.chatId, input.tgMessageId ?? null) as
-        | RawMessageRow
-        | undefined;
+        RawMessageRow | undefined;
       if (existing) {
         return { message: rowToMessage(existing), inserted: false };
       }
@@ -340,8 +339,7 @@ export class TelegramDatabase {
    *  offset, so a restart resumes mid-stream instead of re-pulling. */
   getKv(key: string): string | null {
     const row = this.db.prepare(`SELECT v FROM kv WHERE k = ?`).get(key) as
-      | { v: string }
-      | undefined;
+      { v: string } | undefined;
     return row?.v ?? null;
   }
 
@@ -407,13 +405,48 @@ export class TelegramDatabase {
           WHERE chat_id = ? AND tg_message_id = ?`,
       )
       .get(chatId, tgMessageId) as
-      | { notification_id: string; surface_id: string | null }
-      | undefined;
+      { notification_id: string; surface_id: string | null } | undefined;
     if (!row) return null;
     return {
       notificationId: row.notification_id,
       surfaceId: row.surface_id,
     };
+  }
+
+  /** Every chat that received a forwarded copy of `notificationId`.
+   *  The inverse of `getNotificationLink`: that one answers "which
+   *  notification did this tapped message belong to", this one answers
+   *  "which messages do I have to go back and edit now that the
+   *  notification has been resolved on the τ-mux side". */
+  getNotificationLinksForNotification(
+    notificationId: string,
+  ): Array<{ chatId: string; tgMessageId: number; surfaceId: string | null }> {
+    const rows = this.db
+      .prepare(
+        `SELECT chat_id, tg_message_id, surface_id
+           FROM notification_links
+          WHERE notification_id = ?`,
+      )
+      .all(notificationId) as Array<{
+      chat_id: string;
+      tg_message_id: number;
+      surface_id: string | null;
+    }>;
+    return rows.map((r) => ({
+      chatId: r.chat_id,
+      tgMessageId: r.tg_message_id,
+      surfaceId: r.surface_id,
+    }));
+  }
+
+  /** Forget every link for `notificationId`. Called once its message
+   *  has been stamped as resolved: the buttons are gone, so a late tap
+   *  must not resolve to a surface and fire keystrokes at it. */
+  dropNotificationLinks(notificationId: string): number {
+    const res = this.db
+      .prepare(`DELETE FROM notification_links WHERE notification_id = ?`)
+      .run(notificationId);
+    return Number(res.changes);
   }
 
   /** Drop notification_links rows older than `cutoffMs`. Telegram
@@ -468,8 +501,7 @@ export class TelegramDatabase {
           WHERE chat_id = ? AND tg_message_id = ?`,
       )
       .get(chatId, tgMessageId) as
-      | { request_id: string; kind: string }
-      | undefined;
+      { request_id: string; kind: string } | undefined;
     if (!row) return null;
     return { requestId: row.request_id, kind: row.kind };
   }

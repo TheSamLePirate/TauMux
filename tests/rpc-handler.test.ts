@@ -742,6 +742,102 @@ describe("RPC Handler", () => {
     expect(dispatched[0].payload["surfaceId"]).toBeNull();
   });
 
+  test("notification.dismiss by key removes the entry the producer tagged", () => {
+    // The correlation path: a producer that raised a notification can
+    // retract it without having captured the generated id. Claude
+    // auto-approve uses this to pull its own "approval needed" alert
+    // once it answers the prompt.
+    const handler = setup();
+    handler("notification.create", { title: "A", body: "1" });
+    handler("notification.create", {
+      title: "Approval",
+      body: "2",
+      key: "claude:approval:s1",
+      surface_id: "surface:3",
+    });
+    handler("notification.create", { title: "C", body: "3" });
+    dispatched.length = 0;
+
+    const result = handler("notification.dismiss", {
+      key: "claude:approval:s1",
+    });
+    expect(result).toBe("OK");
+
+    const after = handler("notification.list", {}) as Record<string, unknown>[];
+    expect(after.map((n) => n["title"])).toEqual(["A", "C"]);
+    expect(dispatched[0].payload["surfaceId"]).toBe("surface:3");
+  });
+
+  test("notification.dismiss by key takes the NEWEST match", () => {
+    // A key repeats over a session's lifetime — one per permission
+    // prompt. Dismissing the oldest would leave the live alert on
+    // screen and retract a stale one that nobody can see anyway.
+    const handler = setup();
+    handler("notification.create", { title: "first", key: "k" });
+    handler("notification.create", { title: "second", key: "k" });
+
+    handler("notification.dismiss", { key: "k" });
+
+    const after = handler("notification.list", {}) as Record<string, unknown>[];
+    expect(after.map((n) => n["title"])).toEqual(["first"]);
+  });
+
+  test("notification.dismiss by key is a no-op when nothing carries it", () => {
+    // Keyed dismissal has to be safe to fire blind: auto-approve calls
+    // it on every send, including when notifications are disabled or
+    // the user already cleared the alert themselves.
+    const handler = setup();
+    handler("notification.create", { title: "A", body: "1" });
+    dispatched.length = 0;
+
+    expect(handler("notification.dismiss", { key: "nope" })).toBe("OK");
+    expect(dispatched.length).toBe(0);
+    expect((handler("notification.list", {}) as unknown[]).length).toBe(1);
+  });
+
+  test("notification.dismiss carries the resolution + dismissed text", () => {
+    // The host needs the text to re-render the forwarded Telegram
+    // message, and by dispatch time the entry is already spliced out
+    // of `notifications` — so it has to ride on the payload.
+    const handler = setup();
+    handler("notification.create", {
+      title: "Claude Code · approval needed",
+      body: "Bash(ls) — check the pane.",
+      key: "claude:approval:s1",
+    });
+    dispatched.length = 0;
+
+    handler("notification.dismiss", {
+      key: "claude:approval:s1",
+      resolution: "auto-approved by τ-mux",
+    });
+
+    expect(dispatched[0].payload["resolution"]).toBe("auto-approved by τ-mux");
+    expect(dispatched[0].payload["dismissedTitle"]).toBe(
+      "Claude Code · approval needed",
+    );
+    expect(dispatched[0].payload["dismissedBody"]).toBe(
+      "Bash(ls) — check the pane.",
+    );
+  });
+
+  test("a plain dismiss carries no resolution", () => {
+    // The user swiping a card away must NOT rewrite their Telegram
+    // message as resolved — nothing was answered.
+    const handler = setup();
+    handler("notification.create", { title: "A", body: "1" });
+    dispatched.length = 0;
+
+    const listed = handler("notification.list", {}) as Record<
+      string,
+      unknown
+    >[];
+    handler("notification.dismiss", { id: listed[0]["id"] });
+
+    expect(dispatched[0].payload).not.toHaveProperty("resolution");
+    expect(dispatched[0].payload).not.toHaveProperty("dismissedTitle");
+  });
+
   test("notification.dismiss is a no-op for unknown id", () => {
     const handler = setup();
     handler("notification.create", { title: "A", body: "1" });

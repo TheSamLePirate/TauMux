@@ -24,6 +24,7 @@
 
 import type { ClaudeSessionState } from "../shared/claude-types";
 import {
+  claudeApprovalNotificationKey,
   formatClaudeCost,
   formatClaudeDuration,
   sessionTitle,
@@ -127,7 +128,7 @@ export function decideNotification(
   s: ClaudeSessionState,
   prev: ClaudeSessionState | null,
   now: number,
-): { title: string; body: string } | null {
+): { title: string; body: string; key?: string } | null {
   if (!prev) return null;
 
   // Turn completed: prompt was in flight, now it isn't, and we didn't
@@ -166,6 +167,11 @@ export function decideNotification(
       body: s.approvalMessage
         ? `${s.approvalMessage} — answer the modal or check the pane.`
         : "A tool needs permission — check the pane.",
+      // Tagged so auto-approve can retract it the moment it answers.
+      // Nothing else dismisses by key, so an approval that never gets
+      // auto-answered (burst guard, modal-routed, user got there first)
+      // leaves the notification standing exactly as before.
+      key: claudeApprovalNotificationKey(s.sessionId),
     };
   }
 
@@ -252,6 +258,7 @@ export class ClaudeStatusPresenter {
         title: notif.title,
         body: notif.body,
         subtitle: NOTIFY_SUBTITLE,
+        ...(notif.key ? { key: notif.key } : {}),
         ...(s.surfaceId ? { surface_id: s.surfaceId } : {}),
       });
     }

@@ -12,6 +12,7 @@ import {
 } from "../src/bun/claude-auto-approve";
 import { ClaudeSessionRegistry } from "../src/bun/claude-session-registry";
 import {
+  claudeApprovalNotificationKey,
   newClaudeSessionState,
   type ClaudeBridgeEvent,
   type ClaudeSessionState,
@@ -483,7 +484,10 @@ describe("ask-end retracts the announcement the question raised", () => {
     reg.applyEvent(ev({ type: "prompt", prompt: "do a thing" }));
     reg.applyEvent(ev({ type: "ask-start", message: "AskUserQuestion" }));
     reg.applyEvent(
-      ev({ type: "notify-permission", message: "Claude needs your permission" }),
+      ev({
+        type: "notify-permission",
+        message: "Claude needs your permission",
+      }),
     );
     expect(reg.get("s1")!.phase).toBe("waiting-approval");
     reg.applyEvent(ev({ type: "ask-end", message: "AskUserQuestion" }));
@@ -527,5 +531,126 @@ describe("ask-end retracts the announcement the question raised", () => {
     reg.applyEvent(ev({ type: "notify-permission" }));
     reg.applyEvent(ev({ type: "ask-end", message: "ExitPlanMode" }));
     expect(reg.get("s1")!.phase).toBe("idle");
+  });
+});
+
+// ── retracting the alert it answered ──────────────────────────────────
+//
+// The presenter raises a "Claude Code · approval needed" notification the
+// moment a session enters `waiting-approval` — overlay card, sidebar
+// entry, and (when forwarding is on) a Telegram message with live
+// OK/No/Continue/Cancel buttons. Once auto-approve answers the prompt,
+// all of that is asking the user to act on something already settled, and
+// the Telegram buttons would fire a stray Enter into whatever now owns
+// the pane. Every send therefore dismisses the alert by its correlation
+// key. The `sidebar.log` audit line is what survives — the notification
+// was only the interrupt, the log is the record.
+
+const dismisses = (
+  calls: Array<{ method: string; params: Record<string, unknown> }>,
+) => calls.filter((c) => c.method === "notification.dismiss");
+
+describe("approval notification retraction", () => {
+  test("an auto-approval dismisses the alert it answered", () => {
+    const { calls, send, flush } = setup();
+    send({ type: "notify-permission", message: "Claude needs to use Bash" });
+    flush();
+    const d = dismisses(calls);
+    expect(d).toHaveLength(1);
+    expect(d[0]!.params).toMatchObject({
+      key: claudeApprovalNotificationKey("s1"),
+      resolution: "auto-approved by τ-mux",
+    });
+  });
+
+  test("a manual approval dismisses it too, marked as manual", () => {
+    const { engine, calls, registry } = setup({ enabled: false });
+    registry.applyEvent({
+      type: "notify-permission",
+      sessionId: "a",
+      surfaceId: "surface:3",
+    } as ClaudeBridgeEvent);
+    expect(engine.approveNow().ok).toBe(true);
+    const d = dismisses(calls);
+    expect(d).toHaveLength(1);
+    expect(d[0]!.params["key"]).toBe(claudeApprovalNotificationKey("a"));
+    expect(d[0]!.params["resolution"]).toBe("approved in τ-mux");
+  });
+
+  test("the dismiss is keyed per session, not globally", () => {
+    // Two panes waiting at once: answering one must not silence the
+    // other's alert, which still needs a human.
+    const { engine, calls, registry } = setup({ enabled: false });
+    for (const [sessionId, surfaceId] of [
+      ["a", "surface:1"],
+      ["b", "surface:9"],
+    ]) {
+      registry.applyEvent({
+        type: "notify-permission",
+        sessionId,
+        surfaceId,
+      } as ClaudeBridgeEvent);
+    }
+    engine.approveNow("surface:9");
+    expect(dismisses(calls).map((c) => c.params["key"])).toEqual([
+      claudeApprovalNotificationKey("b"),
+    ]);
+  });
+
+  test("every prompt in a turn retracts its own alert", () => {
+    const { calls, send, flush } = setup();
+    for (let i = 0; i < 3; i++) {
+      send({ type: "notify-permission", message: "permission" });
+      flush();
+    }
+    expect(dismisses(calls)).toHaveLength(3);
+  });
+
+  test("a REFUSED prompt keeps shouting", () => {
+    // The whole point of the alert. Auto-approve off, a modal-routed
+    // approval, and the native pane all decline to send — so none of
+    // them may retract the notification either.
+    for (const s of [
+      (() => {
+        const h = setup({ enabled: false });
+        h.send({ type: "notify-permission" });
+        return h;
+      })(),
+      (() => {
+        const h = setup();
+        h.send({ type: "permission-request", message: "Bash" });
+        return h;
+      })(),
+      (() => {
+        const h = setup();
+        h.send({ type: "notify-permission", surfaceId: "claude-agent:1" });
+        return h;
+      })(),
+    ]) {
+      s.flush();
+      expect(dismisses(s.calls)).toHaveLength(0);
+    }
+  });
+
+  test("the burst-guard pause leaves the alert standing", () => {
+    // Nine prompts in a minute: the first eight are answered and
+    // retracted, the ninth trips the guard. That ninth alert has to
+    // stay on screen — it is now the user's problem.
+    const s = setup();
+    for (let i = 0; i < 9; i++) {
+      s.send({ type: "notify-permission" });
+      s.flush();
+      s.send({ type: "prompt", prompt: "x" });
+      s.advance(100);
+    }
+    expect(dismisses(s.calls)).toHaveLength(8);
+  });
+
+  test("a prompt answered by the user during the delay is not retracted", () => {
+    const { calls, send, flush } = setup();
+    send({ type: "notify-permission" });
+    send({ type: "prompt", prompt: "the user answered it themselves" });
+    flush();
+    expect(dismisses(calls)).toHaveLength(0);
   });
 });

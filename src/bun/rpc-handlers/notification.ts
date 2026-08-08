@@ -27,6 +27,7 @@ export function registerNotification(
   return {
     "notification.create": (params) => {
       const surfaceId = params["surface_id"] as string | undefined;
+      const key = params["key"] as string | undefined;
       const n: Notification = {
         id: `notif:${++notifications.counter}`,
         title: (params["title"] as string) ?? "",
@@ -34,6 +35,7 @@ export function registerNotification(
         body: (params["body"] as string) ?? "",
         time: Date.now(),
         surfaceId,
+        ...(key ? { key } : {}),
       };
       notifications.list.push(n);
       while (notifications.list.length > MAX_NOTIFICATIONS) {
@@ -87,10 +89,23 @@ export function registerNotification(
     },
 
     "notification.dismiss": (params) => {
-      const id = params["id"] as string | undefined;
-      if (!id) return "OK";
-      const idx = notifications.list.findIndex((n) => n.id === id);
+      const byId = params["id"] as string | undefined;
+      // `key` is the producer-correlation path: dismiss the notification
+      // I raised, without having captured the generated id. Newest match
+      // wins — a key can legitimately repeat over a session's lifetime
+      // (one per permission prompt), and the live one is the last.
+      const byKey = params["key"] as string | undefined;
+      // Free-text note ("auto-approved by τ-mux") explaining WHY this was
+      // retracted rather than actioned. Purely informational here; the
+      // host uses it to stamp the forwarded Telegram message so a chat
+      // that got the alert also learns it no longer needs an answer.
+      const resolution = params["resolution"] as string | undefined;
+      if (!byId && !byKey) return "OK";
+      const idx = byId
+        ? notifications.list.findIndex((n) => n.id === byId)
+        : notifications.list.findLastIndex((n) => n.key === byKey);
       if (idx === -1) return "OK";
+      const id = notifications.list[idx]!.id;
       // Snapshot the source surface BEFORE the splice. The webview's
       // overlay manager keeps a per-surface stack and needs this to
       // route the dismiss to the right one. Looking it up post-splice
@@ -98,7 +113,8 @@ export function registerNotification(
       // because the entry is already gone — that was the regression
       // that left every card on screen until *all* notifications were
       // dismissed.
-      const surfaceId = notifications.list[idx]?.surfaceId ?? null;
+      const entry = notifications.list[idx]!;
+      const surfaceId = entry.surfaceId ?? null;
       notifications.list.splice(idx, 1);
       notifications.persist?.();
       // Include the dismissed id so the bun→web bridge can broadcast
@@ -106,6 +122,16 @@ export function registerNotification(
       dispatch("notification", {
         dismissed: id,
         surfaceId,
+        // Carried only on a resolved dismiss. The entry has already
+        // been spliced out by now, so this is the host's only chance to
+        // see the text it needs to re-render the Telegram card.
+        ...(resolution
+          ? {
+              resolution,
+              dismissedTitle: entry.title,
+              dismissedBody: entry.body,
+            }
+          : {}),
         notifications: notifications.list.map((x) => ({
           id: x.id,
           title: x.title,

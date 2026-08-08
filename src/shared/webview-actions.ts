@@ -89,6 +89,14 @@ export interface NotificationPayload {
   latest?: Record<string, unknown>;
   /** Id of a single dismissed notification (server emits on remove). */
   dismissed?: string;
+  /** Why the entry went away, when it was answered rather than swiped
+   *  ("auto-approved by τ-mux"). Absent on a plain user dismiss. The
+   *  host uses it to stamp any forwarded Telegram copy as resolved. */
+  resolution?: string;
+  /** Text of the dismissed entry, carried only alongside `resolution`
+   *  because the entry is gone from `notifications` by then. */
+  dismissedTitle?: string;
+  dismissedBody?: string;
   /** Empty array signals "clear all". */
   notifications?: unknown[];
 }

@@ -51,6 +51,13 @@ export interface Notification {
   body: string;
   time: number;
   surfaceId?: string;
+  /** Optional producer-chosen correlation tag. Lets a producer dismiss
+   *  the notification it raised without having tracked the generated
+   *  id — `notification.create {key}` then `notification.dismiss {key}`.
+   *  Claude auto-approve uses it to retract its own "approval needed"
+   *  toast the moment it answers the prompt. Not unique: the newest
+   *  live entry bearing the key wins on dismiss. */
+  key?: string;
 }
 
 /** Mutable notification list owned by the aggregator and shared with

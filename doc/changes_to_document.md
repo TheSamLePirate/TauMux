@@ -202,3 +202,35 @@ Still to write:
   architecture section should say so.
 - A note that `claude -p` never connects to an IDE — print mode skips
   discovery. Anyone debugging the bridge will otherwise chase it.
+
+## Pending — auto-approve retracts its own alert (2026-08-08)
+
+- **`ht claude auto-approve` now clears the notification it answered.**
+  The presenter's "Claude Code · approval needed" alert used to survive
+  the approval: the overlay card, the sidebar entry, and any forwarded
+  Telegram message all stayed up, asking the user to act on a prompt that
+  had already been answered. Every send (auto AND manual `ht claude
+  approve` / the palette entry) now dismisses it. This belongs in
+  `integrations/claude-code.md` next to the existing auto-approve safety
+  rules — it changes what the user should expect to see.
+- **The alert survives a REFUSED approval**, which is the part worth
+  stating explicitly: burst-guard pause, modal-routed approval, native
+  Claude pane, or the user answering during the delay window all leave
+  the notification standing. Retraction follows the send, not the prompt.
+- **The `sidebar.log` audit line is unchanged.** Worth saying in the docs
+  that the log is the record and the notification was only the interrupt
+  — an unattended approval is still auditable after the fact.
+- **Telegram messages are edited, not deleted.** A forwarded copy is
+  rewritten in place with a `Resolved: auto-approved by τ-mux` footer and
+  its OK / No / Continue / Cancel keyboard removed, and the
+  `notification_links` rows are dropped so a late tap can't dispatch
+  keystrokes at the surface. Belongs in the Telegram integration page
+  wherever the notification buttons are described.
+- **`notification.dismiss` gained two optional params** — `key` (dismiss
+  by the producer's correlation tag from `notification.create {key}`
+  instead of by id; newest match wins) and `resolution` (a note that the
+  notification was answered rather than swiped, which is what triggers
+  the Telegram edit). `notification.create` gained the matching optional
+  `key`. These are new params on existing methods, so the docs-coverage
+  gate does not catch them — the API reference pages for
+  `notification.*` need updating by hand (EN + FR).

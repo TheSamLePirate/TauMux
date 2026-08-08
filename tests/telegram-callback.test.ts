@@ -382,6 +382,62 @@ describe("TelegramDatabase — notification_links", () => {
       surfaceId: null,
     });
   });
+
+  test("reverse lookup finds every chat that got a forwarded copy", () => {
+    // One notification fans out to every allow-listed chat, so
+    // resolving it has to go back and edit all of them — the single
+    // (chat, message) lookup above can't answer that direction.
+    db.linkNotification({
+      chatId: "1",
+      tgMessageId: 10,
+      notificationId: "notif:7",
+      surfaceId: "surface:3",
+    });
+    db.linkNotification({
+      chatId: "2",
+      tgMessageId: 11,
+      notificationId: "notif:7",
+    });
+    db.linkNotification({
+      chatId: "1",
+      tgMessageId: 12,
+      notificationId: "notif:8",
+    });
+
+    const links = db.getNotificationLinksForNotification("notif:7");
+    expect(links).toHaveLength(2);
+    expect(links.map((l) => l.chatId).sort()).toEqual(["1", "2"]);
+    expect(links.find((l) => l.chatId === "1")!.surfaceId).toBe("surface:3");
+    expect(db.getNotificationLinksForNotification("nope")).toEqual([]);
+  });
+
+  test("dropping a notification's links leaves other notifications alone", () => {
+    // Once the message has been stamped resolved its buttons are gone,
+    // but a tap already in flight would still resolve to the surface
+    // and fire keystrokes at it. Dropping the rows closes that race —
+    // and must not take unrelated live notifications down with it.
+    db.linkNotification({
+      chatId: "1",
+      tgMessageId: 20,
+      notificationId: "notif:9",
+    });
+    db.linkNotification({
+      chatId: "2",
+      tgMessageId: 21,
+      notificationId: "notif:9",
+    });
+    db.linkNotification({
+      chatId: "1",
+      tgMessageId: 22,
+      notificationId: "notif:10",
+    });
+
+    expect(db.dropNotificationLinks("notif:9")).toBe(2);
+    expect(db.getNotificationLinksForNotification("notif:9")).toEqual([]);
+    expect(db.getNotificationLink("1", 20)).toBeNull();
+    expect(db.getNotificationLink("1", 22)).not.toBeNull();
+    expect(db.dropNotificationLinks("notif:9")).toBe(0);
+  });
 });
 
 /** Poll a predicate until it's true or `timeoutMs` elapses. Lets tests

@@ -129,11 +129,7 @@ export interface TelegramCallbackInfo {
 }
 
 export type TelegramServiceState =
-  | "disabled"
-  | "starting"
-  | "polling"
-  | "conflict"
-  | "error";
+  "disabled" | "starting" | "polling" | "conflict" | "error";
 
 /** Thrown by the transport when Telegram returns HTTP 409 on getUpdates.
  *  The service catches this specifically to enter the `conflict` state
@@ -933,8 +929,7 @@ function parseMessage(
   // Plan #10 — capture reply_to_message.message_id when present so
   // the host can route typed answers from `force_reply` prompts.
   const replyTo = message["reply_to_message"] as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
   const replyToMessageId =
     replyTo && typeof replyTo["message_id"] === "number"
       ? (replyTo["message_id"] as number)
@@ -971,8 +966,7 @@ function parseCallbackQuery(
     return undefined;
   }
   const parentChat = parentMessage?.["chat"] as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
   const parentMessageId = parentMessage?.["message_id"];
   const chatId = parentChat?.["id"];
   if (
@@ -1029,6 +1023,32 @@ export function formatNotificationForTelegram(input: {
   if (input.pane) ctxBits.push(input.pane);
   if (ctxBits.length > 0) parts.push(`(${ctxBits.join(" / ")})`);
   return parts.join("\n");
+}
+
+/** Rewrite a forwarded notification as resolved. Replaces the message
+ *  body when the host edits it in place after something on the τ-mux
+ *  side answered the prompt (Claude auto-approve). Keeps the original
+ *  text so the chat still reads as a record of what was asked, and
+ *  appends the resolution marker below it. Plain text like its sibling
+ *  above — the caller must also drop the reply markup, or the buttons
+ *  would survive the edit and still fire keystrokes.
+ *
+ *  "Resolved:" rather than a checkmark glyph: design guideline §0 rule
+ *  7 bans emoji repo-wide (enforced by `scripts/audit-emoji.ts`), and
+ *  the ask-user resolution footer already words its own outcomes this
+ *  way ("Answered: yes"). */
+export function formatNotificationResolutionForTelegram(input: {
+  title: string;
+  body: string;
+  resolution: string;
+}): string {
+  const parts: string[] = [];
+  const title = input.title?.trim();
+  const body = input.body?.trim();
+  if (title) parts.push(title);
+  if (body) parts.push(body);
+  parts.push(`Resolved: ${input.resolution.trim()}`);
+  return parts.join("\n\n");
 }
 
 /** Decide who (if anyone) gets a Telegram DM for this notification.

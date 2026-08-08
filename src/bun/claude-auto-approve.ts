@@ -29,9 +29,19 @@
  *      means something is wrong; a human should look.
  *   4. Every send is logged to the sidebar so there is an audit trail of
  *      what was approved unattended.
+ *
+ * Answering also RETRACTS the alert: the presenter's "approval needed"
+ * notification carries `key: claude:approval:<sessionId>`, and every send
+ * dismisses it by that key — clearing the overlay card, the sidebar entry,
+ * and (via the host) the forwarded Telegram message. An alert that nobody
+ * needs to act on is worse than no alert, because it trains the user to
+ * ignore the next real one. Note the ordering: the notification is only
+ * retracted when a send actually happens, so a prompt that is refused by
+ * the rules above — or paused by the burst guard — still shouts.
  */
 
 import type { ClaudeSessionState } from "../shared/claude-types";
+import { claudeApprovalNotificationKey } from "../shared/claude-types";
 import type { ClaudeSessionRegistry } from "./claude-session-registry";
 
 /** More than this many auto-approvals inside the window pauses the
@@ -202,6 +212,18 @@ export class ClaudeAutoApprove {
       level: "info",
       source: "claude",
       message: `${automatic ? "auto-approved" : "approved"}: ${what}`,
+    });
+    // Retract the "approval needed" alert the presenter raised for this
+    // prompt: the question has been answered, so the card, the sidebar
+    // entry, and any forwarded Telegram message are now asking the user
+    // to act on something that is already settled. Keyed dismissal is a
+    // no-op when nothing matches — notifications disabled, an approval
+    // that predates the key, or a prompt the user cleared themselves.
+    // The `sidebar.log` line above survives it: the audit trail is the
+    // record, the notification was only the interrupt.
+    this.call("notification.dismiss", {
+      key: claudeApprovalNotificationKey(s.sessionId),
+      resolution: automatic ? "auto-approved by τ-mux" : "approved in τ-mux",
     });
   }
 

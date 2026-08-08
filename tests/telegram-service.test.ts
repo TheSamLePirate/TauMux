@@ -9,6 +9,7 @@ import {
   type TelegramTransport,
   type TelegramUpdate,
   formatNotificationForTelegram,
+  formatNotificationResolutionForTelegram,
   planNotificationForwarding,
 } from "../src/bun/telegram-service";
 
@@ -360,6 +361,48 @@ describe("formatNotificationForTelegram", () => {
         body: "just a body",
       }),
     ).toBe("just a body");
+  });
+});
+
+describe("formatNotificationResolutionForTelegram", () => {
+  test("keeps the original text and marks what answered it", () => {
+    // The chat is a record of what was asked, not just a live control
+    // panel — replacing the body with a bare "auto-approved" would lose
+    // which prompt was auto-approved, which is the whole audit value.
+    expect(
+      formatNotificationResolutionForTelegram({
+        title: "Claude Code · approval needed",
+        body: "Bash(rm -rf build) — check the pane.",
+        resolution: "auto-approved by τ-mux",
+      }),
+    ).toBe(
+      "Claude Code · approval needed\n\n" +
+        "Bash(rm -rf build) — check the pane.\n\n" +
+        "Resolved: auto-approved by τ-mux",
+    );
+  });
+
+  test("still stamps the resolution when the alert had no body", () => {
+    expect(
+      formatNotificationResolutionForTelegram({
+        title: "Claude Code · approval needed",
+        body: "   ",
+        resolution: "approved in τ-mux",
+      }),
+    ).toBe("Claude Code · approval needed\n\nResolved: approved in τ-mux");
+  });
+
+  test("stays plain text — no parse_mode escaping to get wrong", () => {
+    // Approval messages quote real commands. Under MarkdownV2 an
+    // unescaped `_` or `*` from a filename would make Telegram reject
+    // the edit outright, leaving the stale buttons live.
+    const out = formatNotificationResolutionForTelegram({
+      title: "Claude Code · approval needed",
+      body: "Bash(mv a_b.ts *.bak) — check the pane.",
+      resolution: "auto-approved by τ-mux",
+    });
+    expect(out).toContain("a_b.ts *.bak");
+    expect(out).not.toContain("\\");
   });
 });
 
