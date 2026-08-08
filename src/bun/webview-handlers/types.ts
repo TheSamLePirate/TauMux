@@ -43,6 +43,7 @@
 
 import type { BrowserView, BrowserWindow } from "electrobun/bun";
 import type { AppContext } from "../app-context";
+import type { EditorSurfacePayload } from "../../shared/webview-actions";
 import type { AskUserQueue } from "../ask-user-queue";
 import type { AutoContinueEngine } from "../auto-continue-engine";
 import type { BrowserHistoryStore } from "../browser-history";
@@ -178,16 +179,9 @@ export interface WebviewHandlerContext {
     surfaceId?: string;
     reason?: string;
   };
-  createEditorWorkspaceSurface: (
-    path?: string,
-    cwd?: string,
-    create?: boolean,
-  ) => void;
-  splitEditorSurface: (
-    direction: "horizontal" | "vertical",
-    path?: string,
-    cwd?: string,
-    create?: boolean,
+  /** Mount a file pane. `split` places it beside the focused surface. */
+  openEditorSurface: (
+    opts: EditorSurfacePayload & { split?: "horizontal" | "vertical" },
   ) => void;
   createExtensionWorkspaceSurface: (extensionId: string) => void;
   splitExtensionSurface: (

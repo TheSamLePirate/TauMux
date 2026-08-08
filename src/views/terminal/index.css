@@ -5995,6 +5995,14 @@ body::before, body::after { content: none; }
   background: var(--ht-agent-row-bg-hover);
 }
 
+/* Why a submitted value was refused. Sits between the input and the
+   buttons so it reads as a consequence of the input, not the title. */
+.prompt-error {
+  margin: 6px 0 0;
+  color: var(--tau-err);
+  font-size: 11px;
+}
+
 .prompt-btn {
   min-height: 32px;
   border-radius: 10px;
@@ -12832,6 +12840,183 @@ button.spp-step:hover {
 
 .editor-status.error {
   color: var(--tau-err);
+}
+
+/* ── Image view (file pane, non-text content) ───────────────────────── */
+
+.editor-image-view {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.editor-image-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 10px;
+  /* Checkerboard, so a transparent PNG is distinguishable from an
+     opaque black one on a dark pane. */
+  background-color: var(--tau-bg);
+  background-image:
+    linear-gradient(45deg, var(--tau-edge) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--tau-edge) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--tau-edge) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--tau-edge) 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}
+
+.editor-image-stage img {
+  display: block;
+  /* Nearest-neighbour past 1:1 — inspecting a screenshot pixel by pixel
+     is the reason to zoom in at all, and smoothing defeats it. */
+  image-rendering: pixelated;
+  user-select: none;
+}
+
+.editor-image-stage img.fit {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+.editor-image-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-top: 1px solid var(--tau-edge);
+  background: var(--tau-panel);
+}
+
+.editor-image-btn {
+  min-width: 24px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--tau-edge);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--tau-text-dim);
+  font-family: var(--tau-font-mono);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.editor-image-btn:hover {
+  color: var(--tau-text);
+  border-color: var(--tau-cyan);
+}
+
+.editor-image-btn:focus-visible {
+  outline: 1px solid var(--tau-cyan);
+  outline-offset: 1px;
+}
+
+.editor-image-zoom-label {
+  min-width: 44px;
+  text-align: center;
+  color: var(--tau-text-dim);
+  font-family: var(--tau-font-mono);
+  font-size: 10px;
+}
+
+.editor-svg-preview {
+  height: 100%;
+  background: var(--tau-bg);
+}
+
+.editor-svg-preview iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.surface-editor .editor-svg-toggle {
+  width: auto;
+  padding: 0 6px;
+  font-family: var(--tau-font-mono);
+  font-size: 10px;
+  color: var(--tau-text-dim);
+}
+
+.surface-editor .editor-svg-toggle.hidden {
+  display: none;
+}
+
+/* ── Terminal file-link hover card ──────────────────────────────────── */
+
+.file-link-tooltip {
+  position: fixed;
+  z-index: 9000;
+  max-width: 420px;
+  padding: 7px 9px;
+  border: 1px solid var(--tau-edge);
+  border-radius: 5px;
+  background: var(--tau-panel);
+  box-shadow: 0 6px 22px rgb(0 0 0 / 45%);
+  /* The card must never sit between the pointer and the link it
+     describes — that would fire `leave` and flicker. */
+  pointer-events: none;
+}
+
+.file-link-tooltip-path {
+  color: var(--tau-text);
+  font-family: var(--tau-font-mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.file-link-tooltip-meta {
+  margin-top: 3px;
+  color: var(--tau-text-dim);
+  font-family: var(--tau-font-mono);
+  font-size: 10px;
+}
+
+.file-link-tooltip-hint {
+  margin-top: 3px;
+  color: var(--tau-text-faint);
+  font-size: 10px;
+}
+
+.file-link-tooltip-thumb:not(:empty) {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--tau-edge);
+}
+
+.file-link-tooltip-thumb img {
+  display: block;
+  border-radius: 3px;
+}
+
+/* Flash the row a revealed directory landed on, so the eye can find it
+   in a tree that just expanded by several levels. */
+#sidebar.sidebar-v2 .workspace-file-row.revealed {
+  animation: file-row-reveal 1.6s ease-out;
+}
+
+@keyframes file-row-reveal {
+  0%,
+  40% {
+    background: color-mix(in srgb, var(--tau-cyan) 28%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 /* ── Extension app pane ─────────────────────────────────────────────── */

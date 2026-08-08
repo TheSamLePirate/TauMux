@@ -2,6 +2,59 @@
 
 Pending updates to fold into `website-doc/` on the next user-driven docs sweep.
 
+## Pending — clickable paths in terminal output (2026-08-08)
+
+Nothing here is a new RPC method, `ht` command, or `AppSettings` field, so
+`tests/docs-coverage.test.ts` does not gate it. It still changes documented
+behaviour in three places.
+
+- **`features/` — new page or section: "Clickable paths".** Clicking a
+  `path`, `path:line` or `path:line:col` in terminal output opens it.
+  Document the actual rules:
+  - resolution is absolute (`/…`), `~`-expanded, or relative **to the
+    pane's cwd** (from the metadata poller) — not to τ-mux's launch dir;
+  - only paths that exist are underlined, so a link never opens a dead
+    pane;
+  - a **text** file opens in the file pane at the referenced line;
+  - an **image** (png/jpg/gif/webp/bmp/ico/avif/heic/tiff, by extension
+    *or* magic bytes) opens in an image viewer with fit / 1:1 / zoom and
+    double-click to toggle;
+  - an **SVG** opens as a rendered picture with a `Source` toggle;
+  - a **directory** reveals itself in the sidebar file explorer instead
+    of opening a pane;
+  - clicking again reuses the current file pane (focus + jump for the
+    same file, retarget for a different one); **⌥-click** forces a new
+    split; a pane with unsaved edits is never retargeted;
+  - hovering shows the resolved absolute path, size, mtime and — for
+    images — a preview thumbnail;
+  - a reference **broken across rows** still works, whether the terminal
+    soft-wrapped it or the program re-flowed it onto an indented line
+    (Claude Code's transcript does the latter constantly). Hovering
+    either half links the whole path;
+  - an **HTML file** (`.html` / `.htm` / `.xhtml`) has two valid
+    readings, so neither is forced: a plain click opens the source in
+    the file pane, **⌘-click** opens the rendered page in a browser
+    pane, and the file pane grows a **Preview** button that does the
+    same. `file://` URLs now survive the browser pane's address bar.
+- **Dialogs, across several pages** — five actions that appeared to do
+  nothing now work, because they no longer rely on native browser
+  modals (which the webview swallows): closing/reloading a file pane
+  with unsaved changes ("File not saved" → *Discard and close* /
+  *Keep editing*), removing an extension, regenerating the web-mirror
+  auth token, the file explorer's new-file **+** button, and renaming a
+  pi agent session. Invalid file names are now explained inside the
+  dialog instead of silently rejected.
+- **`cli/` — `ht editor open` / `ht editor split` gained `--line` and
+  `--column`.** 1-based; non-positive / non-integer values are ignored
+  and the file opens at the top.
+- **`concepts/workspaces-and-panes.md`** — the `editor` surface is now a
+  *file* pane: it renders images and SVG as well as text. The surface
+  kind name is unchanged (still seven kinds), so no docs-coverage churn.
+
+EN **and** FR, per CLAUDE.md. Stamp the app version in
+`website-doc/src/content/docs/api/system.md` and `cli/system.md` in the
+same change.
+
 _Backlog cleared 2026-08-08 — **whole-repo docs sync** (`docs/sync-app-state`).
 The 0.10.1 → 0.10.8 backlog below was folded into the site (EN + FR), and the
 repo-level docs were audited against the source for the first time since

@@ -73,3 +73,24 @@ describe("URL helpers", () => {
     });
   });
 });
+
+describe("file:// URLs (local preview)", () => {
+  test("isUrl recognises file://", () => {
+    expect(isUrl("file:///tmp/report/index.html")).toBe(true);
+  });
+
+  test("normalizeUrl leaves file:// alone", () => {
+    // Without the file:// branch this became `https://file:///…`, so a
+    // local preview broke the moment the address bar round-tripped it.
+    expect(normalizeUrl("file:///tmp/a.html")).toBe("file:///tmp/a.html");
+  });
+
+  test("http and https are still untouched", () => {
+    expect(normalizeUrl("http://localhost:3000")).toBe("http://localhost:3000");
+    expect(normalizeUrl("https://example.com")).toBe("https://example.com");
+  });
+
+  test("a bare hostname still gets https", () => {
+    expect(normalizeUrl("example.com")).toBe("https://example.com");
+  });
+});

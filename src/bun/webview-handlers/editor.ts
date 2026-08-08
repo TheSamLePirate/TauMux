@@ -1,4 +1,5 @@
 import { readEditorFile, saveEditorFile } from "../editor-files";
+import { probeFilePaths } from "../file-probe";
 import type { BunMessageHandlerSlice, WebviewHandlerContext } from "./types";
 
 type Keys =
@@ -6,7 +7,8 @@ type Keys =
   | "splitEditorSurface"
   | "editorReadFile"
   | "editorSaveFile"
-  | "editorReloadFile";
+  | "editorReloadFile"
+  | "probeFilePaths";
 
 /** CodeMirror editor pane lifecycle plus file IO. All disk access goes
  *  through `editor-files.ts` which enforces the read / write
@@ -16,19 +18,10 @@ export function registerEditorWebviewHandlers(
 ): BunMessageHandlerSlice<Keys> {
   return {
     createEditorSurface: (payload) => {
-      ctx.createEditorWorkspaceSurface(
-        payload.path,
-        payload.cwd,
-        payload.create,
-      );
+      ctx.openEditorSurface(payload);
     },
     splitEditorSurface: (payload) => {
-      ctx.splitEditorSurface(
-        payload.direction,
-        payload.path,
-        payload.cwd,
-        payload.create,
-      );
+      ctx.openEditorSurface({ ...payload, split: payload.direction });
     },
     editorReadFile: (payload) => {
       ctx.rpc.send("editorFileSnapshot", readEditorFile(payload));
@@ -38,6 +31,24 @@ export function registerEditorWebviewHandlers(
     },
     editorReloadFile: (payload) => {
       ctx.rpc.send("editorFileSnapshot", readEditorFile(payload));
+    },
+    probeFilePaths: (payload) => {
+      // Never throws — a probe failure must degrade to "no link", not
+      // to an unhandled rejection in the RPC bridge.
+      let entries: ReturnType<typeof probeFilePaths> = [];
+      try {
+        entries = probeFilePaths({
+          paths: payload.paths,
+          cwd: payload.cwd,
+          thumbnails: payload.thumbnails,
+        });
+      } catch (err) {
+        console.error("[file-probe] failed:", err);
+      }
+      ctx.rpc.send("filePathsProbed", {
+        requestId: payload.requestId,
+        entries,
+      });
     },
   };
 }

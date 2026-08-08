@@ -8,6 +8,14 @@ function isEditorId(id: unknown): id is string {
   return typeof id === "string" && id.startsWith("editor:");
 }
 
+/** `--line 42` arrives as a string over the socket. Anything that is
+ *  not a positive integer becomes `undefined` so the pane opens at the
+ *  top instead of at a nonsense position. */
+function positiveInt(raw: unknown): number | undefined {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
 export function registerEditor(deps: HandlerDeps): Record<string, Handler> {
   const { getState, dispatch } = deps;
   return {
@@ -19,6 +27,8 @@ export function registerEditor(deps: HandlerDeps): Record<string, Handler> {
         cwd: params["cwd"] as string | undefined,
         create: params["create"] === true || params["create"] === "true",
         direction: normalizeDirection(params["direction"]),
+        line: positiveInt(params["line"]),
+        column: positiveInt(params["column"]),
       };
       dispatch(split ? "splitEditorSurface" : "createEditorSurface", payload);
       return "OK";
@@ -29,13 +39,18 @@ export function registerEditor(deps: HandlerDeps): Record<string, Handler> {
         cwd: params["cwd"] as string | undefined,
         create: params["create"] === true || params["create"] === "true",
         direction: normalizeDirection(params["direction"]),
+        line: positiveInt(params["line"]),
+        column: positiveInt(params["column"]),
       });
       return "OK";
     },
     "editor.list": () => {
       return getState().workspaces.flatMap((ws) =>
         ws.surfaceIds
-          .filter((id) => ws.surfaceTypes?.[id] === "editor" || id.startsWith("editor:"))
+          .filter(
+            (id) =>
+              ws.surfaceTypes?.[id] === "editor" || id.startsWith("editor:"),
+          )
           .map((id) => ({
             id,
             workspaceId: ws.id,
@@ -46,19 +61,28 @@ export function registerEditor(deps: HandlerDeps): Record<string, Handler> {
       );
     },
     "editor.save": (params) => {
-      const id = (params["surface_id"] ?? params["surfaceId"] ?? params["id"] ?? getState().focusedSurfaceId) as string | null;
+      const id = (params["surface_id"] ??
+        params["surfaceId"] ??
+        params["id"] ??
+        getState().focusedSurfaceId) as string | null;
       if (!isEditorId(id)) throw new Error("editor surface id required");
       dispatch("editorSave", { surfaceId: id });
       return "OK";
     },
     "editor.reload": (params) => {
-      const id = (params["surface_id"] ?? params["surfaceId"] ?? params["id"] ?? getState().focusedSurfaceId) as string | null;
+      const id = (params["surface_id"] ??
+        params["surfaceId"] ??
+        params["id"] ??
+        getState().focusedSurfaceId) as string | null;
       if (!isEditorId(id)) throw new Error("editor surface id required");
       dispatch("editorReload", { surfaceId: id });
       return "OK";
     },
     "editor.close": (params) => {
-      const id = (params["surface_id"] ?? params["surfaceId"] ?? params["id"] ?? getState().focusedSurfaceId) as string | null;
+      const id = (params["surface_id"] ??
+        params["surfaceId"] ??
+        params["id"] ??
+        getState().focusedSurfaceId) as string | null;
       if (!isEditorId(id)) throw new Error("editor surface id required");
       dispatch("closeSurface", { surfaceId: id });
       return "OK";

@@ -338,3 +338,393 @@ describe("Editor pane — destroy", () => {
     expect(cleaned).toBe(2);
   });
 });
+
+// ── File-pane content kinds ────────────────────────────────────────
+//
+// The pane is no longer only an editor: a clicked `.png` in terminal
+// output opens here too. These pin the three renderers apart, since
+// picking the wrong one is immediately visible to the user (a
+// broken-image icon, or "binary files cannot be edited" on a picture).
+
+const PNG_DATA_URI =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+function imageSnapshot(
+  surfaceId: string,
+  overrides: Partial<EditorFileSnapshot> = {},
+): EditorFileSnapshot {
+  return {
+    surfaceId,
+    path: "/tmp/shot.png",
+    content: "",
+    exists: true,
+    size: 4096,
+    mtimeMs: 1_000_000,
+    kind: "image",
+    imageMime: "image/png",
+    imageDataUri: PNG_DATA_URI,
+    ...overrides,
+  };
+}
+
+describe("Editor pane — images", () => {
+  test("renders an <img> from the data URI instead of CodeMirror", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, imageSnapshot("editor:1"));
+    const img = view.editorHostEl.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img!.getAttribute("src")).toBe(PNG_DATA_URI);
+    expect(view.editor).toBeNull();
+    expect(view.contentKind).toBe("image");
+  });
+
+  test("starts fitted to the pane", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, imageSnapshot("editor:1"));
+    expect(view.image?.zoom).toBeNull();
+    expect(view.editorHostEl.querySelector("img")!.classList.contains("fit")).toBe(true);
+  });
+
+  test("1:1 leaves fit mode; Fit returns to it", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, imageSnapshot("editor:1"));
+    const btn = (label: string) =>
+      [...view.editorHostEl.querySelectorAll("button")].find(
+        (b) => b.textContent === label,
+      )!;
+    btn("1:1").click();
+    expect(view.image?.zoom).toBe(1);
+    btn("Fit").click();
+    expect(view.image?.zoom).toBeNull();
+  });
+
+  test("zoom steps are discrete and bounded at both ends", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, imageSnapshot("editor:1"));
+    const btn = (label: string) =>
+      [...view.editorHostEl.querySelectorAll("button")].find(
+        (b) => b.textContent === label,
+      )!;
+    // Zooming out from "fit" anchors at 1:1 and steps down from there.
+    btn("−").click();
+    expect(view.image!.zoom).toBeLessThan(1);
+    for (let i = 0; i < 20; i++) btn("−").click();
+    expect(view.image!.zoom).toBe(0.1);
+    for (let i = 0; i < 40; i++) btn("+").click();
+    expect(view.image!.zoom).toBe(8);
+  });
+
+  test("an image can never be saved — there is no buffer to write", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, imageSnapshot("editor:1"));
+    expect(view.saveBtn.disabled).toBe(true);
+    // ...but reloading from disk still makes sense.
+    expect(view.reloadBtn.disabled).toBe(false);
+  });
+
+  test("switching from an image back to text tears the viewer down", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, imageSnapshot("editor:1"));
+    ed.editorPaneApplySnapshot(view, tsSnapshot("editor:1"));
+    expect(view.editorHostEl.querySelector("img")).toBeNull();
+    expect(view.image).toBeNull();
+    expect(view.contentKind).toBe("text");
+    expect(view.editor).not.toBeNull();
+  });
+});
+
+describe("Editor pane — SVG", () => {
+  const svg = "<svg xmlns='http://www.w3.org/2000/svg'><rect/></svg>";
+  const svgSnapshot = (surfaceId: string): EditorFileSnapshot => ({
+    surfaceId,
+    path: "/tmp/logo.svg",
+    content: svg,
+    exists: true,
+    size: svg.length,
+    mtimeMs: 1,
+    kind: "svg",
+    language: "html",
+  });
+
+  test("shows the picture first, inside a sandboxed iframe", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, svgSnapshot("editor:1"));
+    expect(view.svgShowingSource).toBe(false);
+    const frame = view.editorHostEl.querySelector("iframe");
+    expect(frame).not.toBeNull();
+    // The fd4 rule: no scripts, no same-origin. An SVG is an executable
+    // document and this one came from terminal output.
+    const sandbox = frame!.getAttribute("sandbox") ?? "";
+    expect(sandbox).not.toContain("allow-scripts");
+    expect(sandbox).not.toContain("allow-same-origin");
+  });
+
+  test("the toggle flips to an editable source view and back", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, svgSnapshot("editor:1"));
+    expect(view.svgToggleBtn.classList.contains("hidden")).toBe(false);
+
+    ed.toggleSvgSource(view);
+    expect(view.svgShowingSource).toBe(true);
+    expect(view.editor).not.toBeNull();
+    expect(view.svgToggleBtn.textContent).toBe("Preview");
+
+    ed.toggleSvgSource(view);
+    expect(view.svgShowingSource).toBe(false);
+    expect(view.editorHostEl.querySelector("iframe")).not.toBeNull();
+    expect(view.svgToggleBtn.textContent).toBe("Source");
+  });
+
+  test("the toggle is hidden for non-SVG content", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, tsSnapshot("editor:1"));
+    expect(view.svgToggleBtn.classList.contains("hidden")).toBe(true);
+  });
+});
+
+describe("Editor pane — reveal position", () => {
+  const doc = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join("\n");
+
+  test("a snapshot carrying a line parks the cursor there", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(
+      view,
+      tsSnapshot("editor:1", { content: doc, revealLine: 12 }),
+    );
+    const state = view.editor!.state;
+    expect(state.doc.lineAt(state.selection.main.head).number).toBe(12);
+  });
+
+  test("line + column lands on the column", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(
+      view,
+      tsSnapshot("editor:1", { content: doc, revealLine: 3, revealColumn: 4 }),
+    );
+    const state = view.editor!.state;
+    const line = state.doc.lineAt(state.selection.main.head);
+    expect(line.number).toBe(3);
+    expect(state.selection.main.head - line.from).toBe(3);
+  });
+
+  test("a line past the end clamps instead of throwing", async () => {
+    // Terminal output goes stale: a trace can name a line in a file
+    // that has since shrunk. Opening it is still the right outcome.
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    expect(() =>
+      ed.editorPaneApplySnapshot(
+        view,
+        tsSnapshot("editor:1", { content: doc, revealLine: 9999 }),
+      ),
+    ).not.toThrow();
+    const state = view.editor!.state;
+    expect(state.doc.lineAt(state.selection.main.head).number).toBe(40);
+  });
+
+  test("revealPosition() jumps an already-open document without re-reading", async () => {
+    const ed = await load();
+    const s = spies();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(s));
+    ed.editorPaneApplySnapshot(view, tsSnapshot("editor:1", { content: doc }));
+    const before = s.reads.length;
+    ed.revealPosition(view, 30, null);
+    expect(view.editor!.state.doc.lineAt(view.editor!.state.selection.main.head).number).toBe(30);
+    expect(s.reads.length).toBe(before);
+  });
+
+  test("no line means no jump — the document opens at the top", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, tsSnapshot("editor:1", { content: doc }));
+    const state = view.editor!.state;
+    expect(state.doc.lineAt(state.selection.main.head).number).toBe(1);
+  });
+});
+
+// ── Closing / reloading with unsaved changes ───────────────────────
+//
+// These used to call the DOM `confirm()`. Inside the Electrobun webview
+// that modal never opens and the call returns false, so closing a dirty
+// pane silently did nothing — the pane was unclosable until saved.
+
+function barButton(view: { container: HTMLElement }, label: string) {
+  return [...view.container.querySelectorAll("button")].find(
+    (b) => b.getAttribute("aria-label") === label,
+  )!;
+}
+
+function dialog() {
+  return document.querySelector(".prompt-overlay");
+}
+
+function dialogButton(label: string) {
+  return [...document.querySelectorAll(".prompt-overlay button")].find(
+    (b) => b.textContent === label,
+  ) as HTMLButtonElement | undefined;
+}
+
+describe("Editor pane — unsaved-changes guard", () => {
+  async function dirtyEditor() {
+    const ed = await load();
+    const s = spies();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(s));
+    ed.editorPaneApplySnapshot(view, tsSnapshot("editor:1"));
+    view.editor!.dispatch({
+      changes: { from: 0, insert: "// edited\n" },
+    });
+    expect(view.dirty).toBe(true);
+    return { ed, s, view };
+  }
+
+  test("a clean pane closes immediately, with no dialog", async () => {
+    const ed = await load();
+    const s = spies();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(s));
+    ed.editorPaneApplySnapshot(view, tsSnapshot("editor:1"));
+    barButton(view, "Close").click();
+    expect(s.closes).toEqual(["editor:1"]);
+    expect(dialog()).toBeNull();
+  });
+
+  test("a dirty pane asks first instead of closing", async () => {
+    const { s, view } = await dirtyEditor();
+    barButton(view, "Close").click();
+    expect(dialog()).not.toBeNull();
+    expect(document.querySelector(".prompt-title")!.textContent).toBe(
+      "File not saved",
+    );
+    expect(s.closes).toEqual([]);
+  });
+
+  test("confirming discards and closes", async () => {
+    const { s, view } = await dirtyEditor();
+    barButton(view, "Close").click();
+    dialogButton("Discard and close")!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(s.closes).toEqual(["editor:1"]);
+  });
+
+  test("cancelling keeps the pane and its edits", async () => {
+    const { s, view } = await dirtyEditor();
+    barButton(view, "Close").click();
+    dialogButton("Keep editing")!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(s.closes).toEqual([]);
+    expect(view.dirty).toBe(true);
+  });
+
+  test("reload asks too, and only reloads on confirm", async () => {
+    const { s, view } = await dirtyEditor();
+    barButton(view, "Reload from disk").click();
+    expect(dialog()).not.toBeNull();
+    expect(s.reloads).toEqual([]);
+    dialogButton("Discard and reload")!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(s.reloads).toEqual([
+      { surfaceId: "editor:1", path: "/tmp/example.ts" },
+    ]);
+  });
+
+  test("a clean pane reloads without asking", async () => {
+    const ed = await load();
+    const s = spies();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(s));
+    ed.editorPaneApplySnapshot(view, tsSnapshot("editor:1"));
+    barButton(view, "Reload from disk").click();
+    expect(dialog()).toBeNull();
+    expect(s.reloads).toHaveLength(1);
+  });
+});
+
+// ── HTML: source and rendered page are both wanted ─────────────────
+//
+// Neither reading wins by default — the pane opens the source and
+// offers Preview, and ⌘-clicking the terminal link goes straight to a
+// browser pane. The button matters because a modifier nobody knows
+// about is not a feature.
+
+const htmlSnapshot = (
+  surfaceId: string,
+  path = "/tmp/report/index.html",
+): EditorFileSnapshot => ({
+  surfaceId,
+  path,
+  content: "<!doctype html><title>hi</title>",
+  exists: true,
+  size: 32,
+  mtimeMs: 1,
+  kind: "text",
+  language: "html",
+});
+
+describe("Editor pane — HTML preview", () => {
+  test("an HTML file still opens as editable source", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, htmlSnapshot("editor:1"));
+    expect(view.editor).not.toBeNull();
+    expect(view.contentKind).toBe("text");
+  });
+
+  test("the Preview button appears for HTML", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, htmlSnapshot("editor:1"));
+    expect(view.previewBtn.classList.contains("hidden")).toBe(false);
+  });
+
+  test("and stays hidden for anything else", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, tsSnapshot("editor:1"));
+    expect(view.previewBtn.classList.contains("hidden")).toBe(true);
+    ed.editorPaneApplySnapshot(view, imageSnapshot("editor:1"));
+    expect(view.previewBtn.classList.contains("hidden")).toBe(true);
+  });
+
+  test("a file that does not exist yet cannot be previewed", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, {
+      ...htmlSnapshot("editor:1"),
+      exists: false,
+      content: "",
+    });
+    expect(view.previewBtn.classList.contains("hidden")).toBe(true);
+  });
+
+  test("clicking Preview asks for a browser pane on the resolved path", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, htmlSnapshot("editor:1"));
+    const seen: unknown[] = [];
+    const onEvent = (e: Event) => seen.push((e as CustomEvent).detail);
+    window.addEventListener("ht-open-file-in-browser", onEvent);
+    view.previewBtn.click();
+    window.removeEventListener("ht-open-file-in-browser", onEvent);
+    expect(seen).toEqual([{ path: "/tmp/report/index.html" }]);
+  });
+
+  test("switching from HTML to another file hides the button again", async () => {
+    const ed = await load();
+    const view = ed.createEditorPaneView("editor:1", undefined, callbacks(spies()));
+    ed.editorPaneApplySnapshot(view, htmlSnapshot("editor:1"));
+    ed.editorPaneApplySnapshot(view, tsSnapshot("editor:1"));
+    expect(view.previewBtn.classList.contains("hidden")).toBe(true);
+  });
+});

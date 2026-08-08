@@ -40,7 +40,10 @@ import type {
   TelegramWireMessage,
   AutoContinueAuditEntry,
 } from "../shared/types";
-import type { ActionPayloadByAction } from "../shared/webview-actions";
+import type {
+  ActionPayloadByAction,
+  EditorSurfacePayload,
+} from "../shared/webview-actions";
 import { SessionManager } from "./session-manager";
 import { BrowserSurfaceManager } from "./browser-surface-manager";
 import { BrowserHistoryStore } from "./browser-history";
@@ -691,8 +694,7 @@ const {
   claudeNewSession: claudePaneHost.newSession,
   claudeApprove: (surfaceId) =>
     claudeIntegration.autoApprove.approveNow(surfaceId),
-  createEditorWorkspaceSurface,
-  splitEditorSurface,
+  openEditorSurface,
   createExtensionWorkspaceSurface,
   splitExtensionSurface,
   sendTelegramAndBroadcast,
@@ -1043,45 +1045,34 @@ function nextEditorSurfaceId(): string {
   return `editor:${++editorSurfaceCounter}:${Date.now().toString(36)}`;
 }
 
-function createEditorWorkspaceSurface(
-  path?: string,
-  cwd?: string,
-  create?: boolean,
-): void {
-  const surfaceId = nextEditorSurfaceId();
-  const resolvedPath = path ? resolveEditorPath(path, cwd) : undefined;
-  app.focusedSurfaceId = surfaceId;
-  rpc.send("editorSurfaceCreated", { surfaceId, path: resolvedPath });
-  if (resolvedPath) {
-    rpc.send(
-      "editorFileSnapshot",
-      readEditorFile({ surfaceId, path: resolvedPath, create }),
-    );
-  }
-}
-
-function splitEditorSurface(
-  direction: "horizontal" | "vertical",
-  path?: string,
-  cwd?: string,
-  create?: boolean,
+/** Mount a file pane. `split` places it beside the focused surface;
+ *  omitting it opens a new workspace. `line`/`column` travel through to
+ *  the snapshot so a clicked `path:line` reference lands on the line. */
+function openEditorSurface(
+  opts: EditorSurfacePayload & { split?: "horizontal" | "vertical" },
 ): void {
   const splitFrom = app.focusedSurfaceId;
   const surfaceId = nextEditorSurfaceId();
-  const resolvedPath = path ? resolveEditorPath(path, cwd) : undefined;
+  const path = opts.path ? resolveEditorPath(opts.path, opts.cwd) : undefined;
   app.focusedSurfaceId = surfaceId;
   rpc.send("editorSurfaceCreated", {
     surfaceId,
-    path: resolvedPath,
-    splitFrom: splitFrom ?? undefined,
-    direction,
+    path,
+    ...(opts.split
+      ? { splitFrom: splitFrom ?? undefined, direction: opts.split }
+      : {}),
   });
-  if (resolvedPath) {
-    rpc.send(
-      "editorFileSnapshot",
-      readEditorFile({ surfaceId, path: resolvedPath, create }),
-    );
-  }
+  if (!path) return;
+  rpc.send(
+    "editorFileSnapshot",
+    readEditorFile({
+      surfaceId,
+      path,
+      create: opts.create,
+      line: opts.line,
+      column: opts.column,
+    }),
+  );
 }
 
 // ── Extension Surface Creation ──
@@ -2297,16 +2288,10 @@ function dispatch(action: string, payload: Record<string, unknown>) {
     const p = payload as ActionPayloadByAction["splitBrowserSurface"];
     splitBrowserSurface(p.direction || "horizontal", p.url);
   } else if (action === "createEditorSurface") {
-    const p = payload as ActionPayloadByAction["createEditorSurface"];
-    createEditorWorkspaceSurface(p.path, p.cwd, p.create === true);
+    openEditorSurface(payload as ActionPayloadByAction["createEditorSurface"]);
   } else if (action === "splitEditorSurface") {
     const p = payload as ActionPayloadByAction["splitEditorSurface"];
-    splitEditorSurface(
-      p.direction || "horizontal",
-      p.path,
-      p.cwd,
-      p.create === true,
-    );
+    openEditorSurface({ ...p, split: p.direction || "horizontal" });
   } else if (action === "createExtensionSurface") {
     const p = payload as ActionPayloadByAction["createExtensionSurface"];
     if (p.extensionId) createExtensionWorkspaceSurface(p.extensionId);

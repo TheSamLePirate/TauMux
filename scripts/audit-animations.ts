@@ -119,6 +119,8 @@ const STATE_EXCEPTIONS: Record<string, string> = {
     "Sidebar-v2 running-script dot pulse. State: script running.",
   "sb-server-dot-pulse":
     "Sidebar-v2 server dot pulse. State: connecting / retrying.",
+  "file-row-reveal":
+    "File-explorer row flash after a clicked terminal path revealed it. State: this is the row you just asked for — a tree that expanded several levels at once gives the eye nowhere to land without it.",
 };
 
 interface AuditResult {

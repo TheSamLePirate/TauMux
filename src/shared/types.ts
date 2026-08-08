@@ -533,6 +533,11 @@ export interface SidebarFileExplorerListing {
   error?: string;
 }
 
+/** What the file pane should render. `text` is CodeMirror; `image` is
+ *  an `<img>` viewer; `svg` is both, defaulting to the picture with a
+ *  toggle to the source. Absent on error snapshots. */
+export type EditorContentKind = "text" | "image" | "svg";
+
 export interface EditorFileSnapshot {
   surfaceId: string;
   path: string;
@@ -545,6 +550,36 @@ export interface EditorFileSnapshot {
   error?: string;
   binary?: boolean;
   tooLarge?: boolean;
+  kind?: EditorContentKind;
+  /** `data:<mime>;base64,…` — set only when `kind === "image"`. Images
+   *  cross the RPC bridge inline rather than by path because the
+   *  webview's origin cannot read `file://`. */
+  imageDataUri?: string;
+  imageMime?: string;
+  /** Cursor destination from a clicked `path:line:col` reference. The
+   *  pane selects the position and scrolls it to centre. */
+  revealLine?: number | null;
+  revealColumn?: number | null;
+}
+
+/** One answer from `probeFilePaths` — enough for the link provider to
+ *  decide whether to underline, and for the hover tooltip to describe
+ *  what a click will do. */
+export interface ProbedPath {
+  /** The reference exactly as it appeared in terminal output. */
+  input: string;
+  /** Absolute path after `~` expansion and cwd resolution. Equal to
+   *  `input` when resolution itself failed. */
+  resolved: string;
+  type: "file" | "directory" | "other" | "missing";
+  contentKind: "text" | "image" | "svg";
+  size: number;
+  mtimeMs: number | null;
+  imageMime?: string;
+  /** Full image bytes as a data URI, for the hover preview. Only ever
+   *  set when the caller asked for thumbnails AND the file is under
+   *  `MAX_THUMBNAIL_BYTES`. */
+  thumbnailDataUri?: string;
 }
 
 export interface EditorSaveResult {
@@ -848,14 +883,29 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       };
 
       // ── Editor surface lifecycle (webview → bun) ──
-      createEditorSurface: { path?: string; cwd?: string; create?: boolean };
+      createEditorSurface: {
+        path?: string;
+        cwd?: string;
+        create?: boolean;
+        line?: number | null;
+        column?: number | null;
+      };
       splitEditorSurface: {
         direction: "horizontal" | "vertical";
         path?: string;
         cwd?: string;
         create?: boolean;
+        line?: number | null;
+        column?: number | null;
       };
-      editorReadFile: { surfaceId: string; path: string; create?: boolean };
+      editorReadFile: {
+        surfaceId: string;
+        path: string;
+        create?: boolean;
+        cwd?: string;
+        line?: number | null;
+        column?: number | null;
+      };
       editorSaveFile: {
         surfaceId: string;
         path: string;
@@ -863,6 +913,20 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
         expectedMtimeMs?: number | null;
       };
       editorReloadFile: { surfaceId: string; path: string };
+
+      /** Stat + classify a batch of candidate paths. Drives the
+       *  terminal's clickable `path:line` links: the provider only
+       *  underlines what actually exists, so a click can never land on
+       *  a pane that says "File does not exist". Answered on
+       *  `webview.messages.filePathsProbed`. Native webview only — the
+       *  LAN mirror has no file links and must not gain a filesystem
+       *  oracle. */
+      probeFilePaths: {
+        requestId: string;
+        paths: string[];
+        cwd?: string;
+        thumbnails?: boolean;
+      };
 
       // ── Extension surface lifecycle (webview → bun) ──
       /** Open a new extension pane in the active workspace. */
@@ -1144,6 +1208,9 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       };
       editorFileSnapshot: EditorFileSnapshot;
       editorSaveResult: EditorSaveResult;
+      /** Answer to `bun.messages.probeFilePaths`, correlated by
+       *  `requestId`. Entries are in request order. */
+      filePathsProbed: { requestId: string; entries: ProbedPath[] };
 
       // ── Extension (bun → webview) ──
       /** Mount an extension pane. The webview points an iframe at `devUrl`

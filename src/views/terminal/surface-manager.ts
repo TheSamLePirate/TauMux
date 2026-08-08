@@ -22,7 +22,7 @@ import { TerminalEffects } from "./terminal-effects";
 import { describeOsc94State, type Osc94Update } from "./osc-progress";
 import { installTerminalOscHandlers } from "./terminal-osc";
 import { installTerminalWidthAndClipboard } from "./terminal-clipboard";
-import { installFileLinks } from "./terminal-links";
+import { FileLinkController } from "./file-link-controller";
 import { installFileDrop } from "./terminal-drop";
 import {
   installThemeReporting,
@@ -198,6 +198,8 @@ export class SurfaceManager {
   });
   private activeWorkspaceIndex = -1;
   private focusedSurfaceId: string | null = null;
+  /** Clickable `path:line` references. See file-link-controller.ts. */
+  private fileLinks: FileLinkController;
   private dividerEls: HTMLDivElement[] = [];
   private sidebar: Sidebar;
   private terminalEffectsEnabled = true;
@@ -324,6 +326,13 @@ export class SurfaceManager {
       allSurfaces: () => this.surfaces.values(),
       focusSurface: (id) => this.focusSurface(id),
       notifyGlow: (id) => this.notifyGlow(id),
+    });
+    this.fileLinks = new FileLinkController({
+      activeSurfaceIds: () => this.activeWorkspace()?.surfaceIds ?? null,
+      getSurface: (id) => this.surfaces.get(id),
+      focusSurface: (id) => this.focusSurface(id),
+      getCwd: (id) => this.metadata.get(id)?.cwd,
+      revealInSidebar: (path) => this.sidebar.revealPath(path),
     });
     this.claude = new ClaudeSurfaceController({
       publishCwd: (id, cwd) => {
@@ -654,6 +663,12 @@ export class SurfaceManager {
     this.extension.applyBackendMessage(surfaceId, payload);
   }
 
+  /** Clickable-path controller. index.ts wires its RPC sender and feeds
+   *  `filePathsProbed` answers back through it. */
+  getFileLinks(): FileLinkController {
+    return this.fileLinks;
+  }
+
   // Editor handlers — thin forwards to EditorSurfaceController. Public names
   // unchanged for the index.ts RPC handlers + keybindings + palette.
   applyEditorFileSnapshot(snapshot: EditorFileSnapshot): void {
@@ -868,6 +883,8 @@ export class SurfaceManager {
     // focusing the pane is an implicit "I've seen it" signal.
     this.sidebar.acknowledgeBySurface(surfaceId);
     const focusedView = this.surfaces.get(surfaceId);
+    if (focusedView)
+      this.fileLinks.noteFocus(surfaceId, focusedView.surfaceType);
     if (
       focusedView?.surfaceType === "browser" ||
       focusedView?.surfaceType === "telegram" ||
@@ -2471,17 +2488,8 @@ export class SurfaceManager {
       onPulse: (len) => effects.pulseInput(len),
     });
 
-    // `path:line` references → the editor pane. Agent CLIs, compilers
-    // and stack traces print these constantly; τ-mux is one of the few
-    // terminals where the click has somewhere to go.
-    installFileLinks(term, {
-      getCwd: () => this.metadata.get(surfaceId)?.cwd,
-      openFile: (ref) =>
-        htEvents.emit("ht-open-file-in-editor", {
-          path: ref.path,
-          cwd: ref.cwd,
-        }),
-    });
+    // `path:line` references → the file pane. See file-link-controller.
+    this.fileLinks.attach(term, surfaceId);
 
     // DECSET 2031 — tell a program when the palette flips dark/light so
     // it can re-pick its own colours. Replies go to the PTY's stdin;

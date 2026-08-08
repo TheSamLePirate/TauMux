@@ -108,11 +108,23 @@ export type WorkspacesChangedPayload = void;
  *  callers also include a workspaceId hint so the host can target
  *  the right pane group; the editor-side consumer reads only `path`
  *  and `create` today but the field is part of the contract. */
+/** Render a local file in a browser pane instead of editing it. Raised
+ *  by ⌘-clicking a previewable terminal link and by the file pane's
+ *  Preview button. `path` is absolute; the URL is built at the RPC
+ *  boundary. */
+export interface OpenFileInBrowserPayload {
+  path: string;
+}
+
 export interface OpenFileInEditorPayload {
   path: string;
   cwd?: string;
   create?: boolean;
   workspaceId?: string;
+  /** 1-based cursor destination. Carried from a clicked
+   *  `path:line:col` reference in terminal output. */
+  line?: number | null;
+  column?: number | null;
 }
 
 /** Surface close request — sent from sidebar workspace-card close and
@@ -356,6 +368,12 @@ export interface EditorReadFilePayload {
   surfaceId: string;
   path: string;
   create?: boolean;
+  /** Resolve `path` against this directory when it is relative. Set by
+   *  clicked terminal links, which carry their pane's cwd. */
+  cwd?: string;
+  /** 1-based cursor destination from a `path:line:col` reference. */
+  line?: number | null;
+  column?: number | null;
 }
 export interface EditorSaveFilePayload {
   surfaceId: string;
@@ -514,6 +532,7 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-workspace-changed": WorkspaceChangedPayload;
   "ht-workspaces-changed": WorkspacesChangedPayload;
   "ht-open-file-in-editor": OpenFileInEditorPayload;
+  "ht-open-file-in-browser": OpenFileInBrowserPayload;
   // P7 S9 — A6 batch 2 channels.
   "ht-close-surface": CloseSurfacePayload;
   "ht-split": SplitPayload;

@@ -127,6 +127,50 @@ describe("Settings → Network — auth-token row (P7 S8 / H.9)", () => {
     expect(token).toMatch(/^[0-9a-f]+$/);
   });
 
+  // The guard used to be a DOM `confirm()`, which never opens inside the
+  // Electrobun webview and returns false — so Regenerate silently did
+  // nothing at all once a token existed.
+  test("Regenerate asks first when a token already exists", async () => {
+    const { partials, authRow } = await openNetworkPanel("existing-token");
+    const regen = Array.from(
+      authRow.querySelectorAll<HTMLButtonElement>("button"),
+    ).find((b) => b.textContent === "Regenerate");
+    regen!.click();
+    expect(document.querySelector(".prompt-overlay")).not.toBeNull();
+    expect(partials).toEqual([]);
+  });
+
+  test("confirming the ask regenerates the token", async () => {
+    const { partials, authRow } = await openNetworkPanel("existing-token");
+    Array.from(authRow.querySelectorAll<HTMLButtonElement>("button"))
+      .find((b) => b.textContent === "Regenerate")!
+      .click();
+    Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".prompt-overlay button"),
+    )
+      .find((b) => b.textContent === "Regenerate")!
+      .click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(partials).toHaveLength(1);
+    expect(
+      (partials[0] as { webMirrorAuthToken: string }).webMirrorAuthToken,
+    ).toHaveLength(64);
+  });
+
+  test("cancelling the ask keeps the existing token", async () => {
+    const { partials, authRow } = await openNetworkPanel("existing-token");
+    Array.from(authRow.querySelectorAll<HTMLButtonElement>("button"))
+      .find((b) => b.textContent === "Regenerate")!
+      .click();
+    Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".prompt-overlay button"),
+    )
+      .find((b) => b.textContent === "Cancel")!
+      .click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(partials).toEqual([]);
+  });
+
   test("Mirror URL hint appears only when a token is set", async () => {
     const empty = await openNetworkPanel("");
     expect(empty.container.textContent?.includes("Mirror URL:")).toBeFalsy();

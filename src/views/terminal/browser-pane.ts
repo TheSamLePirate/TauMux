@@ -56,7 +56,10 @@ const SEARCH_ENGINES: Record<string, string> = {
 };
 
 export function isUrl(input: string): boolean {
-  if (/^https?:\/\//i.test(input)) return true;
+  // `file://` is here so a local preview round-trips through the
+  // address bar. Without it `normalizeUrl` would treat the URL as a
+  // bare hostname and produce `https://file:///…`.
+  if (/^(?:https?|file):\/\//i.test(input)) return true;
   if (/^localhost(:\d+)?(\/|$)/i.test(input)) return true;
   if (/^127\.0\.0\.1(:\d+)?(\/|$)/.test(input)) return true;
   if (/^\[?::1\]?(:\d+)?(\/|$)/.test(input)) return true;
@@ -66,7 +69,7 @@ export function isUrl(input: string): boolean {
 }
 
 export function normalizeUrl(input: string): string {
-  if (/^https?:\/\//i.test(input)) return input;
+  if (/^(?:https?|file):\/\//i.test(input)) return input;
   if (/^localhost/i.test(input) || /^127\./.test(input) || /^::1/.test(input)) {
     return `http://${input}`;
   }

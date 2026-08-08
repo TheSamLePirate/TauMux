@@ -45,6 +45,7 @@ import {
   dismissDialog,
   type ExtensionDialog,
   handleExtUI,
+  promptSessionRename,
   showForkDialog,
   showSessionBrowserDialog,
   showSettingsDialog,
@@ -328,10 +329,10 @@ export function createAgentPaneView(
   sessionNameEl.textContent = "";
   sessionNameEl.title = "Click to rename session";
   sessionNameEl.addEventListener("click", () => {
-    const name = prompt("Session name:", state.sessionName || "");
-    if (name !== null) {
-      dispatch("ht-agent-set-session-name", { agentId, name });
-    }
+    void promptSessionRename(state.sessionName || "").then((name) => {
+      if (name !== null)
+        dispatch("ht-agent-set-session-name", { agentId, name });
+    });
   });
   toolbarEl.appendChild(sessionNameEl);
 
@@ -752,8 +753,7 @@ export function agentPanelHandleEvent(
 
     case "message_update": {
       const d = event["assistantMessageEvent"] as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       if (!d) break;
       const dt = d["type"] as string;
       if (dt === "text_delta") {
@@ -790,8 +790,7 @@ export function agentPanelHandleEvent(
       const tc = s.toolCalls.get(tcId);
       if (tc) {
         const pr = event["partialResult"] as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         if (pr?.["content"]) {
           tc.result = extractContent(pr["content"]).slice(0, 3000);
         }

@@ -15,6 +15,8 @@ import {
   type ManifestActionState,
 } from "./sidebar-manifest-card";
 import { renderStatusEntry, reconcileChildren } from "./status-renderers";
+import { planReveal, scrollRevealedRowIntoView } from "./sidebar-reveal";
+import { buildNewFileButton } from "./sidebar-file-actions";
 import { SidebarFooter, type AutoApproveState } from "./sidebar-footer";
 import type { WorkspaceInfo as SharedWorkspaceInfo } from "../../shared/sidebar-state";
 import { htEvents } from "../../shared/event-bus";
@@ -328,6 +330,9 @@ export class Sidebar {
         maxEntries: number;
       }) => void)
     | null = null;
+  /** Path a `revealPath` call is still trying to scroll to. Held until
+   *  the directory listing that contains its row arrives. */
+  private pendingRevealPath: string | null = null;
   private fileExplorerListings = new Map<string, SidebarFileExplorerListing>();
   private fileExplorerLoading = new Set<string>();
   private fileExplorerOpenDirs = new Map<string, Set<string>>();
@@ -505,6 +510,42 @@ export class Sidebar {
     this.fileExplorerLoading.delete(listing.path);
     this.fileExplorerListings.set(listing.path, listing);
     if (this.workspaces.length > 0) this.renderWorkspaces();
+    // A reveal in flight may have been waiting on exactly this listing
+    // to be able to scroll to its row.
+    if (this.pendingRevealPath) this.scrollRevealIntoView();
+  }
+
+  /** Expand the file explorer down to `path` and scroll to it. False
+   *  when no workspace root contains it — see sidebar-reveal.ts. */
+  revealPath(path: string): boolean {
+    const plan = planReveal(
+      path,
+      this.workspaces.map((w) => ({ id: w.id, root: this.getExplorerRoot(w) })),
+    );
+    if (!plan) return false;
+    // The explorer section is collapsed by default; revealing into a
+    // closed section would be a silent no-op.
+    this.ensureUiState(plan.workspaceId).filesOpen = true;
+    this.persistUiState();
+    const open =
+      this.fileExplorerOpenDirs.get(plan.workspaceId) ?? new Set<string>();
+    for (const dir of plan.expand) {
+      open.add(dir);
+      this.ensureFileExplorerListing(dir);
+    }
+    this.fileExplorerOpenDirs.set(plan.workspaceId, open);
+    this.pendingRevealPath = path.replace(/\/+$/, "");
+    this.renderWorkspaces();
+    this.scrollRevealIntoView();
+    return true;
+  }
+
+  private scrollRevealIntoView(): void {
+    const target = this.pendingRevealPath;
+    if (!target) return;
+    if (scrollRevealedRowIntoView(this.container, target)) {
+      this.pendingRevealPath = null;
+    }
   }
 
   /** Plan #10 commit C: pending ask-user count keyed by workspace id.
@@ -1841,29 +1882,7 @@ export class Sidebar {
       meta.title = `${listing.totalEntries ?? listing.entries.length} total entries before filters`;
       head.appendChild(meta);
     }
-    const newBtn = document.createElement("button");
-    newBtn.type = "button";
-    newBtn.className = "workspace-file-new";
-    newBtn.title = "Create a new file in this directory";
-    newBtn.setAttribute("aria-label", "Create a new file in this directory");
-    newBtn.append(createIcon("plus", "", 10));
-    newBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const name = prompt("New file name", "untitled.txt")?.trim();
-      if (!name) return;
-      if (name.includes("/")) {
-        alert("Use a file name without slashes.");
-        return;
-      }
-      // P7 S8 — typed EventBus migration. Same DOM CustomEvent under
-      // the hood; the call site now type-checks the payload shape.
-      htEvents.emit("ht-open-file-in-editor", {
-        path: `${root.replace(/\/+$/, "")}/${name}`,
-        workspaceId: ws.id,
-        create: true,
-      });
-    });
-    head.appendChild(newBtn);
+    head.appendChild(buildNewFileButton(root, ws.id));
     wrap.appendChild(head);
     wrap.appendChild(this.buildFileExplorerDir(ws.id, root, 0));
     return wrap;
@@ -1909,6 +1928,8 @@ export class Sidebar {
       row.style.setProperty("--file-depth", String(depth));
       const visual = describeExplorerEntry(entry);
       row.className = `workspace-file-row ${entry.kind} file-kind-${visual.kind}`;
+      // Lets `revealPath` find this row once its listing has landed.
+      row.dataset["path"] = entry.path;
       const modified = entry.mtimeMs
         ? relativeTime(entry.mtimeMs)
         : "unknown time";

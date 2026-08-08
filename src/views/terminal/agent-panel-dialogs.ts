@@ -15,6 +15,7 @@
  */
 
 import { autoResize, dispatch, escapeHtml } from "./agent-panel-utils";
+import { showPromptDialog } from "./prompt-dialog";
 import type { AgentPaneView } from "./agent-panel";
 
 export interface ExtensionDialog {
@@ -768,5 +769,21 @@ export function showForkDialog(
       view._state.activeDialog = null;
       overlay.classList.add("agent-dialog-hidden");
     });
+  });
+}
+
+/**
+ * Rename prompt for the toolbar's session-name chip.
+ *
+ * Uses the app's own sheet, not the DOM `prompt()` the chip shipped
+ * with: inside the Electrobun webview that returns null unconditionally,
+ * so clicking the name to rename it did nothing at all.
+ */
+export function promptSessionRename(current: string): Promise<string | null> {
+  return showPromptDialog({
+    title: "Rename session",
+    initialValue: current,
+    placeholder: "Session name",
+    confirmLabel: "Rename",
   });
 }

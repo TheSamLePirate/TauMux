@@ -5,6 +5,15 @@ interface PromptDialogOptions {
   placeholder?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  /**
+   * Reject a value and say why, or return null to accept.
+   *
+   * Runs on submit and keeps the sheet open so the user can fix the
+   * value in place. That is the whole point: the alternative callers
+   * reached for was `alert()`, which inside the Electrobun webview
+   * displays nothing at all — the input just appeared to be ignored.
+   */
+  validate?: (value: string) => string | null;
 }
 
 export interface ConfirmDialogOptions {
@@ -79,20 +88,40 @@ export function showPromptDialog(
 
     activeOverlay = overlay;
 
+    /** Inline validation message; created on first refusal. */
+    let errorEl: HTMLParagraphElement | null = null;
+
+    /**
+     * Refuse the current value. `reason` is null for the empty case,
+     * where the shake alone says it: there is nothing to explain.
+     */
+    function refuse(reason: string | null): void {
+      if (reason) {
+        if (!errorEl) {
+          errorEl = document.createElement("p");
+          errorEl.className = "prompt-error";
+          // `alert` role so the message is announced, not just drawn.
+          errorEl.setAttribute("role", "alert");
+          sheet.insertBefore(errorEl, actions);
+        }
+        errorEl.textContent = reason;
+      }
+      // Empty values silently did nothing before — user hit Enter on a
+      // blank input and got no feedback, looked broken. Shake the
+      // input briefly to show the action was seen but refused.
+      input.classList.remove("prompt-input-invalid");
+      // Force reflow so the class re-add triggers the animation again
+      // on repeat invalid submits.
+      void input.offsetWidth;
+      input.classList.add("prompt-input-invalid");
+      input.focus();
+    }
+
     function submit(): void {
       const value = input.value.trim();
-      if (!value) {
-        // Empty values silently did nothing before — user hit Enter on a
-        // blank input and got no feedback, looked broken. Shake the
-        // input briefly to show the action was seen but refused.
-        input.classList.remove("prompt-input-invalid");
-        // Force reflow so the class re-add triggers the animation again
-        // on repeat empty-submits.
-        void input.offsetWidth;
-        input.classList.add("prompt-input-invalid");
-        input.focus();
-        return;
-      }
+      if (!value) return refuse(null);
+      const problem = options.validate?.(value) ?? null;
+      if (problem) return refuse(problem);
       finish(value);
     }
 
@@ -301,4 +330,35 @@ export function cancelActivePromptDialog(): boolean {
     closePromptDialog();
   }
   return true;
+}
+
+/**
+ * Confirm-then-run for a destructive action.
+ *
+ * Exists because the DOM `confirm()` is a trap in this app: inside the
+ * Electrobun webview the native modal never opens and the call returns
+ * `false`, so every `if (confirm(...))` guard silently swallowed its
+ * action forever. Three call sites shipped with that bug (closing a
+ * dirty editor pane, removing an extension, regenerating the web-mirror
+ * token) — this is the replacement they all use.
+ *
+ * Callback rather than a promise because every call site is a DOM event
+ * handler that only cares about the "yes" branch; threading
+ * `.then((ok) => { if (ok) … })` through each one is noise.
+ */
+export function confirmDestructive(
+  title: string,
+  message: string,
+  confirmLabel: string,
+  onConfirm: () => void,
+): void {
+  void showConfirmDialog({
+    title,
+    message,
+    confirmLabel,
+    cancelLabel: "Cancel",
+    danger: true,
+  }).then((ok) => {
+    if (ok) onConfirm();
+  });
 }

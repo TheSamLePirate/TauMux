@@ -140,6 +140,10 @@ export interface EditorSurfacePayload {
   path?: string;
   cwd?: string;
   create?: boolean;
+  /** 1-based cursor destination. Set by a clicked `path:line:col`
+   *  terminal link and by `ht editor open --line`. */
+  line?: number | null;
+  column?: number | null;
 }
 
 export interface SplitEditorSurfacePayload extends EditorSurfacePayload {

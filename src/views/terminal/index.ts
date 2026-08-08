@@ -24,7 +24,7 @@ import { renderStatusKey, type StatusContext } from "./status-keys";
 import "./tau-focus-audit";
 import { VariantController } from "./variants/controller";
 import type { VariantId } from "./variants/types";
-import { showPromptDialog } from "./prompt-dialog";
+import { confirmDestructive, showPromptDialog } from "./prompt-dialog";
 import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";
 import { createIntegrationsControl } from "./integrations-control";
@@ -35,6 +35,7 @@ import { SurfaceDetailsPanel } from "./surface-details";
 import { showToast } from "./toast";
 import { registerAgentEvents } from "./agent-events";
 import { registerBrowserEvents } from "./browser-events";
+import { registerEditorEvents } from "./editor-events";
 import { createSocketActionDispatcher } from "./socket-actions";
 import { NotificationOverlay } from "./notification-overlay";
 import { createTestActionRouter } from "./__test-handlers";
@@ -195,6 +196,9 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       },
       editorFileSnapshot: (payload) => {
         surfaceManager.applyEditorFileSnapshot(payload);
+      },
+      filePathsProbed: (payload) => {
+        surfaceManager.getFileLinks().applyProbeResult(payload);
       },
       editorSaveResult: (payload) => {
         surfaceManager.applyEditorSaveResult(payload);
@@ -423,6 +427,11 @@ surfaceManager.setTerminalEffectsEnabled(loadTerminalEffectsEnabled());
 surfaceManager.getSidebar().setFileExplorerRequester((request) => {
   rpc.send("sidebarFileExplorerList", request);
 });
+// Clickable `path:line` references must know whether a path exists
+// before underlining it. Answers arrive on `filePathsProbed` above.
+surfaceManager
+  .getFileLinks()
+  .setProbeSender((request) => rpc.send("probeFilePaths", request));
 
 // τ-mux variants (Cockpit / Atlas) need a reference to surfaceManager
 // to read workspace state and dispatch workspace switches without
@@ -1824,15 +1833,13 @@ function buildPaletteCommands(): PaletteCommand[] {
           category: "Extensions",
           label: `Remove ${label}`,
           description: `Uninstall "${ext.name}" (deletes its folder).`,
-          action: () => {
-            if (
-              confirm(
-                `Remove the "${ext.name}" extension? This deletes its folder.`,
-              )
-            ) {
-              rpc.send("extensionRemove", { id: ext.id });
-            }
-          },
+          action: () =>
+            confirmDestructive(
+              "Remove extension",
+              `Remove "${ext.name}"? This deletes its folder.`,
+              "Remove",
+              () => rpc.send("extensionRemove", { id: ext.id }),
+            ),
         },
       ];
     }),
@@ -2936,55 +2943,8 @@ window.addEventListener("ht-telegram-request-state", () => {
 // ── Native Claude Code pane → bun (M3/WS5) ──
 wireClaudePaneBridge(rpc);
 
-// ── Editor pane → bun ──
-window.addEventListener("ht-editor-read-file", (e: Event) => {
-  const detail = (e as CustomEvent).detail as
-    { surfaceId?: string; path?: string; create?: boolean } | undefined;
-  if (!detail?.surfaceId || !detail.path) return;
-  rpc.send("editorReadFile", {
-    surfaceId: detail.surfaceId,
-    path: detail.path,
-    create: detail.create,
-  });
-});
-
-window.addEventListener("ht-editor-save-file", (e: Event) => {
-  const detail = (e as CustomEvent).detail as
-    | {
-        surfaceId?: string;
-        path?: string;
-        content?: string;
-        expectedMtimeMs?: number | null;
-      }
-    | undefined;
-  if (!detail?.surfaceId || !detail.path || typeof detail.content !== "string")
-    return;
-  rpc.send("editorSaveFile", {
-    surfaceId: detail.surfaceId,
-    path: detail.path,
-    content: detail.content,
-    expectedMtimeMs: detail.expectedMtimeMs ?? null,
-  });
-});
-
-window.addEventListener("ht-editor-reload-file", (e: Event) => {
-  const detail = (e as CustomEvent).detail as
-    { surfaceId?: string; path?: string } | undefined;
-  if (!detail?.surfaceId || !detail.path) return;
-  rpc.send("editorReloadFile", {
-    surfaceId: detail.surfaceId,
-    path: detail.path,
-  });
-});
-
-window.addEventListener("ht-split-editor", (e: Event) => {
-  const detail = (e as CustomEvent).detail as
-    { path?: string; direction?: "horizontal" | "vertical" } | undefined;
-  rpc.send("splitEditorSurface", {
-    direction: detail?.direction ?? "horizontal",
-    path: detail?.path,
-  });
-});
+// ── Editor / file pane → bun ──
+registerEditorEvents(rpc);
 
 window.addEventListener("ht-split-extension", (e: Event) => {
   const detail = (e as CustomEvent).detail as
@@ -3003,17 +2963,6 @@ window.addEventListener("ht-extension-frontend-message", (e: Event) => {
   rpc.send("extensionFrontendMessage", {
     surfaceId: detail.surfaceId,
     payload: detail.payload,
-  });
-});
-
-window.addEventListener("ht-open-file-in-editor", (e: Event) => {
-  const detail = (e as CustomEvent).detail as
-    { path?: string; create?: boolean } | undefined;
-  if (!detail?.path) return;
-  rpc.send("splitEditorSurface", {
-    direction: "horizontal",
-    path: detail.path,
-    create: detail.create,
   });
 });
 
