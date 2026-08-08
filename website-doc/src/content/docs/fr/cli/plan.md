@@ -93,7 +93,7 @@ Supprime entièrement le plan. Renvoie :
 
 ## Pont par clé de statut
 
-Les clés `ht set-status` dont le nom contient « plan » et dont la valeur est un tableau JSON d'objets `{id, title, state}` sont **automatiquement reflétées** dans le `PlanStore` typé — les agents qui publient déjà des checklists via le [système intelligent de clés de statut](/fr/features/sidebar/) allument le panneau plan gratuitement, sans appel `ht plan` requis :
+Les clés `ht set-status` dont le nom contient « plan » et dont la valeur est un tableau JSON d'objets `{id, title, state}` sont **automatiquement reflétées** dans le `PlanStore` typé — les agents qui publient déjà des checklists via le [système intelligent de clés de statut](/fr/cli/sidebar-and-status/) allument le panneau plan gratuitement, sans appel `ht plan` requis :
 
 ```bash
 ht set-status build_plan '[{"id":"compile","title":"Compile","state":"active"}]'

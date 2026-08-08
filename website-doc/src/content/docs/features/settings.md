@@ -11,14 +11,15 @@ All settings persist to `~/Library/Application Support/hyperterm-canvas/settings
 
 | Section | What it covers |
 |---|---|
-| **General** | `shellPath` (empty = `$SHELL`), `scrollbackLines`. |
-| **Appearance** | font family/size, line height, cursor style, cursor blink. |
-| **Theme** | 10 presets + per-color overrides, background opacity, accent / secondary / foreground colors, full 16-color ANSI palette. |
-| **Effects** | terminal bloom toggle + intensity. |
-| **Network** | web mirror port + auto-start + bind address + optional auth token. |
+| **General** | `shellPath` (empty = `$SHELL`), `scrollbackLines`, package manager. |
+| **Appearance** | font family/size, line height, cursor style, cursor blink, density. |
+| **Theme** | 12 presets + per-color overrides, terminal background opacity, accent / secondary / foreground colors, full 16-color ANSI palette. |
+| **Effects** | terminal bloom toggle + intensity, notification sound + volume. |
+| **Layout** | layout variant (Bridge / Cockpit / Atlas), pane gap, sidebar width. |
+| **Network** | web mirror port + auto-start + bind address + optional auth token, RPC socket token requirement. |
 | **Browser** | search engine, home page, force dark mode, terminal link interception. |
 | **Telegram** | bot token + access policy + chats + notification forwarding. |
-| **Advanced** | pane gap (px between splits), sidebar width. |
+| **Advanced** | terminal renderer (GPU / DOM), diagnostics, auto-continue engine. |
 
 Full per-field reference: [Configuration → Settings](/configuration/settings/).
 

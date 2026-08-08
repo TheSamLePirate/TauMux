@@ -1,26 +1,30 @@
 ---
 title: Thèmes
-description: 10 préréglages intégrés plus surcharges par couleur — le schéma, les préréglages et comment créer le vôtre.
+description: 12 préréglages intégrés plus surcharges par couleur — le schéma, les préréglages et comment créer le vôtre.
 sidebar:
   order: 3
 ---
 
-τ-mux est livré avec 10 préréglages de thème intégrés et permet de surcharger n'importe quelle couleur individuellement. Le thème est global à tous les panneaux.
+τ-mux est livré avec 12 préréglages de thème intégrés et permet de surcharger n'importe quelle couleur individuellement. Le thème est global à tous les panneaux.
 
 ## Préréglages intégrés
 
-| Préréglage | Style |
-|---|---|
-| `obsidian` (défaut) | Sombre, accents bleus. |
-| `catppuccin-mocha` | Sombre, pastel. |
-| `tokyo-night` | Sombre, bleu profond / violet. |
-| `dracula` | Sombre, rose / cyan vibrant. |
-| `nord` | Sombre, bleu froid. |
-| `rose-pine` | Sombre, rose poussiéreux. |
-| `gruvbox-dark` | Sombre, tons terreux chauds. |
-| `solarized-dark` | Sombre, contraste équilibré. |
-| `synthwave-84` | Sombre, néon. |
-| `everforest` | Sombre, vert doux. |
+La colonne `id` est la valeur stockée dans le réglage `themePreset`.
+
+| Id du préréglage | Nom | Style |
+|---|---|---|
+| `tau` (défaut) | τ-mux | Sombre, accents cyan — le thème maison. |
+| `graphite` | Graphite | Sombre, gris neutre. |
+| `obsidian` | Obsidian | Sombre, accents bleus. |
+| `catppuccin-mocha` | Catppuccin Mocha | Sombre, pastel. |
+| `tokyo-night` | Tokyo Night | Sombre, bleu profond / violet. |
+| `dracula` | Dracula | Sombre, rose / cyan vibrant. |
+| `nord` | Nord | Sombre, bleu froid. |
+| `rose-pine` | Rosé Pine | Sombre, rose poussiéreux. |
+| `gruvbox` | Gruvbox Dark | Sombre, tons terreux chauds. |
+| `solarized` | Solarized Dark | Sombre, contraste équilibré. |
+| `synthwave` | Synthwave '84 | Sombre, néon. |
+| `everforest` | Everforest | Sombre, vert doux. |
 
 Changez via **Settings → Theme**. Le changement s'applique en direct à tous les panneaux.
 

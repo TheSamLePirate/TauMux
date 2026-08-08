@@ -11,14 +11,15 @@ Tous les paramètres sont persistés dans `~/Library/Application Support/hyperte
 
 | Section | Ce qu'elle couvre |
 |---|---|
-| **General** | `shellPath` (vide = `$SHELL`), `scrollbackLines`. |
-| **Appearance** | famille / taille de police, hauteur de ligne, style du curseur, clignotement du curseur. |
-| **Theme** | 10 préréglages + remplacements par couleur, opacité de l'arrière-plan, couleurs accent / secondaire / premier plan, palette ANSI 16 couleurs complète. |
-| **Effects** | bascule du bloom du terminal + intensité. |
-| **Network** | port du miroir web + auto-démarrage + adresse de bind + jeton d'auth optionnel. |
+| **General** | `shellPath` (vide = `$SHELL`), `scrollbackLines`, gestionnaire de paquets. |
+| **Appearance** | famille / taille de police, hauteur de ligne, style du curseur, clignotement du curseur, densité. |
+| **Theme** | 12 préréglages + remplacements par couleur, opacité de l'arrière-plan du terminal, couleurs accent / secondaire / premier plan, palette ANSI 16 couleurs complète. |
+| **Effects** | bascule du bloom du terminal + intensité, son de notification + volume. |
+| **Layout** | variante de disposition (Bridge / Cockpit / Atlas), écart entre panneaux, largeur de la barre latérale. |
+| **Network** | port du miroir web + auto-démarrage + adresse de bind + jeton d'auth optionnel, exigence de jeton pour le socket RPC. |
 | **Browser** | moteur de recherche, page d'accueil, mode sombre forcé, interception des liens du terminal. |
 | **Telegram** | jeton du bot + politique d'accès + conversations + transfert de notifications. |
-| **Advanced** | écart entre panneaux (px entre splits), largeur de la barre latérale. |
+| **Advanced** | moteur de rendu du terminal (GPU / DOM), diagnostics, moteur d'auto-continue. |
 
 Référence complète par champ : [Configuration → Settings](/fr/configuration/settings/).
 

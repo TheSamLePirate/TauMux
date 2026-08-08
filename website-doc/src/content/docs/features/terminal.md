@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-The terminal layer in τ-mux is xterm.js 5.3 attached to a `Bun.spawn` PTY. It behaves like a real terminal — colors, line editing, mouse reporting, alt-screen TUIs all work.
+The terminal layer in τ-mux is xterm.js (`@xterm/xterm` 6.0) attached to a `Bun.spawn` PTY. It behaves like a real terminal — colors, line editing, mouse reporting, alt-screen TUIs all work.
 
 ## What you get
 
@@ -13,9 +13,10 @@ The terminal layer in τ-mux is xterm.js 5.3 attached to a `Bun.spawn` PTY. It b
 - **Mouse support.** Click, drag, scroll. Mouse reporting forwards to TUIs that ask for it.
 - **Find in buffer.** `⌘F` opens a search bar with regex toggle, case-sensitive toggle, and next/previous navigation.
 - **Scrollback.** Default 10 000 lines, configurable in settings.
-- **Copy / paste.** `⌘C` / `⌘V`. Selection auto-copies if you set `Settings → Appearance → Copy on select`.
+- **Copy / paste.** `⌘C` / `⌘V`.
 - **Font size live.** `⌘=` / `⌘-` / `⌘0` to bump, shrink, or reset.
-- **Themes.** 10 presets (Catppuccin, Tokyo Night, Dracula, Nord, Rosé Pine, Gruvbox, Solarized, Synthwave '84, Everforest, Obsidian) plus per-color overrides.
+- **Themes.** 12 presets (τ-mux, Graphite, Obsidian, Catppuccin Mocha, Tokyo Night, Dracula, Nord, Rosé Pine, Gruvbox, Solarized, Synthwave '84, Everforest) plus per-color overrides — see [themes](/configuration/themes/).
+- **Renderer.** GPU (WebGL) or DOM, switchable in **Settings → Advanced**.
 - **Effects.** Optional WebGL bloom layer; toggle in **Settings → Effects**. Off by default.
 
 ## Things the terminal does NOT do

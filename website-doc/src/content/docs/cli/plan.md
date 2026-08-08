@@ -93,7 +93,7 @@ Drop the plan entirely. Returns:
 
 ## Status-key bridge
 
-`ht set-status` keys whose name contains "plan" and whose value is a JSON array of `{id, title, state}` objects are **automatically mirrored** into the typed `PlanStore` — agents already publishing checklists via the [smart status-key system](/features/sidebar/) light up the plan panel for free, no `ht plan` calls required:
+`ht set-status` keys whose name contains "plan" and whose value is a JSON array of `{id, title, state}` objects are **automatically mirrored** into the typed `PlanStore` — agents already publishing checklists via the [smart status-key system](/cli/sidebar-and-status/) light up the plan panel for free, no `ht plan` calls required:
 
 ```bash
 ht set-status build_plan '[{"id":"compile","title":"Compile","state":"active"}]'

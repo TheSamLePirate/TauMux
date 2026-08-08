@@ -1,26 +1,30 @@
 ---
 title: Themes
-description: 10 built-in presets plus per-color overrides — the schema, the presets, and how to author your own.
+description: 12 built-in presets plus per-color overrides — the schema, the presets, and how to author your own.
 sidebar:
   order: 3
 ---
 
-τ-mux ships with 10 built-in theme presets and lets you override any color individually. Theme is global across all panes.
+τ-mux ships with 12 built-in theme presets and lets you override any color individually. Theme is global across all panes.
 
 ## Built-in presets
 
-| Preset | Style |
-|---|---|
-| `obsidian` (default) | Dark, blue accents. |
-| `catppuccin-mocha` | Dark, pastel. |
-| `tokyo-night` | Dark, deep blue / purple. |
-| `dracula` | Dark, vibrant pink / cyan. |
-| `nord` | Dark, cool blue. |
-| `rose-pine` | Dark, dusty rose. |
-| `gruvbox-dark` | Dark, warm earth tones. |
-| `solarized-dark` | Dark, balanced contrast. |
-| `synthwave-84` | Dark, neon. |
-| `everforest` | Dark, soft green. |
+The `id` column is the value stored in the `themePreset` setting.
+
+| Preset id | Name | Style |
+|---|---|---|
+| `tau` (default) | τ-mux | Dark, cyan accents — the house theme. |
+| `graphite` | Graphite | Dark, neutral grey. |
+| `obsidian` | Obsidian | Dark, blue accents. |
+| `catppuccin-mocha` | Catppuccin Mocha | Dark, pastel. |
+| `tokyo-night` | Tokyo Night | Dark, deep blue / purple. |
+| `dracula` | Dracula | Dark, vibrant pink / cyan. |
+| `nord` | Nord | Dark, cool blue. |
+| `rose-pine` | Rosé Pine | Dark, dusty rose. |
+| `gruvbox` | Gruvbox Dark | Dark, warm earth tones. |
+| `solarized` | Solarized Dark | Dark, balanced contrast. |
+| `synthwave` | Synthwave '84 | Dark, neon. |
+| `everforest` | Everforest | Dark, soft green. |
 
 Switch via **Settings → Theme**. The change applies live across all panes.
 

@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-La couche terminal dans τ-mux est xterm.js 5.3 attaché à un PTY `Bun.spawn`. Elle se comporte comme un véritable terminal — couleurs, line editing, mouse reporting, applications TUI en alt-screen fonctionnent toutes.
+La couche terminal dans τ-mux est xterm.js (`@xterm/xterm` 6.0) attaché à un PTY `Bun.spawn`. Elle se comporte comme un véritable terminal — couleurs, line editing, mouse reporting, applications TUI en alt-screen fonctionnent toutes.
 
 ## Ce que vous obtenez
 
@@ -13,9 +13,10 @@ La couche terminal dans τ-mux est xterm.js 5.3 attaché à un PTY `Bun.spawn`. 
 - **Support souris.** Click, drag, scroll. Le mouse reporting est transmis aux TUIs qui le demandent.
 - **Recherche dans le tampon.** `⌘F` ouvre une barre de recherche avec bascule regex, bascule sensible à la casse, et navigation suivant/précédent.
 - **Scrollback.** 10 000 lignes par défaut, configurable dans les paramètres.
-- **Copier / coller.** `⌘C` / `⌘V`. La sélection se copie automatiquement si vous activez `Settings → Appearance → Copy on select`.
+- **Copier / coller.** `⌘C` / `⌘V`.
 - **Taille de police en direct.** `⌘=` / `⌘-` / `⌘0` pour augmenter, réduire ou réinitialiser.
-- **Thèmes.** 10 préréglages (Catppuccin, Tokyo Night, Dracula, Nord, Rosé Pine, Gruvbox, Solarized, Synthwave '84, Everforest, Obsidian) plus remplacements par couleur.
+- **Thèmes.** 12 préréglages (τ-mux, Graphite, Obsidian, Catppuccin Mocha, Tokyo Night, Dracula, Nord, Rosé Pine, Gruvbox, Solarized, Synthwave '84, Everforest) plus remplacements par couleur — voir [thèmes](/fr/configuration/themes/).
+- **Moteur de rendu.** GPU (WebGL) ou DOM, commutable dans **Settings → Advanced**.
 - **Effets.** Couche WebGL bloom optionnelle ; bascule dans **Settings → Effects**. Désactivée par défaut.
 
 ## Choses que le terminal NE fait PAS
