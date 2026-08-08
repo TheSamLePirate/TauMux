@@ -3,7 +3,7 @@
 Session of 2026-08-08. Goal: clicking a path in a terminal pane resolves it
 correctly and opens it in the right kind of pane.
 
-**Commit:** `40df3fd0` — feat(terminal): clickable paths open the right pane
+**Commit:** `866c5608` — feat(terminal): clickable paths open the right pane
 (v0.16.0). Branch `feat/claude-code-terminal`, not pushed.
 
 ## Starting state — what was actually broken
