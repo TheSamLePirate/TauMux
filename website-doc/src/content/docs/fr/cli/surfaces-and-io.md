@@ -141,6 +141,23 @@ Envoie du texte brut au PTY de la surface. La chaîne est désechappée avant é
 
 Tout le reste passe verbatim. Mettez l'argument entre guillemets doubles (ou la forme préférée de votre shell) pour que les backslashes survivent au parsing du shell.
 
+## paste
+
+```bash
+ht paste "ligne un\nligne deux\nligne trois"
+ht paste --surface surface:3 "$(cat prompt.md)"
+```
+
+Mêmes échappements que `send`, mais le texte est livré comme un **collage** et non comme une frappe : lorsque le programme qui tourne dans le panneau a activé le collage entre crochets (`DECSET 2004`), la charge utile est encadrée par `ESC[200~` … `ESC[201~`.
+
+C'est là tout l'intérêt. Les CLI d'agent — Claude Code, pi, et tout ce qui possède un éditeur de prompt multiligne — utilisent le collage entre crochets pour distinguer un bloc collé d'une saisie au clavier. Envoyez un prompt multiligne avec `send` et chaque saut de ligne le soumet : un prompt de cinq lignes devient cinq tours séparés. Envoyez-le avec `paste` et il arrive comme un seul message.
+
+Utilisez `send` pour lancer une commande ; utilisez `paste` pour confier un bloc de texte à ce qui tourne déjà.
+
+Si le programme n'a **pas** activé le collage entre crochets — une simple invite shell, par exemple — `paste` se comporte exactement comme `send`. L'encadrement est la décision de l'application, jamais la nôtre.
+
+Les séquences `ESC[200~` / `ESC[201~` intégrées sont retirées de la charge utile : une chaîne malveillante ne peut donc pas refermer le crochet prématurément et faire exécuter le reste comme des commandes tapées.
+
 ## send-key
 
 ```bash

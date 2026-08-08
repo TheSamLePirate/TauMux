@@ -599,6 +599,21 @@ export function mapCommand(ctx: CliContext): RpcCall {
           text: unescapeText(positional[0] || ""),
         },
       };
+    // `paste` is `send` with bracketed-paste framing. It exists as its own
+    // command rather than a `--paste` flag on `send` because parseFlags is
+    // greedy: `ht send --paste "text"` would swallow the text as the flag's
+    // value. A separate verb also states the intent — pasting a block and
+    // typing a command are different actions with different newline
+    // semantics, and scripts driving an agent CLI want the former.
+    case "paste":
+      return {
+        method: "surface.send_text",
+        params: {
+          surface_id: flags["surface"],
+          text: unescapeText(positional[0] || ""),
+          paste: true,
+        },
+      };
     case "send-key":
       return {
         method: "surface.send_key",

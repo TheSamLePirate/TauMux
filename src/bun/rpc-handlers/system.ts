@@ -2,7 +2,11 @@ import type { Handler, HandlerDeps } from "./types";
 import { computeNormalizedRects } from "./shared";
 import { RPC_PROTOCOL } from "../../shared/brand";
 
-const VERSION = "0.11.0";
+// Kept as a literal (rather than importing APP_VERSION from
+// ../../shared/brand) because `scripts/bump-version.ts` rewrites this
+// exact line by regex. The two copies are pinned together by
+// tests/version-consistency.test.ts.
+const VERSION = "0.11.1";
 const START_TIME_MS = Date.now();
 
 /** system.* handlers: diagnostic + discovery RPCs.

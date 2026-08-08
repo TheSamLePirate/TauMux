@@ -1650,6 +1650,33 @@ export class SettingsPanel {
       },
     );
 
+    this.toggleField(
+      c,
+      "OSC 9 notifications",
+      s.terminalOsc9NotifyEnabled,
+      "terminalOsc9NotifyEnabled",
+      {
+        note:
+          "Let programs in a pane raise a real notification with " +
+          "ESC ] 9 ; message — the channel agent CLIs call “iterm2 " +
+          "notifications”. Goes to the overlay, the sidebar, and " +
+          "Telegram when forwarding is on.",
+      },
+    );
+
+    this.toggleField(
+      c,
+      "Bell notifications",
+      s.terminalBellNotifyEnabled,
+      "terminalBellNotifyEnabled",
+      {
+        note:
+          "Turn BEL into a notification — the “terminal_bell” " +
+          "channel agent CLIs offer. Throttled so a program ringing the " +
+          "bell in a loop can't flood the centre.",
+      },
+    );
+
     // Diagnostic paths — read-only. Useful when bug-reporting; the
     // "Reveal" button matches the App-menu item of the same name.
     this.diagnosticPathsBlock(c);

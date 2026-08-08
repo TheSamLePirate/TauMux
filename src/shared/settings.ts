@@ -70,6 +70,19 @@ export interface AppSettings {
    *  Disable if a tool emits OSC 9;4 noise you don't want surfaced. */
   terminalOsc94Enabled: boolean;
 
+  /** OSC 9 notification passthrough (iTerm2 dialect —
+   *  `ESC ] 9 ; <message>`). When true, a program asking the terminal to
+   *  notify the user gets a real τ-mux notification: overlay, sidebar,
+   *  sound, and Telegram forwarding if that is on. This is the channel
+   *  agent CLIs mean by "iterm2 notifications". Default true. */
+  terminalOsc9NotifyEnabled: boolean;
+
+  /** Turn `BEL` into a notification. This is the `terminal_bell`
+   *  notification channel agent CLIs offer. Throttled internally so a
+   *  program ringing the bell in a loop cannot flood the centre.
+   *  Default true. */
+  terminalBellNotifyEnabled: boolean;
+
   /** Pinned `git config --global user.name` checked at startup by
    *  the audit module (`src/bun/audits.ts`). Mismatch surfaces a
    *  warn-level audit result with a one-step fix. Null disables the
@@ -751,6 +764,8 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   terminalBloom: false,
   bloomIntensity: 0,
   terminalOsc94Enabled: true,
+  terminalOsc9NotifyEnabled: true,
+  terminalBellNotifyEnabled: true,
   // H0g (full_app_review_2026-05.md): null = audit opt-out. Must NOT ship a
   // specific person's git username in the defaults every user inherits.
   auditsGitUserNameExpected: null,
@@ -984,6 +999,14 @@ export function validateSettings(s: AppSettings): AppSettings {
     terminalOsc94Enabled: SETTINGS_FIELD_SCHEMAS.terminalOsc94Enabled.validate(
       s.terminalOsc94Enabled,
     ),
+    terminalOsc9NotifyEnabled:
+      SETTINGS_FIELD_SCHEMAS.terminalOsc9NotifyEnabled.validate(
+        s.terminalOsc9NotifyEnabled,
+      ),
+    terminalBellNotifyEnabled:
+      SETTINGS_FIELD_SCHEMAS.terminalBellNotifyEnabled.validate(
+        s.terminalBellNotifyEnabled,
+      ),
     auditsGitUserNameExpected:
       SETTINGS_FIELD_SCHEMAS.auditsGitUserNameExpected.validate(
         s.auditsGitUserNameExpected,

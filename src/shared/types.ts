@@ -648,6 +648,11 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       // Notifications
       clearNotifications: void;
       dismissNotification: { id: string };
+      /** A program inside a PTY asked the terminal to notify the user —
+       *  `OSC 9 ; <message>` (iTerm2 dialect) or `BEL`. Routed to
+       *  `notification.create` on the bun side so it lands in the same
+       *  store, overlay, sound and Telegram fan-out as `ht notify`. */
+      terminalNotify: { surfaceId: string; title: string; body: string };
 
       // Plan panel — the only plan mutation the UI performs. Steps are
       // published by agents; the user's single lever is "I'm done with

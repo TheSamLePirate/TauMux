@@ -19,11 +19,8 @@ export function surfaceIdentity(kind: SurfaceKind): TauIdentity {
   return kind === "agent" || kind === "claude" ? "agent" : "human";
 }
 import { TerminalEffects } from "./terminal-effects";
-import {
-  describeOsc94State,
-  parseOsc94Payload,
-  type Osc94Update,
-} from "./osc-progress";
+import { describeOsc94State, type Osc94Update } from "./osc-progress";
+import { installTerminalOscHandlers } from "./terminal-osc";
 import type {
   PanelEvent,
   PersistedLayout,
@@ -36,7 +33,13 @@ import { createWorkspaceRecord } from "./workspace-factory";
 import { TerminalSearchBar } from "./terminal-search";
 import { buildSidebarWorkspaces, samePortSet } from "./sidebar-state";
 import { PaneDragController } from "./pane-drag";
-import { type AppSettings, hexToRgb } from "../../shared/settings";
+import {
+  type AppSettings,
+  DEFAULT_SETTINGS,
+  hexToRgb,
+} from "../../shared/settings";
+import { installKeyOverrides } from "./terminal-input";
+import { buildPaneTerminalOptions } from "./terminal-options";
 import { attachSidebarResize } from "../../shared/sidebar-resize";
 import { focusXtermPreservingScroll } from "../../shared/xterm-focus";
 import { resizePreservingScroll } from "../../shared/xterm-fit";
@@ -192,6 +195,17 @@ export class SurfaceManager {
    *  the parser falls back to its default behaviour (the chunk is
    *  silently consumed without painting progress). Default true. */
   private osc94Enabled = true;
+  /** Routed from `AppSettings.scrollbackLines`. Held as a field because
+   *  `new Terminal({…})` needs it at *construction*: before this,
+   *  panes were built with a hard-coded 10 000 and only picked up the
+   *  user's value on the next `applySettings` — so a pane opened after
+   *  startup silently ignored the setting until something else changed. */
+  private scrollbackLines: number = DEFAULT_SETTINGS.scrollbackLines;
+  /** Routed from `AppSettings.terminalOsc9NotifyEnabled` — the iTerm2
+   *  OSC 9 notification dialect. */
+  private osc9NotifyEnabled = true;
+  /** Routed from `AppSettings.terminalBellNotifyEnabled`. */
+  private bellNotifyEnabled = true;
   /** Renderer requested by settings. New terminals attach with this;
    *  changing it re-attaches every live terminal in place. */
   private rendererKind: TerminalRendererKind = "dom";
@@ -907,6 +921,43 @@ export class SurfaceManager {
     this.requestLayout("full");
   }
 
+  /** Bridge a decoded OSC 9;4 update to the pane chip and the workspace
+   *  progress bar. Split out of the OSC handler so `terminal-osc.ts`
+   *  stays free of workspace state. */
+  private applyOscProgress(surfaceId: string, update: Osc94Update): void {
+    // P7 S5 — per-pane chip mirror. The workspace-level bar is the
+    // aggregate view; this stashes the same progress on the surface's
+    // metadata so `renderSurfaceChips` paints a small chip too.
+    this.updateSurfaceProgress(surfaceId, update);
+    const wsHit = this.findWorkspaceForSurface(surfaceId);
+    if (!wsHit) return;
+    if (update.state === "remove") {
+      this.clearProgress(wsHit.id);
+      return;
+    }
+    // Indeterminate / state-without-value: keep whatever level was last
+    // known so the bar doesn't snap to 0 mid-stream.
+    const prev = this.workspaces[wsHit.index]?.progress?.value;
+    const value = update.value === null ? (prev ?? 0) : update.value / 100;
+    this.setProgress(
+      wsHit.id,
+      value,
+      describeOsc94State(update.state) ?? undefined,
+    );
+  }
+
+  /** Hand a program-requested notification (OSC 9 / BEL) to index.ts,
+   *  which forwards it to bun's `notification.create` — the same path
+   *  `ht notify` takes, so it gets persistence, the overlay, the sound
+   *  and Telegram fan-out for free. */
+  private emitTerminalNotification(
+    surfaceId: string,
+    title: string,
+    body: string,
+  ): void {
+    htEvents.emit("ht-terminal-notify", { surfaceId, title, body });
+  }
+
   getSidebar(): Sidebar {
     return this.sidebar;
   }
@@ -1221,8 +1272,15 @@ export class SurfaceManager {
 
   applySettings(s: AppSettings): void {
     this.fontSize = s.fontSize;
+    // Cached unconditionally (not inside the termVisualChanged branch
+    // below) because its consumer is `new Terminal({…})` for panes that
+    // do not exist yet — a diff-gated update would leave the next pane
+    // built against a stale value.
+    this.scrollbackLines = s.scrollbackLines;
     this.terminalEffectsEnabled = s.terminalBloom;
     this.osc94Enabled = s.terminalOsc94Enabled;
+    this.osc9NotifyEnabled = s.terminalOsc9NotifyEnabled;
+    this.bellNotifyEnabled = s.terminalBellNotifyEnabled;
     this.htStatusKeyOrder = s.htStatusKeyOrder ?? [];
     this.htStatusKeyHidden = s.htStatusKeyHidden ?? [];
     // P7 S7 — cache the browser search engine choice so the next
@@ -2351,18 +2409,13 @@ export class SurfaceManager {
 
     this.terminalContainer.appendChild(container);
 
-    const term = new Terminal({
-      theme: defaultGlassTheme,
-      fontFamily:
-        "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Berkeley Mono', 'SF Mono', 'Menlo', monospace",
-      fontSize: this.fontSize,
-      lineHeight: 1.0,
-      cursorBlink: true,
-      cursorStyle: "block",
-      allowTransparency: true,
-      allowProposedApi: true,
-      scrollback: 10000,
-    });
+    const term = new Terminal(
+      buildPaneTerminalOptions({
+        theme: defaultGlassTheme,
+        fontSize: this.fontSize,
+        scrollback: this.scrollbackLines,
+      }),
+    );
 
     const fitAddon = new FitAddon();
     const webLinksAddon = new WebLinksAddon();
@@ -2389,75 +2442,34 @@ export class SurfaceManager {
       this.onStdin(surfaceId, data);
     });
 
-    // OSC 0/2 title propagation: programs like `vim`, `htop`, `ssh` emit
-    // these escapes to set the terminal window title. Before this, the
-    // sidebar + pane bar always showed the login shell's basename (usually
-    // "zsh") even while vim was editing a file. Cap at 60 chars so a
-    // runaway title can't blow out the sidebar layout.
-    // `onTitleChange` is only present on the real xterm instance; the
-    // happy-dom SurfaceManager test mock stubs `Terminal` without it.
-    // Guard the call so tests don't need to teach their mock a new
-    // method each time we subscribe to another xterm event.
-    if (typeof term.onTitleChange === "function") {
-      term.onTitleChange((title) => {
-        const clean = title.trim().slice(0, 60);
-        if (!clean) return;
-        this.renameSurface(surfaceId, clean, { fromOsc: true });
-      });
-    }
+    // Shift+Enter → `ESC CR`; see terminal-input.ts for why this needs a
+    // hook rather than an xterm option.
+    installKeyOverrides(term, {
+      onData: (data) => this.onStdin(surfaceId, data),
+      onPulse: (len) => effects.pulseInput(len),
+    });
 
-    // OSC 9;4 progress reporting (ConEmu-flavoured, supported by every
-    // modern terminal). Build tools (`cargo`, `ninja`, `pv`, custom
-    // scripts) emit `ESC ] 9 ; 4 ; <state> ; <progress> ESC \` to
-    // surface progress in the host terminal. We bridge to the existing
-    // workspace progress bar so the user sees a coherent indicator
-    // regardless of whether the source was a script (`ht set-progress`)
-    // or a build tool's OSC. Gated by `terminalOsc94Enabled` so users
-    // who want to opt out can.
-    //
-    // `parser` is exposed via the proposed-api flag (allowProposedApi
-    // is already true for our terminal). The mock used in
-    // happy-dom-based SurfaceManager tests doesn't expose `parser`, so
-    // we feature-detect to keep those green.
-    const parser = (
-      term as unknown as {
-        parser?: {
-          registerOscHandler?: (
-            ident: number,
-            cb: (data: string) => boolean,
-          ) => void;
-        };
-      }
-    ).parser;
-    if (parser?.registerOscHandler) {
-      parser.registerOscHandler(9, (body) => {
-        if (!this.osc94Enabled) return false;
-        const update = parseOsc94Payload(body);
-        if (!update) return false; // not a 9;4 message — let other handlers run
-        // P7 S5 — per-pane chip mirror. The workspace-level bar is the
-        // aggregate view; this stashes the same progress on the
-        // surface's metadata so `renderSurfaceChips` paints a small
-        // chip in the pane bar too.
-        this.updateSurfaceProgress(surfaceId, update);
-        const wsHit = this.findWorkspaceForSurface(surfaceId);
-        if (!wsHit) return true;
-        if (update.state === "remove") {
-          this.clearProgress(wsHit.id);
-        } else {
-          // Indeterminate / state-without-value: keep whatever level
-          // was last known so the bar doesn't snap to 0 mid-stream.
-          const prev = this.workspaces[wsHit.index]?.progress?.value;
-          const value =
-            update.value === null ? (prev ?? 0) : update.value / 100;
-          this.setProgress(
-            wsHit.id,
-            value,
-            describeOsc94State(update.state) ?? undefined,
-          );
-        }
-        return true; // we handled it; don't echo to the buffer
-      });
-    }
+    // Escape sequences xterm itself drops: OSC 0/2 titles, OSC 9
+    // progress *and* notifications, and BEL. See terminal-osc.ts for the
+    // OSC 9 dialect split; the callbacks below are the τ-mux-side
+    // bridging that module deliberately knows nothing about.
+    installTerminalOscHandlers(term, {
+      isProgressEnabled: () => this.osc94Enabled,
+      isNotifyEnabled: () => this.osc9NotifyEnabled,
+      onTitle: (title) =>
+        this.renameSurface(surfaceId, title, { fromOsc: true }),
+      onProgress: (update) => this.applyOscProgress(surfaceId, update),
+      onNotify: (message) =>
+        this.emitTerminalNotification(surfaceId, "Terminal", message),
+      onBell: () => {
+        if (!this.bellNotifyEnabled) return;
+        this.emitTerminalNotification(
+          surfaceId,
+          this.surfaces.get(surfaceId)?.title || "Terminal",
+          "Bell",
+        );
+      },
+    });
 
     container.addEventListener("mousedown", () => {
       this.focusSurface(surfaceId);

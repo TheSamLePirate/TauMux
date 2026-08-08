@@ -31,6 +31,7 @@ import { randomBytes } from "node:crypto";
 import { writeFileAtomic } from "./atomic-write";
 import { rpcTokenPathForSocket } from "../shared/rpc-token";
 import { CONFIG_DIR_NAME, SOCKET_BASENAME } from "../shared/brand";
+import { createPasteHost } from "./paste-host";
 import type {
   TauMuxRPC,
   PersistedLayout,
@@ -2055,46 +2056,28 @@ async function installHtCli(): Promise<void> {
   toast(`Failed to install ht CLI${stderr ? `: ${stderr}` : ""}`, "error");
 }
 
-async function handlePaste(): Promise<void> {
-  const surfaceId = app.focusedSurfaceId;
-  if (!surfaceId) return;
+/** How long the oversized-paste confirm may sit on screen before we give
+ *  up and drop the paste. Long enough to read a dialog, short enough that
+ *  a webview that died mid-request cannot leak the pending entry forever. */
+const PASTE_CONFIRM_TIMEOUT_MS = 120_000;
 
-  let text: string | null = null;
-  try {
-    text = Utils.clipboardReadText();
-  } catch {
-    // Native FFI may not be available
-  }
-  if (text === null || text === undefined) {
-    try {
-      const proc = Bun.spawn(["pbpaste"], { stdout: "pipe" });
-      // G.10 / L13: race read against a 2 s timeout. If pbpaste hangs
-      // (e.g. SecureInput shenanigans on macOS) we skip the paste
-      // rather than wedge the surface.
-      let timer: ReturnType<typeof setTimeout> | null = null;
-      const timeoutP = new Promise<string>((resolve) => {
-        timer = setTimeout(() => {
-          try {
-            proc.kill();
-          } catch {
-            /* already gone */
-          }
-          resolve("");
-        }, 2000);
-      });
-      text = await Promise.race([new Response(proc.stdout).text(), timeoutP]);
-      if (timer) clearTimeout(timer);
-      proc.exited.catch(() => {
-        /* ignore */
-      });
-    } catch {
-      /* ignore */
-    }
-  }
-  if (text) {
-    autoContinue.notifyHumanInput(surfaceId);
-    sessions.writeStdin(surfaceId, text);
-  }
+const pasteHost = createPasteHost({
+  readNativeClipboard: () => Utils.clipboardReadText(),
+  confirmLargePaste: async (summary, preview) =>
+    (await requestWebview(
+      "paste.confirm",
+      { summary, preview },
+      // A human is reading a dialog. The 3 s default is sized for
+      // machine round-trips and would cancel the paste mid-decision.
+      PASTE_CONFIRM_TIMEOUT_MS,
+    )) === true,
+  notify: (message, level) => toast(message, level),
+  writePaste: (surfaceId, text) => sessions.writePaste(surfaceId, text),
+  onHumanInput: (surfaceId) => autoContinue.notifyHumanInput(surfaceId),
+});
+
+function handlePaste(): Promise<void> {
+  return pasteHost(app.focusedSurfaceId);
 }
 
 function sendWebServerStatus(): void {
@@ -2378,6 +2361,9 @@ const pendingReads = new Map<string, (value: any) => void>();
 async function requestWebview(
   method: string,
   params: Record<string, unknown>,
+  /** Override for requests a *human* has to answer (paste confirm). The
+   *  3 s default is sized for machine round-trips like `readScreen`. */
+  timeoutMs = 3000,
 ): Promise<unknown> {
   const reqId = `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   return new Promise<unknown>((resolve) => {
@@ -2394,7 +2380,7 @@ async function requestWebview(
         // surface.read_text handler coerce, if needed.
         resolve(method === "readScreen" ? "" : null);
       }
-    }, 3000);
+    }, timeoutMs);
   });
 }
 

@@ -113,3 +113,25 @@ RPC token, so the entire native e2e suite failed at the first state-mutating
 call once `rpcSocketRequireToken` began defaulting to `true`. It now reads
 `socket.token` beside the socket. This is why `bun run test:native` and the
 design-review gallery work again.
+
+---
+
+## Pending — "best terminal for Claude Code" Phase 0 (2026-08-08)
+
+Already folded into `website-doc` as part of the change (EN + FR):
+
+- `cli/surfaces-and-io.md` — new `ht paste` command.
+- `configuration/settings.md` — `terminalOsc9NotifyEnabled`,
+  `terminalBellNotifyEnabled`.
+
+Still to write when the docs sweep happens:
+
+- **A "running agent CLIs" page.** τ-mux now speaks the things Claude
+  Code and friends expect: bracketed paste, `TERM_PROGRAM=tau-mux`,
+  Shift+Enter / ⌥Enter → `ESC CR`, `OSC 9` + BEL notifications routed to
+  the notification centre and Telegram. That story is currently spread
+  across three reference tables and told nowhere.
+- `integrations/claude-code.md` — note that `preferredNotifChannel`
+  `iterm2` *and* `terminal_bell` both work now, and that bell
+  notifications are throttled to one per pane per 5 s.
+- **Changelog** — entry for the version this ships as.

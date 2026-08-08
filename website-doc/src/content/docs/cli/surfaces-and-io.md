@@ -149,6 +149,23 @@ Sends raw text to the surface's PTY. The string is unescaped before being writte
 
 Anything else passes through verbatim. Quote the argument with double quotes (or your shell's preferred form) so the backslashes survive shell parsing intact.
 
+## paste
+
+```bash
+ht paste "line one\nline two\nline three"
+ht paste --surface surface:3 "$(cat prompt.md)"
+```
+
+Same escapes as `send`, but the text is delivered as a **paste** rather than as typing: when the program running in the pane has turned on bracketed paste (`DECSET 2004`), the payload is wrapped in `ESC[200~` … `ESC[201~`.
+
+That distinction is the whole point. Agent CLIs — Claude Code, pi, and anything else with a multi-line prompt editor — use bracketed paste to tell a pasted block apart from typed input. Send a multi-line prompt with `send` and each newline submits, so a five-line prompt becomes five separate turns. Send it with `paste` and it arrives as one message.
+
+Use `send` when you want to run a command; use `paste` when you want to hand a block of text to whatever is already running.
+
+If the program has *not* enabled bracketed paste — a bare shell prompt, for instance — `paste` behaves exactly like `send`. The framing is the application's decision, never ours.
+
+Embedded `ESC[200~` / `ESC[201~` sequences are stripped from the payload, so a crafted string cannot close the bracket early and have the remainder run as typed commands.
+
 ## send-key
 
 ```bash

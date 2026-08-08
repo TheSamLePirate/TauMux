@@ -6,6 +6,7 @@ import { Terminal as HeadlessTerminal } from "@xterm/headless";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { statSync, realpathSync } from "node:fs";
 import { isAbsolute } from "node:path";
+import { framePaste } from "../shared/bracketed-paste";
 
 const MAX_HISTORY_BYTES = 64 * 1024; // 64KB raw byte fallback per surface
 const HEADLESS_SCROLLBACK = 2000; // bounded scrollback for the bun-side mirror
@@ -72,14 +73,11 @@ export class SessionManager {
   // Callbacks — wired by index.ts to send to webview via RPC
   onStdout: ((surfaceId: string, data: string) => void) | null = null;
   onSidebandMeta:
-    | ((surfaceId: string, msg: SidebandContentMessage) => void)
-    | null = null;
+    ((surfaceId: string, msg: SidebandContentMessage) => void) | null = null;
   onSidebandData:
-    | ((surfaceId: string, id: string, data: Uint8Array) => void)
-    | null = null;
+    ((surfaceId: string, id: string, data: Uint8Array) => void) | null = null;
   onSidebandDataFailed:
-    | ((surfaceId: string, id: string, reason: string) => void)
-    | null = null;
+    ((surfaceId: string, id: string, reason: string) => void) | null = null;
   onSurfaceClosed: ((surfaceId: string) => void) | null = null;
   /** Fires when the PTY exits, before the surface is removed. */
   onSurfaceExit: ((surfaceId: string, exitCode: number) => void) | null = null;
@@ -300,15 +298,72 @@ export class SessionManager {
     this.surfaces.get(surfaceId)?.pty.write(data);
   }
 
+  /**
+   * Whether the application currently running in `surfaceId` has asked
+   * for bracketed paste (`DECSET 2004`).
+   *
+   * The headless mirror is already fed every byte of the PTY stream, so
+   * it is the authoritative parse of the app's DEC private modes — no
+   * second parser, no heuristics. When the mirror failed to construct
+   * (rare; logged at creation) we answer `false`, which degrades to the
+   * pre-bracketing behaviour rather than framing a paste an app never
+   * asked for.
+   */
+  isBracketedPasteMode(surfaceId: string): boolean {
+    const surface = this.surfaces.get(surfaceId);
+    if (!surface?.headless) return false;
+    try {
+      return surface.headless.modes.bracketedPasteMode;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Write clipboard text as a *paste* rather than as typing.
+   *
+   * The distinction is the whole point: a paste is framed with
+   * `ESC[200~`/`ESC[201~` when the app asked for it, so a multi-line
+   * block lands in the app's editor as one unit instead of being
+   * submitted line by line. Size policy lives with the caller — this
+   * method frames and writes whatever it is handed.
+   */
+  writePaste(surfaceId: string, text: string): void {
+    const surface = this.surfaces.get(surfaceId);
+    if (!surface) return;
+    surface.pty.write(framePaste(text, this.isBracketedPasteMode(surfaceId)));
+  }
+
   renameSurface(surfaceId: string, title: string): void {
     const surface = this.surfaces.get(surfaceId);
     if (!surface || !title) return;
     surface.title = title;
   }
 
+  /**
+   * Push new terminal dimensions down to the PTY, the headless mirror and
+   * any sideband listener — but only when they actually changed.
+   *
+   * The dedupe is not a micro-optimisation. `applyLayout()` calls
+   * `onResize` for every pane on every full layout pass (workspace
+   * switch, sidebar toggle, settings apply, font change, divider
+   * mouse-up), and `fitSurfaceTerminal` deliberately no-ops when the
+   * grid is unchanged — so the overwhelming majority of these carry
+   * dimensions identical to the ones already in force. Forwarding them
+   * anyway means `TIOCSWINSZ`, which means **SIGWINCH to the foreground
+   * process group**, which for a full-screen TUI (Claude Code, vim,
+   * htop) means a complete repaint. Switching workspaces used to make
+   * every agent pane in the destination redraw itself for no reason.
+   *
+   * Guarding here rather than in `PtyManager` keeps the sideband
+   * `resize` event and the headless mirror on the same "real change"
+   * definition as the PTY, so a script listening on fd 5 sees exactly
+   * the transitions the child saw.
+   */
   resize(surfaceId: string, cols: number, rows: number): void {
     const surface = this.surfaces.get(surfaceId);
     if (!surface) return;
+    if (surface.pty.cols === cols && surface.pty.rows === rows) return;
     surface.pty.resize(cols, rows);
     try {
       surface.headless?.resize(cols, rows);

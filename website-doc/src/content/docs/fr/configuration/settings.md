@@ -24,6 +24,8 @@ Cette page liste **tous** les champs, avec le défaut lu depuis `DEFAULT_SETTING
 | `cursorBlink` | boolean | `true` | Blink the terminal cursor. |
 | `terminalRenderer` | `"dom"` \| `"webgl"` | `"dom"` | **Experimental** GPU renderer. Falls back to DOM automatically on unsupported hardware, init failure, or context loss — the settings panel shows a live "running on DOM — reason" hint when it has. It shipped enabled in v0.4.9 and rendered panes blank on some setups; a one-time migration in v0.4.12 reset a persisted `webgl` back to `dom`. Command palette: "Use WebGL/DOM Terminal Renderer". |
 | `terminalOsc94Enabled` | boolean | `true` | Honour OSC 9;4 progress sequences (per-pane progress chip). |
+| `terminalOsc9NotifyEnabled` | boolean | `true` | Traiter `OSC 9 ; <message>` (dialecte iTerm2) comme une demande de notification. C'est le canal que les CLI d'agent appellent « notifications iterm2 » — le `preferredNotifChannel: iterm2` de Claude Code arrive ici. Les notifications empruntent le même pipeline que `ht notify` : overlay, barre latérale, son, et transfert Telegram si activé. |
+| `terminalBellNotifyEnabled` | boolean | `true` | Transformer `BEL` en notification — le canal `terminal_bell` proposé par les CLI d'agent. Limité à une notification par panneau toutes les 5 s pour qu'un programme sonnant la cloche en boucle ne puisse pas noyer le centre de notifications. |
 
 ## Apparence
 

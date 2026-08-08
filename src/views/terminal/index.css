@@ -3205,6 +3205,16 @@ body.terminal-typing .panel {
   color: var(--text-main);
 }
 
+/* Destructive confirm (oversized paste, and any future yes/no sheet
+ * whose "yes" is hard to undo). Shares the ask-user danger tokens so
+ * the two blocking dialogs read as one family. */
+.prompt-btn-danger {
+  background: var(--ht-ask-danger-bg);
+  border-color: var(--ht-ask-danger-bg);
+  color: var(--ht-ask-danger-fg);
+  font-weight: 600;
+}
+
 /* Plan #10 commit C — ask-user modal. Cloned from .prompt-overlay
  * with a darker backdrop. Ask-user also powers ht_plan_set approval,
  * so it is a blocking human-in-the-loop prompt and must sit above all

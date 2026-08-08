@@ -2879,6 +2879,21 @@ window.addEventListener("ht-dismiss-notification", (e: Event) => {
   if (detail?.id) rpc.send("dismissNotification", { id: detail.id });
 });
 
+// A program inside a pane asked the terminal to notify the user (OSC 9
+// / BEL). Forward to bun so it goes through `notification.create` —
+// the same path as `ht notify`, which is what buys persistence, the
+// overlay, the sound and the Telegram fan-out.
+window.addEventListener("ht-terminal-notify", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    { surfaceId?: string; title?: string; body?: string } | undefined;
+  if (!detail?.surfaceId || !detail.body) return;
+  rpc.send("terminalNotify", {
+    surfaceId: detail.surfaceId,
+    title: detail.title ?? "Terminal",
+    body: detail.body,
+  });
+});
+
 // ── Telegram pane → bun ──
 window.addEventListener("ht-telegram-send", (e: Event) => {
   const detail = (e as CustomEvent).detail as

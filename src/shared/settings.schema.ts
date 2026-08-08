@@ -198,6 +198,8 @@ export const SETTINGS_FIELD_SCHEMAS = {
   telegramAskUserEnabled: boolStrict(false),
   claudeAutoApprove: boolStrict(false),
   terminalOsc94Enabled: boolStrict(true),
+  terminalOsc9NotifyEnabled: boolStrict(true),
+  terminalBellNotifyEnabled: boolStrict(true),
   notificationOverlayEnabled: boolStrict(true),
   workspaceCardShowMeta: boolStrict(true),
   workspaceCardShowStats: boolStrict(true),

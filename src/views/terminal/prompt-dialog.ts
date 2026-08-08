@@ -7,6 +7,15 @@ interface PromptDialogOptions {
   cancelLabel?: string;
 }
 
+export interface ConfirmDialogOptions {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** Render the confirm button as destructive. */
+  danger?: boolean;
+}
+
 let activeOverlay: HTMLDivElement | null = null;
 let activeResolver: ((value: string | null) => void) | null = null;
 
@@ -118,6 +127,104 @@ export function showPromptDialog(
       overlay.classList.add("visible");
       input.focus();
       input.select();
+    });
+  });
+}
+
+/**
+ * Yes/no variant of the prompt sheet — same overlay, same chrome, no
+ * text input.
+ *
+ * Kept in this module rather than given its own file so both dialogs
+ * share `activeOverlay`: only one modal sheet may exist at a time, and
+ * that invariant is enforced by them being the same variable. Opening
+ * either closes the other (resolving it as cancelled), which is what
+ * `closePromptDialog` already promised.
+ *
+ * Resolves `true` only on an explicit confirm. Escape, the cancel
+ * button, a backdrop click, and being displaced by another dialog all
+ * resolve `false` — a confirm prompt that defaults to "yes" on an
+ * ambiguous dismissal is a footgun.
+ */
+export function showConfirmDialog(
+  options: ConfirmDialogOptions,
+): Promise<boolean> {
+  closePromptDialog();
+
+  return new Promise((resolve) => {
+    // `activeResolver` is typed for the prompt flow (string | null).
+    // Adapt: null → false, anything else → true. That keeps a single
+    // displacement path (`closePromptDialog` calls `resolver?.(null)`)
+    // rather than two resolver slots that could drift out of sync.
+    activeResolver = (value) => resolve(value !== null);
+
+    const overlay = document.createElement("div");
+    overlay.className = "prompt-overlay";
+
+    const sheet = document.createElement("div");
+    sheet.className = "prompt-sheet";
+
+    const title = document.createElement("h2");
+    title.className = "prompt-title";
+    title.textContent = options.title;
+    sheet.appendChild(title);
+
+    const message = document.createElement("p");
+    message.className = "prompt-message";
+    message.textContent = options.message;
+    sheet.appendChild(message);
+
+    const actions = document.createElement("div");
+    actions.className = "prompt-actions";
+
+    const cancelButton = document.createElement("button");
+    cancelButton.className = "prompt-btn prompt-btn-secondary";
+    cancelButton.type = "button";
+    cancelButton.textContent = options.cancelLabel ?? "Cancel";
+    cancelButton.addEventListener("click", () => finish(null));
+    actions.appendChild(cancelButton);
+
+    const confirmButton = document.createElement("button");
+    confirmButton.className = `prompt-btn prompt-btn-primary${
+      options.danger ? " prompt-btn-danger" : ""
+    }`;
+    confirmButton.type = "button";
+    confirmButton.textContent = options.confirmLabel ?? "Confirm";
+    confirmButton.addEventListener("click", () => finish("confirm"));
+    actions.appendChild(confirmButton);
+
+    sheet.appendChild(actions);
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+
+    activeOverlay = overlay;
+
+    function finish(value: string | null): void {
+      activeOverlay?.remove();
+      activeOverlay = null;
+      const resolver = activeResolver;
+      activeResolver = null;
+      resolver?.(value);
+    }
+
+    // Keys land on the sheet, not on an input — the confirm button takes
+    // focus so Enter/Space activate it natively and the sheet is
+    // keyboard-reachable for the focus audit.
+    sheet.tabIndex = -1;
+    sheet.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish(null);
+      }
+    });
+
+    overlay.addEventListener("mousedown", (event) => {
+      if (event.target === overlay) finish(null);
+    });
+
+    requestAnimationFrame(() => {
+      overlay.classList.add("visible");
+      confirmButton.focus();
     });
   });
 }

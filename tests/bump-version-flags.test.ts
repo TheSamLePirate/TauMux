@@ -44,6 +44,7 @@ function seedFiles(dir: string, version: string): string[] {
       "src/bun/rpc-handlers/system.ts",
       `export const VERSION = "${version}";\n`,
     ],
+    ["src/shared/brand.ts", `export const APP_VERSION = "${version}";\n`],
     [
       "website-doc/src/content/docs/cli/system.md",
       `# system\n\n\`\`\`\ntau-mux ${version} (build: dev)\n\`\`\`\n`,

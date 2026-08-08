@@ -4,6 +4,7 @@
  *   - package.json                                                  (npm package version)
  *   - electrobun.config.ts                                          (bundle CFBundleVersion)
  *   - src/bun/rpc-handlers/system.ts                                (returned by `system.version` RPC)
+ *   - src/shared/brand.ts                                           (APP_VERSION → TERM_PROGRAM_VERSION in every PTY)
  *   - website-doc/src/content/docs/cli/system.md                    (example output in `ht version`)
  *   - website-doc/src/content/docs/api/system.md                    (example output in `system.version` RPC)
  *   - website-doc/src/content/docs/fr/cli/system.md                 (French mirror of the above)
@@ -51,6 +52,7 @@ const ROOT = process.env["BUMP_VERSION_ROOT"]
 const PKG = resolve(ROOT, "package.json");
 const ELECTROBUN = resolve(ROOT, "electrobun.config.ts");
 const SYSTEM_RPC = resolve(ROOT, "src/bun/rpc-handlers/system.ts");
+const BRAND = resolve(ROOT, "src/shared/brand.ts");
 const CLI_DOC = resolve(ROOT, "website-doc/src/content/docs/cli/system.md");
 const API_DOC = resolve(ROOT, "website-doc/src/content/docs/api/system.md");
 const CLI_DOC_FR = resolve(
@@ -139,6 +141,23 @@ function updateSystemRpc(next: string): void {
     throw new Error(`Could not find \`const VERSION = "…"\` in ${SYSTEM_RPC}`);
   }
   writeFileSync(SYSTEM_RPC, replaced);
+}
+
+/** `APP_VERSION` in src/shared/brand.ts — what every PTY child sees as
+ *  `TERM_PROGRAM_VERSION`. Kept in lockstep with SYSTEM_RPC by
+ *  tests/version-consistency.test.ts. */
+function updateBrand(next: string): void {
+  const raw = readFileSync(BRAND, "utf8");
+  const replaced = raw.replace(
+    /(export const APP_VERSION\s*=\s*")[^"]+(")/,
+    `$1${next}$2`,
+  );
+  if (replaced === raw) {
+    throw new Error(
+      `Could not find \`export const APP_VERSION = "…"\` in ${BRAND}`,
+    );
+  }
+  writeFileSync(BRAND, replaced);
 }
 
 /** Replace the example `# tau-mux X.Y.Z (build: …)` line in the CLI
@@ -364,6 +383,7 @@ const touchedFiles = [
   PKG,
   ELECTROBUN,
   SYSTEM_RPC,
+  BRAND,
   CLI_DOC,
   API_DOC,
   CLI_DOC_FR,
@@ -470,6 +490,7 @@ try {
   updatePackageJson(next);
   updateElectrobunConfig(next);
   updateSystemRpc(next);
+  updateBrand(next);
   updateCliDoc(next, CLI_DOC);
   updateApiDoc(next, API_DOC);
   updateCliDoc(next, CLI_DOC_FR);
@@ -484,7 +505,7 @@ try {
 }
 
 console.log(
-  `[bump] Updated package.json, electrobun.config.ts, src/bun/rpc-handlers/system.ts,\n        website-doc/src/content/docs/{,fr/}{cli,api}/system.md.`,
+  `[bump] Updated package.json, electrobun.config.ts, src/bun/rpc-handlers/system.ts,\n        src/shared/brand.ts, website-doc/src/content/docs/{,fr/}{cli,api}/system.md.`,
 );
 if (flags.changelog) {
   console.log(`[bump] Wrote CHANGELOG.md entry for v${next}.`);

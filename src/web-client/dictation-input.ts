@@ -43,6 +43,8 @@
 // every character byte the PTY sees comes from the shim's `onData`
 // callback, computed from a single source of truth.
 
+import { encodeKeyOverride } from "../shared/terminal-key-encoding";
+
 export interface DictationInputOptions {
   /** xterm's hidden helper textarea (`.xterm-helper-textarea`). */
   textarea: HTMLTextAreaElement;
@@ -115,6 +117,17 @@ export function attachDictationInput(
   if (term) {
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       const key = e.key;
+      // Shift+Enter → `ESC CR`, matching the native pane. Handled here
+      // rather than in the `beforeinput` switch below because
+      // `insertLineBreak` carries no modifier state, so by the time the
+      // shim sees it, Shift is gone. Send it ourselves and stop the
+      // event so no `beforeinput` follows with a plain `\r`.
+      const override = encodeKeyOverride(e);
+      if (override !== null) {
+        e.preventDefault();
+        send(override);
+        return false;
+      }
       // Modifier shortcuts (Ctrl-C, Cmd-K, Alt-b, etc.) → xterm.
       if (e.ctrlKey || e.metaKey || e.altKey) return true;
       if (typeof key !== "string") return true;

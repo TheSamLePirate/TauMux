@@ -22,6 +22,7 @@
  */
 
 import { showToast } from "./toast";
+import { showConfirmDialog } from "./prompt-dialog";
 import { playNotificationSound } from "./sounds";
 import type { SurfaceManager } from "./surface-manager";
 import type { NotificationOverlay } from "./notification-overlay";
@@ -316,6 +317,28 @@ const SOCKET_ACTION_HANDLERS: Record<string, Handler> = {
       p["surfaceId"] as string,
       p["reqId"] as string,
     );
+  },
+
+  // ── Paste ──
+  /** Bun read a clipboard payload big enough to be an accident (see
+   *  `classifyPasteSize`) and is holding it until the user says yes.
+   *  Always replies, including on a malformed payload — bun blocks on
+   *  this response, and a dropped reply would strand the paste. */
+  "paste.confirm": (p, { rpc }) => {
+    const reqId = p["reqId"] as string;
+    if (!reqId) return;
+    const summary = (p["summary"] as string) ?? "";
+    const preview = (p["preview"] as string) ?? "";
+    void showConfirmDialog({
+      title: "Paste into the terminal?",
+      message: preview
+        ? `${summary}\n\n${preview}`
+        : `${summary}\n\nThis is larger than a typed command — check it is what you meant to paste.`,
+      confirmLabel: "Paste",
+      danger: true,
+    }).then((accepted) => {
+      rpc.send("webviewResponse", { reqId, result: accepted });
+    });
   },
 
   // ── Toast ──

@@ -107,6 +107,7 @@ export function buildTermOptionsFromSettings(
   cursorBlink: boolean;
   cursorStyle: "block" | "bar" | "underline";
   scrollback: number;
+  macOptionIsMeta: boolean;
 } {
   return {
     theme: buildTermTheme(settings),
@@ -116,6 +117,10 @@ export function buildTermOptionsFromSettings(
     cursorBlink: settings?.cursorBlink ?? true,
     cursorStyle: settings?.cursorStyle ?? "bar",
     scrollback: settings?.scrollbackLines ?? 10000,
+    // Parity with the native pane: ⌥Enter must produce `ESC CR`, the
+    // sequence agent CLIs read as "newline, don't submit". xterm's
+    // default (false) turns ⌥ into a dead-key accent instead.
+    macOptionIsMeta: true,
   };
 }
 

@@ -1325,6 +1325,13 @@ I/O:
                                     Escapes: \\n and \\r both send carriage
                                     return (the terminal expects \\r for Enter,
                                     not \\n). \\t = tab, \\x1b = ESC, \\\\ = literal \\.
+  paste [--surface S] "text"        Paste text as a block. Same escapes as
+                                    send, but framed with bracketed paste
+                                    (ESC[200~) when the running app asked
+                                    for it — so a multi-line prompt reaches
+                                    an agent CLI as ONE message instead of
+                                    one submit per line. Falls back to plain
+                                    send when the app has DEC 2004 off.
   send-key [--surface S] <key>      Send key (enter|tab|escape|...)
   read-screen [--surface S] [--lines N]  Read terminal content
   screenshot [target] [--output PATH]

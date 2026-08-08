@@ -256,12 +256,26 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
       return "OK";
     },
 
+    /**
+     * Type text into a pane.
+     *
+     * Default is *typing*: bytes go through unframed, so
+     * `ht send "npm run dev\n"` still runs the command. That contract
+     * predates bracketed paste and scripts depend on it.
+     *
+     * `paste: true` switches to *pasting*: the text is framed with
+     * `ESC[200~`/`ESC[201~` when the running app has bracketed paste on,
+     * so a multi-line prompt lands in an agent CLI's editor as one block
+     * instead of being submitted line by line. Framing is still the
+     * app's decision — with DEC 2004 off, both modes send the same bytes.
+     */
     "surface.send_text": (params) => {
       const id = resolveSurfaceId(params, getState().focusedSurfaceId);
       const text = params["text"] as string;
       if (id && text) {
         autoContinueEngine?.notifyHumanInput(id);
-        sessions.writeStdin(id, text);
+        if (params["paste"] === true) sessions.writePaste(id, text);
+        else sessions.writeStdin(id, text);
       }
       return "OK";
     },

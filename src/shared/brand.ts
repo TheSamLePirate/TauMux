@@ -40,3 +40,19 @@ export const SOCKET_BASENAME = "hyperterm.sock";
 export const BUNDLE_IDENTIFIER = "dev.hyperterm.canvas";
 /** RPC `system.capabilities` handshake protocol tag. */
 export const RPC_PROTOCOL = "hyperterm-socket";
+
+/** `TERM_PROGRAM` announced to every PTY child.
+ *
+ *  Programs branch on this to decide what the host terminal supports.
+ *  Lower-case, no spaces, matching the convention of every other value
+ *  in the wild (`ghostty`, `WezTerm`, `iTerm.app`, `vscode`). */
+export const TERM_PROGRAM_NAME = "tau-mux";
+
+/** Current app version, as `TERM_PROGRAM_VERSION` and anywhere else the
+ *  bun side needs it without reaching into an RPC handler module.
+ *
+ *  Stamped by `scripts/bump-version.ts` alongside package.json,
+ *  electrobun.config.ts and `src/bun/rpc-handlers/system.ts`. The three
+ *  copies are pinned to each other by `tests/version-consistency.test.ts`,
+ *  so a partial bump fails CI instead of shipping a lie. */
+export const APP_VERSION = "0.11.1";

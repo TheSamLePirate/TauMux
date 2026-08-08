@@ -296,6 +296,17 @@ export interface DismissNotificationPayload {
  *  notification.clear. Void payload. */
 export type ClearNotificationsPayload = void;
 
+/** A program inside a PTY asked the terminal to notify the user —
+ *  `OSC 9 ; <message>` (iTerm2 dialect) or `BEL`. Raised by
+ *  SurfaceManager, forwarded by index.ts to bun's `notification.create`
+ *  so it joins the same store / overlay / sound / Telegram fan-out as
+ *  `ht notify`. */
+export interface TerminalNotifyPayload {
+  surfaceId: string;
+  title: string;
+  body: string;
+}
+
 /** Clear log history — sidebar header clear button on the logs
  *  section. Void payload. */
 export type ClearLogsPayload = void;
@@ -512,6 +523,7 @@ export interface HtEventMap extends Record<string, unknown> {
   // P7 S11 — A6 batch 4 channels.
   "ht-dismiss-notification": DismissNotificationPayload;
   "ht-clear-notifications": ClearNotificationsPayload;
+  "ht-terminal-notify": TerminalNotifyPayload;
   "ht-clear-logs": ClearLogsPayload;
   "ht-cookie-import": CookieImportPayload;
   "ht-cookie-export": CookieExportPayload;

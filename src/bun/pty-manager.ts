@@ -1,5 +1,6 @@
 import type { ChannelDescriptor, ChannelMap } from "../shared/types";
 import { resolve } from "node:path";
+import { APP_VERSION, TERM_PROGRAM_NAME } from "../shared/brand";
 
 interface BunTerminal {
   write(data: string | Uint8Array): void;
@@ -37,6 +38,50 @@ const DEFAULT_CHANNELS: ChannelDescriptor[] = [
   { name: "data", fd: 4, direction: "out", encoding: "binary" },
   { name: "events", fd: 5, direction: "in", encoding: "jsonl" },
 ];
+
+/**
+ * Environment variables that identify the terminal a process is running
+ * in, other than the two we set ourselves.
+ *
+ * These leak in through `...process.env` when τ-mux is launched from a
+ * terminal (`bun start`), and a stale one is worse than a missing one:
+ * a program that finds `ITERM_SESSION_ID` concludes it is inside iTerm2
+ * and will happily offer — or perform — iTerm2-specific setup against
+ * preference files for an app the user is not looking at.
+ *
+ * `TERM_PROGRAM` / `TERM_PROGRAM_VERSION` are absent from this list on
+ * purpose: they are overwritten with our own values rather than deleted.
+ */
+export const INHERITED_TERMINAL_IDENTITY_VARS = [
+  "TERM_SESSION_ID",
+  "ITERM_SESSION_ID",
+  "ITERM_PROFILE",
+  "LC_TERMINAL",
+  "LC_TERMINAL_VERSION",
+  "KITTY_WINDOW_ID",
+  "KITTY_PID",
+  "GHOSTTY_RESOURCES_DIR",
+  "GHOSTTY_BIN_DIR",
+  "WEZTERM_PANE",
+  "WEZTERM_UNIX_SOCKET",
+  "WEZTERM_EXECUTABLE",
+  "ALACRITTY_WINDOW_ID",
+  "ALACRITTY_SOCKET",
+  "WT_SESSION",
+  "WT_PROFILE_ID",
+  "VSCODE_INJECTION",
+  "VSCODE_GIT_ASKPASS_MAIN",
+  "KONSOLE_VERSION",
+  "VTE_VERSION",
+] as const;
+
+/** Delete every inherited terminal-identity variable from `env`, in
+ *  place. Exported for tests; pure apart from the mutation. */
+export function scrubInheritedTerminalIdentity(
+  env: Record<string, string>,
+): void {
+  for (const key of INHERITED_TERMINAL_IDENTITY_VARS) delete env[key];
+}
 
 export class PtyManager {
   private proc: BunSubprocess | null = null;
@@ -139,8 +184,21 @@ export class PtyManager {
       PATH: `${shareBinPath}:${opts.env?.["PATH"] || process.env["PATH"] || ""}`,
       TERM: "xterm-256color",
       COLORTERM: "truecolor",
+      // Terminal identity. Programs branch on TERM_PROGRAM to decide what
+      // the host supports — Claude Code, for one, uses it to pick which
+      // Shift+Enter advice to print and which app's preferences
+      // `/terminal-setup` should rewrite.
+      //
+      // Setting it is only half the job: `...process.env` above copies
+      // the *launching* terminal's identity into the child, so a dev
+      // build started with `bun start` from iTerm2 told every pane it was
+      // iTerm2. Programs then offered iTerm2-specific setup — including
+      // writing iTerm2 preference files — for a terminal the user was not
+      // looking at. `scrubInheritedTerminalIdentity` below removes those
+      // keys before we assert our own.
+      TERM_PROGRAM: TERM_PROGRAM_NAME,
+      TERM_PROGRAM_VERSION: APP_VERSION,
       LANG: process.env["LANG"] || "en_US.UTF-8",
-      LC_ALL: process.env["LC_ALL"] || "",
       // Protocol version
       HYPERTERM_PROTOCOL_VERSION: "1",
       // Legacy env vars for backward compat
@@ -156,6 +214,8 @@ export class PtyManager {
       // the old, misleading `/tmp/hyperterm.sock`.
       HT_SOCKET_PATH: process.env["HT_SOCKET_PATH"] || "",
     };
+
+    scrubInheritedTerminalIdentity(env);
 
     this.proc = Bun.spawn([opts.shell, ...(opts.args ?? [])], {
       cwd: opts.cwd ?? process.env["HOME"] ?? "/",
