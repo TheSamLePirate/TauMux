@@ -97,6 +97,9 @@ standing chrome reclaimed.
 
 ## 6 · What landed
 
+Commit `4d7b7bb4` — *feat(atlas): rebuild the graph as a topology instrument (v0.17.0)*.
+41 files, +5345 / −747.
+
 ### New modules
 
 | Module | Role |
