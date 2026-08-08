@@ -288,7 +288,7 @@ than a terminal emulator and correct layering.
 | 3.4 | Clickable `path:line` references | ✅ |
 | 4.1 | Drag & drop onto a terminal pane | ✅ |
 
-**Commits:** `b3c3b0e5` (3.4 + 4.1, v0.13.0) · IDE bridge (v0.14.0)
+**Commits:** `b3c3b0e5` (3.4 + 4.1, v0.13.0) · `f541155e` (IDE bridge, v0.14.0)
 
 ### The blocker was not what it looked like
 
