@@ -56,14 +56,58 @@ not cover at all.
 - [x] `doc/changes_to_document.md` — backlog cleared.
 - [x] `bun test` (3419 pass), `bun run typecheck`, docs-coverage gate green.
 
+## Pass 2 — website audit + build (commit `3666f8ff`)
+
+Pass 1 (`5296628f`) folded the 0.10.x backlog into the site but did not audit
+the rest of it. Building the site and walking its links found more:
+
+- **Theme presets: 10 → 12, default Obsidian → `tau`.** Worse, three preset
+  **ids** were wrong (`gruvbox-dark` / `solarized-dark` / `synthwave-84` are
+  really `gruvbox` / `solarized` / `synthwave`), so anyone setting
+  `themePreset` from the docs got an invalid value. The gate never caught this
+  because it checks that *settings fields* are documented with correct
+  defaults — `themePreset`'s default was right; its *possible values* were not
+  checked at all.
+- **`Copy on select` on `features/terminal.md`** — `copyOnSelect` is one of the
+  ghost fields the 0.10.2 audit deleted from the settings reference. The
+  reference to it survived on a page that names no settings key, so the gate
+  saw nothing.
+- **xterm.js 5.3 → `@xterm/xterm` 6.0** (landing + terminal page, EN + FR).
+- **`features/settings.md` listed 8 sections; there are 9** (Layout missing),
+  with several stale summaries.
+- **Two broken internal links** — `cli/plan.md` + `fr/cli/plan.md` pointed at
+  `/features/sidebar/`, a page that has never existed. Now
+  `/cli/sidebar-and-status/`.
+
+**Build result:** `bun run build` → 161 pages, exit 0, **zero** warnings or
+errors. A link-walk over `dist/` reports **0 broken internal links** (was 2).
+
+### Gap this exposes in the gate
+
+`tests/docs-coverage.test.ts` checks *coverage* (is every method / command /
+field mentioned) and *defaults*. It cannot see: enumerable value sets like
+theme preset ids, prose on pages that name no settings key, or dead internal
+links. Worth considering — none of it is in scope for this docs pass:
+
+1. assert documented preset ids against `THEME_PRESETS`;
+2. grep the site for `` `identifier` `` strings that look like settings fields
+   and fail on ones absent from `AppSettings` (would have caught
+   `copyOnSelect`);
+3. run the link-walk in CI after the Astro build.
+
 ## Deviations / notes
 
-- **`website-doc` was not built.** `website-doc/node_modules` is absent and a
-  full Astro install was out of proportion to a prose change. The content is
-  verified by `tests/docs-coverage.test.ts` and by matching the existing
-  `:::note` directive usage already present in the same files. If a build is
-  wanted: `cd website-doc && bun install && bun run build`.
-- **Version bump is `patch`.** Docs-only; no behaviour changed.
+- **`website-doc` build**: skipped in pass 1 (no `node_modules`), done in
+  pass 2 — `cd website-doc && bun install && bun run build`. Passing on that
+  the first time was the wrong call: the build is what surfaced the dead links,
+  and installing deps is what made the preset/xterm audit worth doing.
+- **Version bumped once, to 0.10.9, in pass 1.** Pass 2 (`3666f8ff`) did not
+  bump again, contrary to the always-bump rule. Reason: 0.10.9 has never been
+  released — both commits sit on the same unmerged branch and describe one
+  docs sweep, so the version that eventually ships contains both. Bumping to
+  0.10.10 for a link fix inside the same unreleased change would make the
+  changelog claim two releases where there is one. Bump to 0.10.10 before
+  merging if you'd rather each commit carry its own version.
 - Two counts in the code disagree with the 0.10.2 audit note that produced
   them: RPC methods are 139 (the note says 138) and the audit's "100 files"
   test figure is long superseded. The gate passes either way — it asserts
