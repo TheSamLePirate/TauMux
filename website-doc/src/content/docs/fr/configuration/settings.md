@@ -26,6 +26,7 @@ Cette page liste **tous** les champs, avec le défaut lu depuis `DEFAULT_SETTING
 | `terminalOsc94Enabled` | boolean | `true` | Honour OSC 9;4 progress sequences (per-pane progress chip). |
 | `terminalOsc9NotifyEnabled` | boolean | `true` | Traiter `OSC 9 ; <message>` (dialecte iTerm2) comme une demande de notification. C'est le canal que les CLI d'agent appellent « notifications iterm2 » — le `preferredNotifChannel: iterm2` de Claude Code arrive ici. Les notifications empruntent le même pipeline que `ht notify` : overlay, barre latérale, son, et transfert Telegram si activé. |
 | `terminalBellNotifyEnabled` | boolean | `true` | Transformer `BEL` en notification — le canal `terminal_bell` proposé par les CLI d'agent. Limité à une notification par panneau toutes les 5 s pour qu'un programme sonnant la cloche en boucle ne puisse pas noyer le centre de notifications. |
+| `terminalOsc52WriteEnabled` | boolean | `true` | Autoriser les programmes à **écrire** dans le presse-papiers système via OSC 52 — c'est ainsi qu'un yank dans nvim ou tmux à travers SSH atteint votre machine locale. Les charges utiles au-delà de 100 000 caractères sont refusées plutôt que tronquées. Il n'existe volontairement aucun équivalent en lecture : OSC 52 définit aussi une *lecture* du presse-papiers, qui permettrait à n'importe quel processus ayant accès au terminal d'exfiltrer silencieusement son contenu ; τ-mux la refuse toujours. Aucun réglage ne l'active. |
 
 ## Apparence
 

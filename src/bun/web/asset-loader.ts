@@ -39,6 +39,8 @@ export const VENDOR_MAP: Record<string, string> = {
   "node_modules/@xterm/addon-fit/lib/addon-fit.js": "addon-fit.js",
   "node_modules/@xterm/addon-web-links/lib/addon-web-links.js":
     "addon-web-links.js",
+  "node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js":
+    "addon-unicode11.js",
   "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf":
     "fonts/nerd-regular.ttf",
   "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf": "fonts/nerd-bold.ttf",
@@ -124,6 +126,12 @@ export const FIT_ADDON_JS = readAsset(
 );
 export const WEB_LINKS_ADDON_JS = readAsset(
   "node_modules/@xterm/addon-web-links/lib/addon-web-links.js",
+);
+// Unicode 11 glyph widths. Parity with the native pane: without it the
+// mirror measures emoji and box-drawing with xterm's 2010-era table and
+// an agent transcript checked from a phone comes out shredded.
+export const UNICODE11_ADDON_JS = readAsset(
+  "node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js",
 );
 export const NERD_FONT_REGULAR = readBinaryAsset(
   "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf",

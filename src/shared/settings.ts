@@ -83,6 +83,15 @@ export interface AppSettings {
    *  Default true. */
   terminalBellNotifyEnabled: boolean;
 
+  /** OSC 52 clipboard **writes** from inside the terminal — how nvim or
+   *  tmux over SSH gets a yank onto your local clipboard. Default true.
+   *
+   *  There is deliberately no read counterpart. OSC 52 also defines a
+   *  read, which would let any process with terminal access exfiltrate
+   *  the clipboard silently; τ-mux always refuses that, and no setting
+   *  turns it on. */
+  terminalOsc52WriteEnabled: boolean;
+
   /** Pinned `git config --global user.name` checked at startup by
    *  the audit module (`src/bun/audits.ts`). Mismatch surfaces a
    *  warn-level audit result with a one-step fix. Null disables the
@@ -766,6 +775,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   terminalOsc94Enabled: true,
   terminalOsc9NotifyEnabled: true,
   terminalBellNotifyEnabled: true,
+  terminalOsc52WriteEnabled: true,
   // H0g (full_app_review_2026-05.md): null = audit opt-out. Must NOT ship a
   // specific person's git username in the defaults every user inherits.
   auditsGitUserNameExpected: null,
@@ -1006,6 +1016,10 @@ export function validateSettings(s: AppSettings): AppSettings {
     terminalBellNotifyEnabled:
       SETTINGS_FIELD_SCHEMAS.terminalBellNotifyEnabled.validate(
         s.terminalBellNotifyEnabled,
+      ),
+    terminalOsc52WriteEnabled:
+      SETTINGS_FIELD_SCHEMAS.terminalOsc52WriteEnabled.validate(
+        s.terminalOsc52WriteEnabled,
       ),
     auditsGitUserNameExpected:
       SETTINGS_FIELD_SCHEMAS.auditsGitUserNameExpected.validate(

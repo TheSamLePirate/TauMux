@@ -15,7 +15,7 @@ export default {
     // LOAD-BEARING: macOS Keychain / TCC permissions / LaunchServices key on
     // it; changing it orphans installed apps' permissions. See brand.ts.
     identifier: "dev.hyperterm.canvas",
-    version: "0.11.1",
+    version: "0.11.2",
     description:
       "A hybrid terminal emulator with floating canvas overlays for images, charts, and interactive widgets.",
   },
@@ -45,6 +45,8 @@ export default {
       "node_modules/@xterm/addon-fit/lib/addon-fit.js": "vendor/addon-fit.js",
       "node_modules/@xterm/addon-web-links/lib/addon-web-links.js":
         "vendor/addon-web-links.js",
+      "node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js":
+        "vendor/addon-unicode11.js",
       "assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf":
         "vendor/fonts/nerd-regular.ttf",
       "assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf":

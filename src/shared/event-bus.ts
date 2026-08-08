@@ -307,6 +307,14 @@ export interface TerminalNotifyPayload {
   body: string;
 }
 
+/** A program inside a PTY asked to write the system clipboard via
+ *  OSC 52. Forwarded by index.ts to bun's native clipboard, the same
+ *  path ⌘C takes — the WebView's async clipboard API needs a user
+ *  gesture, and an escape sequence arrives without one. */
+export interface ClipboardWritePayload {
+  text: string;
+}
+
 /** Clear log history — sidebar header clear button on the logs
  *  section. Void payload. */
 export type ClearLogsPayload = void;
@@ -524,6 +532,7 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-dismiss-notification": DismissNotificationPayload;
   "ht-clear-notifications": ClearNotificationsPayload;
   "ht-terminal-notify": TerminalNotifyPayload;
+  "ht-clipboard-write": ClipboardWritePayload;
   "ht-clear-logs": ClearLogsPayload;
   "ht-cookie-import": CookieImportPayload;
   "ht-cookie-export": CookieExportPayload;

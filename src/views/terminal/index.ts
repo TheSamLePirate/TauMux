@@ -2883,6 +2883,15 @@ window.addEventListener("ht-dismiss-notification", (e: Event) => {
 // / BEL). Forward to bun so it goes through `notification.create` —
 // the same path as `ht notify`, which is what buys persistence, the
 // overlay, the sound and the Telegram fan-out.
+// OSC 52 write — a program in a pane yanked something and wants it on
+// the system clipboard. Goes to bun's native clipboard, the same path
+// ⌘C takes; the WebView's async clipboard API is unusable here because
+// it requires a user gesture and an escape sequence has none.
+window.addEventListener("ht-clipboard-write", (e: Event) => {
+  const detail = (e as CustomEvent).detail as { text?: string } | undefined;
+  if (detail?.text) rpc.send("clipboardWrite", { text: detail.text });
+});
+
 window.addEventListener("ht-terminal-notify", (e: Event) => {
   const detail = (e as CustomEvent).detail as
     { surfaceId?: string; title?: string; body?: string } | undefined;

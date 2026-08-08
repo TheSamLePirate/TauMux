@@ -73,6 +73,7 @@ import { fitTerminal } from "../shared/xterm-fit";
 declare const Terminal: any;
 declare const FitAddon: any;
 declare const WebLinksAddon: any;
+declare const Unicode11Addon: any;
 
 // ---------------------------------------------------------------------------
 // Terminal theme / options
@@ -590,6 +591,18 @@ function boot() {
     const fitAddon = new FitAddon.FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon.WebLinksAddon());
+    // Unicode 11 widths — parity with the native pane. xterm's built-in
+    // table is Unicode v6 (2010) and mis-measures emoji, powerline
+    // glyphs and the box-drawing vocabulary agent CLIs render their
+    // transcripts with, so a session checked from a phone comes out
+    // shredded. Guarded: the mirror must render even if the vendored
+    // addon failed to load.
+    try {
+      term.loadAddon(new Unicode11Addon.Unicode11Addon());
+      term.unicode.activeVersion = "11";
+    } catch (err) {
+      console.warn("[web] Unicode 11 widths unavailable:", err);
+    }
     term.open(termEl);
     term.onData((data: string) => sendMsg("stdin", { surfaceId, data }));
     term.onBinary((data: string) => sendMsg("stdin", { surfaceId, data }));

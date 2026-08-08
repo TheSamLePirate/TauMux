@@ -1677,6 +1677,19 @@ export class SettingsPanel {
       },
     );
 
+    this.toggleField(
+      c,
+      "OSC 52 clipboard writes",
+      s.terminalOsc52WriteEnabled,
+      "terminalOsc52WriteEnabled",
+      {
+        note:
+          "Let programs copy to your clipboard with OSC 52 — how a yank " +
+          "in nvim or tmux over SSH reaches your local machine. Reading " +
+          "the clipboard is always refused and has no setting.",
+      },
+    );
+
     // Diagnostic paths — read-only. Useful when bug-reporting; the
     // "Reveal" button matches the App-menu item of the same name.
     this.diagnosticPathsBlock(c);

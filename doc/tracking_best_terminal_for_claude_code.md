@@ -95,7 +95,7 @@ iTerm2 environment and reads back what the child actually sees.
 3485 pass / 0 fail (was 3472 / 0), `tsc --noEmit` clean, all five audit
 scripts clean.
 
-**Commit:** _(pending)_
+**Commit:** `a1fc7b4a` (branch `feat/claude-code-terminal`)
 
 ### Not yet verified by hand
 
@@ -106,14 +106,88 @@ notification.
 
 ---
 
-## Phase 1 — remaining
+## Phase 1 — signals ✅
 
 | # | Item | Status |
 |---|---|---|
-| 1.3 | Unicode 11 addon | ⬜ |
-| 1.4 | Focus events (verify, then fix) | ⬜ |
-| 1.5 | DECSET 2031 + theme reporting | ⬜ |
-| 1.6 | OSC 52 clipboard | ⬜ |
+| 1.1 | OSC 9 notifications | ✅ (Phase 0 commit) |
+| 1.2 | BEL notifications | ✅ (Phase 0 commit) |
+| 1.3 | Unicode 11 widths | ✅ |
+| 1.4 | Focus events | ✅ — no change needed, see below |
+| 1.5 | DECSET 2031 + theme reporting | ✅ |
+| 1.6 | OSC 52 clipboard | ✅ |
+
+### 1.4 — the verify came back "nothing to fix"
+
+This was scoped as *verify, then fix if needed*. It does not need fixing,
+and the reasoning is worth recording so nobody re-opens it:
+
+- xterm's `_onTextAreaBlur` already emits `ESC[O` when the application
+  has enabled `DECSET 1004`, and `_onTextAreaFocus` emits `ESC[I`. Both
+  are bound to the hidden helper textarea, not to the window.
+- WebKit fires `blur` on the active element when the window loses key
+  status, and `focus` when it regains it — the same event pair that
+  makes the existing `window` blur/focus listeners at `index.ts` work.
+- Switching workspace moves DOM focus via `focusSurface`, so a pane
+  hidden behind another workspace has genuinely lost focus and reports
+  it. There is no path where a background pane keeps focus.
+
+Adding an explicit `term.blur()` on window blur would have been actively
+wrong: it would leave nothing focused when the window came back, so the
+first keystroke after alt-tab would go nowhere.
+
+### 1.3 — no setting, deliberately
+
+Unicode 11 widths are applied unconditionally rather than behind a
+toggle. xterm's built-in table is Unicode v6 (2010); every terminal
+these programs are actually tested against ships an up-to-date one. A
+width disagreement is not cosmetic — the program positions its cursor by
+counting columns, so one wrong width shreds every subsequent redraw. v6
+is not a preference anyone holds.
+
+Wired into the web mirror too, through the documented vendor-asset path
+(`VENDOR_MAP` → `asset-loader` export → `page.ts` script → electrobun
+copy rule): the mirror is how you check on an agent from a phone, and
+garbled emoji there is exactly as unreadable.
+
+### 1.6 — OSC 52 is write-only, permanently
+
+Writes are the useful direction (a yank in nvim over SSH reaching the
+local clipboard) and are behind `terminalOsc52WriteEnabled`, default on.
+Reads are refused with no setting: OSC 52's read turns any process with
+terminal access into a clipboard exfiltrator, running unprompted and
+leaving nothing on screen. xterm ships it disabled, iTerm2 prompts,
+Ghostty refuses. A toggle here would be a toggle whose only effect is to
+weaken the user.
+
+### 1.5 — initial state is not reported
+
+The spec fires the notification *on change*. A program wanting the
+current palette asks with an OSC 11 query, which xterm already answers
+from the pane's configured background — so nothing needed inventing. The
+CSI handlers return `false` always: returning `true` would consume
+`CSI ? 1049 ; 2031 h` and silently break the alternate screen.
+
+### New modules
+
+| Module | Why |
+|---|---|
+| `src/views/terminal/terminal-clipboard.ts` | OSC 52 provider (write-only) + Unicode 11 install. |
+| `src/views/terminal/terminal-theme-report.ts` | DECSET 2031 subscription tracking + luminance classification. |
+
+### Tests added
+
+`tests/terminal-clipboard.test.ts` (8) ·
+`tests/terminal-theme-report.test.ts` (16).
+
+### Baseline
+
+3509 pass / 0 fail, `tsc --noEmit` clean, five audits clean, `bun start`
+boots (socket bound, audits pass, shell spawned).
+
+**Commit:** _(pending)_
+
+---
 
 ## Phase 2 — structural ⬜
 

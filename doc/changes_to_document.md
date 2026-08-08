@@ -135,3 +135,20 @@ Still to write when the docs sweep happens:
   `iterm2` *and* `terminal_bell` both work now, and that bell
   notifications are throttled to one per pane per 5 s.
 - **Changelog** — entry for the version this ships as.
+
+## Pending — Phase 1 (2026-08-08)
+
+Folded in already (EN + FR): `configuration/settings.md` gained
+`terminalOsc52WriteEnabled`.
+
+Still to write:
+
+- **Unicode 11 widths** are now on unconditionally (native + web
+  mirror). Worth a line in the terminal concepts page — it changes how
+  emoji and powerline glyphs measure, which is visible.
+- **DECSET 2031** — switching theme preset now re-themes running agent
+  CLIs in place. That is a genuinely novel capability (per *pane*, which
+  no other terminal can express) and is currently documented nowhere.
+- The OSC reference page should stop claiming OSC 7/52/133 are "handled
+  by xterm". 52 is now really handled (write-only); 7 and 133 still are
+  not.

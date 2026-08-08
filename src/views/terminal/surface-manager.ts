@@ -21,6 +21,12 @@ export function surfaceIdentity(kind: SurfaceKind): TauIdentity {
 import { TerminalEffects } from "./terminal-effects";
 import { describeOsc94State, type Osc94Update } from "./osc-progress";
 import { installTerminalOscHandlers } from "./terminal-osc";
+import { installTerminalWidthAndClipboard } from "./terminal-clipboard";
+import {
+  installThemeReporting,
+  isDarkBackground,
+  type ThemeReporter,
+} from "./terminal-theme-report";
 import type {
   PanelEvent,
   PersistedLayout,
@@ -161,6 +167,9 @@ export interface SurfaceView {
    *  after this until the surface is closed — protects a user's chosen
    *  pane name from being overwritten by e.g. `vim` setting the title. */
   titleLockedByUser?: boolean;
+  /** DECSET 2031 theme-change reporter. Null for non-terminal surfaces.
+   *  Told about palette changes from `applySettings`. */
+  themeReporter?: ThemeReporter | null;
 }
 
 export interface Workspace {
@@ -206,6 +215,8 @@ export class SurfaceManager {
   private osc9NotifyEnabled = true;
   /** Routed from `AppSettings.terminalBellNotifyEnabled`. */
   private bellNotifyEnabled = true;
+  /** Routed from `AppSettings.terminalOsc52WriteEnabled`. */
+  private osc52WriteEnabled = true;
   /** Renderer requested by settings. New terminals attach with this;
    *  changing it re-attaches every live terminal in place. */
   private rendererKind: TerminalRendererKind = "dom";
@@ -1281,6 +1292,7 @@ export class SurfaceManager {
     this.osc94Enabled = s.terminalOsc94Enabled;
     this.osc9NotifyEnabled = s.terminalOsc9NotifyEnabled;
     this.bellNotifyEnabled = s.terminalBellNotifyEnabled;
+    this.osc52WriteEnabled = s.terminalOsc52WriteEnabled;
     this.htStatusKeyOrder = s.htStatusKeyOrder ?? [];
     this.htStatusKeyHidden = s.htStatusKeyHidden ?? [];
     // P7 S7 — cache the browser search engine choice so the next
@@ -1418,6 +1430,11 @@ export class SurfaceManager {
           t.options.cursorStyle = s.cursorStyle;
           t.options.scrollback = s.scrollbackLines;
           t.options.theme = theme;
+          // DECSET 2031 — a program that asked to be told about palette
+          // flips gets told now. `report` no-ops unless the polarity
+          // actually changed, so dragging an unrelated slider doesn't
+          // spray DSR replies into its stdin.
+          view.themeReporter?.report(isDarkBackground(s.bgBase));
           // Force xterm to re-render with new colors
           t.refresh(0, t.rows - 1);
           fitSurfaceTerminal(view);
@@ -2423,6 +2440,9 @@ export class SurfaceManager {
     term.loadAddon(fitAddon);
     term.loadAddon(webLinksAddon);
     term.loadAddon(searchAddon);
+    installTerminalWidthAndClipboard(term, {
+      isOsc52WriteEnabled: () => this.osc52WriteEnabled,
+    });
     term.open(termLayerEl);
 
     // The GPU renderer is attached later, from applyLayout(), NOT here.
@@ -2448,6 +2468,14 @@ export class SurfaceManager {
       onData: (data) => this.onStdin(surfaceId, data),
       onPulse: (len) => effects.pulseInput(len),
     });
+
+    // DECSET 2031 — tell a program when the palette flips dark/light so
+    // it can re-pick its own colours. Replies go to the PTY's stdin;
+    // they are the terminal answering the program, same direction as a
+    // keystroke.
+    const themeReporter = installThemeReporting(term, (data) =>
+      this.onStdin(surfaceId, data),
+    );
 
     // Escape sequences xterm itself drops: OSC 0/2 titles, OSC 9
     // progress *and* notifications, and BEL. See terminal-osc.ts for the
@@ -2501,6 +2529,7 @@ export class SurfaceManager {
       titleEl: barTitle,
       chipsEl,
       title,
+      themeReporter,
     };
   }
 

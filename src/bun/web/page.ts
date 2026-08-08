@@ -3,6 +3,7 @@ import {
   XTERM_CSS,
   FIT_ADDON_JS,
   WEB_LINKS_ADDON_JS,
+  UNICODE11_ADDON_JS,
   readAsset,
 } from "./asset-loader";
 
@@ -74,6 +75,9 @@ export function buildHtmlPage(): string {
   p.push(umdSuffix);
   p.push(umdPrefix);
   p.push(WEB_LINKS_ADDON_JS);
+  p.push(umdSuffix);
+  p.push(umdPrefix);
+  p.push(UNICODE11_ADDON_JS);
   p.push(umdSuffix);
 
   // Client bundle (bun-built, IIFE)
