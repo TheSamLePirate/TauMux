@@ -29,6 +29,14 @@ import {
 } from "../src/cli/claude-settings-edit";
 import type { ClaudeSessionState } from "../src/shared/claude-types";
 import {
+  detectShell,
+  installInto,
+  isInstalledIn,
+  rcPathFor,
+  uninstallFrom,
+  type ShellKind,
+} from "../src/cli/shell-integration";
+import {
   formatClaudeCost,
   sessionTitle,
 } from "../src/shared/claude-types";
@@ -536,6 +544,73 @@ function parseFeatures(): readonly Feature[] {
   return wanted;
 }
 
+/** `ht shell-integration install | uninstall | status`.
+ *
+ *  Reports what is actually true rather than what was attempted: whether
+ *  the rc file carries the snippet, and — separately — whether the shell
+ *  in *this* session is emitting marks. Those differ right after an
+ *  install, because the running shell has not re-read its rc file, and a
+ *  user who is not told that will conclude the feature is broken. */
+function runShellIntegration(
+  sub: string,
+  flags: Record<string, string>,
+): void {
+  const shell = (flags["shell"] as ShellKind) || detectShell();
+  if (shell !== "zsh" && shell !== "bash") {
+    console.error(`ht shell-integration: unsupported shell "${shell}"`);
+    console.error("Supported: zsh | bash");
+    process.exit(1);
+  }
+  const rcPath = rcPathFor(shell);
+
+  if (sub === "install") {
+    const result = installInto(rcPath);
+    if (result === "already") {
+      console.log(`Already installed in ${rcPath}`);
+    } else {
+      console.log(`Installed in ${rcPath} (backup: ${rcPath}.tau-mux.bak)`);
+      console.log(
+        "Open a new pane, or run `exec $SHELL -l`, for it to take effect.",
+      );
+    }
+    return;
+  }
+
+  if (sub === "uninstall") {
+    const result = uninstallFrom(rcPath);
+    console.log(
+      result === "removed"
+        ? `Removed from ${rcPath} (backup: ${rcPath}.tau-mux.bak)`
+        : `Not present in ${rcPath}`,
+    );
+    return;
+  }
+
+  if (sub === "status") {
+    const contents = existsSync(rcPath) ? readFileSync(rcPath, "utf-8") : "";
+    const inRc = isInstalledIn(contents);
+    const scriptPath = process.env["HT_SHELL_INTEGRATION_PATH"] ?? "";
+    const active = Boolean(process.env["HT_SHELL_INTEGRATION"]);
+    console.log(`shell:      ${shell}`);
+    console.log(`rc file:    ${rcPath}${inRc ? " (installed)" : " (absent)"}`);
+    console.log(`script:     ${scriptPath || "(not running inside tau-mux)"}`);
+    console.log(
+      `this shell: ${active ? "emitting marks" : "not emitting marks"}`,
+    );
+    if (inRc && !active) {
+      console.log(
+        "\nInstalled but not active in this shell — it has not re-read its\n" +
+          "rc file. Open a new pane or run `exec $SHELL -l`.",
+      );
+    }
+    return;
+  }
+
+  console.error(`Unknown shell-integration subcommand: ${sub}`);
+  console.error("Supported: install | uninstall | status");
+  process.exit(1);
+}
+
 function runClaudeInstall(uninstall: boolean): void {
   const { settingsPath, bridgeDir } = claudePaths();
   const { settings, error } = readSettingsFile(settingsPath);
@@ -684,6 +759,13 @@ async function main(): Promise<void> {
   }
   if (command === "logs") {
     await runLogs();
+    return;
+  }
+  // `shell-integration` edits the user's rc file. Deliberately not an
+  // RPC: it must work whether or not τ-mux is running, and the app has
+  // no business writing to ~/.zshrc on its own initiative.
+  if (command === "shell-integration") {
+    runShellIntegration(positional[0] ?? "status", flags);
     return;
   }
   // `ask` blocks indefinitely (or until --timeout) waiting for a
@@ -1333,6 +1415,16 @@ I/O:
                                     one submit per line. Falls back to plain
                                     send when the app has DEC 2004 off.
   send-key [--surface S] <key>      Send key (enter|tab|escape|...)
+  blocks [last|list|current]        Command blocks from OSC 133 shell
+        [--surface S] [--limit N]   integration: what ran, what it returned,
+        [--output] [--no-output]    how long it took, what it printed.
+                                    Requires 'ht shell-integration install';
+                                    reports integration_detected: false
+                                    otherwise. 'last' includes output by
+                                    default, 'list' omits it unless --output.
+  shell-integration [status|install|uninstall] [--shell zsh|bash]
+                                    Add/remove the optional OSC 133 hooks in
+                                    your rc file. No-op outside tau-mux.
   read-screen [--surface S] [--lines N]  Read terminal content
   screenshot [target] [--output PATH]
                                     Capture a PNG. target: (default) the

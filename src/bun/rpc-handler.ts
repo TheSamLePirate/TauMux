@@ -20,6 +20,7 @@ import type { AskUserQueue } from "./ask-user-queue";
 import { registerSystem } from "./rpc-handlers/system";
 import { registerWorkspace } from "./rpc-handlers/workspace";
 import { registerSurface } from "./rpc-handlers/surface";
+import { registerBlocks } from "./rpc-handlers/blocks";
 import { registerSidebar } from "./rpc-handlers/sidebar";
 import { registerPane } from "./rpc-handlers/pane";
 import { registerPanel } from "./rpc-handlers/panel";
@@ -208,6 +209,7 @@ export function createRpcHandler(
     registerSystem(deps, allMethodNames),
     registerWorkspace(deps),
     registerSurface(deps),
+    registerBlocks(deps),
     registerSidebar(deps),
     registerPane(deps),
     registerPanel(deps),

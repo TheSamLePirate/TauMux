@@ -166,6 +166,72 @@ If the program has *not* enabled bracketed paste — a bare shell prompt, for in
 
 Embedded `ESC[200~` / `ESC[201~` sequences are stripped from the payload, so a crafted string cannot close the bracket early and have the remainder run as typed commands.
 
+## shell-integration
+
+```bash
+ht shell-integration status
+ht shell-integration install
+ht shell-integration uninstall
+ht shell-integration install --shell bash    # default is $SHELL
+```
+
+Adds (or removes) a small block in `~/.zshrc` / `~/.bashrc` that makes your shell emit **OSC 133 semantic prompt marks** — "a prompt starts here", "the user's input starts here", "the command starts executing here", "it finished with status N".
+
+**This is optional and additive.** τ-mux's metadata poller reads real pids through libSystem, so cwd, foreground command, ports, CPU and memory work in any shell with no configuration at all. That stays the baseline. What the poller cannot know is where one command ends and the next begins, or what a command returned — only the shell knows that. Installing this turns those from inference into fact, which is what [`ht blocks`](#blocks) reports.
+
+The line added to your rc file sources `$HT_SHELL_INTEGRATION_PATH`, a variable τ-mux exports into every pane. Two things follow:
+
+- **It cannot break your shell elsewhere.** Outside τ-mux the variable is unset, the guard fails, and your rc file behaves exactly as before — in iTerm2, over SSH, in a CI container.
+- **It survives app updates.** The path is resolved when the pane spawns, so moving or updating the `.app` leaves nothing stale behind.
+
+Your rc file is backed up to `<file>.tau-mux.bak` before either edit.
+
+`status` reports two separate facts, because they differ right after an install and a user who is not told that concludes the feature is broken:
+
+```
+shell:      zsh
+rc file:    /Users/me/.zshrc (installed)
+script:     /Applications/τ-mux.app/…/shareBin/lib/shell-integration.sh
+this shell: not emitting marks
+
+Installed but not active in this shell — it has not re-read its
+rc file. Open a new pane or run `exec $SHELL -l`.
+```
+
+## blocks
+
+```bash
+ht blocks                                 # last finished command, with output
+ht blocks --no-output                     # …metadata only
+ht blocks list --limit 10                 # recent history, no output
+ht blocks list --limit 10 --output        # …with output
+ht blocks current                         # what's running right now
+ht blocks --surface surface:3
+```
+
+Reports **command blocks** — what ran, what it returned, how long it took, and what it printed:
+
+```json
+{
+  "integration_detected": true,
+  "block": {
+    "id": 12,
+    "command": "bun test",
+    "exit_code": 1,
+    "duration_ms": 4200,
+    "running": false,
+    "output": "…",
+    "output_truncated": false
+  }
+}
+```
+
+Requires [`ht shell-integration`](#shell-integration). Without it, `integration_detected` is `false` and the list is empty — deliberately distinguishable from "installed, but nothing has run yet", so a script can tell you which problem it has.
+
+`exit_code` is `null` while a command runs, and also when the shell said a command finished without saying how. That is not the same as `0`, and it isn't reported as it.
+
+Blocks are capped at 50 per surface; captured output at 16 KB per block and 64 KB per surface, oldest dropped first. Metadata outlives output, since that is what most callers want. See [`blocks.*`](/api/blocks/) for the full contract.
+
 ## send-key
 
 ```bash

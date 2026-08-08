@@ -279,6 +279,16 @@ export interface TauMuxApi {
     fix: M;
   };
 
+  /** Command blocks from the optional OSC 133 shell integration —
+   *  what ran, what it returned, how long it took, what it printed.
+   *  Every result carries `integration_detected` so a caller can tell
+   *  "nothing has run yet" from "this shell isn't reporting". */
+  blocks: {
+    last: M; // { surface_id?, output? }
+    list: M; // { surface_id?, limit?, output? }
+    current: M; // { surface_id?, output? }
+  };
+
   pane: { list: M };
   panel: { list: M };
   script: { run: M }; // { workspace_id, cwd, command, script_key }
@@ -452,6 +462,11 @@ const NAMESPACES: Record<string, [string, string][]> = {
     ["event", "event"],
     ["statusline", "statusline"],
     ["sessions", "sessions"],
+  ],
+  blocks: [
+    ["last", "last"],
+    ["list", "list"],
+    ["current", "current"],
   ],
   pane: [["list", "list"]],
   panel: [["list", "list"]],

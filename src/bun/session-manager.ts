@@ -7,6 +7,11 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { statSync, realpathSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { framePaste } from "../shared/bracketed-paste";
+import {
+  DecPrivateModeTracker,
+  MODE_BRACKETED_PASTE,
+} from "./dec-mode-tracker";
+import { CommandBlockTracker } from "./command-blocks";
 
 const MAX_HISTORY_BYTES = 64 * 1024; // 64KB raw byte fallback per surface
 const HEADLESS_SCROLLBACK = 2000; // bounded scrollback for the bun-side mirror
@@ -56,15 +61,56 @@ export interface Surface {
   outputHistorySize: number;
   /** Headless xterm that mirrors the PTY stream so we can replay a
    *  *terminal-state-correct* snapshot to web clients via SerializeAddon
-   *  instead of dumping raw bytes that could start mid-escape. */
+   *  instead of dumping raw bytes that could start mid-escape.
+   *
+   *  Null unless the web mirror is running — see
+   *  `setHeadlessMirrorEnabled`. Nothing outside the replay path may
+   *  depend on it. */
   headless: HeadlessTerminal | null;
   serializer: SerializeAddon | null;
+  /** DEC private modes the input path cares about, scanned off the PTY
+   *  stream. Always present; independent of the headless mirror. */
+  modes: DecPrivateModeTracker;
+  /** OSC 133 command blocks. Empty unless the shell has the optional
+   *  integration installed — the metadata poller remains the
+   *  zero-config baseline. */
+  blocks: CommandBlockTracker;
+}
+
+/** Construct a headless mirror + serializer, or `{null, null}` if xterm
+ *  refused. A failed mirror costs a state-correct web replay, nothing
+ *  else — never let it fail surface creation. */
+function buildHeadlessMirror(
+  id: string,
+  cols: number,
+  rows: number,
+): { headless: HeadlessTerminal | null; serializer: SerializeAddon | null } {
+  try {
+    const headless = new HeadlessTerminal({
+      cols,
+      rows,
+      scrollback: HEADLESS_SCROLLBACK,
+      allowProposedApi: true,
+    });
+    const serializer = new SerializeAddon();
+    headless.loadAddon(serializer);
+    return { headless, serializer };
+  } catch (err) {
+    console.warn(
+      `[session] headless terminal init failed for ${id}:`,
+      err instanceof Error ? err.message : err,
+    );
+    return { headless: null, serializer: null };
+  }
 }
 
 export class SessionManager {
   private surfaces = new Map<string, Surface>();
   private counter = 0;
   private shell: string;
+  /** Whether to keep a headless xterm per surface. Driven by the web
+   *  mirror's lifecycle — see `setHeadlessMirrorEnabled`. */
+  private headlessEnabled = false;
   /** Extra args passed to the shell alongside the hardcoded `-l`. Tests use
    *  this to append `-f` (zsh) or `--norc` (bash) so slow rc files don't
    *  fight a settle timeout. */
@@ -108,25 +154,19 @@ export class SessionManager {
     // Headless mirror of the PTY stream. Used by getOutputHistory() so
     // web clients rejoining mid-stream get a terminal-state-correct
     // replay instead of raw bytes that could start mid-escape-sequence.
-    let headless: HeadlessTerminal | null = null;
-    let serializer: SerializeAddon | null = null;
-    try {
-      headless = new HeadlessTerminal({
-        cols,
-        rows,
-        scrollback: HEADLESS_SCROLLBACK,
-        allowProposedApi: true,
-      });
-      serializer = new SerializeAddon();
-      headless.loadAddon(serializer);
-    } catch (err) {
-      console.warn(
-        `[session] headless terminal init failed for ${id}:`,
-        err instanceof Error ? err.message : err,
-      );
-      headless = null;
-      serializer = null;
-    }
+    // Built only while the web mirror is running: a full terminal
+    // emulator per surface — parse, cells, reflow, scrollback — is a lot
+    // to run in the main process for a feature that is off by default.
+    const built = this.headlessEnabled
+      ? buildHeadlessMirror(id, cols, rows)
+      : { headless: null, serializer: null };
+    const headless: HeadlessTerminal | null = built.headless;
+    const serializer: SerializeAddon | null = built.serializer;
+
+    // DEC private modes the *input* path needs. Deliberately not read
+    // off the mirror above — see dec-mode-tracker.ts.
+    const modes = new DecPrivateModeTracker([MODE_BRACKETED_PASTE]);
+    const blocks = new CommandBlockTracker();
 
     // Wire stdout
     pty.onStdout = (data: string) => {
@@ -138,9 +178,20 @@ export class SessionManager {
       ) {
         outputHistorySize -= outputHistory.shift()!.length;
       }
-      if (headless) {
+      modes.write(data);
+      try {
+        blocks.write(data);
+      } catch (err) {
+        // A parser bug must never take the PTY down with it — the whole
+        // point of this being an optional layer.
+        console.error("[session] block tracker threw:", err);
+      }
+      // Re-read: `setHeadlessMirrorEnabled` swaps the surface's mirror
+      // at runtime, and this closure captured the value at spawn time.
+      const mirror = this.surfaces.get(id)?.headless ?? headless;
+      if (mirror) {
         try {
-          headless.write(data);
+          mirror.write(data);
         } catch {
           /* headless terminal bugs must never crash the PTY pipeline */
         }
@@ -268,6 +319,8 @@ export class SessionManager {
       outputHistorySize,
       headless,
       serializer,
+      modes,
+      blocks,
     };
 
     this.surfaces.set(id, surface);
@@ -302,21 +355,17 @@ export class SessionManager {
    * Whether the application currently running in `surfaceId` has asked
    * for bracketed paste (`DECSET 2004`).
    *
-   * The headless mirror is already fed every byte of the PTY stream, so
-   * it is the authoritative parse of the app's DEC private modes — no
-   * second parser, no heuristics. When the mirror failed to construct
-   * (rare; logged at creation) we answer `false`, which degrades to the
-   * pre-bracketing behaviour rather than framing a paste an app never
-   * asked for.
+   * Answered from `DecPrivateModeTracker`, which scans the PTY stream
+   * for exactly this — not from the headless mirror, which is an
+   * optional subsystem that must never become load-bearing for input
+   * handling (see dec-mode-tracker.ts). An unknown surface answers
+   * `false`, which degrades to unframed writes rather than framing a
+   * paste no application asked for.
    */
   isBracketedPasteMode(surfaceId: string): boolean {
-    const surface = this.surfaces.get(surfaceId);
-    if (!surface?.headless) return false;
-    try {
-      return surface.headless.modes.bracketedPasteMode;
-    } catch {
-      return false;
-    }
+    return (
+      this.surfaces.get(surfaceId)?.modes.isSet(MODE_BRACKETED_PASTE) ?? false
+    );
   }
 
   /**
@@ -328,6 +377,62 @@ export class SessionManager {
    * submitted line by line. Size policy lives with the caller — this
    * method frames and writes whatever it is handed.
    */
+  /**
+   * Turn the per-surface headless mirrors on or off.
+   *
+   * The mirror exists for one reason: a web-mirror client that joins
+   * mid-stream needs a *terminal-state-correct* replay, not raw bytes
+   * that might start halfway through an escape sequence. When the web
+   * mirror is not running, nobody can ask for that replay, and running a
+   * full terminal emulator per surface — parse, cell allocation, reflow,
+   * 2000 lines of scrollback — in the same process as the metadata
+   * poller and the socket server is pure overhead. Agent CLIs are
+   * chatty producers; this is the wrong place to pay double.
+   *
+   * Turning it on backfills from the raw history buffer we always keep,
+   * so a client connecting to a long-running pane still gets a coherent
+   * screen rather than an empty one. The buffer is capped at 64 KB, so
+   * the replay is the recent past rather than all of history — the same
+   * bound the old always-on mirror had, since its scrollback was capped
+   * too.
+   *
+   * Gated on the *server running* rather than on client count: the
+   * server is opt-in, and a client that drops and resumes must still
+   * find its session intact.
+   */
+  setHeadlessMirrorEnabled(enabled: boolean): void {
+    if (this.headlessEnabled === enabled) return;
+    this.headlessEnabled = enabled;
+
+    for (const surface of this.surfaces.values()) {
+      if (enabled) {
+        if (surface.headless) continue;
+        const built = buildHeadlessMirror(
+          surface.id,
+          surface.pty.cols,
+          surface.pty.rows,
+        );
+        surface.headless = built.headless;
+        surface.serializer = built.serializer;
+        if (built.headless) {
+          try {
+            built.headless.write(surface.outputHistory.join(""));
+          } catch {
+            /* a failed backfill costs replay fidelity, nothing more */
+          }
+        }
+      } else {
+        try {
+          surface.headless?.dispose();
+        } catch {
+          /* already gone */
+        }
+        surface.headless = null;
+        surface.serializer = null;
+      }
+    }
+  }
+
   writePaste(surfaceId: string, text: string): void {
     const surface = this.surfaces.get(surfaceId);
     if (!surface) return;

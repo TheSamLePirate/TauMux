@@ -199,6 +199,15 @@ export class PtyManager {
       TERM_PROGRAM: TERM_PROGRAM_NAME,
       TERM_PROGRAM_VERSION: APP_VERSION,
       LANG: process.env["LANG"] || "en_US.UTF-8",
+      // Where the optional OSC 133 shell integration lives. The rc-file
+      // snippet sources *this*, rather than a hard-coded path, so the
+      // integration keeps working when the .app moves or updates — and
+      // does nothing at all in another terminal, where the variable is
+      // simply unset.
+      HT_SHELL_INTEGRATION_PATH: resolve(
+        shareBinPath,
+        "lib/shell-integration.sh",
+      ),
       // Protocol version
       HYPERTERM_PROTOCOL_VERSION: "1",
       // Legacy env vars for backward compat

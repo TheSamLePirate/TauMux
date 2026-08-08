@@ -185,7 +185,7 @@ CSI handlers return `false` always: returning `true` would consume
 3509 pass / 0 fail, `tsc --noEmit` clean, five audits clean, `bun start`
 boots (socket bound, audits pass, shell spawned).
 
-**Commit:** _(pending)_
+**Commit:** `184929c5`
 
 ---
 

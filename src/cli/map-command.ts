@@ -622,6 +622,38 @@ export function mapCommand(ctx: CliContext): RpcCall {
           key: positional[0],
         },
       };
+    case "blocks": {
+      // `ht blocks` → the last finished command, which is what
+      // automation almost always wants. `list` / `current` are the
+      // explicit forms.
+      const sub = positional[0] ?? "last";
+      const surface = flags["surface"];
+      if (sub === "list") {
+        return {
+          method: "blocks.list",
+          params: {
+            surface_id: surface,
+            limit: flags["limit"] ? Number(flags["limit"]) : undefined,
+            output: flags["output"] === "true",
+          },
+        };
+      }
+      if (sub === "current") {
+        return {
+          method: "blocks.current",
+          params: { surface_id: surface, output: flags["output"] === "true" },
+        };
+      }
+      return {
+        method: "blocks.last",
+        params: {
+          surface_id: surface,
+          // Output is included by default here — "did that succeed and
+          // what did it print" is one question, not two round-trips.
+          output: flags["no-output"] !== "true",
+        },
+      };
+    }
     case "read-screen":
       return {
         method: "surface.read_text",

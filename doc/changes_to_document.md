@@ -152,3 +152,22 @@ Still to write:
 - The OSC reference page should stop claiming OSC 7/52/133 are "handled
   by xterm". 52 is now really handled (write-only); 7 and 133 still are
   not.
+
+## Pending — Phase 2 (2026-08-08)
+
+Folded in already (EN + FR): `api/blocks.md` (new page),
+`cli/surfaces-and-io.md` gained `shell-integration` and `blocks`.
+
+Still to write:
+
+- `doc/system-osc-sequences.md` is now materially wrong. It claims OSC
+  7/52/133 are "handled by xterm"; 52 is handled by us (write-only), 133
+  is handled by us (command blocks), 7 still is not, and OSC 9
+  notifications are new. That page needs a rewrite, not a patch.
+- `doc/system-pty-session.md` should mention `DecPrivateModeTracker` and
+  why paste framing deliberately does not read the headless mirror.
+- `doc/system-process-metadata.md` opens by boasting "no shell
+  integration". Still true as the baseline, but it should now say
+  *why* the optional layer exists and what it adds.
+- The web-mirror docs should note the headless mirror is built with the
+  server and torn down with it.

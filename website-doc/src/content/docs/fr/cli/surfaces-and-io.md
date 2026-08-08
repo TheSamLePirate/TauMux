@@ -158,6 +158,72 @@ Si le programme n'a **pas** activé le collage entre crochets — une simple inv
 
 Les séquences `ESC[200~` / `ESC[201~` intégrées sont retirées de la charge utile : une chaîne malveillante ne peut donc pas refermer le crochet prématurément et faire exécuter le reste comme des commandes tapées.
 
+## shell-integration
+
+```bash
+ht shell-integration status
+ht shell-integration install
+ht shell-integration uninstall
+ht shell-integration install --shell bash    # défaut : $SHELL
+```
+
+Ajoute (ou retire) un petit bloc dans `~/.zshrc` / `~/.bashrc` qui fait émettre à votre shell les **marques sémantiques d'invite OSC 133** — « une invite commence ici », « la saisie de l'utilisateur commence ici », « la commande démarre ici », « elle s'est terminée avec le statut N ».
+
+**C'est optionnel et additif.** Le collecteur de métadonnées de τ-mux lit les vrais pid via libSystem : cwd, commande au premier plan, ports, CPU et mémoire fonctionnent dans n'importe quel shell sans aucune configuration. Cela reste la base. Ce que le collecteur ne peut pas savoir, c'est où une commande finit et où la suivante commence, ni ce qu'une commande a retourné — seul le shell le sait. Installer ceci transforme ces inférences en faits, que [`ht blocks`](#blocks) rapporte.
+
+La ligne ajoutée à votre fichier rc source `$HT_SHELL_INTEGRATION_PATH`, une variable que τ-mux exporte dans chaque panneau. Deux conséquences :
+
+- **Cela ne peut pas casser votre shell ailleurs.** Hors de τ-mux la variable n'est pas définie, la garde échoue, et votre fichier rc se comporte exactement comme avant — dans iTerm2, à travers SSH, dans un conteneur CI.
+- **Cela survit aux mises à jour.** Le chemin est résolu au lancement du panneau : déplacer ou mettre à jour le `.app` ne laisse rien de périmé.
+
+Votre fichier rc est sauvegardé dans `<fichier>.tau-mux.bak` avant chaque modification.
+
+`status` rapporte deux faits distincts, car ils diffèrent juste après une installation et un utilisateur qui l'ignore conclut que la fonctionnalité est cassée :
+
+```
+shell:      zsh
+rc file:    /Users/moi/.zshrc (installed)
+script:     /Applications/τ-mux.app/…/shareBin/lib/shell-integration.sh
+this shell: not emitting marks
+
+Installed but not active in this shell — it has not re-read its
+rc file. Open a new pane or run `exec $SHELL -l`.
+```
+
+## blocks
+
+```bash
+ht blocks                                 # dernière commande terminée, avec sa sortie
+ht blocks --no-output                     # …métadonnées seules
+ht blocks list --limit 10                 # historique récent, sans sortie
+ht blocks list --limit 10 --output        # …avec la sortie
+ht blocks current                         # ce qui tourne en ce moment
+ht blocks --surface surface:3
+```
+
+Rapporte les **blocs de commandes** — ce qui a été exécuté, ce que ça a retourné, combien de temps ça a pris, et ce que ça a affiché :
+
+```json
+{
+  "integration_detected": true,
+  "block": {
+    "id": 12,
+    "command": "bun test",
+    "exit_code": 1,
+    "duration_ms": 4200,
+    "running": false,
+    "output": "…",
+    "output_truncated": false
+  }
+}
+```
+
+Nécessite [`ht shell-integration`](#shell-integration). Sans elle, `integration_detected` vaut `false` et la liste est vide — volontairement distinguable de « installée, mais rien n'a encore tourné », pour qu'un script sache lequel des deux problèmes il rencontre.
+
+`exit_code` vaut `null` pendant l'exécution, et également lorsque le shell a signalé la fin d'une commande sans indiquer son statut. Ce n'est pas la même chose que `0`, et ce n'est pas rapporté comme tel.
+
+Les blocs sont plafonnés à 50 par surface ; la sortie capturée à 16 Ko par bloc et 64 Ko par surface, la plus ancienne étant abandonnée en premier. Les métadonnées survivent à la sortie, car c'est ce que la plupart des appelants veulent. Voir [`blocks.*`](/fr/api/blocks/) pour le contrat complet.
+
 ## send-key
 
 ```bash

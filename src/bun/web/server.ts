@@ -104,15 +104,13 @@ export class WebServer {
    *  Host decides whether to honor it. Left null by default so the
    *  native webview stays authoritative in the standard desktop case. */
   onSurfaceResizeRequest:
-    | ((surfaceId: string, cols: number, rows: number) => void)
-    | null = null;
+    ((surfaceId: string, cols: number, rows: number) => void) | null = null;
   /** Web client requests an outbound Telegram message. */
   onTelegramSend: ((chatId: string, text: string) => void) | null = null;
   /** Web client wants paginated history. Server replies with a
    *  `telegramHistory` envelope to all clients. */
   onTelegramRequestHistory:
-    | ((chatId: string, before: number | undefined) => void)
-    | null = null;
+    ((chatId: string, before: number | undefined) => void) | null = null;
   /** Web client (re)requests the chat list + service status. */
   onTelegramRequestState: (() => void) | null = null;
   /** M13 — web client pinned a cwd for a workspace's manifest cards.
@@ -288,6 +286,13 @@ export class WebServer {
     if (this.server) return;
     this.serverInstanceId = makeServerInstanceId();
     invalidatePageCache();
+
+    // Per-surface headless terminals exist only to give a client that
+    // joins mid-stream a state-correct replay, so they are built with
+    // the mirror and torn down with it. Wired here rather than at the
+    // (several) call sites for the same reason the C1 comment on
+    // `createWebServer` gives: a choke point nobody can forget.
+    this.sessionsManager.setHeadlessMirrorEnabled(true);
 
     try {
       this.server = Bun.serve({
@@ -553,6 +558,8 @@ export class WebServer {
 
   stop(): void {
     if (!this.server) return;
+    // Nobody can ask for a replay any more — stop paying for one.
+    this.sessionsManager.setHeadlessMirrorEnabled(false);
     for (const session of this.sessions.values()) {
       if (session.outputFlushTimer) {
         clearTimeout(session.outputFlushTimer);
