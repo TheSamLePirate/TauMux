@@ -183,3 +183,22 @@ Still to write:
 - **Not documented on purpose:** the Claude Code IDE bridge is not
   implemented (see `doc/tracking_best_terminal_for_claude_code.md`).
   Nothing to write until it exists.
+
+## Pending — IDE bridge (2026-08-08)
+
+Folded in already (EN + FR): `configuration/settings.md` gained
+`ideBridgeEnabled`; `integrations/claude-code.md` gained an "IDE bridge"
+section (tools, security, reject-by-default).
+
+Still to write:
+
+- **The headline framing is missing from the site.** τ-mux is now a
+  Claude Code IDE host — a terminal that shows Claude's diffs in an
+  editor pane and takes the approval through Telegram. Every other host
+  for that protocol is an editor. That belongs on the landing page and
+  in the Claude Code overview, not only in a settings row.
+- `doc/system-claude-integration.md` describes three planes (hooks,
+  statusline, pane). There is now a fourth: the IDE bridge. The
+  architecture section should say so.
+- A note that `claude -p` never connects to an IDE — print mode skips
+  discovery. Anyone debugging the bridge will otherwise chase it.

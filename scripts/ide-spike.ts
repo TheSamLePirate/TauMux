@@ -108,7 +108,7 @@ const proc = Bun.spawn(
     cwd: process.cwd(),
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, CLAUDE_CODE_AUTO_CONNECT_IDE: "true" },
+    env: (() => { const e = { ...process.env, CLAUDE_CODE_AUTO_CONNECT_IDE: "true" }; delete e.ANTHROPIC_API_KEY; delete e.ANTHROPIC_AUTH_TOKEN; return e; })(),
   },
 );
 const timer = setTimeout(() => {

@@ -1690,6 +1690,20 @@ export class SettingsPanel {
       },
     );
 
+    this.toggleField(
+      c,
+      "Claude Code IDE bridge",
+      s.ideBridgeEnabled,
+      "ideBridgeEnabled",
+      {
+        note:
+          "Advertise this window to Claude Code as an IDE, so a diff it " +
+          "proposes opens in an editor pane and waits for your verdict — " +
+          "an approval that also reaches Telegram. Loopback only, with a " +
+          "per-launch token.",
+      },
+    );
+
     // Diagnostic paths — read-only. Useful when bug-reporting; the
     // "Reveal" button matches the App-menu item of the same name.
     this.diagnosticPathsBlock(c);

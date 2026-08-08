@@ -42,6 +42,9 @@ export function registerSystemWebviewHandlers(
       if (updated.webMirrorAuthToken !== previous.webMirrorAuthToken) {
         ctx.setWebMirrorAuthToken(updated.webMirrorAuthToken);
       }
+      if (updated.ideBridgeEnabled !== previous.ideBridgeEnabled) {
+        ctx.setIdeBridgeEnabled(updated.ideBridgeEnabled);
+      }
       if (
         updated.telegramEnabled !== previous.telegramEnabled ||
         updated.telegramBotToken !== previous.telegramBotToken ||

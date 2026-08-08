@@ -201,6 +201,7 @@ export const SETTINGS_FIELD_SCHEMAS = {
   terminalOsc9NotifyEnabled: boolStrict(true),
   terminalBellNotifyEnabled: boolStrict(true),
   terminalOsc52WriteEnabled: boolStrict(true),
+  ideBridgeEnabled: boolStrict(true),
   notificationOverlayEnabled: boolStrict(true),
   workspaceCardShowMeta: boolStrict(true),
   workspaceCardShowStats: boolStrict(true),

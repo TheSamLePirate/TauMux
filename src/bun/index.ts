@@ -32,6 +32,7 @@ import { writeFileAtomic } from "./atomic-write";
 import { rpcTokenPathForSocket } from "../shared/rpc-token";
 import { CONFIG_DIR_NAME, SOCKET_BASENAME } from "../shared/brand";
 import { createPasteHost } from "./paste-host";
+import { IdeServer, type DiffOutcome } from "./ide-server";
 import type {
   TauMuxRPC,
   PersistedLayout,
@@ -698,6 +699,10 @@ const {
   readPiSessionTree,
   applyWebMirrorPort,
   restartWebMirror,
+  setIdeBridgeEnabled: (enabled: boolean) => {
+    if (enabled) ideServer.start();
+    else ideServer.stop();
+  },
   setWebMirrorAuthToken,
   applyTelegramSettings,
   rebuildAudits,
@@ -2785,6 +2790,63 @@ const autoStartWebMirror = webServerPortEnv
   ? app.webServerPort > 0
   : settingsManager.get().autoStartWebMirror && app.webServerPort > 0;
 
+/**
+ * Claude Code IDE bridge.
+ *
+ * Advertises this window in `~/.claude/ide/` so `claude` running in a
+ * pane can show a proposed edit as a diff and wait for a verdict. The
+ * review runs through the existing ask-user queue, which means the
+ * approval also reaches Telegram — a diff you can accept from your
+ * phone, which no editor-based IDE host can offer.
+ */
+const ideServer = new IdeServer({
+  workspaceFolders: () => {
+    // The cwds τ-mux actually has panes in, deduped. Claude Code uses
+    // these to decide whether this IDE is relevant to its own cwd, so a
+    // stale or invented entry is worse than a short list.
+    const seen = new Set<string>();
+    for (const surface of sessions.getAllSurfaces()) {
+      const cwd = metadataPoller.getSnapshot(surface.id)?.cwd ?? surface.cwd;
+      if (cwd) seen.add(cwd);
+    }
+    return [...seen];
+  },
+  reviewDiff: async (req): Promise<DiffOutcome> => {
+    const surfaceId = app.focusedSurfaceId ?? "";
+    // Open the proposal beside the terminal so the user is reading the
+    // change, not a description of it.
+    try {
+      sendWebviewAction("createEditorSurface", { path: req.newPath });
+    } catch (err) {
+      console.error("[ide] could not open the editor pane:", err);
+    }
+    const { response } = askUser.create({
+      surface_id: surfaceId,
+      kind: "yesno",
+      title: `Apply Claude Code's edit to ${req.newPath.split("/").pop()}?`,
+      body: `${req.tabName}\n${req.newPath}`,
+    });
+    const answer = await response;
+    // Anything that is not an explicit yes is a rejection. A timed-out
+    // or cancelled review must never be reported as approval.
+    return answer.action === "ok" && answer.value === "yes"
+      ? { verdict: "FILE_SAVED", content: req.newContents }
+      : { verdict: "DIFF_REJECTED" };
+  },
+  closeDiff: () => {
+    /* The editor pane is the user's to close; Claude giving up on a
+       diff should not yank a pane out from under them mid-read. */
+  },
+  log: (m) => console.log(m),
+});
+if (settingsManager.get().ideBridgeEnabled) {
+  try {
+    ideServer.start();
+  } catch (err) {
+    console.error("[ide] bridge failed to start:", err);
+  }
+}
+
 if (autoStartWebMirror) {
   app.webServer = createWebServer();
   app.webServer.start();
@@ -2911,6 +2973,17 @@ function remapPaneNode(
 
 function scheduleLayoutSave(): void {
   app.scheduleLayoutSave(saveLayout);
+  // Panes came or went, so the directories this window is working in may
+  // have changed. The IDE lock is written at startup — before any pane
+  // exists — and Claude Code reads it when *it* launches, which is always
+  // later; without this the advertisement permanently claims no
+  // directories. `refreshLock` no-ops when the list is unchanged, which
+  // is the common case for a layout event that merely moved a divider.
+  try {
+    ideServer.refreshLock();
+  } catch (err) {
+    console.warn("[ide] lock refresh failed:", err);
+  }
 }
 
 function tryRestoreLayout(cols: number, rows: number): boolean {
@@ -3219,6 +3292,14 @@ function persistAndCloseSync(): void {
     extensionManager.dispose();
   } catch (err) {
     console.warn("[main] extensionManager.dispose failed:", err);
+  }
+  try {
+    // Removes ~/.claude/ide/<port>.lock. Claude Code deletes locks whose
+    // pid is dead, so a leak self-heals — but leaving one behind means
+    // the next `claude` wastes a connection attempt on a closed port.
+    ideServer.stop();
+  } catch (err) {
+    console.warn("[main] ideServer.stop failed:", err);
   }
   try {
     app.webServer?.stop();

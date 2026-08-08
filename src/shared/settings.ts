@@ -92,6 +92,18 @@ export interface AppSettings {
    *  turns it on. */
   terminalOsc52WriteEnabled: boolean;
 
+  /** Advertise this τ-mux window to Claude Code as an **IDE**.
+   *
+   *  Writes `~/.claude/ide/<port>.lock` and serves MCP over a
+   *  loopback-only WebSocket, so `claude` running in a pane can show a
+   *  proposed edit as a diff and wait for your verdict — an approval
+   *  that also reaches Telegram if forwarding is on.
+   *
+   *  The port is ephemeral, bound to 127.0.0.1, and every connection
+   *  must present a per-launch token from the 0600 lock file. Turning
+   *  this off removes the lock and stops the listener. Default true. */
+  ideBridgeEnabled: boolean;
+
   /** Pinned `git config --global user.name` checked at startup by
    *  the audit module (`src/bun/audits.ts`). Mismatch surfaces a
    *  warn-level audit result with a one-step fix. Null disables the
@@ -776,6 +788,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   terminalOsc9NotifyEnabled: true,
   terminalBellNotifyEnabled: true,
   terminalOsc52WriteEnabled: true,
+  ideBridgeEnabled: true,
   // H0g (full_app_review_2026-05.md): null = audit opt-out. Must NOT ship a
   // specific person's git username in the defaults every user inherits.
   auditsGitUserNameExpected: null,
@@ -1021,6 +1034,9 @@ export function validateSettings(s: AppSettings): AppSettings {
       SETTINGS_FIELD_SCHEMAS.terminalOsc52WriteEnabled.validate(
         s.terminalOsc52WriteEnabled,
       ),
+    ideBridgeEnabled: SETTINGS_FIELD_SCHEMAS.ideBridgeEnabled.validate(
+      s.ideBridgeEnabled,
+    ),
     auditsGitUserNameExpected:
       SETTINGS_FIELD_SCHEMAS.auditsGitUserNameExpected.validate(
         s.auditsGitUserNameExpected,

@@ -207,6 +207,9 @@ export interface WebviewHandlerContext {
   /** Recreate the running web mirror (needed for a bind-address change —
    *  a live listener can't be rebound). No-op when not running. */
   restartWebMirror: () => void;
+  /** Start or stop the Claude Code IDE bridge (lock file + WS server)
+   *  when `ideBridgeEnabled` flips. */
+  setIdeBridgeEnabled: (enabled: boolean) => void;
   /** Apply an auth-token change to the live web mirror without a restart. */
   setWebMirrorAuthToken: (token: string) => void;
   applyTelegramSettings: () => Promise<void>;

@@ -159,6 +159,32 @@ espace sans plan publié enregistre un « skip » — les skips identiques
 consécutifs sont regroupés en une seule ligne avec un compteur `×N` au
 lieu de remplir le panneau d'audit.
 
+## Pont IDE
+
+Claude Code peut s'attacher à un éditeur et y gagner ce qu'un terminal ne peut pas lui offrir : présenter une modification proposée sous forme de **diff** et attendre un verdict humain. Il en trouve un en scrutant `~/.claude/ide/` à la recherche d'un fichier de verrou, puis se connecte au port qu'il contient comme à un serveur MCP.
+
+τ-mux s'y annonce. Tous les autres hôtes de ce protocole sont des éditeurs ; τ-mux est un terminal qui *contient* un panneau éditeur, un centre de notifications et un pont Telegram — donc `claude`, lancé dans un panneau, peut afficher un diff dans le panneau voisin et demander une approbation **qui atteint votre téléphone**.
+
+Contrôlé par [`ideBridgeEnabled`](/fr/configuration/settings/) (activé par défaut).
+
+### Ce qui est exposé
+
+| Outil | Comportement |
+|---|---|
+| `openDiff` | Ouvre le fichier proposé dans un panneau éditeur et déclenche une demande à l'utilisateur. Accepter applique la modification ; tout le reste — refus, annulation, expiration — la rejette. |
+| `close_tab` | Claude abandonne un diff. Le panneau est laissé tel quel : il vous appartient, et le retirer en pleine lecture serait pire qu'un onglet obsolète. |
+| `getDiagnostics` | Ne signale jamais rien. τ-mux n'exécute aucun serveur de langage, et inventer des diagnostics serait pire que de le dire. |
+
+`executeCode` n'est volontairement **pas** proposé. Il signifie « exécuter ceci dans le noyau Jupyter actif », notion que τ-mux ne possède pas — l'annoncer puis échouer à chaque appel conduirait le modèle à choisir sans cesse un outil qui ne fonctionne jamais.
+
+### Sécurité
+
+L'écouteur est lié à `127.0.0.1` uniquement, sur un port éphémère. Chaque connexion doit présenter un jeton régénéré à chaque lancement et écrit dans le fichier de verrou en mode `0600`. Le verrou est supprimé à la fermeture de τ-mux ; Claude Code efface les verrous dont le pid est mort, donc une fuite se répare d'elle-même.
+
+### Tout ce qui n'est pas approuvé est rejeté
+
+Une revue `openDiff` ne se résout en « appliquer » que sur un oui explicite. Une invite annulée, une expiration, ou une erreur interne à τ-mux se résolvent toutes en `DIFF_REJECTED` : une modification n'est jamais appliquée parce que la machinerie de revue a échoué.
+
 ## Installation
 
 ```bash

@@ -146,6 +146,32 @@ published plan records a "no plan published" skip — consecutive identical
 skips collapse into a single row with a `×N` count rather than filling
 the audit panel.
 
+## IDE bridge
+
+Claude Code can attach to an editor and gain something a terminal cannot give it: a way to show a proposed edit as a **diff** and wait for a human verdict. It finds one by scanning `~/.claude/ide/` for a lock file and connecting to the port inside as an MCP server.
+
+τ-mux advertises itself there. Every other host for that protocol is an editor; τ-mux is a terminal that *contains* an editor pane, a notification centre and a Telegram bridge — so `claude` running in a pane can put a diff in the pane next door and ask for an approval **that reaches your phone**.
+
+Controlled by [`ideBridgeEnabled`](/configuration/settings/) (default on).
+
+### What it exposes
+
+| Tool | Behaviour |
+|---|---|
+| `openDiff` | Opens the proposed file in an editor pane and raises an ask-user prompt. Accept applies the edit; anything else — reject, cancel, timeout — rejects it. |
+| `close_tab` | Claude has given up on a diff. The pane is left alone: it is yours to close, and yanking it away mid-read would be worse than a stale tab. |
+| `getDiagnostics` | Always reports none. τ-mux runs no language server, and inventing diagnostics would be worse than saying so. |
+
+`executeCode` is deliberately **not** offered. It means "run this in the active Jupyter kernel", which τ-mux has no notion of — advertising it and failing every call would leave the model repeatedly choosing a tool that never works.
+
+### Security
+
+The listener binds `127.0.0.1` only, on an ephemeral port. Every connection must present a token that is regenerated each launch and written to the lock file with mode `0600`. The lock is removed when τ-mux exits; Claude Code deletes locks whose pid is dead, so a leaked one self-heals.
+
+### Anything not approved is rejected
+
+An `openDiff` review resolves to "apply" only on an explicit yes. A cancelled prompt, a timeout, or an error inside τ-mux all resolve to `DIFF_REJECTED` — an edit is never applied because the review machinery failed.
+
 ## Install
 
 ```bash

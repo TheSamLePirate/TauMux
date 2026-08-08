@@ -224,6 +224,27 @@ Not landed for three reasons, in order of weight:
    vendor-published answer and the one users actually hit — works. What
    remains is other modifier combinations.
 
+**Correction to point 3, found later.** Claude Code *does* speak the
+Kitty keyboard protocol: the binary defines `CSI > 1 u` (push, flags=1)
+and `CSI < u` (pop), alongside `CSI > 4 ; 2 m` (modifyOtherKeys level 2).
+xterm 6.0 implements neither, which is why the hand-mapping is currently
+load-bearing — but it means the beta bump would deliver real,
+protocol-native disambiguation rather than nothing. The item is worth
+more than this entry originally implied.
+
+**Extra migration step that discovery adds:** with Kitty active, xterm
+will encode Shift+Enter itself, and `installKeyOverrides` would shadow it
+by intercepting first and returning `false`. The override must become
+conditional on the application *not* having pushed a Kitty flag set —
+delete it outright only if you are certain every agent CLI opts in.
+
+**Still not landed here**, for the unchanged reason: it is a beta of the
+rendering engine, it needs the visual regression suites
+(`bun run test:full-suite`, `test:native:design-review`) rather than the
+unit suite, and shipping it as the last act of a long session — on top of
+seven other terminal changes — is the highest-risk thing available. It
+deserves its own change with its own review.
+
 **When it is taken up:** delete `src/views/terminal/terminal-theme-report.ts`
 and its wiring, delete `src/shared/terminal-key-encoding.ts` and
 `terminal-input.ts`, set `vtExtensions.colorSchemeQuery`, and re-run the
@@ -261,67 +282,77 @@ than a terminal emulator and correct layering.
 
 | # | Item | Status |
 |---|---|---|
-| 3.1 | Lock file + WS MCP server | ⛔ **blocked** — see below |
-| 3.2 | `openDiff` in the editor pane | ⛔ blocked on 3.1 |
-| 3.3 | `selection_changed` / `at_mentioned` | ⛔ blocked on 3.1 |
+| 3.1 | Lock file + WS MCP server | ✅ |
+| 3.2 | `openDiff` review | ✅ |
+| 3.3 | `selection_changed` / `at_mentioned` | ◐ transport only |
 | 3.4 | Clickable `path:line` references | ✅ |
 | 4.1 | Drag & drop onto a terminal pane | ✅ |
 
-**Commit:** `b3c3b0e5` (v0.13.0)
+**Commits:** `b3c3b0e5` (3.4 + 4.1, v0.13.0) · IDE bridge (v0.14.0)
 
-### 3.1 — blocked, and exactly where
+### The blocker was not what it looked like
 
-Not deferred for effort. It cannot be *verified* on this machine, and
-shipping an unverifiable reverse-engineered handshake would be worse
-than shipping nothing: it would look implemented, silently fail to
-connect, and become a maintenance surface nobody could debug.
+The first attempt failed with **"Credit balance is too low"**, which read
+as an account problem. It was not: `ANTHROPIC_API_KEY` is set on this
+machine and *takes precedence over the claude.ai login*. Claude Code
+even says so in a warning line that was easy to skim past. With
+`env -u ANTHROPIC_API_KEY`, `claude` runs normally.
 
-**What is known for certain** (read out of `claude` 2.1.224):
+Worth recording because the misdiagnosis cost a whole phase: the error
+named a symptom of the wrong subsystem.
 
-- Lock directory is `<config>/.claude/ide`, resolved via
-  `Yoe.resolve(o, ".claude", "ide")`.
-- Lock file is `<port>.lock`; the port is parsed from the *filename*,
-  not the contents (`l.replace(".lock","")`).
-- Parsed shape: `{ workspaceFolders, port, pid, ideName, useWebSocket,
-  runningInWindows, authToken }`.
-- URL is `ws://<host>:<port>` when `useWebSocket`, else
-  `http://<host>:<port>/sse`.
-- A lock whose `pid` is dead is **deleted** by Claude Code, and an
-  unreadable lock is deleted too.
-- Validation: `process.ppid !== lock.pid` requires `lock.pid` to be in
-  an ancestor set — τ-mux's bun process qualifies (bun → shell → claude).
-- Auto-connect gate: `autoConnectIde` setting, or `CLAUDE_CODE_SSE_PORT`,
-  or `CLAUDE_CODE_AUTO_CONNECT_IDE=true`.
-- Transport type tags are `ws-ide` / `sse-ide`; the IDE is consumed as
-  an **MCP server**, and Claude sends an `ide_connected` notification
-  after a successful connect.
+### The protocol, recovered by observation
 
-**What is not known, and could not be recovered:**
+`scripts/ide-spike.ts` — an instrumented WS server that logs every
+header and frame — answered all three open questions on the first
+successful connect:
 
-- The **auth header name** carrying `authToken`. Not present as a string
-  in the binary under any of `ide-authorization`, `x-claude-code-*`, or
-  a literal header map near the WS transport.
-- The **JSON field name** that maps to `useWebSocket` (the reader
-  destructures a local; the source key is not adjacent).
-- The **tool set** Claude expects an IDE to expose. `openDiff`,
-  `selection_changed` and `at_mentioned` appear as strings, but not
-  their schemas, and not which are tools vs. notifications.
+| Unknown | Answer |
+|---|---|
+| Auth header | `x-claude-code-ide-authorization: <authToken>` |
+| Subprotocol | `Sec-WebSocket-Protocol: mcp` |
+| `useWebSocket` key | `transport: "ws"` in the lock body |
 
-**Why the gaps could not be closed empirically.** The plan was to run a
-spike server, point Claude Code at it, and read the actual handshake off
-the wire. A spike server + lock file was built and `claude` was spawned
-as its direct child (so the `process.ppid === lock.pid` check passes)
-with `CLAUDE_CODE_AUTO_CONNECT_IDE=true`. Claude Code exited with
-**"Credit balance is too low"** before attempting any connection, and
-the same error occurs for any `claude` invocation on this machine. With
-no runnable Claude Code, there is no way to confirm a handshake, and
-guessing three unknowns simultaneously is not engineering.
+Plus the full sequence: `initialize` (client offers
+`protocolVersion: "2025-11-25"`, capabilities `roots.listChanged` +
+`elicitation`) → `notifications/initialized` → `ide_connected`
+(a notification carrying Claude's pid) → `tools/list`.
 
-**To unblock:** an account with credit, then re-run
-`scratchpad/ide-spike.ts` (a ~60-line Bun WS server that logs upgrade
-headers and every frame). One successful connect answers all three open
-questions at once, and the rest — lock file, MCP server, `openDiff` into
-the existing editor pane RPC — is straightforward.
+And the `openDiff` contract, read out of the binary and pinned by tests:
+Claude sends `{old_file_path, new_file_path, new_file_contents, tab_name}`
+and decodes the reply as `[0].text` = verdict, `[1].text` = content to
+apply — `FILE_SAVED` (+content) / `DIFF_REJECTED` / `TAB_CLOSED`.
+
+### Verified end to end
+
+1. `IdeServer` unit suite — 28 tests, real WebSocket round-trips.
+2. A real interactive `claude` against the `IdeServer` class:
+   `[ide] connected (claude pid 9880)`.
+3. **The shipped app**: `bun start`, then a real interactive `claude` →
+   `[ide] connected (claude pid 24699)` in the app's own log.
+
+### Two things learned the hard way
+
+- **`claude -p` never connects to an IDE.** Print mode skips discovery
+  entirely. Every attempt to verify with `-p` produced a silent
+  non-result that looked like a protocol bug.
+- **The lock is written before any pane exists**, so `workspaceFolders`
+  started empty and stayed empty — and Claude reads the lock when *it*
+  launches, always later. `refreshLock()` now runs on layout changes.
+
+### 3.3 — transport only, deliberately
+
+`notifySelectionChanged` and `notifyAtMentioned` exist and are wired to
+the socket, but nothing calls them yet: the editor pane has no selection
+event to forward, and `@`-mention needs a file-explorer affordance. The
+protocol half is done and tested; the UI half is a separate change with
+its own design questions.
+
+### `executeCode` is not offered
+
+It means "run this in the active Jupyter kernel". τ-mux has no such
+notion, and advertising a tool that fails every call is worse than
+omitting it — the model would keep choosing it.
 
 ### 3.4 / 4.1 — what did land
 
