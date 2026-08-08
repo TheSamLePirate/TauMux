@@ -80,4 +80,6 @@ had to be paid for with an extraction first.
 
 ## Commits
 
-- (uncommitted at time of writing)
+- `2d275f58` — feat(settings): every `ht` config knob reachable from the app
+  (v0.15.0). Whole change in one commit: shared/bun/webview modules, the two
+  extractions that paid for it, 5 test files, baseline re-promotion.
