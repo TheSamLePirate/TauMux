@@ -189,6 +189,72 @@ boots (socket bound, audits pass, shell spawned).
 
 ---
 
-## Phase 2 — structural ⬜
+## Phase 2 — structural
+
+| # | Item | Status |
+|---|---|---|
+| 2.1 | xterm 6.1.0-beta (Kitty keyboard) | ⛔ **not landed** — see below |
+| 2.2 | OSC 133 shell integration + `ht blocks` | ✅ |
+| 2.3 | Gate the headless mirror | ✅ |
+
+**Commit:** `3945ce72` (v0.12.0)
+
+### 2.1 — not landed, and why
+
+The beta is real and it does what the plan says: `npm view` confirms
+`beta: 6.1.0-beta.292`, and the shipped bundle contains a `KittyKeyboard`
+class driven by `coreService.kittyKeyboard.flags`. It would supersede the
+Shift+Enter hand-mapping with proper CSI-u for every modifier.
+
+Not landed for three reasons, in order of weight:
+
+1. **The plan's own de-risking does not work.** It says "put it behind a
+   setting for one release so a beta regression is one toggle away". You
+   cannot put an npm dependency version behind a runtime toggle without
+   bundling both copies — ~600 KB of duplicate terminal engine. The
+   escape hatch that made the risk acceptable is not available.
+2. **It collides with what Phase 1 just shipped.** The beta implements
+   DECSET 2031 natively (`vtExtensions.colorSchemeQuery`,
+   `decPrivateModes.colorSchemeUpdates`). `terminal-theme-report.ts`
+   observes the same mode and returns `false` so xterm's handler also
+   runs — after the bump, *both* would report and the program gets
+   duplicate DSR replies. That needs deleting our implementation, not
+   just bumping a version.
+3. **The value already landed.** Shift+Enter — the case with a
+   vendor-published answer and the one users actually hit — works. What
+   remains is other modifier combinations.
+
+**When it is taken up:** delete `src/views/terminal/terminal-theme-report.ts`
+and its wiring, delete `src/shared/terminal-key-encoding.ts` and
+`terminal-input.ts`, set `vtExtensions.colorSchemeQuery`, and re-run the
+native design-review suite (`bun run test:native:design-review`) — the
+bump touches the renderer, and the unit suite does not cover rendering.
+
+### 2.2 — two bugs only real shells revealed
+
+Both were found by driving a live zsh, not by unit tests, and both are
+now regression-tested:
+
+- **Powerlevel10k rebuilds hook arrays asynchronously**, seconds after
+  install, silently dropping our `preexec`. Prompts kept being marked
+  while every `C`/`D` vanished — indistinguishable from "the integration
+  doesn't work". The script re-arms on every prompt now.
+- **p10k emits its own OSC 133**, so each command is announced twice and
+  a naive parser splits every block in two (one with the command text
+  and no exit code, one with the output and exit code but no text). A
+  repeated `C` is now a no-op.
+
+Verified end-to-end on real zsh (p10k + syntax-highlighting +
+autosuggestions) and real bash.
+
+### 2.3 — the trap in gating the mirror
+
+Paste framing was reading DEC 2004 off the headless mirror, so gating
+the mirror would have silently stopped ⌘V bracketing — undoing the
+headline fix of Phase 0. Split first: `DecPrivateModeTracker` scans the
+PTY stream for the modes the *input* path needs, which is both cheaper
+than a terminal emulator and correct layering.
+
+---
 
 ## Phase 3 — IDE host ⬜

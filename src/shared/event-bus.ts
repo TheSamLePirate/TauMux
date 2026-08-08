@@ -315,6 +315,14 @@ export interface ClipboardWritePayload {
   text: string;
 }
 
+/** Insert text into a surface as a *paste* rather than as typing —
+ *  bracketed when the running app asked for it. Raised by the terminal
+ *  drop handler; forwarded by index.ts to bun's `pasteText`. */
+export interface TerminalPastePayload {
+  surfaceId: string;
+  text: string;
+}
+
 /** Clear log history — sidebar header clear button on the logs
  *  section. Void payload. */
 export type ClearLogsPayload = void;
@@ -533,6 +541,7 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-clear-notifications": ClearNotificationsPayload;
   "ht-terminal-notify": TerminalNotifyPayload;
   "ht-clipboard-write": ClipboardWritePayload;
+  "ht-terminal-paste": TerminalPastePayload;
   "ht-clear-logs": ClearLogsPayload;
   "ht-cookie-import": CookieImportPayload;
   "ht-cookie-export": CookieExportPayload;

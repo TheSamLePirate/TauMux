@@ -22,6 +22,8 @@ import { TerminalEffects } from "./terminal-effects";
 import { describeOsc94State, type Osc94Update } from "./osc-progress";
 import { installTerminalOscHandlers } from "./terminal-osc";
 import { installTerminalWidthAndClipboard } from "./terminal-clipboard";
+import { installFileLinks } from "./terminal-links";
+import { installFileDrop } from "./terminal-drop";
 import {
   installThemeReporting,
   isDarkBackground,
@@ -2469,6 +2471,18 @@ export class SurfaceManager {
       onPulse: (len) => effects.pulseInput(len),
     });
 
+    // `path:line` references → the editor pane. Agent CLIs, compilers
+    // and stack traces print these constantly; τ-mux is one of the few
+    // terminals where the click has somewhere to go.
+    installFileLinks(term, {
+      getCwd: () => this.metadata.get(surfaceId)?.cwd,
+      openFile: (ref) =>
+        htEvents.emit("ht-open-file-in-editor", {
+          path: ref.path,
+          cwd: ref.cwd,
+        }),
+    });
+
     // DECSET 2031 — tell a program when the palette flips dark/light so
     // it can re-pick its own colours. Replies go to the PTY's stdin;
     // they are the terminal answering the program, same direction as a
@@ -2501,6 +2515,15 @@ export class SurfaceManager {
 
     container.addEventListener("mousedown", () => {
       this.focusSurface(surfaceId);
+    });
+
+    // Drag a file in, get its quoted path — the affordance every other
+    // macOS terminal has, and how people hand a screenshot to an agent
+    // CLI. Inserted as a paste, not as typing: a filename may legally
+    // contain a newline, and typing that would submit half a command.
+    installFileDrop(container, {
+      focus: () => this.focusSurface(surfaceId),
+      insert: (text) => htEvents.emit("ht-terminal-paste", { surfaceId, text }),
     });
 
     const panelManager = new PanelManager(panelsEl, term, (event) => {

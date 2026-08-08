@@ -171,3 +171,15 @@ Still to write:
   *why* the optional layer exists and what it adds.
 - The web-mirror docs should note the headless mirror is built with the
   server and torn down with it.
+
+## Pending — Phase 3/4 partial (2026-08-08)
+
+- **Clickable `path:line` references.** Terminal output now links file
+  references into the editor pane. Belongs in the terminal concepts page
+  and is worth calling out — τ-mux is one of very few terminals where
+  that click has somewhere to go.
+- **Drag & drop onto a terminal pane** inserts shell-quoted paths.
+  Should be mentioned wherever the pane interactions are described.
+- **Not documented on purpose:** the Claude Code IDE bridge is not
+  implemented (see `doc/tracking_best_terminal_for_claude_code.md`).
+  Nothing to write until it exists.

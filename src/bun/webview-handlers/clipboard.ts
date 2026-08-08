@@ -1,7 +1,7 @@
 import { Utils } from "electrobun/bun";
 import type { BunMessageHandlerSlice, WebviewHandlerContext } from "./types";
 
-type Keys = "clipboardWrite" | "clipboardPaste" | "writeStdin";
+type Keys = "clipboardWrite" | "clipboardPaste" | "writeStdin" | "pasteText";
 
 /** Clipboard + stdin write — keystroke ingress + paste fallback. */
 export function registerClipboardWebviewHandlers(
@@ -35,6 +35,11 @@ export function registerClipboardWebviewHandlers(
     clipboardPaste: (payload) => {
       ctx.app.focusedSurfaceId = payload.surfaceId;
       void ctx.handlePaste();
+    },
+    /** Paste, not type: framed when the app has DEC 2004 on. */
+    pasteText: (payload) => {
+      ctx.autoContinue.notifyHumanInput(payload.surfaceId);
+      ctx.sessions.writePaste(payload.surfaceId, payload.text);
     },
     writeStdin: (payload) => {
       ctx.autoContinue.notifyHumanInput(payload.surfaceId);

@@ -653,6 +653,12 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
        *  `notification.create` on the bun side so it lands in the same
        *  store, overlay, sound and Telegram fan-out as `ht notify`. */
       terminalNotify: { surfaceId: string; title: string; body: string };
+      /** Insert text into a surface as a paste — framed with
+       *  ESC[200~/ESC[201~ when the running app asked for bracketed
+       *  paste. Used by the terminal drop handler; a dropped filename
+       *  may legally contain a newline, and typing that would submit
+       *  half a command line. */
+      pasteText: { surfaceId: string; text: string };
 
       // Plan panel — the only plan mutation the UI performs. Steps are
       // published by agents; the user's single lever is "I'm done with

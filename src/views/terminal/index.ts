@@ -2892,6 +2892,16 @@ window.addEventListener("ht-clipboard-write", (e: Event) => {
   if (detail?.text) rpc.send("clipboardWrite", { text: detail.text });
 });
 
+// A file was dropped onto a terminal pane. Goes in as a paste rather
+// than as typing: macOS filenames may contain newlines, and typing one
+// would submit half a command line.
+window.addEventListener("ht-terminal-paste", (e: Event) => {
+  const detail = (e as CustomEvent).detail as
+    { surfaceId?: string; text?: string } | undefined;
+  if (!detail?.surfaceId || !detail.text) return;
+  rpc.send("pasteText", { surfaceId: detail.surfaceId, text: detail.text });
+});
+
 window.addEventListener("ht-terminal-notify", (e: Event) => {
   const detail = (e as CustomEvent).detail as
     { surfaceId?: string; title?: string; body?: string } | undefined;
