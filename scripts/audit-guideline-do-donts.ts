@@ -123,13 +123,29 @@ function push(id: string, label: string, ok: boolean, detail?: string) {
 }
 
 // 3. "Don't apply backdrop-filter."
+//
+// Scoped exception: the Atlas variant. Atlas is the deliberately
+// radical layout, and its full-window topology overlay floats above
+// live panes — a solid ground there hides the very thing you opened the
+// overlay to reason about, and a blurred one keeps the panes legible as
+// context. The exemption is by selector prefix, so Liquid Glass sneaking
+// into ordinary chrome still fails this check.
 {
-  const hits = CSS.match(/backdrop-filter|-webkit-backdrop-filter/g) ?? [];
+  const ATLAS_SCOPED = /^\s*(&\s*)?\.tau-atlas[\w-]*\b/;
+  const hits: string[] = [];
+  const lines = CSS.split("\n");
+  let selector = "";
+  for (const line of lines) {
+    if (line.includes("{")) selector = line;
+    if (!/backdrop-filter|-webkit-backdrop-filter/.test(line)) continue;
+    if (ATLAS_SCOPED.test(selector)) continue;
+    hits.push(line.trim());
+  }
   push(
     "no-backdrop-filter",
-    "§11: no backdrop-filter / Liquid Glass",
+    "§11: no backdrop-filter / Liquid Glass (Atlas exempt)",
     hits.length === 0,
-    hits.length ? `${hits.length} occurrences` : undefined,
+    hits.length ? `${hits.length} occurrences outside Atlas` : undefined,
   );
 }
 

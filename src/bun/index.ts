@@ -2618,6 +2618,7 @@ const socketHandler = createRpcHandler(
 claudeIntegration.attach(socketHandler, plans, () => app.getAppState(), {
   autoApprove: () => settingsManager.get().claudeAutoApprove,
   autoApproveDelayMs: () => settingsManager.get().claudeAutoApproveDelayMs,
+  mirrorSessions: (sessions) => rpc.send("claudeSessions", { sessions }),
 });
 
 // All late-bound dependencies referenced by the webview handlers now

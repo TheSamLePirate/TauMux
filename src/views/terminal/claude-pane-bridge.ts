@@ -35,9 +35,19 @@ interface ClaudeBridgeRpc {
     payload: { surfaceId: string; resume?: string; fork?: boolean },
   ): void;
   send(message: "claudeAgentClose", payload: { surfaceId: string }): void;
+  send(message: "claudeApprove", payload: { surfaceId?: string }): void;
 }
 
 export function wireClaudePaneBridge(rpc: ClaudeBridgeRpc): void {
+  // Answer a permission prompt Claude Code is showing in a terminal
+  // pane. Raised by the Atlas inspector so an approval can be cleared
+  // from the graph without hunting for the pane; omitting `surfaceId`
+  // lets bun pick whichever session is actually waiting, matching the
+  // command-palette entry.
+  window.addEventListener("ht-claude-approve", (e: Event) => {
+    const d = (e as CustomEvent).detail as { surfaceId?: string } | undefined;
+    rpc.send("claudeApprove", d?.surfaceId ? { surfaceId: d.surfaceId } : {});
+  });
   window.addEventListener("ht-claude-agent-create", (e: Event) => {
     const d = (e as CustomEvent).detail as
       | {

@@ -1,586 +1,205 @@
 /**
- * τ-mux variant: Atlas — graph + ticker.
+ * τ-mux variant: Atlas — the topology instrument.
  *
- * Source: design_guidelines/Design Guidelines tau-mux.md §9.3.
+ * Source: design_guidelines/Design Guidelines tau-mux.md §9.3, rebuilt.
+ * Rationale and the full encoding table live in `doc/tracking_atlas_aaa.md`.
  *
- *   "Radical. Replace the list sidebar with a workspace graph and add
- *    a bottom activity ticker."
+ * Atlas replaces the list sidebar with a live graph of everything τ-mux
+ * is running — workspaces, panes, the Claude Code sessions inside them,
+ * their processes, ports, git state and cost — and gives that graph the
+ * actions to clear whatever it surfaces.
  *
- * Atlas owns three pieces of chrome:
- *   1. 220 px graph column rendered as SVG inside #sidebar
- *   2. 36 px two-letter tab rail pinned between the graph and panes
- *   3. 32 px activity ticker that replaces the #tau-status-bar content
+ * Three pieces of chrome, all created on `enter()` and removed on
+ * `exit()`:
  *
- * All three are created on enter() and cleanly removed on exit(). The
- * existing sidebar content is hidden (not destroyed) while Atlas is
- * active, so switching back to Bridge or Cockpit restores the full
- * sidebar without re-mounting any state.
+ *   1. the Atlas panel inside `#sidebar` (header · graph · inspector);
+ *   2. a 44 px workspace rail that *is* the panel's collapsed state
+ *      (⌘\), not a permanent sibling — v1 kept both on screen at once,
+ *      which meant 36 px of chrome restating the graph beside it;
+ *   3. the τ brand cap on the status bar, so Atlas still reads as Atlas.
+ *
+ * The existing sidebar content is hidden rather than destroyed, so
+ * switching back to Bridge or Cockpit restores it with no state loss.
  */
 import type { VariantContext, VariantHandle } from "./types";
 import { IconTau } from "../tau-icons";
+import { htEvents } from "../../../shared/event-bus";
 import { variantContext as variantHandles } from "./variant-context";
+import { AtlasPanel } from "../atlas/panel";
+import type { AtlasEmitters } from "../atlas/snapshot";
 
-const GRAPH_ID = "tau-atlas-graph";
-const TAB_RAIL_ID = "tau-atlas-tab-rail";
+const PANEL_HOST_ID = "tau-atlas-graph";
+const RAIL_ID = "tau-atlas-rail";
+
+let panel: AtlasPanel | null = null;
+
+/** The action surface the graph offers. Kept here rather than inside
+ *  `atlas/` so the graph modules stay free of τ-mux's event contracts
+ *  and remain renderable against fixtures. */
+const emitters: AtlasEmitters = {
+  closeSurface: (surfaceId) => htEvents.emit("ht-close-surface", { surfaceId }),
+  approveClaude: (surfaceId) =>
+    htEvents.emit("ht-claude-approve", surfaceId ? { surfaceId } : {}),
+  interruptClaude: (surfaceId) =>
+    htEvents.emit("ht-claude-agent-interrupt", { surfaceId }),
+  showSurfaceInfo: (surfaceId) =>
+    htEvents.emit("ht-show-surface-info", { surfaceId }),
+  openExternal: (url) => htEvents.emit("ht-open-external", { url }),
+};
 
 export const AtlasVariant: VariantHandle = {
   id: "atlas",
 
   enter(ctx) {
     ctx.body.dataset["tauVariant"] = "atlas";
-    mountGraph(ctx);
-    mountTabRail();
-    mountTicker(ctx);
-    attachListeners();
-    schedule();
+    mountPanel();
+    mountRail();
+    mountBrandCap(ctx);
   },
 
   exit(ctx) {
     delete ctx.body.dataset["tauVariant"];
-    detachListeners();
-    unmountGraph();
-    unmountTabRail();
-    unmountTicker(ctx);
-    cancelSchedule();
+    unmountPanel();
+    unmountRail();
+    unmountBrandCap(ctx);
   },
 };
 
-// ─────────────────────────────────────────────────────────────
-// Workspace graph (220 px column, SVG)
-//
-// Layout: self-node (τ-mux) pinned top-left, workspace nodes stacked
-// vertically with their surface children branching to the right.
-// Nodes are drawn as <circle>, edges as <path>.
-// ─────────────────────────────────────────────────────────────
-
-const NS_SVG = "http://www.w3.org/2000/svg";
-type NodeKind = "self" | "repo" | "agent" | "tool";
-
-interface GraphNode {
-  id: string;
-  label: string;
-  kind: NodeKind;
-  x: number;
-  y: number;
-  running: boolean;
-}
-interface GraphEdge {
-  from: string;
-  to: string;
-  active: boolean;
+/** ⌘G — open or close the full-window topology. Exported so the
+ *  keyboard binding in `index.ts` does not need a handle on the panel. */
+export function toggleAtlasTopology(): boolean {
+  if (!panel) return false;
+  panel.toggleOverlay();
+  return true;
 }
 
-function mountGraph(_ctx: VariantContext): void {
+// ─────────────────────────────────────────────────────────────
+// Panel
+// ─────────────────────────────────────────────────────────────
+
+function mountPanel(): void {
   const sidebar = document.getElementById("sidebar");
   if (!sidebar) return;
-  let host = document.getElementById(GRAPH_ID);
+  let host = document.getElementById(PANEL_HOST_ID);
   if (!host) {
     host = document.createElement("div");
-    host.id = GRAPH_ID;
+    host.id = PANEL_HOST_ID;
     host.className = "tau-atlas-graph";
     sidebar.prepend(host);
   }
-  renderGraph(host);
-}
-
-function unmountGraph(): void {
-  document.getElementById(GRAPH_ID)?.remove();
-}
-
-interface GraphNodeWithMeta extends GraphNode {
-  colour?: string;
-  cpu?: number;
-  fg?: string;
-  cwd?: string;
-  pid?: number;
-  parentWsId?: string;
-}
-
-function renderGraph(host: HTMLElement): void {
-  host.replaceChildren();
-  const width = 220;
-  const height = host.clientHeight || 500;
-
-  // ── data ──
-  const sm =
-    variantHandles.getSurfaceManager() as AtlasSurfaceManagerLike | null;
-  const state = sm?.getWorkspaceState?.();
-  const workspaces = state?.workspaces ?? [];
-  const activeId = state?.activeWorkspaceId;
-  const pmData = sm?.getProcessManagerData?.() ?? [];
-  const focusedId = variantHandles.getFocusedSurfaceId() ?? undefined;
-
-  const nodes: GraphNodeWithMeta[] = [];
-  const edges: GraphEdge[] = [];
-  const selfX = 42,
-    selfY = 28;
-  nodes.push({
-    id: "__self__",
-    label: "τ-mux",
-    kind: "self",
-    x: selfX,
-    y: selfY,
-    running: true,
-    colour: "var(--tau-cyan)",
-  });
-
-  workspaces.forEach((ws, i) => {
-    const y = selfY + 48 + i * 54;
-    const wsColour = ws.color || "var(--tau-text)";
-    nodes.push({
-      id: ws.id,
-      label: ws.name,
-      kind: "repo",
-      x: selfX,
-      y,
-      running: ws.id === activeId,
-      colour: wsColour,
-    });
-    edges.push({ from: "__self__", to: ws.id, active: ws.id === activeId });
-
-    // Only active workspace's surfaces branch out — inactive stay
-    // collapsed to a repo node so the column reads.
-    if (ws.id === activeId) {
-      const pmWs = pmData.find((w) => w.id === ws.id);
-      ws.surfaceIds.forEach((sid, j) => {
-        const el = document.querySelector<HTMLElement>(
-          `.surface-container[data-surface-id="${sid}"]`,
-        );
-        const isAgent = !!el && el.classList.contains("tau-pane-agent");
-        const title =
-          el?.querySelector<HTMLElement>(".surface-bar-title")?.textContent ??
-          sid;
-        const surfMeta = pmWs?.surfaces.find((s) => s.id === sid)?.metadata;
-        const cpuSum =
-          surfMeta?.tree.reduce((a, p) => a + (p.cpu ?? 0), 0) ?? 0;
-        const fgNode = surfMeta?.tree.find(
-          (n) => n.pid === surfMeta.foregroundPid,
-        );
-        const fgCmd = fgNode?.command.split("/").pop() || "";
-        nodes.push({
-          id: sid,
-          label: title,
-          kind: isAgent ? "agent" : "tool",
-          x: selfX + 82,
-          y: y + 14 + j * 22,
-          running: sid === focusedId || isAgent,
-          colour: isAgent ? "var(--tau-agent)" : wsColour,
-          cpu: cpuSum,
-          fg: fgCmd,
-          cwd: surfMeta?.cwd,
-          pid: surfMeta?.pid,
-          parentWsId: ws.id,
-        });
-        edges.push({ from: ws.id, to: sid, active: sid === focusedId });
-      });
-    }
-  });
-
-  // ── svg ──
-  const svg = document.createElementNS(NS_SVG, "svg");
-  svg.setAttribute("width", String(width));
-  svg.setAttribute("height", String(height));
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.style.display = "block";
-
-  // 20 px faint grid pattern per §9.3.
-  const defs = document.createElementNS(NS_SVG, "defs");
-  const pat = document.createElementNS(NS_SVG, "pattern");
-  pat.setAttribute("id", "tau-atlas-grid");
-  pat.setAttribute("width", "20");
-  pat.setAttribute("height", "20");
-  pat.setAttribute("patternUnits", "userSpaceOnUse");
-  const pl = document.createElementNS(NS_SVG, "path");
-  pl.setAttribute("d", "M 20 0 L 0 0 0 20");
-  pl.setAttribute("fill", "none");
-  pl.setAttribute("stroke", "rgba(26, 35, 40, 0.5)");
-  pl.setAttribute("stroke-width", "0.5");
-  pat.appendChild(pl);
-  defs.appendChild(pat);
-  svg.appendChild(defs);
-
-  const bg = document.createElementNS(NS_SVG, "rect");
-  bg.setAttribute("width", String(width));
-  bg.setAttribute("height", String(height));
-  bg.setAttribute("fill", "url(#tau-atlas-grid)");
-  svg.appendChild(bg);
-
-  // Edges first so nodes render on top.
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  for (const e of edges) {
-    const a = byId.get(e.from);
-    const b = byId.get(e.to);
-    if (!a || !b) continue;
-    const p = document.createElementNS(NS_SVG, "path");
-    p.setAttribute("d", `M ${a.x} ${a.y} L ${b.x} ${b.y}`);
-    if (e.active) {
-      p.setAttribute("stroke", "var(--tau-cyan)");
-      p.setAttribute("stroke-width", "1");
-      p.setAttribute("stroke-dasharray", "3 3");
-      p.setAttribute("stroke-opacity", "0.55");
-      p.setAttribute("class", "tau-atlas-edge-active");
-    } else {
-      p.setAttribute("stroke", "var(--tau-edge)");
-      p.setAttribute("stroke-width", "0.6");
-    }
-    p.setAttribute("fill", "none");
-    svg.appendChild(p);
+  // Idempotent: `enter()` runs again on every settings change, and a
+  // second mount would orphan the first panel's listeners. A panel whose
+  // element has been detached (the host was replaced under us) is stale,
+  // not live — tear it down and mount fresh rather than leaving the
+  // column empty.
+  if (panel) {
+    if (panel.element.isConnected) return;
+    panel.destroy();
   }
-
-  // Nodes.
-  // Track the hovered node so the info-card can swap between focus
-  // and hover preview without re-rendering the whole graph.
-  let hoverNodeId: string | null = null;
-  const renderInfoCard = () => {
-    const prev = host.querySelector(".tau-atlas-info-card");
-    if (prev) prev.remove();
-    const n =
-      (hoverNodeId && nodes.find((x) => x.id === hoverNodeId)) ||
-      nodes.find((x) => x.id === focusedId) ||
-      null;
-    const card = document.createElement("div");
-    card.className = "tau-atlas-info-card tau-mono";
-    if (n) {
-      card.style.setProperty("--info-accent", n.colour ?? "var(--tau-cyan)");
-      card.innerHTML =
-        `<div class="tau-atlas-info-name">${escapeHtml(n.label)}</div>` +
-        `<div class="tau-atlas-info-meta">${escapeHtml(n.kind)}` +
-        (n.pid !== undefined ? ` · pid ${n.pid}` : "") +
-        (typeof n.cpu === "number" ? ` · ${n.cpu.toFixed(0)}% cpu` : "") +
-        `</div>` +
-        (n.fg
-          ? `<div class="tau-atlas-info-fg">${escapeHtml(n.fg)}</div>`
-          : "") +
-        (n.cwd
-          ? `<div class="tau-atlas-info-cwd">${escapeHtml(n.cwd)}</div>`
-          : "");
-    } else {
-      card.innerHTML = `<div class="tau-atlas-info-name">τ-mux</div><div class="tau-atlas-info-meta">idle</div>`;
-    }
-    host.appendChild(card);
-  };
-
-  for (const n of nodes) {
-    const colour = n.colour ?? "var(--tau-text)";
-    if (n.running) {
-      const halo = document.createElementNS(NS_SVG, "circle");
-      halo.setAttribute("cx", String(n.x));
-      halo.setAttribute("cy", String(n.y));
-      halo.setAttribute("r", "12");
-      halo.setAttribute("fill", colour);
-      halo.setAttribute("opacity", "0.18");
-      halo.setAttribute("class", "tau-atlas-halo");
-      svg.appendChild(halo);
-    }
-
-    // CPU ring: thin arc around the node whose length reflects CPU%.
-    // Only for tool/agent surface nodes with live metadata.
-    if (typeof n.cpu === "number" && n.cpu > 0) {
-      const r = 8;
-      const pct = Math.min(100, n.cpu) / 100;
-      const circumference = 2 * Math.PI * r;
-      const ring = document.createElementNS(NS_SVG, "circle");
-      ring.setAttribute("cx", String(n.x));
-      ring.setAttribute("cy", String(n.y));
-      ring.setAttribute("r", String(r));
-      ring.setAttribute("fill", "none");
-      ring.setAttribute("stroke", colour);
-      ring.setAttribute("stroke-width", "1");
-      ring.setAttribute(
-        "stroke-dasharray",
-        `${(circumference * pct).toFixed(2)} ${circumference.toFixed(2)}`,
-      );
-      ring.setAttribute("stroke-opacity", "0.7");
-      ring.setAttribute("transform", `rotate(-90 ${n.x} ${n.y})`);
-      svg.appendChild(ring);
-    }
-
-    // Workspace-level notification mirror — if this node's id is in
-    // the shared notify-workspace set, render a pulsing amber ring
-    // around it. Agent identity on the pane flips the ring to cyan.
-    const notifySet = variantHandles.getNotifyWorkspaces();
-    if (n.parentWsId && notifySet.has(n.parentWsId)) {
-      const notifyRing = document.createElementNS(NS_SVG, "circle");
-      notifyRing.setAttribute("cx", String(n.x));
-      notifyRing.setAttribute("cy", String(n.y));
-      notifyRing.setAttribute("r", "10");
-      notifyRing.setAttribute("fill", "none");
-      notifyRing.setAttribute(
-        "stroke",
-        n.kind === "agent" ? "var(--tau-agent)" : "var(--tau-cyan)",
-      );
-      notifyRing.setAttribute("stroke-width", "0.8");
-      notifyRing.setAttribute("class", "tau-atlas-notify-ring");
-      svg.appendChild(notifyRing);
-    }
-
-    const circle = document.createElementNS(NS_SVG, "circle");
-    circle.setAttribute("cx", String(n.x));
-    circle.setAttribute("cy", String(n.y));
-    circle.setAttribute("r", n.running ? "6" : "4.5");
-    circle.setAttribute("fill", n.running ? colour : "transparent");
-    circle.setAttribute("stroke", colour);
-    circle.setAttribute("stroke-width", "0.8");
-    // Native SVG tooltip so the data is also accessible when the node
-    // hasn't been hovered long enough to swap the info card.
-    const title = document.createElementNS(NS_SVG, "title");
-    title.textContent =
-      `${n.label} (${n.kind})` +
-      (n.pid !== undefined ? ` pid=${n.pid}` : "") +
-      (typeof n.cpu === "number" ? ` cpu=${n.cpu.toFixed(1)}%` : "");
-    circle.appendChild(title);
-
-    if (n.id !== "__self__") {
-      circle.style.cursor = "pointer";
-      circle.addEventListener("click", () => {
-        const sm2 =
-          variantHandles.getSurfaceManager() as AtlasSurfaceManagerLike | null;
-        if (n.kind === "repo") {
-          const ws = sm2?.getWorkspaceState?.();
-          const idx = ws?.workspaces.findIndex((w) => w.id === n.id) ?? -1;
-          if (idx >= 0) sm2?.focusWorkspaceByIndex?.(idx);
-        } else if (n.id) {
-          // Surface node — route through SurfaceManager.focusSurface so
-          // keyboard focus, xterm focus, and the sidebar all update.
-          sm2?.focusSurface?.(n.id);
-        }
-      });
-      circle.addEventListener("mouseenter", () => {
-        hoverNodeId = n.id;
-        renderInfoCard();
-      });
-      circle.addEventListener("mouseleave", () => {
-        if (hoverNodeId === n.id) hoverNodeId = null;
-        renderInfoCard();
-      });
-    }
-    svg.appendChild(circle);
-
-    const label = document.createElementNS(NS_SVG, "text");
-    label.setAttribute("x", String(n.x + 10));
-    label.setAttribute("y", String(n.y + 3));
-    label.setAttribute(
-      "fill",
-      n.id === focusedId ? "var(--tau-text)" : "var(--tau-text-dim)",
-    );
-    label.setAttribute("font-family", "var(--tau-font-mono)");
-    label.setAttribute("font-size", "10");
-    label.setAttribute("font-weight", n.id === focusedId ? "600" : "400");
-    label.textContent = n.label;
-    svg.appendChild(label);
-
-    // CPU percentage label next to the workspace/surface label for
-    // quick scanning. Only shown when there is real data.
-    if (typeof n.cpu === "number" && n.cpu > 0) {
-      const cpuLabel = document.createElementNS(NS_SVG, "text");
-      cpuLabel.setAttribute("x", String(n.x + 10 + n.label.length * 5.8));
-      cpuLabel.setAttribute("y", String(n.y + 3));
-      cpuLabel.setAttribute("fill", "var(--tau-text-mute)");
-      cpuLabel.setAttribute("font-family", "var(--tau-font-mono)");
-      cpuLabel.setAttribute("font-size", "9");
-      cpuLabel.textContent = ` ${n.cpu.toFixed(0)}%`;
-      svg.appendChild(cpuLabel);
-    }
-  }
-
-  host.appendChild(svg);
-  renderInfoCard();
+  panel = new AtlasPanel({ emit: emitters });
+  panel.mount(host);
 }
 
-interface AtlasSurfaceManagerLike {
-  getWorkspaceState?: () => {
-    workspaces: {
-      id: string;
-      name: string;
-      color?: string;
-      surfaceIds: string[];
-    }[];
-    activeWorkspaceId: string | undefined;
-  };
-  getProcessManagerData?: () => {
-    id: string;
-    name: string;
-    color?: string;
-    surfaces: {
-      id: string;
-      title: string;
-      metadata: import("../../../shared/types").SurfaceMetadata | null;
-    }[];
-  }[];
-  focusWorkspaceByIndex?: (i: number) => void;
-  focusSurface?: (id: string) => void;
+function unmountPanel(): void {
+  panel?.destroy();
+  panel = null;
+  document.getElementById(PANEL_HOST_ID)?.remove();
 }
 
 // ─────────────────────────────────────────────────────────────
-// 36 px tab rail between graph and panes.
-// Two-letter mnemonics; active chip glows in identity colour;
-// running dot top-right.
+// Collapsed rail — one glyph per workspace, agent + alert dots.
+// Only visible while the column is collapsed; the graph is the
+// authority whenever it has room to render.
 // ─────────────────────────────────────────────────────────────
 
-function mountTabRail(): void {
-  const container = document.getElementById("terminal-container");
-  if (!container) return;
-  let rail = document.getElementById(TAB_RAIL_ID);
+function mountRail(): void {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return;
+  let rail = document.getElementById(RAIL_ID);
   if (!rail) {
     rail = document.createElement("div");
-    rail.id = TAB_RAIL_ID;
-    rail.className = "tau-atlas-tab-rail";
-    container.parentElement?.insertBefore(rail, container);
+    rail.id = RAIL_ID;
+    rail.className = "tau-atlas-rail";
+    sidebar.appendChild(rail);
   }
-  renderTabRail(rail);
+  renderRail(rail);
+  if (!railRefresh) {
+    railRefresh = () => {
+      const el = document.getElementById(RAIL_ID);
+      if (el) renderRail(el);
+    };
+    window.addEventListener("ht-workspaces-changed", railRefresh);
+    window.addEventListener("ht-surface-focused", railRefresh);
+    window.addEventListener("ht-notify-state-changed", railRefresh);
+  }
 }
 
-function unmountTabRail(): void {
-  document.getElementById(TAB_RAIL_ID)?.remove();
+let railRefresh: (() => void) | null = null;
+
+function unmountRail(): void {
+  document.getElementById(RAIL_ID)?.remove();
+  if (railRefresh) {
+    window.removeEventListener("ht-workspaces-changed", railRefresh);
+    window.removeEventListener("ht-surface-focused", railRefresh);
+    window.removeEventListener("ht-notify-state-changed", railRefresh);
+    railRefresh = null;
+  }
 }
 
-function renderTabRail(rail: HTMLElement): void {
-  rail.replaceChildren();
-  const sm =
-    variantHandles.getSurfaceManager() as AtlasSurfaceManagerLike | null;
+interface RailSurfaceManager {
+  getWorkspaceState?: () => {
+    workspaces: { id: string; name: string; color?: string }[];
+    activeWorkspaceId: string | null | undefined;
+  };
+  focusWorkspaceByIndex?: (index: number) => void;
+}
+
+function renderRail(rail: HTMLElement): void {
+  const sm = variantHandles.getSurfaceManager() as RailSurfaceManager | null;
   const state = sm?.getWorkspaceState?.();
-  const active = state?.workspaces.find(
-    (w) => w.id === state.activeWorkspaceId,
+  const workspaces = state?.workspaces ?? [];
+  const notify = variantHandles.getNotifyWorkspaces();
+  rail.replaceChildren(
+    ...workspaces.map((ws, index) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tau-atlas-rail-btn";
+      btn.title = ws.name;
+      btn.setAttribute("aria-label", ws.name);
+      if (ws.id === state?.activeWorkspaceId) btn.classList.add("is-active");
+      if (notify.has(ws.id)) btn.classList.add("has-alert");
+      if (ws.color) btn.style.setProperty("--node", ws.color);
+      const glyph = document.createElement("span");
+      glyph.className = "tau-atlas-rail-glyph";
+      const first = (ws.name ?? "").trim().match(/[A-Za-z0-9]/);
+      glyph.textContent = first ? first[0]!.toUpperCase() : String(index + 1);
+      btn.appendChild(glyph);
+      btn.addEventListener("click", () => sm?.focusWorkspaceByIndex?.(index));
+      return btn;
+    }),
   );
-  if (!active) return;
-  const focusedId = variantHandles.getFocusedSurfaceId() ?? undefined;
-  for (const sid of active.surfaceIds) {
-    const el = document.querySelector<HTMLElement>(
-      `.surface-container[data-surface-id="${sid}"]`,
-    );
-    const title =
-      el?.querySelector<HTMLElement>(".surface-bar-title")?.textContent ?? sid;
-    const mnemonic = makeMnemonic(title);
-    const isAgent = !!el && el.classList.contains("tau-pane-agent");
-    const isFocused = sid === focusedId;
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className =
-      `tau-atlas-chip tau-atlas-chip-${isAgent ? "agent" : "human"}` +
-      (isFocused ? " is-focused" : "");
-    chip.textContent = mnemonic;
-    chip.title = title;
-    chip.addEventListener("click", () => el?.click());
-    if (isAgent || isFocused) {
-      const dot = document.createElement("span");
-      dot.className = "tau-atlas-chip-dot";
-      chip.appendChild(dot);
-    }
-    rail.appendChild(chip);
-  }
-}
-
-function makeMnemonic(title: string): string {
-  // CC / OC / LZ / CX / ZS style — first letter of each word, upper.
-  const parts = title
-    .replace(/[^A-Za-z0-9 \-]+/g, " ")
-    .split(/[\s\-]+/)
-    .filter(Boolean);
-  if (parts.length >= 2) {
-    return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
-  }
-  const w = parts[0] ?? title;
-  return (w[0] + (w[1] ?? w[0] ?? "?")).toUpperCase();
 }
 
 // ─────────────────────────────────────────────────────────────
-// Activity ticker — replaces the status bar when Atlas is active.
+// Status-bar brand cap. The bottom bar is otherwise the shared
+// status-key strip — an animated ticker there was harder to read
+// than useful and was removed in an earlier pass.
 // ─────────────────────────────────────────────────────────────
 
-function mountTicker(ctx: VariantContext): void {
-  // Per the user feedback: no more animating banner. Atlas bottom bar
-  // becomes a static status-key strip identical to Bridge / Cockpit —
-  // the only difference is the 32 px τ brand cap on the left so
-  // Atlas still reads as Atlas.
+function mountBrandCap(ctx: VariantContext): void {
   ctx.statusBar.classList.add("tau-atlas-ticker");
   ctx.statusBar.replaceChildren();
-  const left = document.createElement("div");
-  left.className = "tau-atlas-ticker-brand";
-  left.appendChild(IconTau({ size: 14 }));
-  ctx.statusBar.appendChild(left);
-  // Static status-keys strip. index.ts#refreshStatusBar populates it
-  // on every metadata tick via #tau-atlas-ticker-right.
+  const brand = document.createElement("div");
+  brand.className = "tau-atlas-ticker-brand";
+  brand.appendChild(IconTau({ size: 14 }));
   const right = document.createElement("div");
   right.className = "tau-atlas-ticker-right tau-mono";
   right.id = "tau-atlas-ticker-right";
-  ctx.statusBar.appendChild(right);
+  ctx.statusBar.append(brand, right);
 }
 
-function unmountTicker(ctx: VariantContext): void {
+function unmountBrandCap(ctx: VariantContext): void {
   ctx.statusBar.classList.remove("tau-atlas-ticker");
-  // Let index.ts/mountStatusBar rebuild the standard StatusBar on the
-  // next applySettings pass — it's invoked from the controller's
-  // refresh() path. To avoid stale children in the meantime, reset
-  // inline styles and content here.
   ctx.statusBar.replaceChildren();
   ctx.statusBar.dispatchEvent(new CustomEvent("tau-status-bar-reset"));
-}
-
-// renderTickerStream() removed — Atlas bottom bar is now a static
-// status-keys strip driven by the shared refreshStatusBar pipeline.
-// The old scrolling event ticker was harder to read than useful.
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    c === "&"
-      ? "&amp;"
-      : c === "<"
-        ? "&lt;"
-        : c === ">"
-          ? "&gt;"
-          : c === '"'
-            ? "&quot;"
-            : "&#39;",
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// Subscriptions — keep all three Atlas pieces in sync.
-// ─────────────────────────────────────────────────────────────
-
-let refreshHandler: (() => void) | null = null;
-let focusHandler: ((e: Event) => void) | null = null;
-
-function attachListeners(): void {
-  refreshHandler = () => schedule();
-  focusHandler = (e: Event) => {
-    const detail = (e as CustomEvent<{ surfaceId: string }>).detail;
-    if (detail?.surfaceId) {
-      variantHandles.setFocusedSurfaceId(detail.surfaceId);
-    }
-    schedule();
-  };
-  window.addEventListener("ht-workspaces-changed", refreshHandler);
-  window.addEventListener("ht-surface-focused", focusHandler);
-}
-
-function detachListeners(): void {
-  if (refreshHandler) {
-    window.removeEventListener("ht-workspaces-changed", refreshHandler);
-    refreshHandler = null;
-  }
-  if (focusHandler) {
-    window.removeEventListener("ht-surface-focused", focusHandler);
-    focusHandler = null;
-  }
-}
-
-let pending: number | null = null;
-function schedule(): void {
-  if (pending !== null) return;
-  pending = window.requestAnimationFrame(() => {
-    pending = null;
-    const graph = document.getElementById(GRAPH_ID);
-    if (graph) renderGraph(graph);
-    const rail = document.getElementById(TAB_RAIL_ID);
-    if (rail) renderTabRail(rail);
-    // Bottom bar is updated by index.ts#refreshStatusBar; nothing
-    // Atlas-specific to tick here.
-  });
-}
-function cancelSchedule(): void {
-  if (pending !== null) {
-    cancelAnimationFrame(pending);
-    pending = null;
-  }
 }

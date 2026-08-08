@@ -19,6 +19,7 @@ export function surfaceIdentity(kind: SurfaceKind): TauIdentity {
   return kind === "agent" || kind === "claude" ? "agent" : "human";
 }
 import { TerminalEffects } from "./terminal-effects";
+import { forgetThroughput, noteThroughput } from "./throughput-meter";
 import { describeOsc94State, type Osc94Update } from "./osc-progress";
 import { installTerminalOscHandlers } from "./terminal-osc";
 import { installTerminalWidthAndClipboard } from "./terminal-clipboard";
@@ -39,7 +40,8 @@ import type {
 } from "../../shared/types";
 import { createWorkspaceRecord } from "./workspace-factory";
 import { TerminalSearchBar } from "./terminal-search";
-import { buildSidebarWorkspaces, samePortSet } from "./sidebar-state";
+import { buildSidebarWorkspaces } from "./sidebar-state";
+import { metadataNeedsRepaint } from "./metadata-diff";
 import { PaneDragController } from "./pane-drag";
 import {
   type AppSettings,
@@ -824,6 +826,7 @@ export class SurfaceManager {
     // safe.
     this.surfaces.delete(surfaceId);
     this.metadata.delete(surfaceId);
+    forgetThroughput(surfaceId);
 
     if (ws.surfaceIds.size === 0) {
       this.removeWorkspace(wsIndex);
@@ -919,6 +922,10 @@ export class SurfaceManager {
     const view = this.surfaces.get(surfaceId);
     if (!view) return;
     if (!view.term) return;
+    // Sample the byte rate before writing. The Atlas graph animates each
+    // pane's wire from this signal; the meter keeps no timers, so a
+    // quiet pane costs nothing here.
+    noteThroughput(surfaceId, data.length);
     view.effects?.pulseOutput(data.length);
     view.term.write(data);
   }
@@ -1132,58 +1139,17 @@ export class SurfaceManager {
     this.metadata.set(surfaceId, metadata);
     const view = this.surfaces.get(surfaceId);
     if (view) renderSurfaceChips(view.chipsEl, metadata, NATIVE_CHIP_DEPS);
-    // Rebuild the sidebar when any field the card displays may have changed:
-    // the port set, the focused-pane fg command, the cwd (multi-cwd chip
-    // row), or the package.json (header + scripts + running status). Tree
-    // shape also affects running-script dots, so include a cheap proxy.
-    const portsChanged =
-      !prev || !samePortSet(prev.listeningPorts, metadata.listeningPorts);
-    const fgChanged =
-      surfaceId === this.focusedSurfaceId &&
-      (!prev || prev.foregroundPid !== metadata.foregroundPid);
-    const cwdChanged = (prev?.cwd ?? "") !== metadata.cwd;
-    const pkgChanged =
-      (prev?.packageJson?.path ?? null) !==
-      (metadata.packageJson?.path ?? null);
-    const treeLenChanged = (prev?.tree.length ?? -1) !== metadata.tree.length;
-    // W1-STATGATE — also refresh on live CPU/MEM movement so the workspace
-    // card's stat row + sparkline track activity at ~1 Hz instead of only
-    // updating when some structural field happens to move. Summing the
-    // tree means a *truly idle* workspace (every process at 0.0% CPU and
-    // stable RSS) still triggers nothing, so idle CPU stays ~0; any real
-    // movement refreshes. Safe to fire often now: updateSidebar() is
-    // rAF-coalesced, setWorkspaces short-circuits on a byte-identical
-    // signature, and the card stat row reconciles in place (W1-STATROW).
-    let cpuMemChanged = !prev;
-    if (prev) {
-      let prevCpu = 0;
-      let prevRss = 0;
-      let curCpu = 0;
-      let curRss = 0;
-      for (const n of prev.tree) {
-        prevCpu += n.cpu;
-        prevRss += n.rssKb;
-      }
-      for (const n of metadata.tree) {
-        curCpu += n.cpu;
-        curRss += n.rssKb;
-      }
-      cpuMemChanged = prevCpu !== curCpu || prevRss !== curRss;
-    }
-    if (
-      portsChanged ||
-      fgChanged ||
-      cwdChanged ||
-      pkgChanged ||
-      treeLenChanged ||
-      cpuMemChanged
-    ) {
+    // Repaint gate — see `metadata-diff.ts` for why an idle pane must
+    // produce nothing at all. Consumers: the sidebar cards, and any view
+    // driven by live telemetry (the Atlas graph listens for the event).
+    if (metadataNeedsRepaint(prev, metadata, surfaceId === this.focusedSurfaceId)) {
       this.updateSidebar();
+      htEvents.emit("ht-surface-metadata", { surfaceId });
     }
     // cwd changes also affect what gets persisted (surfaceCwds) — nudge the
     // debounced sync so the on-disk layout tracks where shells currently
     // are, not where they were when the workspace shape last changed.
-    if (cwdChanged) this.notifyWorkspaceChanged();
+    if ((prev?.cwd ?? "") !== metadata.cwd) this.notifyWorkspaceChanged();
   }
 
   getSurfaceMetadata(surfaceId: string): SurfaceMetadata | null {

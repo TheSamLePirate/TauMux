@@ -1,6 +1,7 @@
 import type { ElectrobunRPCSchema } from "electrobun/bun";
 import type { AppSettings } from "./settings";
 import type { IntegrationsStatus } from "./integrations";
+import type { ClaudeSessionState } from "./claude-types";
 
 // === Pane Layout Types (shared between webview, bun, and web clients) ===
 
@@ -1307,6 +1308,22 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
         sessionId: string;
         messages: unknown[];
       };
+
+      /** Live snapshot of every Claude Code session the registry knows
+       *  about — hook-driven sessions running in a plain terminal pane
+       *  as well as native Claude panes.
+       *
+       *  Before this channel the webview only ever saw Claude state
+       *  squashed into two sidebar pills by `ClaudeStatusPresenter`
+       *  (`Claude` + `cc`), which lose per-session identity the moment
+       *  two sessions share a workspace. The Atlas graph needs the
+       *  structured state — phase, model, context, cost, tasks,
+       *  subagents, pending approvals — to place a session in the
+       *  topology and offer the right action on it.
+       *
+       *  Debounced on the bun side; the registry emits on every hook
+       *  event *and* every statusline tee. */
+      claudeSessions: { sessions: ClaudeSessionState[] };
     };
   };
 }

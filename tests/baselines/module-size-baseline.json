@@ -1,10 +1,10 @@
 {
   "scripts/demo_gitdiff.ts": 2157,
-  "src/bun/index.ts": 3314,
+  "src/bun/index.ts": 3315,
   "src/shared/status-render.ts": 1881,
   "src/views/terminal/agent-panel.ts": 1877,
-  "src/views/terminal/index.ts": 3128,
+  "src/views/terminal/index.ts": 3123,
   "src/views/terminal/settings-panel.ts": 1959,
   "src/views/terminal/sidebar.ts": 3654,
-  "src/views/terminal/surface-manager.ts": 2988
+  "src/views/terminal/surface-manager.ts": 2954
 }

@@ -128,13 +128,16 @@ describe("Variant lifecycle — Atlas (P7 S10)", () => {
     expect(ctx.body.dataset["tauVariant"]).toBe("atlas");
   });
 
-  test("enter mounts the workspace graph + tab rail under the sidebar", async () => {
+  test("enter mounts the graph panel + collapsed rail under the sidebar", async () => {
     const { AtlasVariant } = await loadVariants();
     const ctx = makeContext();
     AtlasVariant.enter(ctx);
-    // Graph + tab rail use stable ids documented in the module.
+    // Panel host + rail use stable ids documented in the module. The
+    // rail is the panel's *collapsed* state (⌘\), so it mounts here but
+    // stays `display: none` until the column is folded.
     expect(document.getElementById("tau-atlas-graph")).not.toBeNull();
-    expect(document.getElementById("tau-atlas-tab-rail")).not.toBeNull();
+    expect(document.getElementById("tau-atlas-rail")).not.toBeNull();
+    expect(document.querySelector(".tau-atlas-panel")).not.toBeNull();
   });
 
   test("exit removes data-tau-variant and the mounted chrome", async () => {
@@ -144,7 +147,8 @@ describe("Variant lifecycle — Atlas (P7 S10)", () => {
     AtlasVariant.exit(ctx);
     expect(ctx.body.dataset["tauVariant"]).toBeUndefined();
     expect(document.getElementById("tau-atlas-graph")).toBeNull();
-    expect(document.getElementById("tau-atlas-tab-rail")).toBeNull();
+    expect(document.getElementById("tau-atlas-rail")).toBeNull();
+    expect(document.querySelector(".tau-atlas-panel")).toBeNull();
   });
 
   test("enter is idempotent — exactly one graph after two calls", async () => {
@@ -153,7 +157,8 @@ describe("Variant lifecycle — Atlas (P7 S10)", () => {
     AtlasVariant.enter(ctx);
     AtlasVariant.enter(ctx);
     expect(document.querySelectorAll("#tau-atlas-graph").length).toBe(1);
-    expect(document.querySelectorAll("#tau-atlas-tab-rail").length).toBe(1);
+    expect(document.querySelectorAll("#tau-atlas-rail").length).toBe(1);
+    expect(document.querySelectorAll(".tau-atlas-panel").length).toBe(1);
   });
 
   test("Cockpit → Atlas switch (enter/exit handoff) ends with only Atlas chrome", async () => {

@@ -79,6 +79,10 @@
   --ht-sidebar-inset-highlight: rgba(255, 255, 255, 0.028);
   --ht-sidebar-inset-strong: rgba(255, 255, 255, 0.06);
   --ht-sidebar-row-shadow: 0 8px 20px rgba(0, 0, 0, 0.26);
+  /* Floating hover cards (file-link tooltip): shallower than the pane
+   *  shadow, deeper than a row's — they sit above content but are
+   *  transient. */
+  --ht-tooltip-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
 
   /* P7 S11 — surface (pane) chrome tints. The pane container uses a
    *  dark border + an inset top-highlight + a deep drop shadow; same

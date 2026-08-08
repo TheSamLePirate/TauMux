@@ -23,6 +23,8 @@ import {
 } from "./claude-registry-persistence";
 import { ClaudeStatusPresenter } from "./claude-status-presenter";
 import { ClaudeTeamWatcher } from "./claude-team-watcher";
+import { attachClaudeSessionMirror } from "./claude-session-mirror";
+import type { ClaudeSessionState } from "../shared/claude-types";
 import type { PlanStore } from "./plan-store";
 
 export interface ClaudeIntegration {
@@ -40,6 +42,9 @@ export interface ClaudeIntegration {
     settings?: {
       autoApprove: () => boolean;
       autoApproveDelayMs: () => number;
+      /** Push structured session state to the webview. Given, the
+       *  registry is mirrored through `attachClaudeSessionMirror`. */
+      mirrorSessions?: (sessions: ClaudeSessionState[]) => void;
     },
   ): void;
 }
@@ -76,6 +81,9 @@ export function createClaudeIntegration(
       // slow poll; silent (one stat per tick) when the experimental
       // feature is unused.
       new ClaudeTeamWatcher({ callRpc }).start();
+      if (settings?.mirrorSessions) {
+        attachClaudeSessionMirror({ registry, send: settings.mirrorSessions });
+      }
       if (plans && getState) {
         new ClaudePlanMirror({
           plans,

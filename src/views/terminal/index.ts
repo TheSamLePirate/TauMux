@@ -23,12 +23,18 @@ import { renderStatusKey, type StatusContext } from "./status-keys";
 // Side-effect import: installs window.tauAuditFocus() for DevTools usage.
 import "./tau-focus-audit";
 import { VariantController } from "./variants/controller";
+import {
+  toggleRail,
+  toggleTopology,
+  type LayoutShortcutDeps,
+} from "./variants/layout-shortcuts";
 import type { VariantId } from "./variants/types";
 import { confirmDestructive, showPromptDialog } from "./prompt-dialog";
 import { ProcessManagerPanel } from "./process-manager";
 import { SettingsPanel } from "./settings-panel";
 import { createIntegrationsControl } from "./integrations-control";
 import { PlanPanel } from "./plan-panel";
+import { setClaudeSessions } from "./claude-session-store";
 import { AskUserState } from "./ask-user-state";
 import { installAskUserModal } from "./ask-user-modal";
 import { SurfaceDetailsPanel } from "./surface-details";
@@ -369,6 +375,11 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       // plans don't blow away the visible cards.
       restorePlans: (payload) => {
         planPanel.setPlans(payload.plans);
+      },
+      // Structured Claude Code session state for views that need more
+      // than the two sidebar pills — currently the Atlas graph.
+      claudeSessions: (payload) => {
+        setClaudeSessions(payload.sessions);
       },
       // Plan #09 commit B — auto-continue audit ring. We render the
       // last few entries inline under the plan cards so the user
@@ -1946,6 +1957,16 @@ function toggleSidebar() {
   // Layout refit is handled by SurfaceManager.scheduleLayoutAfterTransition()
 }
 
+/** Dependency bundle for the §10 variant shortcuts (⌘\, ⌘G). */
+const layoutShortcutDeps: LayoutShortcutDeps = {
+  variant: () => currentSettings?.layoutVariant ?? "bridge",
+  toggleSidebar,
+  afterColumnResize: () =>
+    afterTransition(terminalContainerEl, "left", 240, () =>
+      surfaceManager.resizeAll(),
+    ),
+};
+
 function openCommandPalette() {
   clearTypingFocusMode();
   if (!palette.isVisible()) {
@@ -2384,48 +2405,22 @@ const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
     action: () => toggleSidebar(),
   },
 
-  // τ-mux §10 variant shortcuts.
-  // - ⌘\ collapses the sidebar / icon rail / graph column in Cockpit +
-  //   Atlas (acts like toggleSidebar() for those variants, and like a
-  //   plain sidebar toggle in Bridge so Bridge users still get a useful
-  //   binding; Bridge's sidebar is "never collapsible" per §9.1, so we
-  //   wire the behaviour to toggle a body attribute the variant CSS
-  //   can respect).
+  // τ-mux §10 variant shortcuts — bodies live in
+  // `variants/layout-shortcuts.ts`.
   {
     id: "layout.toggle-rail",
     description: "Collapse sidebar / icon rail / graph",
     category: "Layout",
     match: keyMatch({ key: "\\", meta: true }),
-    action: () => {
-      const variant = currentSettings?.layoutVariant ?? "bridge";
-      if (variant === "bridge") {
-        // §9.1 says Bridge is never collapsible — keep that contract
-        // but still let ⌘\ do something sensible (toggle sidebar).
-        toggleSidebar();
-        return;
-      }
-      document.body.classList.toggle("tau-rail-collapsed");
-      // Ask the terminal to resize after the transition so xterm
-      // reflows to the new available width.
-      afterTransition(terminalContainerEl, "left", 240, () =>
-        surfaceManager.resizeAll(),
-      );
-    },
+    action: () => toggleRail(layoutShortcutDeps),
   },
-  // - ⌘G toggles graph visibility (Atlas only). In other variants it
-  //   is a no-op so the binding is discoverable but harmless.
   {
     id: "layout.toggle-graph",
-    description: "Toggle graph view (Atlas)",
+    description: "Expand topology (Atlas)",
     category: "Layout",
     when: () => (currentSettings?.layoutVariant ?? "bridge") === "atlas",
     match: keyMatch({ key: "g", meta: true, shift: false }),
-    action: () => {
-      document.body.classList.toggle("tau-atlas-graph-hidden");
-      afterTransition(terminalContainerEl, "left", 240, () =>
-        surfaceManager.resizeAll(),
-      );
-    },
+    action: () => toggleTopology(layoutShortcutDeps),
   },
   {
     id: "surface.new",

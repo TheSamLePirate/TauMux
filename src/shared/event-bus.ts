@@ -526,6 +526,21 @@ export interface AgentRestartPayload {
   thinkingLevel?: string;
 }
 
+/** Answer the permission prompt Claude Code is showing in a terminal
+ *  pane. Omitting `surfaceId` targets whichever session is currently
+ *  waiting — the same semantics as the command-palette entry. Raised by
+ *  the Atlas inspector so an approval can be cleared from the graph. */
+export interface ClaudeApprovePayload {
+  surfaceId?: string;
+}
+
+/** Live process telemetry moved on a surface. Fired by SurfaceManager
+ *  behind the same change gate the sidebar uses, so an idle τ-mux emits
+ *  nothing at all and telemetry-driven views stay asleep. */
+export interface SurfaceMetadataPayload {
+  surfaceId: string;
+}
+
 export interface HtEventMap extends Record<string, unknown> {
   "ht-reorder-workspaces": ReorderWorkspacesPayload;
   "ht-surface-focused": SurfaceFocusedPayload;
@@ -599,6 +614,9 @@ export interface HtEventMap extends Record<string, unknown> {
   "ht-agent-get-models": AgentCommandPayload;
   "ht-agent-get-state": AgentCommandPayload;
   "ht-agent-restart": AgentRestartPayload;
+  // Atlas — graph-driven Claude approval + telemetry wake-up.
+  "ht-claude-approve": ClaudeApprovePayload;
+  "ht-surface-metadata": SurfaceMetadataPayload;
 }
 
 /** Singleton bus that dispatches on `window`. Importers can grab this

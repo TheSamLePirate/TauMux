@@ -44,8 +44,17 @@ const CANONICAL = new Set([
   "tauDash", // §9.3: active graph edge stroke-dashoffset
   // tauTickerScroll removed — Atlas bottom bar is now a static
   // status-key strip. Re-adding would need a guideline citation.
-  "tauAtlasHalo", // §9.3: active-node pulsing halo (r + opacity)
-  "tauAtlasNotifyPulse", // §9.3: workspace-level notification ring
+  "tauAtlasHalo", // §9.3: active-node pulsing halo (scale + opacity)
+  "tauAtlasNotifyPulse", // §9.3: attention ring on a node awaiting the user
+  // §9.3 signature: an Atlas wire's dash speed IS the pane's stdout byte
+  // rate. State, not ornament — and the renderer only sets `is-flowing`
+  // above the throughput meter's quiet floor, so an idle τ-mux animates
+  // nothing at all. See src/views/terminal/throughput-meter.ts.
+  "tauAtlasFlow",
+  // §9.3: the root→node callout arc, drawn only while something is
+  // actually waiting on the user. Breathing opacity is the signal that
+  // separates it from an ordinary wire.
+  "tauAtlasCallout",
   "tauNotifyPulse", // §7: identity-aware workspace notification dot
 ]);
 
