@@ -47,7 +47,7 @@ Cette page liste **tous** les champs, avec le défaut lu depuis `DEFAULT_SETTING
 | `bloomMigratedToTau` | boolean | `false` | Internal migration marker — do not set by hand. |
 | `paneGap` | number | `2` | Gap between panes in px, 0–20. |
 | `sidebarWidth` | number | `320` | Sidebar width in px, 200–600. |
-| `layoutVariant` | `"bridge"` \| `"cockpit"` \| `"atlas"` | `"bridge"` | Chrome layout variant. |
+| `layoutVariant` | `"bridge"` \| `"cockpit"` \| `"atlas"` | `"bridge"` | Variante de disposition du chrome — voir [Variantes de disposition](/fr/features/layout-variants/). |
 
 ## Barre latérale & cartes d'espace
 

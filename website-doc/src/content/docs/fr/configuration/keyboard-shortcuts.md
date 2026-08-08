@@ -39,6 +39,15 @@ Les raccourcis clavier sont déclarés sous forme de tableau `Binding<KeyCtx>[]`
 | `⌘C` / `⌘V` | Copier / coller |
 | `⌘=` / `⌘-` / `⌘0` | Augmenter / diminuer / réinitialiser la taille de la police |
 
+## Disposition
+
+| Raccourci | Action |
+|---|---|
+| `⌘\` | Replier la colonne de gauche — barre latérale dans Bridge, rail d'icônes dans Cockpit, graphe dans Atlas (qui se replie en un rail d'espaces de travail de 44 px) |
+| `⌘G` | **Atlas uniquement** — ouvrir la topologie plein écran : chaque espace de travail déplié jusqu'aux processus, ports et tâches d'agent mirroir. `Esc` referme |
+
+Voir [Variantes de disposition](/fr/features/layout-variants/).
+
 ## Navigateur
 
 Ces raccourcis ne se déclenchent que lorsqu'un panneau navigateur a le focus.

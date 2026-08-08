@@ -7,6 +7,21 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.17.0 — Atlas devient un instrument de topologie
+
+La [variante de disposition](/fr/features/layout-variants/) Atlas a été reconstruite. Elle dessinait auparavant un graphe d'espaces de travail incapable de répondre à la question à laquelle sert un graphe : il se reconstruisait à chaque image (le survol mourait donc à chaque tick d'une seconde), poussait les espaces au-delà du huitième hors du canevas, ne dépliait que l'espace actif, ne portait qu'un anneau CPU et une étiquette par nœud, était inatteignable au clavier — et ne montrait strictement rien des sessions Claude Code qui tournaient dedans.
+
+- **Le graphe est une colonne vertébrale.** La profondeur est une indentation, les frères et sœurs s'empilent, les arêtes sont des coudes — l'idiome de `git log --graph` et `pstree`. Les positions sont déterministes : un nœud reste là où vous l'avez vu.
+- **Les agents sont dans le graphe.** Une session Claude Code est dessinée *comme son panneau* : phase, modèle, contexte utilisé, coût, jauges de limite 5 h / 7 j, nombre de tours, durée du tour en cours, lignes ±, liste de tâches mirroir, sous-agents actifs, état de PR, et le texte de ce qui attend une approbation. Une session sans panneau vivant se rattache à la racine avec le badge `detached`.
+- **Les fils transportent les octets.** Chaque arête s'anime au débit réel de la sortie standard du panneau — un `bun test` défile visiblement, un shell à son invite reste un filet immobile. En dessous d'environ 200 o/s, rien ne s'anime : un τ-mux au repos est un graphe complètement immobile.
+- **Plus de données par nœud :** ports `:3000`, état git `main↑2*`, `78% ctx`, `$1.42`, progression `▰ 62%`, débit de sortie, arbres de processus par panneau avec CPU et RSS.
+- **L'inspecteur agit.** Approve, Interrupt, Open :port, Details, Close pane. **Approve** n'apparaît que pour une demande de permission affichée dans un panneau terminal — jamais pour une demande routée vers une modale ou Telegram, et jamais pour une question qui vous est adressée, où « approuver » choisirait silencieusement une valeur par défaut.
+- **Filtres** — all / agents / live / alert, avec le compte de tout ce qui vous attend.
+- **Clavier.** Le graphe est un véritable arbre : `↑`/`↓` parcourent les lignes, `→` déplie puis descend, `←` replie puis remonte, `Entrée` navigue.
+- **`⌘G` a changé de sens.** Il masquait auparavant la colonne Atlas ; il ouvre désormais la **topologie plein écran** — chaque espace de travail déplié jusqu'aux processus, ports et tâches d'agent mirroir. `Esc` referme.
+- **`⌘\` replie vers un rail.** La colonne Atlas se replie en un rail d'espaces de travail de 44 px au lieu de disparaître. L'ancien rail d'onglets permanent de 36 px a disparu — il ne faisait que répéter le graphe posé à côté de lui.
+- L'animation respecte `prefers-reduced-motion` : le flux d'octets, les halos et la pulsation d'attention s'arrêtent, et les arcs, couleurs et anneaux pointillés portent le même état sans bouger.
+
 ## 0.10.8 — Une question déjà répondue cesse de réclamer une approbation
 
 Suite de 0.10.7, découverte en vérifiant ce correctif sur une session réelle plutôt qu'en tests seulement. Répondre à une question n'émet aucun événement de « résolution » non plus : la notification de permission déclenchée par la question **survivait donc à la question**. La session restait en « en attente d'approbation » alors qu'elle travaillait, la pastille de la barre latérale annonçait une approbation en attente, et — le vrai problème — un simple [`ht claude approve`](/fr/cli/claude/) l'aurait sélectionnée et aurait tapé Entrée dans un panneau n'affichant aucune invite.

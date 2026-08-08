@@ -39,6 +39,15 @@ Keyboard shortcuts are declared as a `Binding<KeyCtx>[]` array in `src/views/ter
 | `⌘C` / `⌘V` | Copy / paste |
 | `⌘=` / `⌘-` / `⌘0` | Font size bigger / smaller / reset |
 
+## Layout
+
+| Shortcut | Action |
+|---|---|
+| `⌘\` | Collapse the left column — sidebar in Bridge, icon rail in Cockpit, graph in Atlas (which folds to a 44 px workspace rail) |
+| `⌘G` | **Atlas only** — open the full-window topology: every workspace expanded down to processes, ports and mirrored agent tasks. `Esc` closes it |
+
+See [Layout variants](/features/layout-variants/).
+
 ## Browser
 
 These fire only when a browser pane is focused.

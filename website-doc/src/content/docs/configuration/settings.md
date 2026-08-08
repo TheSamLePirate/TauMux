@@ -47,7 +47,7 @@ This page lists **every** field, with the default read from `DEFAULT_SETTINGS`.
 | `bloomMigratedToTau` | boolean | `false` | Internal migration marker — do not set by hand. |
 | `paneGap` | number | `2` | Gap between panes in px, 0–20. |
 | `sidebarWidth` | number | `320` | Sidebar width in px, 200–600. |
-| `layoutVariant` | `"bridge"` \| `"cockpit"` \| `"atlas"` | `"bridge"` | Chrome layout variant. |
+| `layoutVariant` | `"bridge"` \| `"cockpit"` \| `"atlas"` | `"bridge"` | Chrome layout variant — see [Layout variants](/features/layout-variants/). |
 
 ## Sidebar & workspace cards
 

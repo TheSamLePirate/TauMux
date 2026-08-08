@@ -7,6 +7,21 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.17.0 — Atlas is a topology instrument
+
+The Atlas [layout variant](/features/layout-variants/) has been rebuilt. It used to draw a workspace graph that couldn't answer the question a graph is for: it rebuilt itself on every frame (so hover died on each 1 Hz tick), pushed workspaces past eight off the canvas, expanded only the active one, carried a CPU ring and a label per node, was unreachable by keyboard — and showed nothing at all about the Claude Code sessions running inside it.
+
+- **The graph is a spine.** Depth is an indent, siblings stack, edges are elbows — the `git log --graph` / `pstree` idiom. Positions are deterministic, so a node stays where you last saw it.
+- **Agents are in the graph.** A Claude Code session is drawn *as its pane*: phase, model, context used, cost, 5 h / 7 d rate-limit meters, turn count, elapsed turn, lines ±, the mirrored task list, live subagents, PR state, and the text of whatever is waiting for approval. A session with no live pane hangs off the root badged `detached`.
+- **The wires carry the bytes.** Each edge animates at the pane's real stdout throughput — a `bun test` firehose visibly streams, a shell at its prompt is a still hairline. Below ~200 B/s nothing animates at all, so an idle τ-mux is a completely still graph.
+- **More data per node:** `:3000` ports, `main↑2*` git state, `78% ctx`, `$1.42`, `▰ 62%` build progress, output rate, per-pane process trees with CPU and RSS.
+- **The inspector acts.** Approve, Interrupt, Open :port, Details, Close pane. **Approve** appears only for a permission prompt shown in a terminal pane — never for one routed to a modal or Telegram, and never for a question addressed to you, where "approve" would silently pick a default.
+- **Filters** — all / agents / live / alert, with a count of everything waiting on you.
+- **Keyboard.** The graph is a real tree: `↑`/`↓` walk rows, `→` opens then descends, `←` closes then ascends, `Enter` navigates.
+- **`⌘G` changed meaning.** It used to hide the Atlas column; it now opens the **full-window topology** — every workspace expanded down to processes, ports and mirrored agent tasks. `Esc` closes it.
+- **`⌘\` collapses to a rail.** The Atlas column folds to a 44 px workspace rail instead of vanishing. The old permanent 36 px tab rail is gone — it restated the graph sitting beside it.
+- Motion respects `prefers-reduced-motion`: the byte-flow, halos and attention pulse stop, and the arcs, colours and dashed rings carry the same state without moving.
+
 ## 0.10.8 — An answered question stops claiming an approval
 
 Follow-on to 0.10.7, found by verifying that fix on a live session rather than only in tests. Answering a question emits no "resolved" event either, so the permission notification the question raised **outlived the question**: the session sat at "waiting for approval" while actively working, the sidebar pill claimed an approval was pending, and — the real problem — a bare [`ht claude approve`](/cli/claude/) would have selected it and typed Enter into a pane showing no prompt at all.
