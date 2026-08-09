@@ -192,6 +192,8 @@ real `index.css` in a fixture harness instead.
 
 # Round 2 — v0.18.0 · temporal axis + `ht` in the graph
 
+Commit `508fd99c`. 36 files, +2308 / −138.
+
 Brief: *"Make the atlas layout even more crazy and good, with a lot of data
 expressed in the Graph, and more UI element, animations and effects. all
 integrated with claude code and ht"* — plus, mid-flight: *"Make it look
