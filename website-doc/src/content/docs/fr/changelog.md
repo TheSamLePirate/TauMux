@@ -7,6 +7,19 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.20.0 — CHRONO : ⌘G devient un champ temporel
+
+Atlas répondait à « qu'est-ce qui est vrai maintenant ». Rien ne répondait à « que s'est-il passé, et qu'est-ce qui a réagi à quoi ». `⌘G` n'ouvre plus l'arbre de topologie étendu ; il ouvre **[CHRONO](/fr/features/layout-variants/#chrono--g)**.
+
+- **Un champ temporel.** L'axe horizontal représente les 90 dernières secondes, *maintenant* épinglé au bord droit. Chaque panneau est une voie.
+- **La tête est le vrai terminal.** Ni capture d'écran ni copie — le terminal du panneau lui-même, déplacé dans sa voie et rendu tel quel à la fermeture. Y écrire écrit dans le panneau. Il n'est jamais redimensionné : la voie est une fenêtre posée dessus, la dernière ligne du terminal étant ancrée au bord inférieur de la voie, de sorte que la dernière ligne de chaque voie tombe sur la même ligne.
+- **La hauteur d'une voie, c'est ce qu'elle a à montrer.** Un build qui imprime quarante lignes obtient une bande plus haute qu'un shell inactif.
+- **Traces.** Chaque voie dessine son débit de sortie réel avec une rémanence de phosphore — le bord d'attaque s'illumine en presque blanc, les échantillons plus anciens décroissent vers la couleur de la voie. Le silence est un filet plat ; `bun test` est une silhouette de gratte-ciel.
+- **Frappes.** Frontières de tour, approbations, erreurs, notifications et [`ht atlas mark`](/fr/cli/atlas/) frappent verticalement à travers toutes les voies à l'instant où elles se sont produites, leurs noms étant imprimés sur l'axe en dessous. Un axe x partagé est ce qui rend « quels panneaux se sont tus quand cette approbation est arrivée » visible plutôt qu'à reconstituer.
+- **Une seule règle pour le clavier.** La gouttière est à CHRONO — `↑`/`↓` se déplacent, `Enter` va au panneau, `Esc` referme. La tête est au panneau — cliquez dedans et le terminal détient tout, `Esc` compris, car la moitié des programmes qu'on y lance en ont besoin. L'en-tête indique toujours lequel est actif, et `⌘G` referme toujours.
+- **Les panneaux qui ne peuvent pas bouger** — navigateur et extension — dessinent leur trace et affichent une carte de veille avec une action *aller au panneau*.
+- **Immobile quand il ne se passe rien.** Le champ ne se repeint que si l'image change réellement. Quatre-vingt-dix secondes après le dernier octet, il est complètement immobile et ne coûte rien par seconde.
+
 ## 0.18.0 — Atlas gagne un axe temporel, et `ht` entre dans le graphe
 
 Suite de la 0.17.0. Le graphe savait dire ce qui était vrai *maintenant* et rien de la façon dont on y était arrivé, et choisir Atlas faisait toujours perdre le panneau plan et les pastilles de statut en même temps que la barre latérale.

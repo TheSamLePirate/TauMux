@@ -11,8 +11,8 @@ Plan: `doc/plan_atlas_chrono.md`. Six phases, each ending green on
 | 2 | lanes and heads | done | `6c3f1afb` |
 | 3 | the field | done | `ecf41f3f` |
 | 4 | the gutter | done | `9df276f8` |
-| 5 | polish | done | (pending) |
-| 6 | docs | not started | |
+| 5 | polish | done | `f0b5c971` |
+| 6 | docs | done | (pending) |
 
 ---
 
@@ -266,6 +266,20 @@ strike legend a home.
 - **Stale references removed.** The Atlas column's expand button, the
   inspector's overflow hint, the ⌘G binding description and the CSS
   banner all still described the topology overlay that no longer exists.
+
+---
+
+## Phase 6 — docs
+
+- `website-doc` EN + FR: the ⌘G section of `features/layout-variants` is
+  rewritten from "expanded topology" to CHRONO, with the ASCII sketch,
+  the head/lease explanation, the keyboard rule and the motion contract.
+  `configuration/keyboard-shortcuts` and both page descriptions follow.
+- Changelog entry, EN + FR.
+- `doc/system-webview-ui.md` gains § 7b — the lease invariants, the
+  viewport mechanic, the head-kind table, who owns the keyboard, the
+  three refresh cadences, and where events come from.
+- `doc/changes_to_document.md` — CHRONO's entry cleared.
 
 ---
 

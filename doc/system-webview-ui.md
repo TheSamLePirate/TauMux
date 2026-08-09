@@ -208,6 +208,102 @@ Browser panes support importing cookies from JSON (EditThisCookie) or Netscape/c
 ### Automation
 See [`system-browser-pane.md`](system-browser-pane.md) for the full browser automation API — 50+ commands for navigation, DOM interaction, waiting, inspection, script injection, cookie management, and console/error capture.
 
+## 7b. CHRONO — the ⌘G time field
+
+`src/views/terminal/chrono/`. Under the Atlas variant, ⌘G opens a
+full-window time field: the last 90 seconds on the x axis with *now* at
+the right edge, one **lane** per pane, and each lane's **live terminal**
+at *now*.
+
+### The lease — the only dangerous part
+
+There is exactly one `Terminal` per surface, so a lane's head is the
+pane's real `.surface-container`, **moved**. `chrono/screen-lease.ts` owns
+that borrow and the whole safety story lives there:
+
+1. It never takes a container it cannot give back (`borrow()` refuses an
+   element with no parent).
+2. `release()` is total and idempotent — unknown surface, double release,
+   a container someone else took, a recorded sibling that has since been
+   removed: all resolve to the safe thing rather than to a throw. This
+   runs on teardown paths, where a throw would strand everything queued
+   behind it.
+3. Every exit — Escape, ⌘G, the close button, a variant switch, app
+   teardown — routes through `Chrono.close()`, which releases first.
+4. A pane closed while borrowed is **dropped**, not resurrected into a
+   layout it no longer belongs to.
+
+While borrowed, the container carries `data-chrono-lease`. That is both
+the CSS hook for the lane presentation and the flag
+`SurfaceManager.applyPositions` reads to leave the geometry alone —
+without it, a window resize while CHRONO is open would write pane rects
+over the lane. The borrow also clears the container's inline style, so
+the stylesheet owns presentation for the duration; the original is
+captured and written back verbatim on release.
+
+### The viewport mechanic
+
+`chrono/grid.ts` is pure. `readTerminalGrid()` turns a `Terminal` into
+`{ rows, contentRows, alt }`; `anchorOffset()` turns that plus two
+measured heights into a `translateY`. The rule is *last line on the
+lane's bottom edge*, in both directions — shorter content is pushed down
+onto that baseline, taller content scrolls up past the top. `pty.resize`
+is never called and `fit()` is never run.
+
+The alternate buffer anchors on `rows` rather than on content: a TUI's
+frame is the state, and re-anchoring as its status line cleared would
+make `vim` slide by a row on every redraw.
+
+`SurfaceManager.getSurfaceGrid()` is the one accessor CHRONO needed —
+only the `Terminal` knows how many rows carry ink, and the DOM that would
+answer it (`.xterm-rows`) exists under the DOM renderer and not under
+WebGL. The cell *height* is read from `.xterm-screen`, which both
+renderers size identically.
+
+### Head kinds
+
+| Surface kind | Head |
+|---|---|
+| `terminal` | leased, clipped, bottom-anchored |
+| `agent` / `claude` / `telegram` / `editor` | leased, sized to the lane (DOM panes reflow, which is free and more correct than clipping) |
+| `browser` / `extension` | standby card — a native webview and an iframe, neither of which survives reparenting. Webviews are hidden while CHRONO is open |
+
+### Who owns the keyboard
+
+One rule: **the gutter is CHRONO's, the head is the pane's.** Selecting a
+lane from the channel strip (or with ↑/↓) leaves Escape closing the view;
+clicking a head hands the terminal everything, Escape included. Heads
+carry a transparent shield until entered — without it xterm claims the
+wheel and, in the alternate buffer, turns it into arrow keys, so
+scrolling the field past a `vim` lane moved `vim`'s cursor.
+
+Focus pushed into a head by something *other* than the user (closing a
+pane makes `SurfaceManager` focus its neighbour) does not count as
+entering it, or Escape would silently stop working after every ⌘W.
+
+### The refresh contract
+
+`fieldSignature()` folds every input that can change a pixel — geometry,
+lane identity, ring lengths and last samples, the strike set — into one
+string, and pointedly not `now`. Three cadences follow:
+
+- **220 ms** while a pane is producing output;
+- **900 ms** while the window merely still holds a skyline, which
+  genuinely does change every frame because it scrolls leftward;
+- **nothing at all** once the window is empty.
+
+Ninety seconds after the last byte, an idle τ-mux is completely still.
+That is what makes an honest time axis affordable.
+
+### Event sources
+
+`chrono/event-log.ts` is a bounded (256), TTL'd (120 s), deduped ring of
+`{ at, kind, surfaceId, text }`. `chrono/sources.ts` fills it and
+distinguishes two shapes: *derived* state (Claude phases, notifications)
+is a diff stamped with the moment we noticed, primed on open so opening
+mid-turn does not lie; *authored* state (`ht atlas mark`) carries its own
+timestamp and id and is replayed at its real time.
+
 ## 8. UI Architecture & Performance Notes
 
 ### `xterm.js` Integration

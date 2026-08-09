@@ -7,6 +7,19 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.20.0 — CHRONO: ⌘G becomes a time field
+
+Atlas answered "what is true now". Nothing answered "what has been going on, and what reacted to what". `⌘G` no longer opens the expanded topology tree; it opens **[CHRONO](/features/layout-variants/#chrono--g)**.
+
+- **A time field.** The horizontal axis is the last 90 seconds with *now* pinned at the right edge. Every pane is a lane.
+- **The head is the real terminal.** Not a screenshot and not a copy — the pane's own terminal, moved into its lane and given straight back when you close. Typing into it types into the pane. It is never resized: the lane is a viewport onto it, with the terminal's last line anchored to the lane's bottom edge so every lane's last line lands on the same line.
+- **A lane's height is what it has to show.** A build printing forty lines gets a taller band than an idle shell.
+- **Traces.** Each lane draws its real output rate with phosphor persistence — the leading edge blooms near-white, older samples decay back through the lane's colour. Silence is a flat hairline; `bun test` is a skyline.
+- **Strikes.** Turn boundaries, approvals, errors, notifications and [`ht atlas mark`](/cli/atlas/) strike vertically across every lane at the moment they happened, with their names printed on the axis below. One shared x axis is what makes "which panes went quiet when that approval landed" a thing you can see rather than reconstruct.
+- **One rule for the keyboard.** The gutter is CHRONO's — `↑`/`↓` move, `Enter` goes to the pane, `Esc` closes. The head is the pane's — click into it and the terminal owns everything including `Esc`, because half the programs you run in one need it. The header always says which is live, and `⌘G` always closes.
+- **Panes that cannot move** — browser and extension — draw their trace and show a standby card with a *go to pane* action.
+- **Still when nothing is happening.** The field repaints only when the image would actually differ. Ninety seconds after the last byte it is completely still and costs nothing per second.
+
 ## 0.18.0 — Atlas gains a temporal axis, and `ht` moves into the graph
 
 Follow-on to 0.17.0. The graph could say what was true *now* and nothing about how it got there, and picking Atlas still meant losing the plan panel and status pills along with the sidebar.

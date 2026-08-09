@@ -1,6 +1,6 @@
 ---
 title: Layout variants
-description: Three chrome layouts — Bridge, Cockpit and Atlas — switchable from one setting. Atlas replaces the sidebar with a live topology of everything τ-mux is running.
+description: Three chrome layouts — Bridge, Cockpit and Atlas — switchable from one setting. Atlas replaces the sidebar with a live topology of everything τ-mux is running, and ⌘G opens CHRONO, the last 90 seconds as a time field.
 sidebar:
   order: 15
 ---
@@ -148,12 +148,68 @@ The inspector shows whatever you hover or select, and offers the actions that be
 - **Details** — the full [pane info](/features/live-process-metadata/) view.
 - **Close pane**.
 
-### Expanded topology — `⌘G`
+### CHRONO — `⌘G`
 
-`⌘G` opens the whole topology full-window: every workspace expanded, plus each pane's child processes (with CPU and RSS), its listening ports, and every mirrored agent task. Same graph, same renderer, more depth. `Esc` closes it.
+`⌘G` opens **CHRONO**: a time field. The horizontal axis is the last 90 seconds with *now* pinned at the right edge, every pane is a **lane**, and each lane's **live terminal** sits at *now*.
 
-The overlay floats above your live panes and blurs them, so the work you opened it to reason about stays visible as context.
+It answers a question nothing else in τ-mux can: *what has been going on, and what reacted to what?* The column tells you the state of things now; CHRONO tells you the shape of the last minute and a half, and lets you type into any of it.
 
+```
+┌ CHRONO ──────────── all agents live alert ②      esc to close ───────┐
+│ ◀──── 90s            60s            30s              now ────────────│
+│ ▎crazyShell                                                          │
+│ ▎ zsh          ·······································  ╭──────────╮ │
+│ ▎ :3000 4102                                            │ live      │ │
+│ ▎ bun test     ▁▂▅███▇▃▁▁▁▁▂▅████▆▂▁▁▁▁▁▁▂▃▅▇███▆▃▁▁▁▁  ╭──────────╮ │
+│ ▎ 74%  4190                                             │ live      │ │
+│ ▎ claude-code  ▁▁▁████▁▁▁▁▁▁▁▁███████▁▁▁▁▁▁▁▁▁▁▅███▁▁▁  ╭══════════╗ │
+│ ▎ 78% $1.42                                             ║ live      ║ │
+│ ▎ plan ▪▪▫                                              ╚══════════╝ │
+│                     turn          approval          mark             │
+└──────────────────────────────────────────────────────────────────────┘
+      gutter              the past                    now
+```
+
+#### The head is the real terminal
+
+A lane's head is not a screenshot and not a copy. It is the pane's own terminal, moved into the lane for as long as CHRONO is open and given straight back when it closes. Typing into it types into the pane.
+
+The terminal is never resized — the lane is a *viewport* onto it. Its **last line is anchored to the lane's bottom edge**, so content shorter than the lane sits on that baseline and content taller scrolls up past the top. Every lane's last line lands on the same edge, which is what lets a column of different-height screens read as one instrument.
+
+A lane's height follows what its terminal has to show: a build printing forty lines gets a taller band than an idle shell.
+
+#### The gutter is CHRONO's, the head is the pane's
+
+One rule settles who owns the keyboard:
+
+- Click a lane's **channel strip** (or use `↑` / `↓`) to select it. CHRONO keeps the keyboard: `Esc` closes, the arrows keep moving.
+- Click its **head** to step into that pane. The terminal now owns the keyboard — `Esc` included, because half the programs you run in one need it. The header says which is live, and `⌘G` always closes.
+
+#### Traces and strikes
+
+Each lane's trace is drawn from its real output rate with phosphor persistence: the leading edge blooms near-white and every sample decays back through the lane's identity colour as it ages leftward. A pane that has been silent draws a flat hairline; a pane running `bun test` draws a skyline.
+
+Events — an agent's turn boundary, an approval, an error, a notification, an [`ht atlas mark`](/cli/atlas/) — strike **vertically across every lane at once**, at the moment they happened. Because every lane shares one x axis, an approval landing at t−40 s is a single rule crossing all the traces, and you can see which panes went quiet and which woke up when it did. Their names are printed on the axis under the field.
+
+#### Panes that cannot move
+
+Browser and extension panes are a native webview and an iframe; neither survives being reparented. Their lanes draw a trace like everyone else and show a **standby card** with the pane's title, its URL and a *go to pane* action. Browser overlays are hidden while CHRONO is open and restored when it closes.
+
+#### Keyboard
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Move between lanes |
+| `Home` / `End` | First / last lane |
+| `Enter` | Go to the selected pane and close |
+| `Esc` | Close — unless you have stepped into a head, where it belongs to the terminal |
+| `⌘G` | Close, always |
+
+The four filters (`all` / `agents` / `live` / `alert`) work exactly as they do in the column.
+
+#### Motion
+
+CHRONO redraws only when the image would actually differ. A silent system's trace is a flat line whose shift is indistinguishable from itself, so nothing repaints; while a skyline is still scrolling out of the window it keeps up with it; ninety seconds after the last byte, the field is completely still and costs nothing per second.
 ### Collapsed rail — `⌘\`
 
 `⌘\` folds the column down to a 44 px rail of workspace glyphs, with an amber dot on any workspace holding an unread notification. Clicking one switches to it. The rail *is* the collapsed state of the graph, not a second piece of chrome sitting beside it.

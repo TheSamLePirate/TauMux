@@ -1,6 +1,6 @@
 ---
 title: Variantes de disposition
-description: Trois dispositions de chrome — Bridge, Cockpit et Atlas — commutables depuis un seul réglage. Atlas remplace la barre latérale par une topologie vivante de tout ce que τ-mux exécute.
+description: Trois dispositions de chrome — Bridge, Cockpit et Atlas — commutables depuis un seul réglage. Atlas remplace la barre latérale par une topologie vivante de tout ce que τ-mux exécute, et ⌘G ouvre CHRONO, les 90 dernières secondes sous forme de champ temporel.
 sidebar:
   order: 15
 ---
@@ -148,12 +148,68 @@ L'inspecteur montre ce que vous survolez ou sélectionnez, et propose les action
 - **Details** — la vue complète d'[informations du panneau](/fr/features/live-process-metadata/).
 - **Close pane**.
 
-### Topologie étendue — `⌘G`
+### CHRONO — `⌘G`
 
-`⌘G` ouvre la topologie entière en plein écran : chaque espace de travail déplié, plus les processus enfants de chaque panneau (avec CPU et RSS), ses ports en écoute, et chaque tâche d'agent mirroir. Même graphe, même moteur de rendu, plus de profondeur. `Esc` referme.
+`⌘G` ouvre **CHRONO** : un champ temporel. L'axe horizontal représente les 90 dernières secondes, *maintenant* étant épinglé au bord droit ; chaque panneau est une **voie**, et le **terminal vivant** de chaque voie se trouve à *maintenant*.
 
-La superposition flotte au-dessus de vos panneaux vivants et les floute, pour que le travail que vous êtes venu comprendre reste visible en contexte.
+Il répond à une question qu'aucune autre vue de τ-mux ne peut traiter : *que s'est-il passé, et qu'est-ce qui a réagi à quoi ?* La colonne dit l'état des choses maintenant ; CHRONO dit la forme de la dernière minute et demie, et vous laisse écrire dans n'importe laquelle.
 
+```
+┌ CHRONO ──────────── all agents live alert ②      esc to close ───────┐
+│ ◀──── 90s            60s            30s              now ────────────│
+│ ▎crazyShell                                                          │
+│ ▎ zsh          ·······································  ╭──────────╮ │
+│ ▎ :3000 4102                                            │ live      │ │
+│ ▎ bun test     ▁▂▅███▇▃▁▁▁▁▂▅████▆▂▁▁▁▁▁▁▂▃▅▇███▆▃▁▁▁▁  ╭──────────╮ │
+│ ▎ 74%  4190                                             │ live      │ │
+│ ▎ claude-code  ▁▁▁████▁▁▁▁▁▁▁▁███████▁▁▁▁▁▁▁▁▁▁▅███▁▁▁  ╭══════════╗ │
+│ ▎ 78% $1.42                                             ║ live      ║ │
+│ ▎ plan ▪▪▫                                              ╚══════════╝ │
+│                     turn          approval          mark             │
+└──────────────────────────────────────────────────────────────────────┘
+     gouttière            le passé                 maintenant
+```
+
+#### La tête est le vrai terminal
+
+La tête d'une voie n'est ni une capture d'écran ni une copie. C'est le terminal du panneau lui-même, déplacé dans la voie le temps que CHRONO reste ouvert, et rendu tel quel à la fermeture. Y écrire écrit dans le panneau.
+
+Le terminal n'est jamais redimensionné — la voie est une *fenêtre* posée dessus. Sa **dernière ligne est ancrée au bord inférieur de la voie** : un contenu plus court que la voie repose sur cette ligne de base, un contenu plus long défile vers le haut au-delà du bord supérieur. La dernière ligne de chaque voie tombe donc sur le même bord, ce qui permet à une colonne d'écrans de hauteurs différentes de se lire comme un seul instrument.
+
+La hauteur d'une voie suit ce que son terminal a à montrer : un build qui imprime quarante lignes obtient une bande plus haute qu'un shell inactif.
+
+#### La gouttière est à CHRONO, la tête est au panneau
+
+Une seule règle décide à qui appartient le clavier :
+
+- Cliquez sur la **bande de canal** d'une voie (ou utilisez `↑` / `↓`) pour la sélectionner. CHRONO garde le clavier : `Esc` referme, les flèches continuent de se déplacer.
+- Cliquez sur sa **tête** pour entrer dans ce panneau. Le terminal détient alors le clavier — `Esc` compris, car la moitié des programmes qu'on y lance en ont besoin. L'en-tête indique lequel est actif, et `⌘G` referme toujours.
+
+#### Traces et frappes
+
+La trace de chaque voie est dessinée à partir de son débit de sortie réel avec une rémanence de phosphore : le bord d'attaque s'illumine en presque blanc et chaque échantillon décroît vers la couleur d'identité de la voie en vieillissant vers la gauche. Un panneau silencieux dessine un filet plat ; un panneau exécutant `bun test` dessine une silhouette de gratte-ciel.
+
+Les événements — une frontière de tour d'agent, une approbation, une erreur, une notification, un [`ht atlas mark`](/fr/cli/atlas/) — **frappent verticalement à travers toutes les voies à la fois**, à l'instant où ils se sont produits. Comme toutes les voies partagent un même axe x, une approbation qui survient à t−40 s est une seule règle traversant toutes les traces, et l'on voit quels panneaux se sont tus et lesquels se sont réveillés à ce moment-là. Leurs noms sont imprimés sur l'axe sous le champ.
+
+#### Les panneaux qui ne peuvent pas bouger
+
+Les panneaux navigateur et extension sont respectivement une vue web native et une iframe ; ni l'un ni l'autre ne survit à un changement de parent. Leurs voies dessinent une trace comme les autres et affichent une **carte de veille** avec le titre du panneau, son URL et une action *aller au panneau*. Les surcouches navigateur sont masquées pendant que CHRONO est ouvert et restaurées à la fermeture.
+
+#### Clavier
+
+| Touche | Action |
+|---|---|
+| `↑` / `↓` | Se déplacer entre les voies |
+| `Home` / `End` | Première / dernière voie |
+| `Enter` | Aller au panneau sélectionné et refermer |
+| `Esc` | Refermer — sauf si vous êtes entré dans une tête, où elle appartient au terminal |
+| `⌘G` | Refermer, toujours |
+
+Les quatre filtres (`all` / `agents` / `live` / `alert`) fonctionnent exactement comme dans la colonne.
+
+#### Mouvement
+
+CHRONO ne se redessine que si l'image change réellement. La trace d'un système silencieux est une ligne plate dont le décalage est indiscernable d'elle-même : rien n'est repeint. Tant qu'une silhouette défile encore hors de la fenêtre, il la suit ; quatre-vingt-dix secondes après le dernier octet, le champ est complètement immobile et ne coûte rien par seconde.
 ### Rail replié — `⌘\`
 
 `⌘\` replie la colonne en un rail de 44 px de glyphes d'espaces de travail, avec un point ambre sur tout espace portant une notification non lue. Cliquer sur l'un d'eux y bascule. Le rail *est* l'état replié du graphe, pas un second élément de chrome posé à côté.

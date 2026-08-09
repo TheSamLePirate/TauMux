@@ -44,7 +44,7 @@ Les raccourcis clavier sont déclarés sous forme de tableau `Binding<KeyCtx>[]`
 | Raccourci | Action |
 |---|---|
 | `⌘\` | Replier la colonne de gauche — barre latérale dans Bridge, rail d'icônes dans Cockpit, graphe dans Atlas (qui se replie en un rail d'espaces de travail de 44 px) |
-| `⌘G` | **Atlas uniquement** — ouvrir la topologie plein écran : chaque espace de travail déplié jusqu'aux processus, ports et tâches d'agent mirroir. `Esc` referme |
+| `⌘G` | **Atlas uniquement** — ouvrir [CHRONO](/fr/features/layout-variants/#chrono--g) : les 90 dernières secondes sous forme de champ temporel, une voie par panneau, le terminal vivant de chaque voie à *maintenant*. `Esc` referme — sauf si vous avez cliqué dans le terminal d'une voie, où `Esc` appartient à ce terminal et où `⌘G` referme |
 
 Voir [Variantes de disposition](/fr/features/layout-variants/).
 

@@ -44,7 +44,7 @@ Keyboard shortcuts are declared as a `Binding<KeyCtx>[]` array in `src/views/ter
 | Shortcut | Action |
 |---|---|
 | `⌘\` | Collapse the left column — sidebar in Bridge, icon rail in Cockpit, graph in Atlas (which folds to a 44 px workspace rail) |
-| `⌘G` | **Atlas only** — open the full-window topology: every workspace expanded down to processes, ports and mirrored agent tasks. `Esc` closes it |
+| `⌘G` | **Atlas only** — open [CHRONO](/features/layout-variants/#chrono--g): the last 90 seconds as a time field, one lane per pane, each lane's live terminal at *now*. `Esc` closes it — unless you have clicked into a lane's terminal, where `Esc` belongs to that terminal and `⌘G` closes |
 
 See [Layout variants](/features/layout-variants/).
 
