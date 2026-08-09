@@ -26,7 +26,10 @@
 import { htEvents } from "../../../shared/event-bus";
 import { subscribeClaudeSessions } from "../claude-session-store";
 import { variantContext } from "../variants/variant-context";
-import { AtlasHeader } from "./header";
+import { AtlasHeader, buildLegend } from "./header";
+import { AtlasRiver } from "./river";
+import { pruneMetrics } from "../metrics-history";
+import { subscribePlans } from "../plan-store";
 import { applyFilter, type AtlasFilter } from "./filter";
 import { AtlasInspector } from "./inspector";
 import { COLUMN_LAYOUT, EXPANDED_LAYOUT, layoutAtlas } from "./layout";
@@ -37,6 +40,7 @@ import {
   type AtlasHost,
 } from "./snapshot";
 import type { AtlasNode, AtlasScene, AtlasSnapshot } from "./types";
+import type { AskUserRequest } from "../../../shared/types";
 import { AtlasView } from "./view";
 
 /** How long after the last byte we keep re-rendering to track the wire
@@ -48,6 +52,11 @@ const OVERLAY_MAX_WIDTH = 860;
 
 export interface AtlasPanelOptions {
   emit: AtlasEmitters;
+  /** Questions currently addressed to the human (`ht ask`, agent
+   *  ask-user queue). Injected so `atlas/` never imports the modal. */
+  pendingQuestions?: () => readonly AskUserRequest[];
+  /** Subscribe to question arrivals / resolutions. */
+  onQuestionsChanged?: (fn: () => void) => () => void;
 }
 
 export class AtlasPanel {
@@ -56,6 +65,8 @@ export class AtlasPanel {
   private readonly view: AtlasView;
   private readonly inspector: AtlasInspector;
   private readonly overlay: AtlasOverlay;
+  private readonly river: AtlasRiver;
+  private readonly legend: HTMLDivElement;
   private readonly emit: AtlasEmitters;
 
   private expanded = new Set<string>([ATLAS_ROOT_ID]);
@@ -73,7 +84,10 @@ export class AtlasPanel {
    *  respects what the user arranged. */
   private userArranged = false;
 
+  private readonly options: AtlasPanelOptions;
+
   constructor(options: AtlasPanelOptions) {
+    this.options = options;
     this.emit = options.emit;
     this.element = document.createElement("div");
     this.element.className = "tau-atlas-panel";
@@ -84,7 +98,20 @@ export class AtlasPanel {
         this.refresh();
       },
       onExpand: () => this.toggleOverlay(),
+      onToggleLegend: () => {
+        const on = this.element.classList.toggle("is-legend-open");
+        this.legend.setAttribute("aria-hidden", String(!on));
+      },
     });
+
+    this.river = new AtlasRiver({
+      onPick: (workspaceId) => {
+        this.select(workspaceId);
+        this.activate(workspaceId);
+      },
+    });
+    this.legend = buildLegend();
+    this.legend.setAttribute("aria-hidden", "true");
 
     this.view = new AtlasView({
       onActivate: (id) => this.activate(id),
@@ -100,7 +127,13 @@ export class AtlasPanel {
     scroller.className = "tau-atlas-scroller";
     scroller.appendChild(this.view.element);
 
-    this.element.append(this.header.element, scroller, this.inspector.element);
+    this.element.append(
+      this.header.element,
+      this.river.element,
+      scroller,
+      this.legend,
+      this.inspector.element,
+    );
     this.element.addEventListener("keydown", (e) => this.onKeyDown(e));
   }
 
@@ -118,6 +151,7 @@ export class AtlasPanel {
     this.frame = null;
     this.decayTimer = null;
     this.overlay.close();
+    this.river.destroy();
     this.view.destroy();
     this.element.remove();
   }
@@ -134,6 +168,8 @@ export class AtlasPanel {
       htEvents.on("ht-workspaces-changed", wake),
       htEvents.on("ht-notify-state-changed", wake),
       htEvents.on("ht-surface-metadata", wake),
+      htEvents.on("ht-statuses-changed", wake),
+      subscribePlans(() => wake()),
       htEvents.on("ht-surface-focused", (payload) => {
         if (payload?.surfaceId) {
           variantContext.setFocusedSurfaceId(payload.surfaceId);
@@ -145,6 +181,9 @@ export class AtlasPanel {
         wake();
       }),
       subscribeClaudeSessions(() => wake()),
+      ...(this.options.onQuestionsChanged
+        ? [this.options.onQuestionsChanged(wake)]
+        : []),
     );
   }
 
@@ -163,6 +202,7 @@ export class AtlasPanel {
       focusedSurfaceId: variantContext.getFocusedSurfaceId(),
       notifyWorkspaces: variantContext.getNotifyWorkspaces(),
       deep: false,
+      pendingQuestions: this.options.pendingQuestions?.() ?? [],
       emit: this.emit,
     });
     this.snapshot = snapshot;
@@ -195,6 +235,16 @@ export class AtlasPanel {
     if (!this.selectedId) this.selectedId = ATLAS_ROOT_ID;
     this.view.setSelected(this.selectedId);
     this.inspector.show(this.currentNode());
+    this.header.setMeters(snapshot.totals);
+
+    // Drop history for panes and workspaces that no longer exist, so a
+    // long session cannot accumulate rings for things that are gone.
+    pruneMetrics(new Set(snapshot.nodes.keys()));
+    this.river.render(
+      snapshot.river,
+      (color) => this.resolveColor(color),
+      snapshot.totals.cpu,
+    );
 
     if (this.overlay.isOpen()) this.overlay.update(this.buildDeepSnapshot());
     this.scheduleFlowDecay(scene);
@@ -228,6 +278,7 @@ export class AtlasPanel {
       focusedSurfaceId: variantContext.getFocusedSurfaceId(),
       notifyWorkspaces: variantContext.getNotifyWorkspaces(),
       deep: true,
+      pendingQuestions: this.options.pendingQuestions?.() ?? [],
       emit: this.emit,
     });
   }
@@ -239,15 +290,45 @@ export class AtlasPanel {
     this.expanded.add(ATLAS_ROOT_ID);
     if (this.userArranged) return;
     for (const node of snapshot.nodes.values()) {
-      if (node.kind !== "workspace") continue;
-      if (node.active || node.attention) this.expanded.add(node.id);
-      else this.expanded.delete(node.id);
+      if (node.kind === "workspace") {
+        if (node.active || node.attention) this.expanded.add(node.id);
+        else this.expanded.delete(node.id);
+        continue;
+      }
+      // A pane carrying a plan or a live subagent opens itself. Those
+      // used to live in the sidebar panel that Atlas hides, so leaving
+      // them folded behind a caret would be a net loss of information.
+      if (node.kind !== "surface") continue;
+      const carriesWork = node.children.some((id) => {
+        const child = snapshot.nodes.get(id);
+        return child?.kind === "plan-step" || child?.kind === "subagent";
+      });
+      if (carriesWork) this.expanded.add(node.id);
     }
   }
 
   private revealSurface(surfaceId: string): void {
     const parent = this.snapshot?.nodes.get(surfaceId)?.parent;
     if (parent) this.expanded.add(parent);
+  }
+
+  /** Canvas cannot read `var(--tau-…)`. Resolve through a scratch element
+   *  once per distinct value and cache — the workspace palette is tiny
+   *  and stable, so this is a handful of lookups per session. */
+  private colorCache = new Map<string, string>();
+  private resolveColor(color: string): string {
+    if (!color.startsWith("var(")) return color;
+    const cached = this.colorCache.get(color);
+    if (cached) return cached;
+    const probe = document.createElement("span");
+    probe.style.color = color;
+    probe.style.position = "absolute";
+    probe.style.visibility = "hidden";
+    this.element.appendChild(probe);
+    const resolved = getComputedStyle(probe).color || color;
+    probe.remove();
+    this.colorCache.set(color, resolved);
+    return resolved;
   }
 
   private currentNode(): AtlasNode | null {

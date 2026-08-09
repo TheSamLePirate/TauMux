@@ -21,6 +21,8 @@ import {
   resetClaudeSessions,
   setClaudeSessions,
 } from "../src/views/terminal/claude-session-store";
+import { resetPlans, setPlans } from "../src/views/terminal/plan-store";
+import { resetMetrics } from "../src/views/terminal/metrics-history";
 import { resetThroughput } from "../src/views/terminal/throughput-meter";
 import {
   ATLAS_ROOT_ID,
@@ -68,6 +70,11 @@ const emit: AtlasEmitters = {
 interface HostSpec {
   metadata?: Record<string, SurfaceMetadata>;
   surfaceTypes?: Record<string, "terminal" | "claude" | "browser">;
+  statuses?: Map<
+    string,
+    { key: string; value: string; icon?: string; color?: string }[]
+  >;
+  progress?: Map<string, { value: number; label?: string }>;
 }
 
 function host(spec: HostSpec = {}): AtlasHost & { focused: string[] } {
@@ -102,6 +109,8 @@ function host(spec: HostSpec = {}): AtlasHost & { focused: string[] } {
       },
       { id: "ws-2", surfaces: [] },
     ],
+    ...(spec.statuses ? { getAllStatuses: () => spec.statuses! } : {}),
+    ...(spec.progress ? { getAllProgress: () => spec.progress! } : {}),
     focusWorkspaceByIndex: (i) => focused.push(`ws:${i}`),
     focusSurface: (id) => focused.push(`surface:${id}`),
   };
@@ -112,12 +121,14 @@ function build(opts: {
   focusedSurfaceId?: string | null;
   notify?: string[];
   deep?: boolean;
+  questions?: { surface_id: string; title: string; body?: string }[];
 }) {
   return buildAtlasSnapshot({
     host: opts.host === undefined ? host() : opts.host,
     focusedSurfaceId: opts.focusedSurfaceId ?? null,
     notifyWorkspaces: new Set(opts.notify ?? []),
     deep: opts.deep ?? false,
+    pendingQuestions: (opts.questions ?? []) as never,
     now: () => NOW,
     emit,
   });
@@ -131,6 +142,8 @@ describe("buildAtlasSnapshot", () => {
   beforeEach(() => {
     resetClaudeSessions();
     resetThroughput();
+    resetPlans();
+    resetMetrics();
     calls.length = 0;
   });
 
@@ -485,5 +498,245 @@ describe("buildAtlasSnapshot", () => {
     );
     expect(snap.nodes.get("ws-1")!.tags).toEqual(["agent"]);
     expect(snap.nodes.get("s1")!.tags).toEqual([]);
+  });
+
+  // ── ht integration ─────────────────────────────────────────────────
+
+  describe("ht surfaces", () => {
+    test("`ht set-status` pills become workspace badges and rows", () => {
+      const snap = build({
+        host: host({
+          statuses: new Map([
+            [
+              "ws-1",
+              [
+                { key: "build", value: "passing", color: "#8ce99a" },
+                { key: "deploy", value: "staging" },
+              ],
+            ],
+          ]),
+        }),
+      });
+      const ws = snap.nodes.get("ws-1")!;
+      const badge = ws.badges.find((b) => b.text === "passing")!;
+      // The publishing script chose the colour; re-deriving a tone would
+      // throw its signal away.
+      expect(badge.color).toBe("#8ce99a");
+      expect(ws.detail.some((r) => r.label === "build")).toBe(true);
+      expect(ws.detail.some((r) => r.label === "deploy")).toBe(true);
+    });
+
+    test("a long pill value is truncated to the badge budget", () => {
+      const snap = build({
+        host: host({
+          statuses: new Map([
+            [
+              "ws-1",
+              [{ key: "k", value: "an extremely long status value" }],
+            ],
+          ]),
+        }),
+      });
+      const badge = snap.nodes.get("ws-1")!.badges[0]!;
+      expect(badge.text.length).toBeLessThanOrEqual(9);
+      expect(badge.text.endsWith("…")).toBe(true);
+    });
+
+    test("`ht set-progress` drives the workspace meter", () => {
+      const snap = build({
+        host: host({
+          progress: new Map([["ws-1", { value: 41, label: "build" }]]),
+        }),
+      });
+      const ws = snap.nodes.get("ws-1")!;
+      expect(ws.meter?.value).toBeCloseTo(0.41, 5);
+      expect(ws.badges.some((b) => b.text === "▰ 41%")).toBe(true);
+    });
+
+    test("a plan claims the meter ahead of a progress bar", () => {
+      setPlans([
+        {
+          workspaceId: "ws-1",
+          updatedAt: NOW,
+          steps: [
+            { id: "a", title: "one", state: "done" },
+            { id: "b", title: "two", state: "active" },
+          ],
+        },
+      ]);
+      const snap = build({
+        host: host({ progress: new Map([["ws-1", { value: 90 }]]) }),
+      });
+      const ws = snap.nodes.get("ws-1")!;
+      expect(ws.meter?.value).toBeCloseTo(0.5, 5);
+      expect(ws.badges[0]!.text).toBe("1/2");
+    });
+  });
+
+  // ── ht plan → topology ─────────────────────────────────────────────
+
+  describe("plans as topology", () => {
+    test("steps hang off the workspace when the plan names no agent", () => {
+      setPlans([
+        {
+          workspaceId: "ws-1",
+          updatedAt: NOW,
+          steps: [
+            { id: "a", title: "Explore", state: "done" },
+            { id: "b", title: "Build", state: "active" },
+            { id: "c", title: "Ship", state: "waiting" },
+          ],
+        },
+      ]);
+      const snap = build({});
+      const ws = snap.nodes.get("ws-1")!;
+      expect(ws.children).toContain("ws-1:plan:b");
+      const active = snap.nodes.get("ws-1:plan:b")!;
+      expect(active.kind).toBe("plan-step");
+      expect(active.running).toBe(true);
+      expect(active.tone).toBe("accent");
+      // `active` means "done" on a plan step — the filled-box idiom.
+      expect(snap.nodes.get("ws-1:plan:a")!.active).toBe(true);
+      expect(snap.nodes.get("ws-1:plan:c")!.tone).toBe("dim");
+    });
+
+    test("an agent's plan hangs off the pane running it", () => {
+      setClaudeSessions([session({ surfaceId: "s2", phase: "working" })]);
+      setPlans([
+        {
+          workspaceId: "ws-1",
+          agentId: "claude:1",
+          updatedAt: NOW,
+          steps: [{ id: "a", title: "Work", state: "active" }],
+        },
+      ]);
+      const snap = build({});
+      expect(snap.nodes.get("s2")!.children).toContain("s2:plan:a");
+      expect(snap.nodes.get("ws-1")!.children).not.toContain("ws-1:plan:a");
+    });
+
+    test("a failed step is flagged as an error", () => {
+      setPlans([
+        {
+          workspaceId: "ws-1",
+          updatedAt: NOW,
+          steps: [{ id: "a", title: "Deploy", state: "err" }],
+        },
+      ]);
+      expect(build({}).nodes.get("ws-1:plan:a")!.tone).toBe("err");
+    });
+  });
+
+  // ── subagents + questions ──────────────────────────────────────────
+
+  test("a live subagent becomes a node under its pane", () => {
+    setClaudeSessions([
+      session({
+        surfaceId: "s2",
+        subagents: [
+          { agentId: "a1", agentType: "explore", startedAt: NOW - 62_000 },
+        ],
+      }),
+    ]);
+    const snap = build({});
+    const node = snap.nodes.get("s2:sub:a1")!;
+    expect(node.kind).toBe("subagent");
+    expect(node.label).toBe("explore");
+    expect(node.running).toBe(true);
+    expect(node.sublabel).toBe("1:02");
+    expect(snap.nodes.get("s2")!.expandable).toBe(true);
+  });
+
+  test("a pending question outranks the session's own phase", () => {
+    setClaudeSessions([session({ surfaceId: "s2", phase: "working" })]);
+    const snap = build({
+      questions: [
+        { surface_id: "s2", title: "Ship it or keep iterating?" },
+      ],
+    });
+    const pane = snap.nodes.get("s2")!;
+    expect(pane.attention).toBe("question");
+    expect(pane.detail[0]!.label).toBe("asking");
+    expect(pane.detail[0]!.value).toBe("Ship it or keep iterating?");
+    expect(pane.tags).toContain("attention");
+  });
+
+  test("rate limits roll up as the highest reading anyone reported", () => {
+    setClaudeSessions([
+      session({
+        surfaceId: "s2",
+        rateLimits: {
+          fiveHourPct: 40,
+          fiveHourResetsAt: null,
+          sevenDayPct: 11,
+          sevenDayResetsAt: null,
+        },
+      }),
+      session({
+        sessionId: "other",
+        surfaceId: null,
+        rateLimits: {
+          fiveHourPct: 71,
+          fiveHourResetsAt: null,
+          sevenDayPct: null,
+          sevenDayResetsAt: null,
+        },
+      }),
+    ]);
+    const totals = build({}).totals;
+    expect(totals.fiveHourPct).toBe(71);
+    expect(totals.sevenDayPct).toBe(11);
+  });
+
+  test("the river carries one band per workspace, in graph order", () => {
+    const snap = build({});
+    expect(snap.river.map((b) => b.id)).toEqual(["ws-1", "ws-2"]);
+    expect(snap.river[0]!.color).toBe("#6fe9ff");
+  });
+
+  test("panes and workspaces expose a history key; leaves do not", () => {
+    const snap = build({});
+    expect(snap.nodes.get("ws-1")!.historyKey).toBe("ws-1");
+    expect(snap.nodes.get("s1")!.historyKey).toBe("s1");
+  });
+
+  test("a plan supersedes the mirrored task list it came from", () => {
+    // `claude-plan-mirror` builds the plan FROM the session's tasks, so
+    // deep mode would otherwise draw the same work twice.
+    setClaudeSessions([
+      session({
+        surfaceId: "s2",
+        tasks: [
+          { id: "t1", name: "Explore", state: "completed", createdAt: NOW },
+          { id: "t2", name: "Build", state: "pending", createdAt: NOW },
+        ],
+      }),
+    ]);
+    setPlans([
+      {
+        workspaceId: "ws-1",
+        agentId: "claude:1",
+        updatedAt: NOW,
+        steps: [
+          { id: "a", title: "Explore", state: "done" },
+          { id: "b", title: "Build", state: "active" },
+        ],
+      },
+    ]);
+    const snap = build({ deep: true });
+    const kids = snap.nodes.get("s2")!.children;
+    expect(kids.filter((id) => id.includes(":task:"))).toEqual([]);
+    expect(kids.filter((id) => id.includes(":plan:"))).toHaveLength(2);
+    expect(snap.nodes.has("s2:task:t1")).toBe(false);
+  });
+
+  test("deep mode still shows tasks when no plan mirrors them", () => {
+    setClaudeSessions([
+      session({
+        surfaceId: "s2",
+        tasks: [{ id: "t1", name: "Solo", state: "pending", createdAt: NOW }],
+      }),
+    ]);
+    expect(build({ deep: true }).nodes.has("s2:task:t1")).toBe(true);
   });
 });

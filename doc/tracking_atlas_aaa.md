@@ -186,3 +186,96 @@ real `index.css` in a fixture harness instead.
 7. **The callout arcs were cut.** They were a second bold element competing
    with the byte-flow signature, and the attention ring plus the header
    count already say the same thing. One signature, not two.
+
+
+---
+
+# Round 2 — v0.18.0 · temporal axis + `ht` in the graph
+
+Brief: *"Make the atlas layout even more crazy and good, with a lot of data
+expressed in the Graph, and more UI element, animations and effects. all
+integrated with claude code and ht"* — plus, mid-flight: *"Make it look
+even more sci-fi"*.
+
+## What was still missing after v0.17.0
+
+| Gap | Consequence |
+|---|---|
+| The graph is a snapshot | A pane that pinned a core three seconds ago and went quiet is drawn identically to one that slept all morning |
+| Atlas hides the sidebar | `ht plan`, `ht set-status`, `ht set-progress` and pending `ht ask` questions all became invisible the moment you picked Atlas |
+| Subagents lived in a comma-joined inspector row | A live branch of the work wasn't a branch of the graph |
+| Rate limits were per-session inspector rows | No glanceable answer to "how close am I to a wall" |
+| Effects were binary | `is-active` glow on/off; nothing scaled with the data |
+
+## New modules
+
+| Module | Role |
+|---|---|
+| `metrics-history.ts` | 90-sample ring per key, no timers, gap-honest. Behind the sparklines and the river. |
+| `plan-store.ts` | Webview mirror of `restorePlans`, so non-sidebar views can read plans. |
+| `atlas/river.ts` | The activity river (canvas), plus `withAlpha`. |
+| `surface-geometry.ts` | Pane/workspace capture rects, extracted from `SurfaceManager`. |
+| `after-transition.ts` | Extracted from `index.ts`; now shared with the layout shortcuts. |
+| `variants/atlas-host-wiring.ts` | Introduces the graph to the ask-user queue without `atlas/` importing it. |
+
+## Encoding added
+
+| Channel | Encodes |
+|---|---|
+| River lane | Per-workspace output over the last 90 s |
+| Sparkline + peak | The selected node's recent CPU, and how high it actually got |
+| Meters strip | Agent spend · 5 h / 7 d rate-limit walls |
+| Plan-step node | `ht plan` state — filled done / pulsing active / hollow waiting / red failed |
+| Parent `2/4` badge + arc | Plan progress |
+| `ht set-status` badge | The publishing script's own colour, preserved |
+| `▰ 41%` badge + arc | `ht set-progress` |
+| Subagent node | A live Claude Code subagent, with elapsed time |
+| Corner brackets | Navigable focus (reticle) |
+| Marker glow | Scales with CPU |
+| Chip flash | This number just changed |
+| Callout arc | Root → whatever a keystroke of yours resolves |
+
+## Bugs the build surfaced (all caught by looking, or by a test)
+
+1. **Reticle on every "done" plan step.** `active` means "done" on a plan
+   step and "focused" everywhere else; the reticle keyed on the flag, not
+   the meaning. Scoped to navigable kinds.
+2. **The tick flash strobed.** A throughput chip changes every second, so
+   "what moved" became a metronome. Rate-limited to one flash per 4 s per
+   chip.
+3. **Rate limits ignored detached sessions.** The rollup ran only inside
+   the bound-surface loop — under-reporting exactly when the warning
+   matters. Caught by `atlas-snapshot.test.ts`.
+4. **Plan steps and Claude tasks drawn twice.** `claude-plan-mirror` builds
+   the plan *from* the task list, so deep mode rendered both. The plan
+   supersedes; the tasks are dropped.
+5. **The river read as broken on launch.** Pinning to the 90-sample
+   capacity left three quarters of dead strip. Window is adaptive now, and
+   every workspace keeps a resting lane.
+
+## Sci-fi pass
+
+Scanline veil + horizon glow on the graph ground, hairline corner brackets
+framing the header and inspector, load-proportional marker glow, targeting
+reticle on focus, and the revived callout arc. All of it still keyed to
+state — the glow tracks CPU, the brackets frame real bands, the reticle
+marks real focus — which is what keeps it an instrument rather than a
+skin, and what lets it pass `audit:animations` on the documented terms.
+
+## Verification (v0.18.0)
+
+| Gate | Result |
+|---|---|
+| `bun test` | 4007 pass / 0 fail (+32: metrics-history, river, ht/plan/subagent/question integration) |
+| `bun run typecheck` / `lint` | clean |
+| `audit:animations` | clean — `tauAtlasTick` allowlisted with its rationale |
+| `audit:theming` / `emoji` / `guideline` | clean |
+| `audit:module-size` | clean — `SurfaceManager` and `index.ts` both shrank again |
+| Docs | EN + FR page updated, changelog entries, 164 pages, 0 broken links |
+| Visual | Column, overlay, filters, narrow column, keyboard, reduced motion (0 running animations) |
+
+**Not verified:** a screenshot of the real Atlas window — same reason as
+round 1 (no System Events accessibility permission on this machine, so the
+isolated test instance can't be raised above the user's own). All visual
+work was done against the real modules and real `index.css` in the fixture
+harness.

@@ -16,14 +16,22 @@
  * and only a session with no live pane gets a marker of its own, hanging
  * off the root where it belongs.
  */
-import type { SurfaceKind, SurfaceMetadata } from "../../../shared/types";
+import type {
+  AskUserChoice,
+  AskUserRequest,
+  Plan,
+  SurfaceKind,
+  SurfaceMetadata,
+} from "../../../shared/types";
 import type { ClaudeSessionState } from "../../../shared/claude-types";
 import { sessionTitle } from "../../../shared/claude-types";
 import {
   claudeSessionForSurface,
   getClaudeSessions,
 } from "../claude-session-store";
-import { flowLevel, formatThroughput } from "../throughput-meter";
+import { flowLevel, formatThroughput, throughputOf } from "../throughput-meter";
+import { recordMetrics } from "../metrics-history";
+import { plansForWorkspace } from "../plan-store";
 import {
   formatCost,
   formatCpu,
@@ -37,6 +45,7 @@ import {
 } from "./format";
 import type {
   AtlasAction,
+  AtlasTone,
   AtlasAttention,
   AtlasDetailRow,
   AtlasFilterTag,
@@ -79,6 +88,13 @@ export interface AtlasHost {
     id: string;
     surfaces: { id: string; title: string; metadata: SurfaceMetadata | null }[];
   }[];
+  /** `ht set-status` pills, keyed by workspace. */
+  getAllStatuses?: () => Map<
+    string,
+    { key: string; value: string; icon?: string; color?: string }[]
+  >;
+  /** `ht set-progress` bars, keyed by workspace. */
+  getAllProgress?: () => Map<string, { value: number; label?: string }>;
   focusWorkspaceByIndex(index: number): void;
   focusSurface(surfaceId: string): void;
 }
@@ -90,6 +106,9 @@ export interface AtlasBuildInput {
   /** Include per-pane process / port / task children. The 320 px column
    *  cannot carry them; the expanded overlay can. */
   deep: boolean;
+  /** Questions currently addressed to the human, from `ht ask` and from
+   *  the agent ask-user queue. Keyed lookup is by `surface_id`. */
+  pendingQuestions?: readonly AskUserRequest[];
   /** Injected for tests. */
   now?: () => number;
   /** Raised for actions so the builder stays free of RPC knowledge. */
@@ -107,6 +126,7 @@ export interface AtlasEmitters {
 export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
   const now = input.now ?? Date.now;
   const nodes = new Map<string, AtlasNode>();
+  const river: AtlasSnapshot["river"] = [];
   const totals = {
     workspaces: 0,
     surfaces: 0,
@@ -115,7 +135,17 @@ export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
     rssKb: 0,
     attention: 0,
     costUsd: 0,
+    fiveHourPct: null as number | null,
+    sevenDayPct: null as number | null,
   };
+  const statuses = input.host?.getAllStatuses?.() ?? new Map();
+  const progressBars = input.host?.getAllProgress?.() ?? new Map();
+  const questionsBySurface = new Map<string, AskUserRequest>();
+  for (const q of input.pendingQuestions ?? []) {
+    if (!questionsBySurface.has(q.surface_id)) {
+      questionsBySurface.set(q.surface_id, q);
+    }
+  }
 
   const root = makeNode({
     id: ATLAS_ROOT_ID,
@@ -153,6 +183,7 @@ export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
     let wsRss = 0;
     let wsAgents = 0;
     let wsFlow = 0;
+    let wsFlowBytes = 0;
     let wsGit: SurfaceMetadata["git"] = null;
 
     for (const sid of ws.surfaceIds) {
@@ -176,6 +207,7 @@ export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
         workspace: ws,
         parentId: wsNode.id,
         focused: sid === input.focusedSurfaceId,
+        question: questionsBySurface.get(sid) ?? null,
         now,
         emit: input.emit,
         host: input.host,
@@ -187,13 +219,39 @@ export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
       wsCpu += cpu;
       wsRss += sumRss(metadata);
       wsFlow = Math.max(wsFlow, surfaceNode.flow);
+      wsFlowBytes += throughputOf(sid);
       if (isAgentKind(kind) || session) {
         wsAgents += 1;
         totals.agents += 1;
       }
       if (session?.costUsd) totals.costUsd += session.costUsd;
+      if (session) {
+        // Rate limits are an account-wide fact reported per session, so
+        // the honest rollup is the highest reading anyone has seen.
+        totals.fiveHourPct = maxOrNull(
+          totals.fiveHourPct,
+          session.rateLimits.fiveHourPct,
+        );
+        totals.sevenDayPct = maxOrNull(
+          totals.sevenDayPct,
+          session.rateLimits.sevenDayPct,
+        );
+      }
       if (surfaceNode.attention) totals.attention += 1;
       if (!wsGit && metadata?.git) wsGit = metadata.git;
+
+      // Sample this pane into the history ring so the inspector's
+      // sparkline and the activity river have a series to draw. The draw
+      // pass is already change-gated, so an idle pane records nothing.
+      recordMetrics(sid, cpu, throughputOf(sid), now());
+
+      // A live subagent is a real branch of the work — give it a node
+      // rather than burying it in a comma-joined inspector row.
+      for (const sub of session?.subagents ?? []) {
+        const node = buildSubagentNode(sub, surfaceNode.id, now);
+        surfaceNode.children.push(node.id);
+        nodes.set(node.id, node);
+      }
 
       if (input.deep) {
         for (const child of buildDeepChildren(
@@ -205,8 +263,8 @@ export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
           surfaceNode.children.push(child.id);
           nodes.set(child.id, child);
         }
-        surfaceNode.expandable = surfaceNode.children.length > 0;
       }
+      surfaceNode.expandable = surfaceNode.children.length > 0;
     }
 
     totals.cpu += wsCpu;
@@ -225,6 +283,79 @@ export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
       wsNode.attention = "notify";
       totals.attention += 1;
     }
+    recordMetrics(ws.id, wsCpu, wsFlowBytes, now());
+    wsNode.historyKey = ws.id;
+    river.push({
+      id: ws.id,
+      label: wsNode.label,
+      color: ws.color || "var(--tau-text-dim)",
+    });
+
+    // `ht plan` — the plan panel is hidden under Atlas, so the plan
+    // becomes topology instead of vanishing. Steps hang off whichever
+    // pane runs the agent when the plan names one, else the workspace.
+    for (const plan of plansForWorkspace(ws.id)) {
+      const anchorId = planAnchor(plan, ws.surfaceIds, nodes) ?? wsNode.id;
+      const anchor = nodes.get(anchorId);
+      if (!anchor) continue;
+      const done = plan.steps.filter((st) => st.state === "done").length;
+      if (plan.steps.length > 0) {
+        anchor.meter = {
+          value: clamp01(done / plan.steps.length),
+          tone: "accent",
+        };
+        anchor.badges.unshift({
+          text: `${done}/${plan.steps.length}`,
+          tone: done === plan.steps.length ? "ok" : "accent",
+          title: `Plan progress — ${done} of ${plan.steps.length} steps done`,
+        });
+      }
+      // `claude-plan-mirror` turns a Claude session's task list INTO a
+      // plan, so in deep mode the same work would otherwise be drawn
+      // twice — once as tasks, once as steps. The plan is the richer
+      // representation (real states, descriptions), so it supersedes.
+      const dropped = anchor.children.filter((id) => id.includes(":task:"));
+      if (dropped.length > 0) {
+        anchor.children = anchor.children.filter(
+          (id) => !id.includes(":task:"),
+        );
+        for (const id of dropped) nodes.delete(id);
+      }
+      for (const step of plan.steps) {
+        const node = buildPlanStepNode(step, anchor.id, plan);
+        anchor.children.push(node.id);
+        nodes.set(node.id, node);
+      }
+      anchor.expandable = anchor.children.length > 0;
+    }
+
+    // `ht set-progress` — a workspace-level bar, drawn as the marker's
+    // outer arc when no plan already claimed it.
+    const bar = progressBars.get(ws.id);
+    if (bar && !wsNode.meter) {
+      wsNode.meter = { value: clamp01(bar.value / 100), tone: "accent" };
+      wsNode.badges.push({
+        text: `▰ ${Math.round(bar.value)}%`,
+        tone: "accent",
+        title: bar.label ? `${bar.label} — ht set-progress` : "ht set-progress",
+      });
+    }
+
+    // `ht set-status` pills. The publisher picked the colour; honour it
+    // rather than re-deriving a tone, so a script's own signal survives.
+    const pills = statuses.get(ws.id) ?? [];
+    for (const pill of pills.slice(0, 2)) {
+      wsNode.badges.push({
+        text: truncateBadge(pill.value || pill.key),
+        tone: "neutral",
+        ...(pill.color ? { color: pill.color } : {}),
+        title: `${pill.key}: ${pill.value} — ht set-status`,
+      });
+    }
+    for (const pill of pills) {
+      wsNode.detail.push({ label: pill.key, value: pill.value });
+    }
+
     if (wsGit) {
       wsNode.badges.push({
         text: formatGitBadge(wsGit),
@@ -248,6 +379,7 @@ export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
     }
     wsNode.badges.length = Math.min(wsNode.badges.length, MAX_BADGES);
     wsNode.detail = [
+      ...wsNode.detail,
       { label: "panes", value: String(ws.surfaceIds.length) },
       { label: "agents", value: String(wsAgents) },
         { label: "cpu", value: formatCpu(wsCpu), tone: aggregateLoadTone(wsCpu) },
@@ -280,6 +412,17 @@ export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
     totals.agents += 1;
     if (session.costUsd) totals.costUsd += session.costUsd;
     if (node.attention) totals.attention += 1;
+    // Rate limits are account-wide. A session with no pane reports the
+    // same wall as one with a pane, so excluding it would under-report
+    // exactly when you most want the warning.
+    totals.fiveHourPct = maxOrNull(
+      totals.fiveHourPct,
+      session.rateLimits.fiveHourPct,
+    );
+    totals.sevenDayPct = maxOrNull(
+      totals.sevenDayPct,
+      session.rateLimits.sevenDayPct,
+    );
   }
 
   root.load = clamp01(totals.cpu / AGGREGATE_CPU_CEILING);
@@ -301,7 +444,7 @@ export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
       : []),
   ];
 
-  return { nodes, roots: [root.id], totals };
+  return { nodes, roots: [root.id], totals, river };
 }
 
 // ── surface nodes ────────────────────────────────────────────────────
@@ -319,6 +462,8 @@ interface SurfaceNodeInput {
   };
   parentId: string;
   focused: boolean;
+  /** A question addressed to the human on this pane, if any. */
+  question: AskUserRequest | null;
   now: () => number;
   emit: AtlasEmitters;
   host: AtlasHost | null;
@@ -418,8 +563,25 @@ function buildSurfaceNode(input: SurfaceNodeInput): AtlasNode {
     node.actions = surfaceActions(sid, metadata, input.emit);
     if (node.running) tags.push("running");
   }
+  // `ht ask` / the agent ask-user queue address the human directly, so a
+  // pending question outranks whatever phase the session reports.
+  if (input.question) {
+    node.attention = "question";
+    node.detail = [
+      { label: "asking", value: input.question.title, tone: "warn" },
+      ...(input.question.body
+        ? [{ label: "detail", value: input.question.body }]
+        : []),
+      ...(input.question.choices ?? []).map((c: AskUserChoice, i: number) => ({
+        label: i === 0 ? "choices" : "",
+        value: c.label,
+      })),
+      ...node.detail,
+    ];
+  }
   if (node.attention) tags.push("attention");
   node.tags = tags;
+  node.historyKey = input.sid;
   return node;
 }
 
@@ -911,6 +1073,12 @@ function loadTone(cpu: number): "ok" | "warn" | "err" | "dim" {
   return "dim";
 }
 
+function maxOrNull(a: number | null, b: number | null): number | null {
+  if (a == null) return b;
+  if (b == null) return a;
+  return Math.max(a, b);
+}
+
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.min(1, Math.max(0, n));
@@ -937,4 +1105,88 @@ function rootSummary(totals: AtlasSnapshot["totals"]): string {
   ];
   if (totals.agents > 0) parts.push(`${totals.agents} agent`);
   return parts.join(" · ");
+}
+
+// ── ht plan → topology ───────────────────────────────────────────────
+
+/** Which node a plan's steps hang from. A plan naming an agent belongs
+ *  to whichever pane runs that agent; otherwise it is the workspace's. */
+function planAnchor(
+  plan: Plan,
+  surfaceIds: readonly string[],
+  nodes: Map<string, AtlasNode>,
+): string | null {
+  if (!plan.agentId) return null;
+  for (const sid of surfaceIds) {
+    const node = nodes.get(sid);
+    if (node && node.tone === "agent") return sid;
+  }
+  return null;
+}
+
+function buildPlanStepNode(
+  step: Plan["steps"][number],
+  parentId: string,
+  plan: Plan,
+): AtlasNode {
+  const tone: AtlasTone =
+    step.state === "done"
+      ? "ok"
+      : step.state === "err"
+        ? "err"
+        : step.state === "active"
+          ? "accent"
+          : "dim";
+  const node = makeNode({
+    id: `${parentId}:plan:${step.id}`,
+    kind: "plan-step",
+    label: step.title,
+    tone,
+    parent: parentId,
+    // On a plan step `active` means "done" — the filled-box checklist
+    // idiom. The renderer keeps the focus reticle off these.
+    active: step.state === "done",
+  });
+  node.running = step.state === "active";
+  node.sublabel = step.state;
+  node.detail = [
+    ...(step.description
+      ? [{ label: "detail", value: step.description }]
+      : []),
+    { label: "state", value: step.state, tone },
+    { label: "step", value: step.id },
+    ...(plan.agentId ? [{ label: "agent", value: plan.agentId }] : []),
+  ];
+  if (step.state === "active") node.tags = ["running"];
+  return node;
+}
+
+function buildSubagentNode(
+  sub: { agentId: string; agentType: string; startedAt: number },
+  parentId: string,
+  now: () => number,
+): AtlasNode {
+  const node = makeNode({
+    id: `${parentId}:sub:${sub.agentId}`,
+    kind: "subagent",
+    label: sub.agentType || "subagent",
+    tone: "agent",
+    parent: parentId,
+  });
+  node.running = true;
+  node.sublabel = formatElapsed(now() - sub.startedAt);
+  node.detail = [
+    { label: "type", value: sub.agentType },
+    { label: "id", value: sub.agentId },
+    { label: "running", value: formatElapsed(now() - sub.startedAt) },
+  ];
+  node.tags = ["agent", "running"];
+  return node;
+}
+
+/** Nine characters is the badge budget; a status pill's value is written
+ *  by a script that knows nothing about it. */
+function truncateBadge(text: string): string {
+  const t = text.trim();
+  return t.length <= 9 ? t : t.slice(0, 8) + "…";
 }

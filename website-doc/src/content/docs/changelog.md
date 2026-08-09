@@ -7,6 +7,20 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.18.0 — Atlas gains a temporal axis, and `ht` moves into the graph
+
+Follow-on to 0.17.0. The graph could say what was true *now* and nothing about how it got there, and picking Atlas still meant losing the plan panel and status pills along with the sidebar.
+
+- **Activity river.** A band under the header showing the last 90 seconds of output, one lane per workspace. A pane that pinned a core three seconds ago and went quiet no longer looks identical to one that slept all morning. Silent workspaces keep a resting lane, collection gaps are drawn as gaps, and clicking a lane jumps to that workspace.
+- **Sparklines.** Selecting a workspace or pane draws its recent CPU in the inspector, labelled with the peak — usually the question you actually had when you clicked.
+- **[`ht plan`](/cli/plan/) is topology now.** Plan steps become child nodes — filled box done, pulsing active, hollow waiting, red failed — and the parent gains a `2/4` badge and a progress arc. A plan naming an agent hangs off the pane running it. Since Claude Code's task list is mirrored *into* a plan, a session with both shows the plan only.
+- **[`ht set-status`](/cli/sidebar-and-status/) pills** become workspace badges in the colour the publishing script chose, plus inspector rows. **[`ht set-progress`](/cli/sidebar-and-status/)** drives the workspace arc. **[`ht ask`](/cli/ask-user/)** flags the pane with a question waiting and shows it in the inspector.
+- **Live subagents** each get their own node under their pane, with elapsed time.
+- **Meters strip** — agent spend and the 5-hour / 7-day rate-limit walls, rolled up as the highest reading any live session reported, including sessions with no pane. Hidden entirely until something reports.
+- **A legend** behind the `?` button, for an encoding that has grown worth explaining.
+- **The look.** Atlas leans into being the radical variant: a scanline veil over the graph ground, a horizon glow behind the spine, corner brackets framing each band, a targeting reticle on the focused node, and marker glow that scales with CPU. The root→node callout arc is back, now scoped to things a keystroke of yours resolves and capped at two.
+- A changed number flashes once, rate-limited so a per-second rate chip cues rather than strobes. Everything still stops under `prefers-reduced-motion`.
+
 ## 0.17.0 — Atlas is a topology instrument
 
 The Atlas [layout variant](/features/layout-variants/) has been rebuilt. It used to draw a workspace graph that couldn't answer the question a graph is for: it rebuilt itself on every frame (so hover died on each 1 Hz tick), pushed workspaces past eight off the canvas, expanded only the active one, carried a CPU ring and a label per node, was unreachable by keyboard — and showed nothing at all about the Claude Code sessions running inside it.

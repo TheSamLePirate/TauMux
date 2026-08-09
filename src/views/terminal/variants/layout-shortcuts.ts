@@ -7,6 +7,7 @@
  */
 import type { VariantId } from "./types";
 import { toggleAtlasTopology } from "./atlas";
+import { afterTransition } from "../after-transition";
 
 export interface LayoutShortcutDeps {
   variant: () => VariantId;
@@ -40,4 +41,23 @@ export function toggleTopology(deps: LayoutShortcutDeps): void {
   if (toggleAtlasTopology()) return;
   document.body.classList.toggle("tau-atlas-graph-hidden");
   deps.afterColumnResize();
+}
+
+/**
+ * Build the dependency bundle for the two shortcuts. Takes the pieces
+ * the host owns and supplies the transition-settling behaviour itself,
+ * so the call site stays a single expression.
+ */
+export function makeLayoutShortcutDeps(host: {
+  variant: () => VariantId;
+  toggleSidebar: () => void;
+  resizeAll: () => void;
+  columnEl: HTMLElement;
+}): LayoutShortcutDeps {
+  return {
+    variant: host.variant,
+    toggleSidebar: host.toggleSidebar,
+    afterColumnResize: () =>
+      afterTransition(host.columnEl, "left", 240, host.resizeAll),
+  };
 }

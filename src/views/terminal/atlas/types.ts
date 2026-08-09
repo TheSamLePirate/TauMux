@@ -38,7 +38,11 @@ export type AtlasNodeKind =
   /** A TCP listener owned by a pane (expanded view only). */
   | "port"
   /** One task from a session's mirrored task list (expanded view only). */
-  | "task";
+  | "task"
+  /** One step of an `ht plan` — the plan panel, expressed as topology. */
+  | "plan-step"
+  /** A live Claude Code subagent under its session's pane. */
+  | "subagent";
 
 /** Why a node is asking for the user. Drives the dashed attention ring
  *  and the arc drawn from the root to the node. */
@@ -55,6 +59,10 @@ export type AtlasAttention =
 export interface AtlasBadge {
   text: string;
   tone: AtlasTone;
+  /** Explicit colour, overriding `tone`. Used for `ht set-status` pills,
+   *  where the publishing script chose the colour and re-deriving one
+   *  would throw away its signal. */
+  color?: string;
   /** Native tooltip / accessible expansion of the abbreviation. */
   title?: string;
 }
@@ -100,6 +108,10 @@ export interface AtlasNode {
    *  wire is at rest and must not animate. */
   flow: number;
 
+  /** Key into `metrics-history` for this node's sparkline, when it has
+   *  one. Workspaces and panes do; plan steps and ports do not. */
+  historyKey?: string;
+
   /** This node is the active workspace / the focused pane. */
   active: boolean;
   /** A turn is in flight, a build is running, a shell is busy. */
@@ -126,6 +138,13 @@ export interface AtlasNode {
  *  carries the tag, or when one of its descendants does. */
 export type AtlasFilterTag = "agent" | "running" | "attention";
 
+/** One horizontal band of the activity river. */
+export interface AtlasRiverSeries {
+  id: string;
+  label: string;
+  color: string;
+}
+
 export interface AtlasSnapshot {
   /** Pre-order. `roots` are the spine heads (normally just `__root__`). */
   nodes: Map<string, AtlasNode>;
@@ -140,7 +159,13 @@ export interface AtlasSnapshot {
     rssKb: number;
     attention: number;
     costUsd: number;
+    /** Highest 5-hour rate-limit reading across live sessions, 0–100. */
+    fiveHourPct: number | null;
+    /** Highest 7-day rate-limit reading across live sessions, 0–100. */
+    sevenDayPct: number | null;
   };
+  /** Workspaces, in graph order, for the activity river's bands. */
+  river: AtlasRiverSeries[];
 }
 
 // ── Layout output ────────────────────────────────────────────────────
@@ -168,9 +193,28 @@ export interface AtlasPlacedEdge {
   active: boolean;
 }
 
+/**
+ * A link drawn from the spine's head to a node that is *actionable* —
+ * something a keystroke or a click of yours resolves.
+ *
+ * Cut from the first build because notifications propagated to every
+ * pane in a workspace and four arcs at once read as noise. That cause is
+ * fixed (a workspace notification now marks only the workspace), so the
+ * channel is worth its ink again: scoped to approval / question / error,
+ * capped, and never drawn for merely-informational states.
+ */
+export interface AtlasCallout {
+  id: string;
+  to: string;
+  d: string;
+  attention: AtlasAttention;
+  tone: AtlasTone;
+}
+
 export interface AtlasScene {
   nodes: AtlasPlacedNode[];
   edges: AtlasPlacedEdge[];
+  callouts: AtlasCallout[];
   width: number;
   height: number;
 }

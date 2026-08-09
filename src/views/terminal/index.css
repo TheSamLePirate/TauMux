@@ -160,6 +160,12 @@
   /* Atlas graph ground — the 20 px dot grid behind the topology spine.
    * Sits between `void` and `edge` so it reads as depth, not as content. */
   --tau-atlas-grid: #141c21;
+  /* Atlas HUD layer. The instrument reads as a phosphor display: a
+   * scanline veil over the graph ground, hairline brackets framing each
+   * band, and a horizon glow behind the spine's head. */
+  --tau-atlas-scan: rgba(111, 233, 255, 0.028);
+  --tau-atlas-bracket: rgba(111, 233, 255, 0.26);
+  --tau-atlas-horizon: rgba(111, 233, 255, 0.07);
   --tau-text: #d6e2e8;
   --tau-text-dim: #8a9aa3;
   --tau-text-mute: #55646c;
@@ -11134,6 +11140,243 @@ body[data-tau-variant="cockpit"] .tau-hud {
  * §9.2 "No bottom pane overflow" — the status bar reservation (26 px)
  * already guarantees that. */
 
+
+/* ── Atlas · HUD layer ─────────────────────────────────────────────
+ * Atlas is the deliberately radical variant, and the one place the
+ * design system's restraint is relaxed on purpose. Everything here is
+ * still keyed to state — the glow tracks load, the scanline veil marks
+ * the graph as an instrument surface rather than a list, the brackets
+ * frame the three bands so they read as separate readouts.
+ * ───────────────────────────────────────────────────────────────── */
+
+/* Scanline veil + horizon glow behind the spine. Both are pure ground:
+ * `pointer-events: none`, no layout, and they sit under every row. */
+.tau-atlas-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      var(--tau-atlas-scan) 0 1px,
+      transparent 1px 3px
+    ),
+    radial-gradient(
+      120% 60% at 12% 0%,
+      var(--tau-atlas-horizon) 0%,
+      transparent 70%
+    );
+}
+.tau-atlas-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Corner brackets on the header and inspector — the frame of a readout
+ * rather than the border of a box. */
+.tau-atlas-header,
+.tau-atlas-inspector {
+  position: relative;
+}
+.tau-atlas-header::after,
+.tau-atlas-inspector::after {
+  content: "";
+  position: absolute;
+  inset: 3px 4px;
+  pointer-events: none;
+  border: 1px solid transparent;
+  border-image: linear-gradient(
+      to right,
+      var(--tau-atlas-bracket) 0 10px,
+      transparent 10px calc(100% - 10px),
+      var(--tau-atlas-bracket) calc(100% - 10px) 100%
+    )
+    1;
+  opacity: 0.55;
+}
+
+/* Meters strip — spend and the two rate-limit walls. */
+.tau-atlas-meters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 20px;
+  padding: 0 10px;
+  border-bottom: 0.5px solid var(--tau-edge);
+  background: var(--tau-void);
+  overflow: hidden;
+}
+.tau-atlas-meters.is-empty {
+  display: none;
+}
+.tau-atlas-readout {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+}
+.tau-atlas-readout-label {
+  color: var(--tau-text-faint);
+  text-transform: uppercase;
+}
+.tau-atlas-readout-value {
+  color: var(--tau-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.tau-atlas-readout.is-warn .tau-atlas-readout-value {
+  color: var(--tau-warn);
+}
+.tau-atlas-readout.is-err .tau-atlas-readout-value {
+  color: var(--tau-err);
+}
+.tau-atlas-readout.is-accent .tau-atlas-readout-value {
+  color: var(--tau-cyan);
+}
+.tau-atlas-readout-bar {
+  width: 30px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--tau-edge);
+  overflow: hidden;
+}
+.tau-atlas-readout-bar > span {
+  display: block;
+  height: 100%;
+  background: currentColor;
+  transition: width var(--transition-fast);
+}
+.tau-atlas-readout.is-ok .tau-atlas-readout-bar > span {
+  background: var(--tau-ok);
+}
+.tau-atlas-readout.is-warn .tau-atlas-readout-bar > span {
+  background: var(--tau-warn);
+}
+.tau-atlas-readout.is-err .tau-atlas-readout-bar > span {
+  background: var(--tau-err);
+}
+
+/* Activity river — the last 90 s, one band per workspace. */
+.tau-atlas-river {
+  position: relative;
+  flex: 0 0 auto;
+  height: 34px;
+  border-bottom: 0.5px solid var(--tau-edge);
+  background: var(--tau-void);
+  cursor: pointer;
+  overflow: hidden;
+}
+.tau-atlas-river-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* Leading edge: a hairline at "now", so the direction of time is
+ * unambiguous without an axis label. */
+.tau-atlas-river::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--tau-cyan);
+  opacity: 0.4;
+}
+.tau-atlas-river-caption {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--tau-text-faint);
+  pointer-events: none;
+}
+.tau-atlas-river:not(.is-quiet) .tau-atlas-river-caption {
+  display: none;
+}
+
+/* Legend — behind a toggle, because a rich encoding needs a key but a
+ * permanent one is furniture. */
+.tau-atlas-legend {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-top: 0.5px solid var(--tau-edge);
+  background: var(--tau-panel);
+  font-size: 9px;
+}
+.tau-atlas-panel.is-legend-open .tau-atlas-legend {
+  display: flex;
+}
+.tau-atlas-legend-row {
+  display: flex;
+  gap: 8px;
+}
+.tau-atlas-legend-key {
+  flex: 0 0 66px;
+  color: var(--tau-cyan);
+  letter-spacing: 0.05em;
+}
+.tau-atlas-legend-value {
+  flex: 1 1 auto;
+  color: var(--tau-text-mute);
+}
+.tau-atlas-legend-btn {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-chip);
+  background: transparent;
+  color: var(--tau-text-mute);
+  font-family: var(--tau-font-mono);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tau-atlas-legend-btn:hover,
+.tau-atlas-panel.is-legend-open .tau-atlas-legend-btn {
+  color: var(--tau-cyan);
+  border-color: var(--tau-cyan);
+}
+
+.tau-atlas-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px 0 10px;
+}
+
+/* Targeting reticle on the focused marker. */
+.tau-atlas-reticle {
+  stroke: var(--node, var(--tau-cyan));
+  stroke-width: 1;
+  stroke-linecap: square;
+  opacity: 0.8;
+}
+
+/* A numeric chip that just changed. One-shot, 600 ms, no loop. */
+@keyframes tauAtlasTick {
+  0% {
+    background: var(--tau-cyan);
+    color: var(--tau-void);
+  }
+  100% {
+    background: var(--tau-panel);
+  }
+}
+.tau-atlas-badge.is-ticked {
+  animation: tauAtlasTick 600ms ease-out 1;
+}
+
 /* ── §9.3 Atlas — the topology instrument ──────────────────────────
  *
  * Three bands in the column: header (scope), graph (the instrument),
@@ -11195,10 +11438,7 @@ body[data-tau-variant="atlas"] .tau-atlas-graph {
 .tau-atlas-header {
   flex: 0 0 auto;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 8px 0 10px;
+  flex-direction: column;
   border-bottom: 0.5px solid var(--tau-edge);
   background: var(--tau-void);
 }
@@ -11378,8 +11618,16 @@ body[data-tau-variant="atlas"] .tau-atlas-graph {
 .tau-atlas-shape.is-filled {
   fill: var(--node, var(--tau-text-dim));
 }
+/* Glow tracks load: a saturated pane visibly burns, an idle one barely
+ * registers. `--glow` is set per node by the renderer. */
+.tau-atlas-shape {
+  filter: drop-shadow(
+    0 0 calc(1px + var(--glow, 0) * 5px) var(--node, var(--tau-cyan))
+  );
+}
 .tau-atlas-marker.is-active .tau-atlas-shape {
-  filter: drop-shadow(0 0 5px var(--node, var(--tau-cyan)));
+  filter: drop-shadow(0 0 6px var(--node, var(--tau-cyan)))
+    drop-shadow(0 0 2px var(--node, var(--tau-cyan)));
 }
 .tau-atlas-marker.is-selected .tau-atlas-shape {
   stroke-width: 1.6;
@@ -11595,6 +11843,17 @@ body[data-tau-variant="atlas"] .tau-atlas-graph {
   color: var(--tau-agent);
 }
 
+/* A plan step reads as a checklist line, not another pane. */
+.tau-atlas-row[data-kind="plan-step"] .tau-atlas-row-label {
+  font-size: 10px;
+}
+.tau-atlas-row[data-kind="plan-step"] .tau-atlas-row-sub,
+.tau-atlas-row[data-kind="subagent"] .tau-atlas-row-sub {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 8.5px;
+}
+
 /* ── Inspector ── */
 
 .tau-atlas-inspector {
@@ -11678,6 +11937,34 @@ body[data-tau-variant="atlas"] .tau-atlas-graph {
 .tau-atlas-inspector-lead.is-empty {
   display: none;
 }
+.tau-atlas-spark {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 20px;
+}
+.tau-atlas-spark.is-empty {
+  display: none;
+}
+.tau-atlas-spark-svg {
+  flex: 1 1 auto;
+  height: 18px;
+  min-width: 0;
+}
+.tau-atlas-spark-svg path {
+  stroke: var(--node, var(--tau-cyan));
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.85;
+}
+.tau-atlas-spark-label {
+  flex: 0 0 auto;
+  font-size: 8.5px;
+  letter-spacing: 0.05em;
+  color: var(--tau-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
 .tau-atlas-inspector-rows {
   display: flex;
   flex-direction: column;
@@ -11910,6 +12197,7 @@ body[data-tau-variant="atlas"] .tau-atlas-graph {
  * moving. */
 @media (prefers-reduced-motion: reduce) {
   .tau-atlas-wire.is-flowing,
+  .tau-atlas-badge.is-ticked,
   .tau-atlas-callout,
   .tau-atlas-halo,
   .tau-atlas-attention,

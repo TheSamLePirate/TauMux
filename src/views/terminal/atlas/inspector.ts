@@ -13,6 +13,8 @@
  */
 import type { AtlasAction, AtlasDetailRow, AtlasNode } from "./types";
 import { toneVar } from "./view";
+import { historyFor, isGap, peakCpu } from "../metrics-history";
+import { formatCpu } from "./format";
 
 /** Rows past this are folded away in the column; the expanded overlay
  *  lifts the cap. A card taller than a third of the panel stops being a
@@ -28,6 +30,7 @@ export class AtlasInspector {
   private readonly leadEl: HTMLDivElement;
   private readonly rowsEl: HTMLDivElement;
   private readonly actionsEl: HTMLDivElement;
+  private readonly sparkEl: HTMLDivElement;
   private rowCap = COLUMN_ROW_CAP;
   private lastSignature = "";
 
@@ -56,7 +59,16 @@ export class AtlasInspector {
     this.actionsEl = document.createElement("div");
     this.actionsEl.className = "tau-atlas-inspector-actions";
 
-    this.element.append(this.titleEl, this.leadEl, this.rowsEl, this.actionsEl);
+    this.sparkEl = document.createElement("div");
+    this.sparkEl.className = "tau-atlas-spark";
+
+    this.element.append(
+      this.titleEl,
+      this.leadEl,
+      this.sparkEl,
+      this.rowsEl,
+      this.actionsEl,
+    );
   }
 
   setRowCap(cap: number): void {
@@ -79,6 +91,7 @@ export class AtlasInspector {
             .map((r) => `${r.label}${r.value}${r.meter ?? ""}`)
             .join("|"),
           node.actions.map((a) => a.id).join("|"),
+          node.historyKey ? historyFor(node.historyKey).length : 0,
         ].join("§")
       : "§empty";
     if (signature === this.lastSignature) return;
@@ -116,8 +129,57 @@ export class AtlasInspector {
       this.leadEl.textContent.trim() === "",
     );
 
+    this.renderSparkline(node);
     this.renderRows(leadIsSentence ? rest : node.detail);
     this.renderActions(node.actions);
+  }
+
+  /**
+   * Last 90 seconds of CPU for this node.
+   *
+   * A live reading cannot distinguish "idle all morning" from "spiked
+   * two seconds ago and finished". The trace can, and the peak label
+   * says how high it went — which is usually the question you actually
+   * had when you clicked.
+   */
+  private renderSparkline(node: AtlasNode): void {
+    const key = node.historyKey;
+    const samples = key ? historyFor(key) : [];
+    if (!key || samples.length < 3) {
+      this.sparkEl.replaceChildren();
+      this.sparkEl.classList.add("is-empty");
+      return;
+    }
+    this.sparkEl.classList.remove("is-empty");
+    const peak = Math.max(peakCpu(key), 1);
+    const W = 100;
+    const H = 18;
+    let d = "";
+    samples.forEach((sample, i) => {
+      const x = (i / (samples.length - 1)) * W;
+      const y = H - Math.min(1, sample.cpu / peak) * (H - 1);
+      const prev = samples[i - 1];
+      d +=
+        (i === 0 || (prev && isGap(prev, sample)) ? "M" : "L") +
+        `${x.toFixed(1)} ${y.toFixed(1)} `;
+    });
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.setAttribute("class", "tau-atlas-spark-svg");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", d.trim());
+    path.setAttribute("fill", "none");
+    svg.appendChild(path);
+
+    const label = document.createElement("span");
+    label.className = "tau-atlas-spark-label";
+    label.textContent = `peak ${formatCpu(peak)}`;
+    label.title = "Highest CPU seen in the last 90 seconds";
+
+    this.sparkEl.replaceChildren(svg, label);
   }
 
   private renderRows(rows: AtlasDetailRow[]): void {

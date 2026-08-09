@@ -43,5 +43,10 @@ export function applyFilter(
       children: node.children.filter((c) => keep.has(c)),
     });
   }
-  return { nodes, roots: snapshot.roots, totals: snapshot.totals };
+  return {
+    nodes,
+    roots: snapshot.roots,
+    totals: snapshot.totals,
+    river: snapshot.river,
+  };
 }

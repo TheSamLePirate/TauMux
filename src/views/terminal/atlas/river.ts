@@ -1,0 +1,227 @@
+/**
+ * Activity river — the last 90 seconds, under the header.
+ *
+ * The graph is a snapshot: it says what is true *now* and nothing about
+ * how it got there. A pane that pinned a core three seconds ago and is
+ * idle again is drawn exactly like one that has slept all morning. The
+ * river is the missing axis — a stacked area of per-workspace output
+ * over the recent past, with the aggregate CPU traced over it.
+ *
+ * It reads the same `metrics-history` rings the inspector's sparklines
+ * use, so it costs one extra pass over data already collected. Drawn to
+ * a `<canvas>` rather than SVG: this is ~90 samples × N workspaces of
+ * pure fill, redrawn on every telemetry tick, and it carries no text,
+ * no hit-testing beyond a band lookup, and nothing that needs to be in
+ * the tab order.
+ */
+import {
+  HISTORY_CAPACITY,
+  historyFor,
+  isGap,
+  type MetricSample,
+} from "../metrics-history";
+import type { AtlasRiverSeries } from "./types";
+
+const HEIGHT = 34;
+/** Bytes/sec that fills the band. Above this the area saturates — the
+ *  point is the shape of the activity, not an exact reading. */
+const SATURATION = 262_144;
+
+export interface AtlasRiverCallbacks {
+  onPick(seriesId: string): void;
+}
+
+export class AtlasRiver {
+  readonly element: HTMLDivElement;
+  private readonly canvas: HTMLCanvasElement;
+  private readonly caption: HTMLSpanElement;
+  private series: AtlasRiverSeries[] = [];
+  private lastSignature = "";
+
+  constructor(callbacks: AtlasRiverCallbacks) {
+    this.element = document.createElement("div");
+    this.element.className = "tau-atlas-river";
+
+    this.canvas = document.createElement("canvas");
+    this.canvas.className = "tau-atlas-river-canvas";
+    this.canvas.setAttribute("aria-hidden", "true");
+
+    this.caption = document.createElement("span");
+    this.caption.className = "tau-atlas-river-caption";
+
+    this.element.append(this.canvas, this.caption);
+
+    // Clicking a band goes to the workspace that produced it. The x axis
+    // is time, so the meaningful pick is which *stripe* you clicked, and
+    // the stripes are ordered exactly like the graph's workspaces.
+    this.element.addEventListener("click", (e) => {
+      if (this.series.length === 0) return;
+      const rect = this.element.getBoundingClientRect();
+      const frac = (e.clientY - rect.top) / Math.max(rect.height, 1);
+      const idx = Math.min(
+        this.series.length - 1,
+        Math.max(0, Math.floor(frac * this.series.length)),
+      );
+      const picked = this.series[idx];
+      if (picked) callbacks.onPick(picked.id);
+    });
+  }
+
+  destroy(): void {
+    this.element.remove();
+  }
+
+  /**
+   * Redraw. `resolve` turns a CSS custom property or var() reference
+   * into a concrete colour — canvas cannot read `var(--tau-…)`, so the
+   * caller supplies a resolver bound to the live computed style.
+   */
+  render(
+    series: AtlasRiverSeries[],
+    resolve: (color: string) => string,
+    totalCpu: number,
+  ): void {
+    this.series = series;
+    const width = this.element.clientWidth;
+    if (width <= 0) return;
+
+    const signature =
+      series.map((s) => s.id).join("|") +
+      `#${width}#${Math.round(totalCpu)}#` +
+      series.map((s) => historyFor(s.id).length).join(",");
+    // The newest sample changes on every tick, so a pure structural
+    // signature would never invalidate. Include the leading edge.
+    const edge = series
+      .map((s) => {
+        const h = historyFor(s.id);
+        const last = h[h.length - 1];
+        return last ? Math.round(last.bytes) : 0;
+      })
+      .join(",");
+    if (this.lastSignature === signature + edge) return;
+    this.lastSignature = signature + edge;
+
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.width = Math.round(width * dpr);
+    this.canvas.height = Math.round(HEIGHT * dpr);
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${HEIGHT}px`;
+    const ctx = this.canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, HEIGHT);
+
+    const band = HEIGHT / Math.max(series.length, 1);
+
+    // Adaptive window: until the rings fill, scale to the history we
+    // actually have. Pinning to the full 90-sample capacity leaves three
+    // quarters of the strip empty on a fresh launch, which reads as a
+    // broken widget rather than as a young one. "Now" stays at the right
+    // edge either way.
+    let span = 2;
+    for (const s of series) {
+      span = Math.max(span, historyFor(s.id).length);
+    }
+    span = Math.min(span, HISTORY_CAPACITY);
+    const colX = (i: number) => (i / (span - 1)) * width;
+
+    let anyActivity = false;
+    series.forEach((s, bandIndex) => {
+      const top = bandIndex * band;
+      const colour = resolve(s.color);
+
+      // Every workspace gets a lane, drawn at rest even with no data.
+      // A missing lane is indistinguishable from a missing workspace.
+      ctx.beginPath();
+      ctx.moveTo(0, top + band - 0.5);
+      ctx.lineTo(width, top + band - 0.5);
+      ctx.strokeStyle = withAlpha(colour, 0.16);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      const samples = historyFor(s.id);
+      if (samples.length < 2) return;
+      // Offset so the newest sample sits flush against the right edge —
+      // a partially-filled ring must not read as "activity stopped".
+      const offset = span - samples.length;
+
+      ctx.beginPath();
+      let open = false;
+      samples.forEach((sample: MetricSample, i) => {
+        const x = colX(offset + i);
+        const level = Math.min(1, sample.bytes / SATURATION);
+        if (level > 0.002) anyActivity = true;
+        const y = top + band - level * (band - 1);
+        const prev = samples[i - 1];
+        if (!open || (prev && isGap(prev, sample))) {
+          // A collection gap is drawn as a gap, not bridged by a line
+          // that implies data nobody recorded.
+          if (open) {
+            ctx.lineTo(colX(offset + i - 1), top + band);
+            ctx.closePath();
+          }
+          ctx.moveTo(x, top + band);
+          open = true;
+        }
+        ctx.lineTo(x, y);
+      });
+      if (open) {
+        ctx.lineTo(colX(offset + samples.length - 1), top + band);
+        ctx.closePath();
+      }
+      const grad = ctx.createLinearGradient(0, top, 0, top + band);
+      grad.addColorStop(0, withAlpha(colour, 0.55));
+      grad.addColorStop(1, withAlpha(colour, 0.06));
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      ctx.strokeStyle = withAlpha(colour, 0.75);
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    });
+
+    // Time axis: a tick every ~15 samples so the window has a scale.
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+    ctx.lineWidth = 1;
+    for (let i = span - 1; i >= 0; i -= 15) {
+      const x = Math.round(colX(i)) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, HEIGHT);
+      ctx.stroke();
+    }
+
+    this.caption.textContent = anyActivity ? "" : "quiet";
+    this.element.classList.toggle("is-quiet", !anyActivity);
+  }
+}
+
+/**
+ * Apply alpha to a resolved colour. Handles `#rgb` / `#rrggbb` and
+ * `rgb()/rgba()`; anything else is returned untouched, which degrades to
+ * a fully-opaque band rather than an invisible one.
+ */
+export function withAlpha(color: string, alpha: number): string {
+  const c = color.trim();
+  if (c.startsWith("#")) {
+    const hex = c.slice(1);
+    const full =
+      hex.length === 3
+        ? hex
+            .split("")
+            .map((ch) => ch + ch)
+            .join("")
+        : hex.slice(0, 6);
+    if (full.length !== 6) return c;
+    const n = parseInt(full, 16);
+    if (Number.isNaN(n)) return c;
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+  }
+  const m = c.match(/^rgba?\(([^)]+)\)$/);
+  if (m) {
+    const parts = m[1]!.split(",").map((x) => x.trim());
+    const [r, g, b] = parts;
+    if (r && g && b) return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return c;
+}

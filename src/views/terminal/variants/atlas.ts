@@ -27,11 +27,26 @@ import { htEvents } from "../../../shared/event-bus";
 import { variantContext as variantHandles } from "./variant-context";
 import { AtlasPanel } from "../atlas/panel";
 import type { AtlasEmitters } from "../atlas/snapshot";
+import type { AskUserRequest } from "../../../shared/types";
 
 const PANEL_HOST_ID = "tau-atlas-graph";
 const RAIL_ID = "tau-atlas-rail";
 
 let panel: AtlasPanel | null = null;
+
+/** Injected by the host at boot so the graph can flag a pane that has a
+ *  question waiting, without `atlas/` importing the ask-user modal. */
+let questionSource: {
+  pendingQuestions: () => readonly AskUserRequest[];
+  onQuestionsChanged: (fn: () => void) => () => void;
+} | null = null;
+
+export function setAtlasQuestionSource(source: {
+  pendingQuestions: () => readonly AskUserRequest[];
+  onQuestionsChanged: (fn: () => void) => () => void;
+}): void {
+  questionSource = source;
+}
 
 /** The action surface the graph offers. Kept here rather than inside
  *  `atlas/` so the graph modules stay free of τ-mux's event contracts
@@ -96,7 +111,10 @@ function mountPanel(): void {
     if (panel.element.isConnected) return;
     panel.destroy();
   }
-  panel = new AtlasPanel({ emit: emitters });
+  panel = new AtlasPanel({
+    emit: emitters,
+    ...(questionSource ? questionSource : {}),
+  });
   panel.mount(host);
 }
 

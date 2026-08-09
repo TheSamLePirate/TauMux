@@ -38,6 +38,11 @@ const NS = "http://www.w3.org/2000/svg";
 /** Fastest and slowest full cycle of the byte-flow dash, in seconds.
  *  A pane at saturation completes a cycle three times a second; one just
  *  over the quiet floor takes nearly two. */
+/** Minimum gap between flashes on one badge. A rate chip changes every
+ *  second; without this the "something moved" cue becomes a metronome
+ *  and stops meaning anything. */
+const TICK_COOLDOWN_MS = 4_000;
+
 const FLOW_FAST_S = 0.34;
 const FLOW_SLOW_S = 1.9;
 
@@ -53,6 +58,7 @@ interface NodeParts {
   shape: SVGElement;
   halo: SVGCircleElement | null;
   ring: SVGCircleElement | null;
+  reticle: SVGPathElement | null;
   load: SVGPathElement | null;
   meter: SVGPathElement | null;
   row: HTMLButtonElement;
@@ -69,11 +75,13 @@ export class AtlasView {
   readonly element: HTMLDivElement;
   private readonly svg: SVGSVGElement;
   private readonly wireLayer: SVGGElement;
+  private readonly calloutLayer: SVGGElement;
   private readonly markerLayer: SVGGElement;
   private readonly rowLayer: HTMLDivElement;
 
   private nodes = new Map<string, NodeParts>();
   private edges = new Map<string, SVGPathElement>();
+  private callouts = new Map<string, SVGPathElement>();
   private radius = 4.5;
   private selectedId: string | null = null;
   private focusedRowId: string | null = null;
@@ -86,8 +94,9 @@ export class AtlasView {
     this.svg.setAttribute("class", "tau-atlas-wires");
     this.svg.setAttribute("aria-hidden", "true");
     this.wireLayer = document.createElementNS(NS, "g");
+    this.calloutLayer = document.createElementNS(NS, "g");
     this.markerLayer = document.createElementNS(NS, "g");
-    this.svg.append(this.wireLayer, this.markerLayer);
+    this.svg.append(this.wireLayer, this.calloutLayer, this.markerLayer);
 
     this.rowLayer = document.createElement("div");
     this.rowLayer.className = "tau-atlas-rows";
@@ -109,6 +118,7 @@ export class AtlasView {
     this.element.remove();
     this.nodes.clear();
     this.edges.clear();
+    this.callouts.clear();
   }
 
   /** Id of the row that currently owns the roving tabindex. */
@@ -165,6 +175,7 @@ export class AtlasView {
     this.element.style.setProperty("--row-line-h", `${rowLineHeight}px`);
 
     this.renderEdges(scene.edges);
+    this.renderCallouts(scene.callouts);
     this.renderNodes(scene, expanded);
   }
 
@@ -204,6 +215,30 @@ export class AtlasView {
       if (seen.has(id)) continue;
       path.remove();
       this.edges.delete(id);
+    }
+  }
+
+  /** The root→node link for whatever is blocking on the user. */
+  private renderCallouts(callouts: AtlasScene["callouts"]): void {
+    const seen = new Set<string>();
+    for (const callout of callouts) {
+      seen.add(callout.id);
+      let path = this.callouts.get(callout.id);
+      if (!path) {
+        path = document.createElementNS(NS, "path");
+        path.setAttribute("class", "tau-atlas-callout");
+        path.setAttribute("fill", "none");
+        this.calloutLayer.appendChild(path);
+        this.callouts.set(callout.id, path);
+      }
+      path.setAttribute("d", callout.d);
+      path.style.setProperty("--wire", toneVar(callout.tone));
+      path.dataset["attention"] = callout.attention;
+    }
+    for (const [id, path] of this.callouts) {
+      if (seen.has(id)) continue;
+      path.remove();
+      this.callouts.delete(id);
     }
   }
 
@@ -309,6 +344,7 @@ export class AtlasView {
       shape,
       halo: null,
       ring: null,
+      reticle: null,
       load: null,
       meter: null,
       row,
@@ -353,12 +389,30 @@ export class AtlasView {
 
     const colour = node.color ?? toneVar(node.tone);
     parts.group.style.setProperty("--node", colour);
+    // Glow scales with load, so a hot pane is visibly hotter rather than
+    // merely differently-coloured. Capped well below a bloom.
+    parts.group.style.setProperty("--glow", (0.15 + node.load * 0.85).toFixed(2));
     parts.group.setAttribute("transform", `translate(${placed.x} ${placed.y})`);
     parts.group.classList.toggle("is-active", node.active);
     parts.group.classList.toggle("is-running", node.running);
     parts.group.dataset["attention"] = node.attention ?? "";
 
     parts.shape.classList.toggle("is-filled", node.active);
+
+    // Reticle marks navigable focus only. `active` also means "done" on
+    // a plan step, and a checklist of completed items should not read as
+    // four things being targeted at once.
+    const targetable =
+      node.kind === "surface" || node.kind === "workspace" || node.kind === "root";
+    if (node.active && targetable) {
+      if (!parts.reticle) {
+        parts.reticle = makeReticle(this.radius);
+        parts.group.appendChild(parts.reticle);
+      }
+    } else if (parts.reticle) {
+      parts.reticle.remove();
+      parts.reticle = null;
+    }
 
     // Halo — a running node breathes. Created lazily so a quiet graph
     // holds no animated elements at all.
@@ -490,6 +544,25 @@ function markerKind(placed: AtlasPlacedNode): string {
   return kind;
 }
 
+/** Selection reticle — four corner ticks around the focused marker.
+ *  Targeting brackets rather than a box: they read as "locked on" at
+ *  4 px without adding a closed shape that competes with the node. */
+function makeReticle(r: number): SVGPathElement {
+  const o = r * 2.6;
+  const t = r * 1.1;
+  const path = document.createElementNS(NS, "path");
+  path.setAttribute(
+    "d",
+    `M ${-o} ${-o + t} V ${-o} H ${-o + t} ` +
+      `M ${o - t} ${-o} H ${o} V ${-o + t} ` +
+      `M ${o} ${o - t} V ${o} H ${o - t} ` +
+      `M ${-o + t} ${o} H ${-o} V ${o - t}`,
+  );
+  path.setAttribute("class", "tau-atlas-reticle");
+  path.setAttribute("fill", "none");
+  return path;
+}
+
 /**
  * Node silhouettes. Three primary shapes carry the three things a reader
  * has to tell apart at a glance — a place (square), a pane (circle), an
@@ -523,6 +596,26 @@ function makeShape(placed: AtlasPlacedNode, r: number): SVGElement {
       const path = document.createElementNS(NS, "path");
       const d = r * 1.15;
       path.setAttribute("d", `M 0 ${-d} L ${d} 0 L 0 ${d} L ${-d} 0 Z`);
+      path.setAttribute("class", "tau-atlas-shape");
+      return path;
+    }
+    case "plan-step": {
+      const size = r * 1.25;
+      const rect = document.createElementNS(NS, "rect");
+      rect.setAttribute("x", String(-size / 2));
+      rect.setAttribute("y", String(-size / 2));
+      rect.setAttribute("width", String(size));
+      rect.setAttribute("height", String(size));
+      rect.setAttribute("rx", "0.5");
+      rect.setAttribute("class", "tau-atlas-shape");
+      // A completed step is a filled box — the checklist idiom, and the
+      // one place `active` legitimately means "done".
+      if (placed.node.active) rect.classList.add("is-filled");
+      return rect;
+    }
+    case "subagent": {
+      const path = document.createElementNS(NS, "path");
+      path.setAttribute("d", hexagonPath(r * 0.8));
       path.setAttribute("class", "tau-atlas-shape");
       return path;
     }
@@ -564,7 +657,12 @@ function hexagonPath(r: number): string {
 
 function renderBadges(
   host: HTMLSpanElement,
-  badges: readonly { text: string; tone: AtlasTone; title?: string }[],
+  badges: readonly {
+    text: string;
+    tone: AtlasTone;
+    color?: string;
+    title?: string;
+  }[],
 ): void {
   if (badges.length === 0) {
     if (host.childElementCount > 0) host.replaceChildren();
@@ -581,7 +679,24 @@ function renderBadges(
       host.appendChild(el);
     }
     el.className = `tau-atlas-badge is-${badge.tone}`;
-    if (el.textContent !== badge.text) el.textContent = badge.text;
+    if (badge.color) el.style.color = badge.color;
+    else el.style.removeProperty("color");
+    if (el.textContent !== badge.text) {
+      // A value that just moved gets a one-shot flash. At 1 Hz across a
+      // dozen chips, "what changed" is otherwise invisible.
+      const had = el.textContent !== "" && el.textContent !== null;
+      el.textContent = badge.text;
+      const now = Date.now();
+      const last = Number(el.dataset["tickedAt"] ?? 0);
+      if (had && now - last > TICK_COOLDOWN_MS) {
+        el.dataset["tickedAt"] = String(now);
+        el.classList.remove("is-ticked");
+        // Force a reflow so removing and re-adding restarts the
+        // animation even when two ticks land back to back.
+        void el.offsetWidth;
+        el.classList.add("is-ticked");
+      }
+    }
     if (badge.title) el.title = badge.title;
     else el.removeAttribute("title");
   });

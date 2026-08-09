@@ -39,11 +39,13 @@ Atlas répond à une seule question : **que se passe-t-il en ce moment, et où d
 
 Il remplace la barre latérale par une topologie vivante de tout ce que τ-mux exécute — espaces de travail, panneaux, sessions Claude Code qu'ils contiennent, leurs processus, ports en écoute, état git et coût — et donne à ce graphe les actions permettant de traiter ce qu'il révèle. Vous repérez une session qui vous attend, vous lisez pourquoi, et vous l'approuvez sans quitter la colonne.
 
-### Trois bandes
+### Bandes
 
 ```
-┌─ ATLAS ──────── all agents live alert ② ⤢ ─┐   en-tête : portée + filtres + agrandir
-│                                             │
+┌─ ATLAS ─────── all agents live alert ② ? ⤢ ─┐  en-tête : portée + filtres
+│ SPEND $1.73  5H 63% ▬▬  7D 21% ▬            │  jauges : dépense + limites
+│ ╭───────────────────────────────────────╮   │  rivière : 90 dernières s
+│ ╰───────────────────────────────────────╯   │
 │  ▢ τ-mux    3 workspaces · 7 panes · 2 agent│
 │  └─▣ crazyShell  4 panes · 1 agent          │
 │      main↑2*  102%  885 MB                  │   le graphe
@@ -75,9 +77,27 @@ Le graphe est dessiné comme une **colonne vertébrale** : la profondeur est une
 | Second arc, extérieur | Contexte utilisé pour une session ; progression de build pour un panneau |
 | Halo pulsé | Travail en cours |
 | Anneau pointillé | **Celui-ci vous attend** — approbation, question, erreur, notification non lue |
-| Puces de badge | Port `:3000` · branche `main↑2*` · `78% ctx` · `$1.42` · progression `▰ 62%` · débit de sortie |
+| Puces de badge | Port `:3000` · branche `main↑2*` · `78% ctx` · `$1.42` · progression `▰ 62%` · débit · pastilles `ht set-status` |
+| Crochets d'angle | Le nœud focalisé — un réticule de visée, sur un seul à la fois |
+| Halo du marqueur | Proportionnel au CPU : un panneau chaud brûle visiblement |
+| Flash de puce | Ce nombre vient de changer (limité en cadence, pour signaler sans clignoter) |
 
 Le CPU agrégé d'un espace de travail ou de τ-mux lui-même est mis à l'échelle sur quatre cœurs, pas un seul, pour qu'un unique processus occupé ne sature pas l'anneau.
+
+### La bande de jauges
+
+Sous les filtres, dès qu'une session Claude publie ses chiffres : la dépense totale des agents, et les murs de limite 5 heures et 7 jours en mini-barres qui passent à l'ambre au-delà de 60 % et au rouge au-delà de 85 %. Les limites sont à l'échelle du compte : la valeur affichée est donc la plus haute qu'une session vivante ait vue — y compris une session sans panneau.
+
+Si rien ne publie, rien ne s'affiche : la bande disparaît au lieu de rester vide.
+
+### La rivière d'activité
+
+Une bande de 34 px montrant les **90 dernières secondes** de sortie, une voie par espace de travail, colorée par son accent. Le graphe dit ce qui est vrai maintenant ; la rivière dit comment on en est arrivé là — un panneau qui a saturé un cœur il y a trois secondes puis s'est tu ressemble en tout point à un panneau qui dort depuis ce matin, jusqu'à ce qu'on voie sa trace.
+
+- Chaque espace de travail garde une voie au repos : un espace silencieux est visiblement silencieux, pas absent.
+- Un trou de collecte (l'application était endormie) est dessiné comme un trou, jamais comblé.
+- La fenêtre s'adapte à l'historique réellement disponible : au démarrage elle se remplit depuis la gauche au lieu d'afficher trois quarts de bande morte. « Maintenant » est toujours le bord droit.
+- Cliquer sur une voie bascule vers cet espace de travail.
 
 ### Les fils transportent les octets
 
@@ -92,11 +112,27 @@ Une session Claude Code **est dessinée comme son panneau**, pas comme un second
 - la phase — en travail, vous attend, approbation requise, vous questionne, compactage, erreur ;
 - le modèle, le contexte utilisé, le coût, et les jauges de limite de débit 5 heures / 7 jours ;
 - le nombre de tours, la durée du tour en cours, les lignes ajoutées et supprimées ;
-- la liste de tâches mirroir et les éventuels sous-agents actifs ;
 - le numéro de PR et son état de revue ;
-- le texte de ce qui est en attente d'approbation.
+- le texte de ce qui est en attente d'approbation ;
+- les **sous-agents actifs**, chacun comme un nœud sous le panneau, avec sa durée d'exécution ;
+- la **liste de tâches mirroir sous forme de plan** (voir ci-dessous).
 
 Une session sans panneau vivant — Claude Code lancé dans un shell que τ-mux ne possède pas, ou un panneau fermé sous elle — se rattache à la racine avec le badge `detached`. Elle dépense toujours de l'argent et peut toujours vous attendre : elle reste donc visible.
+
+### `ht` dans le graphe
+
+Atlas masque la barre latérale, ce qui faisait auparavant disparaître le panneau plan et les pastilles de statut dès qu'on choisissait cette disposition. Ils font désormais partie de la topologie :
+
+- **[`ht plan`](/fr/cli/plan/)** — les étapes d'un plan deviennent des nœuds enfants : case pleine pour *done*, pulsée pour *active*, creuse pour *waiting*, rouge pour un échec. Le parent gagne un badge `2/4` et un arc de progression. Un plan qui nomme un agent se rattache au panneau qui l'exécute ; sinon à l'espace de travail. Les panneaux porteurs d'un plan se déplient d'eux-mêmes : le replier ferait perdre ce que la barre latérale montrait gratuitement.
+- **[`ht set-status`](/fr/cli/sidebar-and-status/)** — les pastilles deviennent des badges sur le nœud d'espace de travail, dans la couleur choisie par le script qui les publie, et des lignes dans l'inspecteur.
+- **[`ht set-progress`](/fr/cli/sidebar-and-status/)** — pilote l'arc du marqueur d'espace de travail et un badge `▰ 41%`. Un plan a la priorité si les deux sont présents.
+- **[`ht ask`](/fr/cli/ask-user/)** — une question qui vous attend marque son panneau, en supplantant la phase déclarée par la session, et l'inspecteur affiche l'énoncé et ses choix.
+
+Comme la liste de tâches de Claude Code est reflétée *en* plan, une session qui a les deux n'affiche que le plan — le même travail dessiné deux fois serait du bruit.
+
+### Sparklines
+
+Sélectionner un espace de travail ou un panneau trace ses 90 dernières secondes de CPU dans l'inspecteur, avec le pic en légende. Ce pic est en général la vraie question qu'on se posait en cliquant : non pas « est-il occupé » mais « l'a-t-il été ».
 
 ### Filtres
 
@@ -134,9 +170,17 @@ Le graphe est un vrai widget arborescent, pas une image :
 | `Entrée` / `Espace` | Aller à cet espace de travail ou à ce panneau |
 | `Home` / `End` | Première / dernière ligne |
 
+Le bouton `?` de l'en-tête affiche une légende de l'encodage.
+
+### L'esthétique
+
+Atlas est la variante délibérément radicale, et le seul endroit où la retenue du système de design est relâchée volontairement. Elle se lit comme un instrument à phosphore : un voile de lignes de balayage sur le fond du graphe, une lueur d'horizon derrière la tête de la colonne vertébrale, de fins crochets d'angle encadrant chaque bande, et un halo de marqueur proportionnel à la charge plutôt qu'appliqué uniformément.
+
+La seule ligne non arborescente est le **rappel** — un arc allant de τ-mux lui-même vers ce qui vous bloque. Il n'est tracé que pour ce qu'une de vos frappes résout (approbation, question, erreur), jamais pour un état purement informatif, et plafonné à deux.
+
 ### Animation
 
-Chaque animation d'Atlas porte un état — aucune n'est décorative. Sous `prefers-reduced-motion: reduce`, le flux d'octets, les halos et la pulsation d'attention s'arrêtent tous ; les arcs, les couleurs et les anneaux pointillés disent la même chose sans bouger.
+Chaque animation d'Atlas porte un état — aucune n'est décorative. Sous `prefers-reduced-motion: reduce`, le flux d'octets, les halos, la pulsation d'attention, le rappel et le flash de puce s'arrêtent tous ; les arcs, les couleurs et les anneaux pointillés disent la même chose sans bouger.
 
 ## Fichiers source
 
@@ -144,6 +188,8 @@ Chaque animation d'Atlas porte un état — aucune n'est décorative. Sous `pref
 - `src/views/terminal/variants/{bridge,cockpit,atlas}.ts` — un handle par variante.
 - `src/views/terminal/atlas/` — le panneau Atlas : `snapshot` collecte, `layout` place, `view` dessine, `inspector` explique, `filter` restreint.
 - `src/views/terminal/throughput-meter.ts` — le débit par panneau derrière les fils.
+- `src/views/terminal/metrics-history.ts` — les anneaux de 90 s derrière les sparklines et la rivière.
+- `src/views/terminal/atlas/river.ts` — la rivière d'activité.
 
 ## Pour aller plus loin
 

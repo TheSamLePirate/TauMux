@@ -23,6 +23,8 @@
  * to travel along, which a node cloud would not.
  */
 import type {
+  AtlasAttention,
+  AtlasCallout,
   AtlasLayoutOptions,
   AtlasPlacedEdge,
   AtlasPlacedNode,
@@ -113,9 +115,58 @@ export function layoutAtlas(input: AtlasLayoutInput): AtlasScene {
   return {
     nodes,
     edges,
+    callouts: buildCallouts(nodes, options),
     width: options.width,
     height: y + options.originY,
   };
+}
+
+/** Attention states a callout is drawn for. `notify` and `input` are
+ *  informational — they get the node's dashed ring and nothing more. */
+const ACTIONABLE: ReadonlySet<AtlasAttention> = new Set([
+  "approval",
+  "question",
+  "error",
+]);
+
+/** At most this many arcs. A system with more than two things blocking
+ *  on you needs the notification centre, not more lines. */
+const MAX_CALLOUTS = 2;
+
+/**
+ * Arc from the spine's head to whatever is blocking on the user. Bows
+ * out to the left of the trunk so it never crosses a label, with the
+ * bow scaled by the drop — a near neighbour gets a gentle curve, a
+ * distant one a wide sweep.
+ */
+function buildCallouts(
+  nodes: AtlasPlacedNode[],
+  options: AtlasLayoutOptions,
+): AtlasCallout[] {
+  const root = nodes[0];
+  if (!root) return [];
+  const out: AtlasCallout[] = [];
+  for (const placed of nodes) {
+    const attention = placed.node.attention;
+    if (!attention || !ACTIONABLE.has(attention)) continue;
+    if (placed.node.id === root.node.id) continue;
+    if (out.length >= MAX_CALLOUTS) break;
+    const dy = placed.y - root.y;
+    if (dy <= 0) continue;
+    const bow = Math.min(options.originX - 3, 5 + dy * 0.14);
+    out.push({
+      id: `callout:${placed.node.id}`,
+      to: placed.node.id,
+      d:
+        `M ${root.x} ${root.y + options.radius + 1} ` +
+        `C ${root.x - bow} ${root.y + dy * 0.35}, ` +
+        `${placed.x - bow} ${placed.y - dy * 0.28}, ` +
+        `${placed.x - options.radius - 1.5} ${placed.y}`,
+      attention,
+      tone: attention === "error" ? "err" : "warn",
+    });
+  }
+  return out;
 }
 
 /**

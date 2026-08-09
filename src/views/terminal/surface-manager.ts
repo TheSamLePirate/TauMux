@@ -42,6 +42,11 @@ import { createWorkspaceRecord } from "./workspace-factory";
 import { TerminalSearchBar } from "./terminal-search";
 import { buildSidebarWorkspaces } from "./sidebar-state";
 import { metadataNeedsRepaint } from "./metadata-diff";
+import {
+  elementCaptureRect,
+  unionCaptureRect,
+  type CaptureRect,
+} from "./surface-geometry";
 import { PaneDragController } from "./pane-drag";
 import {
   type AppSettings,
@@ -1696,66 +1701,32 @@ export class SurfaceManager {
    *  window, plus the current DPR. Returned to the bun side so
    *  `ht screenshot --surface <id>` can crop a window capture to the
    *  pane region. Returns null if the surface isn't currently mounted. */
-  getSurfaceRect(surfaceId: string): {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    devicePixelRatio: number;
-  } | null {
-    const view = this.surfaces.get(surfaceId);
-    if (!view) return null;
-    const r = view.container.getBoundingClientRect();
-    return {
-      x: r.left,
-      y: r.top,
-      width: r.width,
-      height: r.height,
-      devicePixelRatio: window.devicePixelRatio || 1,
-    };
+  getSurfaceRect(surfaceId: string): CaptureRect | null {
+    return elementCaptureRect(this.surfaces.get(surfaceId)?.container ?? null);
   }
 
   /** Bounding box (CSS px) of every visible pane in a workspace, for the
-   *  `ht screenshot workspace` crop. Defaults to the active workspace.
-   *  Only mounted/visible panes count — surfaces in a background workspace
-   *  are `display:none` (zero-size rect) and can't be captured, so a
-   *  non-active workspace yields null and the caller falls back to the raw
-   *  window grab. */
-  getWorkspaceRect(workspaceId?: string): {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    devicePixelRatio: number;
-  } | null {
+   *  `ht screenshot workspace` crop. Defaults to the active workspace;
+   *  a fully-hidden (background) workspace yields null. */
+  getWorkspaceRect(workspaceId?: string): CaptureRect | null {
     const ws = workspaceId
       ? this.workspaces.find((w) => w.id === workspaceId)
       : this.activeWorkspace();
     if (!ws || ws.surfaceIds.size === 0) return null;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    let any = false;
-    for (const sid of ws.surfaceIds) {
-      const view = this.surfaces.get(sid);
-      if (!view) continue;
-      const r = view.container.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) continue; // hidden / unmounted
-      minX = Math.min(minX, r.left);
-      minY = Math.min(minY, r.top);
-      maxX = Math.max(maxX, r.right);
-      maxY = Math.max(maxY, r.bottom);
-      any = true;
+    return unionCaptureRect(
+      [...ws.surfaceIds].map((sid) => this.surfaces.get(sid)?.container),
+    );
+  }
+
+  /** `ht set-progress` bars, keyed by workspace. The Atlas graph draws
+   *  them as an arc on the workspace marker; the sidebar owns its own
+   *  rendering. */
+  getAllProgress(): Map<string, { value: number; label?: string }> {
+    const out = new Map<string, { value: number; label?: string }>();
+    for (const ws of this.workspaces) {
+      if (ws.progress) out.set(ws.id, ws.progress);
     }
-    if (!any) return null;
-    return {
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY,
-      devicePixelRatio: window.devicePixelRatio || 1,
-    };
+    return out;
   }
 
   closeWorkspaceById(id: string): void {

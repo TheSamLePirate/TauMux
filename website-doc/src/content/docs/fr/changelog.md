@@ -7,6 +7,20 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.18.0 — Atlas gagne un axe temporel, et `ht` entre dans le graphe
+
+Suite de la 0.17.0. Le graphe savait dire ce qui était vrai *maintenant* et rien de la façon dont on y était arrivé, et choisir Atlas faisait toujours perdre le panneau plan et les pastilles de statut en même temps que la barre latérale.
+
+- **Rivière d'activité.** Une bande sous l'en-tête montrant les 90 dernières secondes de sortie, une voie par espace de travail. Un panneau qui a saturé un cœur il y a trois secondes puis s'est tu ne ressemble plus à un panneau endormi depuis le matin. Les espaces silencieux gardent une voie au repos, les trous de collecte sont dessinés comme des trous, et cliquer une voie y bascule.
+- **Sparklines.** Sélectionner un espace ou un panneau trace son CPU récent dans l'inspecteur, avec le pic en légende — en général la vraie question qu'on se posait en cliquant.
+- **[`ht plan`](/fr/cli/plan/) devient de la topologie.** Les étapes deviennent des nœuds enfants — case pleine *done*, pulsée *active*, creuse *waiting*, rouge en échec — et le parent gagne un badge `2/4` et un arc de progression. Un plan qui nomme un agent se rattache au panneau qui l'exécute. Comme la liste de tâches de Claude Code est reflétée *en* plan, une session qui a les deux n'affiche que le plan.
+- **Les pastilles [`ht set-status`](/fr/cli/sidebar-and-status/)** deviennent des badges d'espace de travail dans la couleur choisie par le script, plus des lignes d'inspecteur. **[`ht set-progress`](/fr/cli/sidebar-and-status/)** pilote l'arc de l'espace. **[`ht ask`](/fr/cli/ask-user/)** marque le panneau porteur d'une question et l'affiche dans l'inspecteur.
+- **Les sous-agents actifs** ont chacun leur nœud sous leur panneau, avec leur durée.
+- **Bande de jauges** — dépense des agents et murs de limite 5 h / 7 j, agrégés comme la plus haute valeur rapportée par une session vivante, y compris sans panneau. Masquée tant que rien ne publie.
+- **Une légende** derrière le bouton `?`, pour un encodage devenu digne d'explication.
+- **L'esthétique.** Atlas assume d'être la variante radicale : voile de lignes de balayage sur le fond, lueur d'horizon derrière la colonne, crochets d'angle encadrant chaque bande, réticule de visée sur le nœud focalisé, et halo de marqueur proportionnel au CPU. L'arc de rappel racine→nœud est de retour, restreint à ce qu'une de vos frappes résout et plafonné à deux.
+- Un nombre qui change clignote une fois, avec une cadence limitée pour qu'une puce de débit par seconde signale sans clignoter en continu. Tout s'arrête toujours sous `prefers-reduced-motion`.
+
 ## 0.17.0 — Atlas devient un instrument de topologie
 
 La [variante de disposition](/fr/features/layout-variants/) Atlas a été reconstruite. Elle dessinait auparavant un graphe d'espaces de travail incapable de répondre à la question à laquelle sert un graphe : il se reconstruisait à chaque image (le survol mourait donc à chaque tick d'une seconde), poussait les espaces au-delà du huitième hors du canevas, ne dépliait que l'espace actif, ne portait qu'un anneau CPU et une étiquette par nœud, était inatteignable au clavier — et ne montrait strictement rien des sessions Claude Code qui tournaient dedans.

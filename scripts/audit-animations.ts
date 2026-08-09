@@ -55,6 +55,10 @@ const CANONICAL = new Set([
   // actually waiting on the user. Breathing opacity is the signal that
   // separates it from an ordinary wire.
   "tauAtlasCallout",
+  // §9.3: one-shot flash on a numeric badge whose value just moved. At
+  // 1 Hz across a dozen chips, "what changed" is otherwise invisible;
+  // 600 ms, no loop, and disabled under prefers-reduced-motion.
+  "tauAtlasTick",
   "tauNotifyPulse", // §7: identity-aware workspace notification dot
 ]);
 

@@ -39,11 +39,13 @@ Atlas answers one question: **what is happening right now, and where do I need t
 
 It replaces the sidebar with a live topology of everything τ-mux is running — workspaces, panes, the Claude Code sessions inside them, their processes, listening ports, git state and cost — and gives that graph the actions to clear whatever it surfaces. You spot a session waiting on you, read why, and approve it without leaving the column.
 
-### Three bands
+### Bands
 
 ```
-┌─ ATLAS ──────── all agents live alert ② ⤢ ─┐   header: scope + filters + expand
-│                                             │
+┌─ ATLAS ─────── all agents live alert ② ? ⤢ ─┐  header: scope + filters
+│ SPEND $1.73  5H 63% ▬▬  7D 21% ▬            │  meters: spend + limits
+│ ╭───────────────────────────────────────╮   │  river: last 90 s of output
+│ ╰───────────────────────────────────────╯   │
 │  ▢ τ-mux    3 workspaces · 7 panes · 2 agent│
 │  └─▣ crazyShell  4 panes · 1 agent          │
 │      main↑2*  102%  885 MB                  │   the graph
@@ -75,9 +77,27 @@ The graph is drawn as a **spine**: depth is a small indent, siblings stack verti
 | Second, outer arc | Context used for a session; build progress for a pane |
 | Pulsing halo | Work in flight |
 | Dashed ring | **This one needs you** — approval, a question, an error, an unread notification |
-| Badge chips | `:3000` port · `main↑2*` branch · `78% ctx` · `$1.42` · `▰ 62%` build progress · output rate |
+| Badge chips | `:3000` port · `main↑2*` branch · `78% ctx` · `$1.42` · `▰ 62%` progress · output rate · `ht set-status` pills |
+| Corner brackets | The focused node — a targeting reticle, only ever on one |
+| Marker glow | Scales with CPU, so a hot pane visibly burns |
+| Chip flash | That number just changed (rate-limited, so it cues rather than strobes) |
 
 Aggregate CPU on a workspace or on τ-mux itself is scaled against four cores, not one, so a single busy process doesn't peg the ring.
+
+### The meters strip
+
+Under the filters, once a Claude session reports: total agent spend, and the 5-hour and 7-day rate-limit walls as mini-bars that go amber past 60 % and red past 85 %. Rate limits are account-wide, so the reading is the highest any live session has seen — including sessions with no pane.
+
+Nothing reports, nothing renders: the strip disappears rather than sitting empty.
+
+### The activity river
+
+A 34 px band showing the **last 90 seconds** of output, one lane per workspace, coloured by that workspace's accent. The graph tells you what is true now; the river tells you how it got there — a pane that pinned a core three seconds ago and went quiet looks identical to one that slept all morning until you see its trace.
+
+- Every workspace keeps a resting lane, so a silent one is visibly silent rather than missing.
+- A collection gap (the app was asleep) is drawn as a gap, never bridged.
+- The window scales to the history it actually has, so a fresh launch fills from the left instead of showing three-quarters of dead strip. "Now" is always the right edge.
+- Click a lane to jump to that workspace.
 
 ### The wires carry the bytes
 
@@ -92,11 +112,27 @@ A Claude Code session **is drawn as its pane**, not as a second node beside it: 
 - phase — working, waiting for you, needs approval, asking you, compacting, error;
 - model, context used, cost, and the 5-hour / 7-day rate-limit meters;
 - turn count, elapsed turn, lines added and removed;
-- the mirrored task list and any live subagents;
 - PR number and review state;
-- the text of whatever is waiting for approval.
+- the text of whatever is waiting for approval;
+- **live subagents**, each as its own node under the pane, with how long it has been running;
+- **the mirrored task list as a plan** (see below).
 
 A session with no live pane — Claude Code running in a shell τ-mux doesn't own, or a pane that closed under it — hangs off the root badged `detached`. It still spends money and can still be waiting on you, so it stays visible.
+
+### `ht` in the graph
+
+Atlas hides the sidebar, which used to mean the plan panel and status pills vanished when you picked it. They are now part of the topology instead:
+
+- **[`ht plan`](/cli/plan/)** — a plan's steps become child nodes: filled box for done, pulsing for active, hollow for waiting, red for failed. The parent gains a `2/4` badge and a progress arc. A plan naming an agent hangs off the pane running it; otherwise off the workspace. Panes carrying a plan open themselves, since folding it away would lose what the sidebar used to show for free.
+- **[`ht set-status`](/cli/sidebar-and-status/)** — pills become badges on the workspace node in the colour the publishing script chose, and rows in the inspector.
+- **[`ht set-progress`](/cli/sidebar-and-status/)** — drives the workspace marker's arc and a `▰ 41%` badge. A plan takes precedence when both are present.
+- **[`ht ask`](/cli/ask-user/)** — a question waiting on you flags its pane, outranking whatever phase the session reports, and the inspector shows the prompt and its choices.
+
+Because Claude Code's task list is mirrored *into* a plan, a session that has both shows the plan only — the same work drawn twice would be noise.
+
+### Sparklines
+
+Selecting a workspace or a pane draws its last 90 seconds of CPU in the inspector, labelled with the peak. That peak is usually the question you actually had when you clicked: not "is it busy" but "did it get busy".
 
 ### Filters
 
@@ -134,9 +170,17 @@ The graph is a real tree widget, not a picture:
 | `Enter` / `Space` | Go to that workspace or pane |
 | `Home` / `End` | First / last row |
 
+The `?` button in the header toggles a legend for the encoding.
+
+### The look
+
+Atlas is the deliberately radical variant, and the one place the design system's restraint is relaxed on purpose. It reads as a phosphor instrument: a scanline veil over the graph ground, a horizon glow behind the spine's head, hairline corner brackets framing each band, and marker glow that tracks load rather than being decoration applied evenly.
+
+The one non-tree line is the **callout** — an arc from τ-mux itself to whatever is blocking on you. It is drawn only for things a keystroke of yours resolves (approval, a question, an error), never for merely-informational states, and capped at two.
+
 ### Motion
 
-Every animation in Atlas carries state — none is decorative. Under `prefers-reduced-motion: reduce` the byte-flow, the halos and the attention pulse all stop; the arcs, colours and dashed rings say the same things without moving.
+Every animation in Atlas carries state — none is decorative. Under `prefers-reduced-motion: reduce` the byte-flow, the halos, the attention pulse, the callout and the chip flash all stop; the arcs, colours and dashed rings say the same things without moving.
 
 ## Source files
 
@@ -144,6 +188,8 @@ Every animation in Atlas carries state — none is decorative. Under `prefers-re
 - `src/views/terminal/variants/{bridge,cockpit,atlas}.ts` — one handle per variant.
 - `src/views/terminal/atlas/` — the Atlas panel: `snapshot` gathers, `layout` places, `view` draws, `inspector` explains, `filter` scopes.
 - `src/views/terminal/throughput-meter.ts` — the per-pane byte rate behind the wires.
+- `src/views/terminal/metrics-history.ts` — the 90-second rings behind the sparklines and the river.
+- `src/views/terminal/atlas/river.ts` — the activity river.
 
 ## Read more
 

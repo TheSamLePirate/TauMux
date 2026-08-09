@@ -24,10 +24,11 @@ import { renderStatusKey, type StatusContext } from "./status-keys";
 import "./tau-focus-audit";
 import { VariantController } from "./variants/controller";
 import {
+  makeLayoutShortcutDeps,
   toggleRail,
   toggleTopology,
-  type LayoutShortcutDeps,
 } from "./variants/layout-shortcuts";
+import { wireAtlasHost } from "./variants/atlas-host-wiring";
 import type { VariantId } from "./variants/types";
 import { confirmDestructive, showPromptDialog } from "./prompt-dialog";
 import { ProcessManagerPanel } from "./process-manager";
@@ -35,6 +36,7 @@ import { SettingsPanel } from "./settings-panel";
 import { createIntegrationsControl } from "./integrations-control";
 import { PlanPanel } from "./plan-panel";
 import { setClaudeSessions } from "./claude-session-store";
+import { setPlans as setAtlasPlans } from "./plan-store";
 import { AskUserState } from "./ask-user-state";
 import { installAskUserModal } from "./ask-user-modal";
 import { SurfaceDetailsPanel } from "./surface-details";
@@ -91,6 +93,7 @@ let typingFocusActive = false;
 // at module load. The modal is installed below, after surfaceManager
 // is constructed (modal needs surface attribution + active id).
 const askUserState = new AskUserState();
+wireAtlasHost({ askUser: askUserState });
 
 // N15 / I11 / I12 — central pagehide registry. Modules that own
 // observers, intervals, long-lived listeners, or timer-bearing UI
@@ -375,6 +378,9 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       // plans don't blow away the visible cards.
       restorePlans: (payload) => {
         planPanel.setPlans(payload.plans);
+        // Atlas hides the sidebar, so the plan panel goes with it. The
+        // store lets the graph render plans as topology instead.
+        setAtlasPlans(payload.plans);
       },
       // Structured Claude Code session state for views that need more
       // than the two sidebar pills — currently the Atlas graph.
@@ -621,36 +627,6 @@ const planPanel = new PlanPanel({
 });
 sidebarEl.appendChild(planPanel.getElement());
 lifecycleDisposers.push(() => planPanel.destroy());
-
-/** Fire `action` once the named CSS transition on `el` completes,
- *  with a safety-net fallback in case the transition doesn't fire
- *  (reduced motion, display change, identical computed value, etc.).
- *  Replaces hard-coded `setTimeout(.., 220)` blind waits with a real
- *  signal that the layout settled. The fallback duration is the old
- *  hard-coded value plus a small margin so the worst-case behaviour
- *  is unchanged. */
-function afterTransition(
-  el: HTMLElement,
-  property: string,
-  fallbackMs: number,
-  action: () => void,
-): void {
-  let done = false;
-  const handler = (e: TransitionEvent) => {
-    if (e.target !== el || e.propertyName !== property) return;
-    if (done) return;
-    done = true;
-    el.removeEventListener("transitionend", handler);
-    action();
-  };
-  el.addEventListener("transitionend", handler);
-  setTimeout(() => {
-    if (done) return;
-    done = true;
-    el.removeEventListener("transitionend", handler);
-    action();
-  }, fallbackMs);
-}
 
 function applySettings(settings: AppSettings): void {
   currentSettings = settings;
@@ -1957,15 +1933,13 @@ function toggleSidebar() {
   // Layout refit is handled by SurfaceManager.scheduleLayoutAfterTransition()
 }
 
-/** Dependency bundle for the §10 variant shortcuts (⌘\, ⌘G). */
-const layoutShortcutDeps: LayoutShortcutDeps = {
-  variant: () => currentSettings?.layoutVariant ?? "bridge",
-  toggleSidebar,
-  afterColumnResize: () =>
-    afterTransition(terminalContainerEl, "left", 240, () =>
-      surfaceManager.resizeAll(),
-    ),
-};
+const layoutDeps = () =>
+  makeLayoutShortcutDeps({
+    variant: () => currentSettings?.layoutVariant ?? "bridge",
+    toggleSidebar,
+    resizeAll: () => surfaceManager.resizeAll(),
+    columnEl: terminalContainerEl,
+  });
 
 function openCommandPalette() {
   clearTypingFocusMode();
@@ -2412,7 +2386,7 @@ const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
     description: "Collapse sidebar / icon rail / graph",
     category: "Layout",
     match: keyMatch({ key: "\\", meta: true }),
-    action: () => toggleRail(layoutShortcutDeps),
+    action: () => toggleRail(layoutDeps()),
   },
   {
     id: "layout.toggle-graph",
@@ -2420,7 +2394,7 @@ const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
     category: "Layout",
     when: () => (currentSettings?.layoutVariant ?? "bridge") === "atlas",
     match: keyMatch({ key: "g", meta: true, shift: false }),
-    action: () => toggleTopology(layoutShortcutDeps),
+    action: () => toggleTopology(layoutDeps()),
   },
   {
     id: "surface.new",
