@@ -1213,6 +1213,12 @@ function buildPlanStepNode(
   });
   node.running = step.state === "active";
   node.sublabel = step.state;
+  // Stamped by the PlanStore on the transition (and by Claude's own task
+  // clock when it mirrors one), so CHRONO can place the step on its axis
+  // instead of guessing.
+  if (step.startedAt !== undefined) {
+    node.span = { from: step.startedAt, to: step.endedAt ?? null };
+  }
   node.detail = [
     ...(step.description
       ? [{ label: "detail", value: step.description }]
@@ -1239,6 +1245,7 @@ function buildSubagentNode(
   });
   node.running = true;
   node.sublabel = formatElapsed(now() - sub.startedAt);
+  node.span = { from: sub.startedAt, to: null };
   node.detail = [
     { label: "type", value: sub.agentType },
     { label: "id", value: sub.agentId },

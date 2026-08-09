@@ -51,6 +51,15 @@ const FLOOR = 512;
  *  touch its neighbours. */
 const BAND_PAD = 6;
 
+/** Height of the plan track that rides the top of a lane's band. Tall
+ *  enough for a 9 px label to sit inside a bar, short enough that the
+ *  trace underneath keeps most of the band. */
+const PLAN_TRACK_H = 14;
+
+/** A plan track is only drawn when the lane has room for one *and* its
+ *  trace. Below this the bars would be eating the reading they annotate. */
+const PLAN_MIN_LANE_H = 64;
+
 /** Samples this close to `now` are the leading edge and bloom. */
 const HOT_MS = 1_600;
 
@@ -95,6 +104,12 @@ export function fieldSignature(input: FieldInput): string {
         last ? Math.round(last.bytes) : 0
       }`,
     );
+    for (const step of planSpans(lane)) {
+      parts.push(`${step.span.from}-${step.span.to ?? "live"}:${step.state}`);
+      // A running step's bar grows toward now on every frame, so the
+      // field owes the user one for as long as it runs.
+      if (step.span.to === null) moving = true;
+    }
     // Something is in the window, so the picture scrolls.
     if (!moving) {
       for (const s of samples) {
@@ -121,6 +136,7 @@ export function fieldIsMoving(input: FieldInput): boolean {
 
 export class ChronoField {
   private lastSignature = "";
+  private mono = "";
   private readonly colors = new Map<string, string>();
 
   constructor(
@@ -132,6 +148,7 @@ export class ChronoField {
   /** Force the next `render` to paint — after a theme change, say. */
   invalidate(): void {
     this.lastSignature = "";
+    this.mono = "";
     this.colors.clear();
   }
 
@@ -163,6 +180,7 @@ export class ChronoField {
       const box = boxes.get(lane.id);
       if (!box) continue;
       this.drawTrace(ctx, lane, box, width, input.now, input.span);
+      this.drawPlan(ctx, lane, box, width, input.now, input.span);
     }
     this.drawStrikes(ctx, input, width, height);
     this.drawCursor(ctx, input, width, height);
@@ -217,7 +235,12 @@ export class ChronoField {
     span: number,
   ): void {
     const base = box.top + box.height - BAND_PAD;
-    const band = Math.max(1, box.height - BAND_PAD * 2);
+    // The plan track rides the top of the band, so the trace gives it
+    // back the room rather than drawing through it.
+    const reserved = planSpans(lane).length > 0 && box.height >= PLAN_MIN_LANE_H
+      ? PLAN_TRACK_H
+      : 0;
+    const band = Math.max(1, box.height - BAND_PAD * 2 - reserved);
     const colour = this.resolve(lane.node.color ?? toneVar(lane.node.tone));
     const samples = historyFor(lane.historyKey);
 
@@ -324,6 +347,76 @@ export class ChronoField {
   }
 
   /**
+   * The plan, on the axis.
+   *
+   * Each step is a bar from when it started to when it finished — or to
+   * *now* while it is still running, which is the one mark on this field
+   * that grows as you watch it. That is the whole reason plan steps
+   * needed timestamps: a checklist can say three of five are done, and
+   * only a time axis can say the third one has been running for four
+   * minutes while everything else went quiet.
+   *
+   * A step with no `span` is drawn nowhere at all. Guessing a position
+   * for it would be inventing a moment, which is the one thing this view
+   * must not do.
+   */
+  private drawPlan(
+    ctx: CanvasRenderingContext2D,
+    lane: ChronoLane,
+    box: { top: number; height: number },
+    width: number,
+    now: number,
+    span: number,
+  ): void {
+    if (box.height < PLAN_MIN_LANE_H) return;
+    const steps = planSpans(lane);
+    if (steps.length === 0) return;
+
+    const top = box.top + BAND_PAD;
+    const height = PLAN_TRACK_H - 4;
+
+    for (const step of steps) {
+      const from = step.span.from;
+      const to = step.span.to ?? now;
+      if (to < now - span || from > now) continue;
+
+      const x0 = Math.max(0, width * (1 - (now - from) / span));
+      const x1 = Math.min(width, width * (1 - (now - to) / span));
+      // A step that started and ended inside the same second is a real
+      // moment, not a zero-width nothing: give it a tick's worth of bar.
+      const w = Math.max(3, x1 - x0);
+      const colour = this.resolve(planTone(step.state));
+
+      ctx.fillStyle = withAlpha(colour, step.state === "waiting" ? 0.16 : 0.3);
+      ctx.fillRect(Math.round(x0), top, Math.round(w), height);
+      ctx.strokeStyle = withAlpha(colour, step.state === "waiting" ? 0.3 : 0.8);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(Math.round(x0) + 0.5, top + 0.5, Math.round(w) - 1, height - 1);
+
+      // A step still running has no right edge yet — it has not happened.
+      // Leaving the bar open says that without a word.
+      if (step.span.to === null) {
+        ctx.clearRect(Math.round(x0) + Math.round(w) - 1, top + 1, 1, height - 2);
+        ctx.fillStyle = withAlpha(colour, 0.5);
+        ctx.fillRect(Math.round(x0) + Math.round(w) - 2, top, 2, height);
+      }
+
+      // The title, when the bar is wide enough to hold one. Truncated
+      // with an ellipsis rather than clipped: a name cut mid-word reads
+      // as a rendering bug, and an ellipsis reads as "there is more".
+      if (w > 46) {
+        ctx.fillStyle = withAlpha(this.resolve("var(--tau-text)"), 0.82);
+        ctx.font = `9px ${this.monoFamily()}`;
+        ctx.textBaseline = "middle";
+        const label = ellipsize(ctx, step.title, Math.round(w) - 10);
+        if (label) {
+          ctx.fillText(label, Math.round(x0) + 5, top + height / 2 + 0.5);
+        }
+      }
+    }
+  }
+
+  /**
    * The vertical rules. Full canvas height by construction — a strike
    * that stopped at its own lane would say "this happened here", and the
    * point is that it happened *to everything*.
@@ -399,6 +492,17 @@ export class ChronoField {
       ctx.fillStyle = withAlpha(colour, 0.9);
       ctx.fill();
     }
+  }
+
+  /** The mono stack, resolved once. Canvas takes a font *shorthand*, not
+   *  a custom property, so the token has to be read through computed
+   *  style like the colours are. */
+  private monoFamily(): string {
+    if (!this.mono) {
+      this.mono =
+        getComputedStyle(this.probeHost).fontFamily || "ui-monospace, monospace";
+    }
+    return this.mono;
   }
 
   /** Canvas cannot read `var(--tau-…)`. Resolve through a scratch element
@@ -511,4 +615,66 @@ export function sampleAt(
   // One sample is ~1 s; allow a little either side so the cursor feels
   // magnetic rather than fussy.
   return bestDelta <= 1_500 ? best : null;
+}
+
+/** Plan steps that know where they belong in time. Sorted by start so
+ *  overlapping bars stack in a readable order. */
+export function planSpans(lane: ChronoLane): {
+  title: string;
+  state: string;
+  span: { from: number; to: number | null };
+}[] {
+  const out: {
+    title: string;
+    state: string;
+    span: { from: number; to: number | null };
+  }[] = [];
+  for (const sat of lane.satellites) {
+    if (sat.kind !== "plan-step" || !sat.span) continue;
+    out.push({ title: sat.label, state: sat.sublabel, span: sat.span });
+  }
+  return out.sort((a, b) => a.span.from - b.span.from);
+}
+
+/** Colour role for a plan step's bar. The state palette, unchanged. */
+export function planTone(state: string): string {
+  switch (state) {
+    case "done":
+      return "var(--tau-ok)";
+    case "err":
+      return "var(--tau-err)";
+    case "active":
+      return "var(--tau-cyan)";
+    default:
+      return "var(--tau-text-mute)";
+  }
+}
+
+/**
+ * Fit `text` into `maxWidth`, ending in `…` when it does not.
+ *
+ * Canvas has no `text-overflow`, and a label cut mid-glyph by a clip
+ * rectangle reads as a rendering fault rather than as an abbreviation.
+ * Returns "" when there is not even room for the ellipsis — better a
+ * bare bar than a lone dot.
+ */
+export function ellipsize(
+  ctx: Pick<CanvasRenderingContext2D, "measureText">,
+  text: string,
+  maxWidth: number,
+): string {
+  if (maxWidth <= 0) return "";
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  if (ctx.measureText("…").width > maxWidth) return "";
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (ctx.measureText(`${text.slice(0, mid)}…`).width <= maxWidth) {
+      low = mid;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return low > 0 ? `${text.slice(0, low)}…` : "";
 }

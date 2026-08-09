@@ -222,11 +222,19 @@ Their names print on the axis under the field, stacked when they would collide, 
 
 Timestamps are the real ones wherever they exist. A turn is stamped with the moment the prompt was submitted, a task with its own `createdAt` / `completedAt`, a mark with the moment the agent wrote it. Only plan steps fall back to "when τ-mux noticed", because a step carries no timestamp of its own.
 
-#### The plan
+#### The plan, on the axis
 
-A lane running a plan shows it as a segmented bar in its channel strip — one cell per step: done, running, waiting, failed. `3/5` says how many; the cells say which, in the same width.
+Plan steps are timestamped — `PlanStore` stamps the moment a step leaves `waiting` and the moment it reaches `done` or `err`, and Claude's mirrored task list supplies its own `createdAt` / `completedAt` instead, because the agent's clock is truer than ours.
 
-The plan is deliberately **not** laid along the time axis. Steps carry no timestamps, so placing them there would be inventing moments, which is the one thing this view must not do. Step transitions still strike as they happen.
+So a lane running a plan draws each step as a **bar across the field**: from when it started to when it finished, in the state palette — green done, cyan running, red failed. The running step's bar has no right edge and grows toward *now* as you watch, which is the one mark on this field that moves because the work is still happening.
+
+That is what a checklist cannot tell you. `3/5` says three are done; the bars say the third one has been running for four minutes while everything else went quiet.
+
+The channel strip keeps a compact version — one cell per step — for lanes too short to carry a track, and for the steps that have not started. A step still `waiting` is drawn nowhere on the field: it has no timestamps, and inventing a position for it would be inventing a moment.
+
+Timestamps survive re-publishing. Agents call `ht plan set` with the whole list on every change, so re-deriving them would reset a plan's history every time one box was ticked.
+
+A step **failing** still strikes across every lane. It is the thing you stop for.
 
 #### Keyboard
 

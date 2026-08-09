@@ -53,10 +53,11 @@ export class PlanStore {
    *  are deduplicated (later wins), and trailing whitespace in
    *  titles is trimmed. */
   set(key: PlanKey, steps: PlanStep[]): Plan {
+    const previous = this.plans.get(keyOf(key));
     const plan: Plan = {
       workspaceId: key.workspaceId,
       agentId: key.agentId,
-      steps: normalizeSteps(steps),
+      steps: normalizeSteps(steps, previous?.steps, this.now()),
       updatedAt: this.now(),
     };
     this.plans.set(keyOf(key), plan);
@@ -78,14 +79,18 @@ export class PlanStore {
     const idx = plan.steps.findIndex((s) => s.id === stepId);
     if (idx === -1) return null;
     const step = plan.steps[idx]!;
-    const next: PlanStep = {
-      // Spread first so fields this patch doesn't address survive —
-      // notably `description`, which an `ht plan update --state done`
-      // used to silently delete out from under the panel's detail row.
-      ...step,
-      title: patch.title !== undefined ? patch.title.trim() : step.title,
-      state: patch.state ?? step.state,
-    };
+    const next: PlanStep = stampStep(
+      step,
+      {
+        // Spread first so fields this patch doesn't address survive —
+        // notably `description`, which an `ht plan update --state done`
+        // used to silently delete out from under the panel's detail row.
+        ...step,
+        title: patch.title !== undefined ? patch.title.trim() : step.title,
+        state: patch.state ?? step.state,
+      },
+      this.now(),
+    );
     const nextPlan: Plan = {
       ...plan,
       steps: plan.steps.with(idx, next),
@@ -101,10 +106,13 @@ export class PlanStore {
   complete(key: PlanKey): Plan | null {
     const plan = this.plans.get(keyOf(key));
     if (!plan) return null;
+    const now = this.now();
     const next: Plan = {
       ...plan,
-      steps: plan.steps.map((s) => ({ ...s, state: "done" as const })),
-      updatedAt: this.now(),
+      steps: plan.steps.map((s) =>
+        stampStep(s, { ...s, state: "done" as const }, now),
+      ),
+      updatedAt: now,
     };
     this.plans.set(keyOf(key), next);
     this.notify();
@@ -152,21 +160,69 @@ export class PlanStore {
   }
 }
 
-function normalizeSteps(steps: PlanStep[]): PlanStep[] {
+function normalizeSteps(
+  steps: PlanStep[],
+  previous: readonly PlanStep[] | undefined,
+  now: number,
+): PlanStep[] {
+  const before = new Map((previous ?? []).map((s) => [s.id, s]));
   const seen = new Map<string, PlanStep>();
   for (const raw of steps) {
     if (!raw || typeof raw.id !== "string" || raw.id.length === 0) continue;
     const state = isStepState(raw.state) ? raw.state : "waiting";
-    seen.set(raw.id, {
+    const next: PlanStep = {
       id: raw.id,
       title: typeof raw.title === "string" ? raw.title.trim() : raw.id,
       state,
       ...(typeof raw.description === "string" && raw.description.trim()
         ? { description: raw.description.trim() }
         : {}),
-    });
+      // A publisher that knows better wins — Claude's task list carries
+      // real `createdAt` / `completedAt` and those beat our clock.
+      ...(typeof raw.startedAt === "number" ? { startedAt: raw.startedAt } : {}),
+      ...(typeof raw.endedAt === "number" ? { endedAt: raw.endedAt } : {}),
+    };
+    seen.set(raw.id, stampStep(before.get(raw.id), next, now));
   }
   return [...seen.values()];
+}
+
+/**
+ * Carry a step's timestamps across a change.
+ *
+ * The rules, and why each one:
+ *
+ *  - **`waiting` clears both.** A step reset to waiting has no history
+ *    left to claim, and a `startedAt` on something that has not started
+ *    would put a bar on CHRONO's axis for work nobody did.
+ *  - **`active` keeps or assigns `startedAt`, clears `endedAt`.**
+ *    Re-opening a finished step means it is running again.
+ *  - **`done` / `err` keep or assign both.** A step that jumped straight
+ *    from waiting to done still happened at a moment; giving it the same
+ *    start and end draws a tick rather than a lie about duration.
+ *  - **Existing stamps always win.** `ht plan set` re-publishes the whole
+ *    list on every change, so re-deriving would reset a plan's entire
+ *    history each time an agent ticked one box.
+ */
+export function stampStep(
+  previous: PlanStep | undefined,
+  next: PlanStep,
+  now: number,
+): PlanStep {
+  if (next.state === "waiting") {
+    const { startedAt: _s, endedAt: _e, ...rest } = next;
+    return rest;
+  }
+  const startedAt = next.startedAt ?? previous?.startedAt ?? now;
+  if (next.state === "active") {
+    const { endedAt: _e, ...rest } = next;
+    return { ...rest, startedAt };
+  }
+  return {
+    ...next,
+    startedAt,
+    endedAt: next.endedAt ?? previous?.endedAt ?? now,
+  };
 }
 
 function isStepState(s: unknown): s is PlanStepState {

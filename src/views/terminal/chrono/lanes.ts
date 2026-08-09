@@ -114,6 +114,15 @@ export function buildLanes(input: BuildLanesInput): ChronoLane[] {
       .map((id) => snapshot.nodes.get(id))
       .filter((n): n is AtlasNode => !!n && n.kind === "surface");
 
+    // A plan published without an agent id anchors to the *workspace*,
+    // not to a pane — that is what `ht plan set` does when a script does
+    // not bother with attribution. The workspace is a bracket here, not
+    // a row, so its plan has no band of its own; it rides the first lane
+    // of the bracket, which is the row the bracket's cap already marks.
+    const workspacePlan = collectSatellites(snapshot, child).filter(
+      (n) => n.kind === "plan-step",
+    );
+
     surfaces.forEach((node, index) => {
       lanes.push({
         id: node.id,
@@ -124,7 +133,10 @@ export function buildLanes(input: BuildLanesInput): ChronoLane[] {
         workspaceColor: child.color ?? "var(--tau-text-dim)",
         workspaceHead: index === 0,
         workspaceTail: index === surfaces.length - 1,
-        satellites: collectSatellites(snapshot, node),
+        satellites: [
+          ...collectSatellites(snapshot, node),
+          ...(index === 0 ? workspacePlan : []),
+        ],
         historyKey: node.historyKey ?? node.id,
       });
     });

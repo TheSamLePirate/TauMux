@@ -260,6 +260,22 @@ export interface SocketRpc {
     }): Promise<"OK">;
   };
 
+  /** `ht plan` — the multi-step plan CHRONO draws as bars on its axis. */
+  plan: {
+    set(params: {
+      workspace_id?: string;
+      agent_id?: string;
+      steps: { id: string; title: string; state: string }[];
+    }): Promise<unknown>;
+    update(params: {
+      workspace_id?: string;
+      agent_id?: string;
+      step_id: string;
+      state?: string;
+      title?: string;
+    }): Promise<unknown>;
+  };
+
   /** Agent-authored graph annotations. `mark` is the only one the specs
    *  need: a timestamped milestone, which CHRONO draws as a strike. */
   atlas: {
@@ -522,6 +538,21 @@ class RpcClient implements SocketRpc {
     clear: () => this.call<"OK">("notification.clear"),
     create: (params: { title: string; body: string; surface_id?: string }) =>
       this.call<"OK">("notification.create", params),
+  };
+
+  plan = {
+    set: (params: {
+      workspace_id?: string;
+      agent_id?: string;
+      steps: { id: string; title: string; state: string }[];
+    }) => this.call<unknown>("plan.set", params),
+    update: (params: {
+      workspace_id?: string;
+      agent_id?: string;
+      step_id: string;
+      state?: string;
+      title?: string;
+    }) => this.call<unknown>("plan.update", params),
   };
 
   atlas = {

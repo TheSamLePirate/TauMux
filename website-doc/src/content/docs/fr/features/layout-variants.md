@@ -222,11 +222,19 @@ Leurs noms s'impriment sur l'axe sous le champ, empilés lorsqu'ils se chevauche
 
 Les horodatages sont les vrais partout où ils existent. Un tour est daté du moment où l'invite a été soumise, une tâche de ses propres `createdAt` / `completedAt`, un repère du moment où l'agent l'a écrit. Seules les étapes de plan retombent sur « quand τ-mux l'a remarqué », car une étape ne porte pas d'horodatage.
 
-#### Le plan
+#### Le plan, sur l'axe
 
-Une voie exécutant un plan l'affiche en barre segmentée dans sa bande de canal — une cellule par étape : faite, en cours, en attente, échouée. `3/5` dit combien ; les cellules disent lesquelles, dans la même largeur.
+Les étapes de plan sont horodatées — `PlanStore` marque le moment où une étape quitte `waiting` et celui où elle atteint `done` ou `err`, et la liste de tâches mirroir de Claude fournit ses propres `createdAt` / `completedAt` à la place, car l'horloge de l'agent est plus juste que la nôtre.
 
-Le plan n'est délibérément **pas** posé sur l'axe temporel. Les étapes ne portent pas d'horodatage, les placer là reviendrait donc à inventer des instants — la seule chose que cette vue ne doit pas faire. Les transitions d'étape frappent tout de même au moment où elles surviennent.
+Une voie exécutant un plan dessine donc chaque étape en **barre à travers le champ** : de son début à sa fin, dans la palette d'états — vert terminé, cyan en cours, rouge échoué. La barre de l'étape en cours n'a pas de bord droit et grandit vers *maintenant* sous vos yeux ; c'est la seule marque de ce champ qui bouge parce que le travail est encore en train de se faire.
+
+C'est ce qu'une liste à cocher ne peut pas dire. `3/5` dit que trois sont faites ; les barres disent que la troisième tourne depuis quatre minutes pendant que tout le reste s'est tu.
+
+La bande de canal conserve une version compacte — une cellule par étape — pour les voies trop courtes pour porter une piste, et pour les étapes non commencées. Une étape encore `waiting` n'est dessinée nulle part sur le champ : elle n'a pas d'horodatage, et lui inventer une position reviendrait à inventer un instant.
+
+Les horodatages survivent aux republications. Les agents appellent `ht plan set` avec la liste entière à chaque changement : les redériver réinitialiserait l'historique du plan chaque fois qu'une case est cochée.
+
+Une étape **en échec** frappe toujours à travers toutes les voies. C'est ce pour quoi on s'arrête.
 
 #### Clavier
 

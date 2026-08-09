@@ -15,9 +15,12 @@ import {
   resetEvents,
 } from "../src/views/terminal/chrono/event-log";
 import {
+  ellipsize,
   fieldIsMoving,
   fieldSignature,
   levelOf,
+  planSpans,
+  planTone,
   strikeTone,
   WINDOW_MS,
   type FieldInput,
@@ -184,6 +187,9 @@ function lane(id: string): ChronoLane {
   };
 }
 
+/** Alias so the plan-bar block reads as what it is. */
+const laneFixture = lane;
+
 function input(now: number, ids = ["a"]): FieldInput {
   return {
     lanes: ids.map(lane),
@@ -288,5 +294,106 @@ describe("fieldSignature", () => {
     expect(fieldSignature(input(now, ["a", "b"]))).not.toBe(
       fieldSignature(input(now, ["a"])),
     );
+  });
+});
+
+// ── plan bars ────────────────────────────────────────────────────────
+
+describe("ellipsize", () => {
+  // A fake metrics context: every character is 10 px wide, so the maths
+  // is checkable by counting.
+  const ctx = { measureText: (t: string) => ({ width: t.length * 10 }) } as Pick<
+    CanvasRenderingContext2D,
+    "measureText"
+  >;
+
+  test("leaves text that fits untouched", () => {
+    expect(ellipsize(ctx, "build", 100)).toBe("build");
+    expect(ellipsize(ctx, "build", 50)).toBe("build");
+  });
+
+  test("truncates with an ellipsis rather than clipping mid-glyph", () => {
+    // A label cut mid-word by a clip rectangle reads as a rendering
+    // fault; an ellipsis reads as an abbreviation.
+    expect(ellipsize(ctx, "build the lease", 60)).toBe("build…");
+  });
+
+  test("gives up rather than drawing a lone dot", () => {
+    expect(ellipsize(ctx, "build", 9)).toBe("");
+    expect(ellipsize(ctx, "build", 0)).toBe("");
+  });
+
+  test("never returns something wider than it was given", () => {
+    for (const width of [12, 25, 44, 71, 130]) {
+      const out = ellipsize(ctx, "the field renderer", width);
+      expect(ctx.measureText(out).width).toBeLessThanOrEqual(width);
+    }
+  });
+});
+
+describe("planTone", () => {
+  test("uses the state palette, never a literal", () => {
+    for (const state of ["done", "active", "waiting", "err"]) {
+      expect(planTone(state)).toMatch(/^var\(--tau-/);
+    }
+  });
+
+  test("a failed step reads as a failure and a running one as live", () => {
+    expect(planTone("err")).toBe("var(--tau-err)");
+    expect(planTone("active")).toBe("var(--tau-cyan)");
+  });
+});
+
+describe("planSpans", () => {
+  const step = (
+    id: string,
+    state: string,
+    span: { from: number; to: number | null } | undefined,
+  ): AtlasNode =>
+    ({
+      id,
+      kind: "plan-step",
+      label: id,
+      sublabel: state,
+      parent: "a",
+      children: [],
+      tone: "accent",
+      load: 0,
+      flow: 0,
+      active: false,
+      running: state === "active",
+      attention: null,
+      badges: [],
+      detail: [],
+      actions: [],
+      expandable: false,
+      tags: [],
+      ...(span ? { span } : {}),
+    }) as AtlasNode;
+
+  test("drops a step with no defensible position in time", () => {
+    // A `waiting` step has no stamps. Drawing it somewhere would be
+    // inventing a moment, which is the one thing this view must not do.
+    const lane = { ...laneFixture("a"), satellites: [step("M1", "waiting", undefined)] };
+    expect(planSpans(lane)).toEqual([]);
+  });
+
+  test("sorts by start so overlapping bars stack readably", () => {
+    const lane = {
+      ...laneFixture("a"),
+      satellites: [
+        step("M2", "done", { from: 200, to: 300 }),
+        step("M1", "done", { from: 100, to: 150 }),
+      ],
+    };
+    expect(planSpans(lane).map((s) => s.title)).toEqual(["M1", "M2"]);
+  });
+
+  test("carries a running step's open end through", () => {
+    const lane = {
+      ...laneFixture("a"),
+      satellites: [step("M1", "active", { from: 100, to: null })],
+    };
+    expect(planSpans(lane)[0]!.span.to).toBeNull();
   });
 });

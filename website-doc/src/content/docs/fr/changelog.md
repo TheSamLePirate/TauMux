@@ -7,6 +7,17 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.23.0 — Les étapes de plan sont horodatées, et prennent place sur l'axe
+
+`PlanStep` enregistre désormais son début et sa fin. `PlanStore` marque les deux à la transition et les conserve à travers les republications — les agents envoient la liste entière à chaque changement, les redériver réinitialiserait donc l'historique du plan à chaque case cochée. La liste de tâches mirroir de Claude fournit ses propres `createdAt` / `completedAt`, plus justes que l'horloge de τ-mux.
+
+- **[CHRONO](/fr/features/layout-variants/#chrono--g) dessine chaque étape en barre** du début à la fin, dans la palette d'états. L'étape en cours n'a pas de bord droit et grandit vers *maintenant*.
+- Une étape encore `waiting` n'est dessinée nulle part : sans horodatage, une position serait une invention.
+- Une étape **en échec** frappe toujours à travers toutes les voies.
+- La bande de canal conserve la version compacte à une cellule par étape pour les voies courtes et les étapes non commencées.
+
+Rien ne change pour les appelants de `ht plan` — les champs sont additifs et dérivés automatiquement.
+
 ## 0.22.0 — CHRONO devient un instrument
 
 Suite de la 0.20.0. Le champ montrait le volume sonore de chaque panneau et rien de ce qu'un agent *faisait*, la fenêtre était figée à 90 secondes, et un panneau large dans une voie étroite perdait ses derniers caractères.

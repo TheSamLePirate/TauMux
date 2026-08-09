@@ -17,8 +17,12 @@ describe("PlanStore", () => {
       agentId: "claude:1",
       updatedAt: 100,
       steps: [
-        { id: "M1", title: "Explore", state: "done" },
-        { id: "M2", title: "Code", state: "active" },
+        // Stamped on the transition out of `waiting`; a step that
+        // arrives already `done` gets the same start and end, which
+        // draws a tick on CHRONO's axis rather than a lie about
+        // duration.
+        { id: "M1", title: "Explore", state: "done", startedAt: 100, endedAt: 100 },
+        { id: "M2", title: "Code", state: "active", startedAt: 100 },
       ],
     });
   });
@@ -37,8 +41,10 @@ describe("PlanStore", () => {
     ]);
     const plan = store.get({ workspaceId: "ws:1" });
     expect(plan!.steps).toEqual([
+      // `waiting` carries no stamps at all — a step that has not started
+      // has no history to claim.
       { id: "M1", title: "ok", state: "waiting" },
-      { id: "M2", title: "second", state: "active" },
+      { id: "M2", title: "second", state: "active", startedAt: 0 },
     ]);
   });
 
@@ -215,5 +221,115 @@ describe("update() field preservation", () => {
     });
     expect(next!.steps[0]!.description).toBe("why");
     expect(next!.steps[0]!.title).toBe("Explore more");
+  });
+});
+
+describe("PlanStep timestamps", () => {
+  test("a re-publish preserves a step's history", () => {
+    // THE one that matters. Agents call `ht plan set` with the whole
+    // list on every change, so re-deriving stamps would reset a plan's
+    // entire history every time one box was ticked.
+    let clock = 1_000;
+    const store = new PlanStore({ now: () => clock });
+    store.set({ workspaceId: "ws:1" }, [
+      { id: "M1", title: "Explore", state: "active" },
+      { id: "M2", title: "Code", state: "waiting" },
+    ]);
+
+    clock = 9_000;
+    store.set({ workspaceId: "ws:1" }, [
+      { id: "M1", title: "Explore", state: "done" },
+      { id: "M2", title: "Code", state: "active" },
+    ]);
+
+    const steps = store.get({ workspaceId: "ws:1" })!.steps;
+    expect(steps[0]).toMatchObject({ startedAt: 1_000, endedAt: 9_000 });
+    expect(steps[1]).toMatchObject({ startedAt: 9_000 });
+    expect(steps[1]!.endedAt).toBeUndefined();
+  });
+
+  test("a supplied timestamp beats the store's clock", () => {
+    // Claude's task list knows when it created and completed each task;
+    // τ-mux only knows when it next looked.
+    const store = new PlanStore({ now: () => 5_000 });
+    store.set({ workspaceId: "ws:1" }, [
+      { id: "M1", title: "Explore", state: "done", startedAt: 10, endedAt: 20 },
+    ]);
+    expect(store.get({ workspaceId: "ws:1" })!.steps[0]).toMatchObject({
+      startedAt: 10,
+      endedAt: 20,
+    });
+  });
+
+  test("waiting carries no stamps at all", () => {
+    // A step reset to waiting has no history left to claim, and a
+    // startedAt on it would draw a bar for work nobody did.
+    let clock = 1_000;
+    const store = new PlanStore({ now: () => clock });
+    store.set({ workspaceId: "ws:1" }, [
+      { id: "M1", title: "Explore", state: "done" },
+    ]);
+    clock = 2_000;
+    store.update({ workspaceId: "ws:1" }, "M1", { state: "waiting" });
+
+    const step = store.get({ workspaceId: "ws:1" })!.steps[0]!;
+    expect(step.startedAt).toBeUndefined();
+    expect(step.endedAt).toBeUndefined();
+  });
+
+  test("re-opening a finished step clears its end", () => {
+    let clock = 1_000;
+    const store = new PlanStore({ now: () => clock });
+    store.set({ workspaceId: "ws:1" }, [
+      { id: "M1", title: "Explore", state: "done" },
+    ]);
+    clock = 2_000;
+    store.update({ workspaceId: "ws:1" }, "M1", { state: "active" });
+
+    const step = store.get({ workspaceId: "ws:1" })!.steps[0]!;
+    expect(step.startedAt).toBe(1_000);
+    expect(step.endedAt).toBeUndefined();
+  });
+
+  test("a step that jumps straight to done is a tick, not a duration", () => {
+    const store = new PlanStore({ now: () => 7_000 });
+    store.set({ workspaceId: "ws:1" }, [
+      { id: "M1", title: "Explore", state: "done" },
+    ]);
+    const step = store.get({ workspaceId: "ws:1" })!.steps[0]!;
+    expect(step.startedAt).toBe(7_000);
+    expect(step.endedAt).toBe(7_000);
+  });
+
+  test("complete() stamps an end without moving the starts", () => {
+    let clock = 1_000;
+    const store = new PlanStore({ now: () => clock });
+    store.set({ workspaceId: "ws:1" }, [
+      { id: "M1", title: "Explore", state: "active" },
+      { id: "M2", title: "Code", state: "waiting" },
+    ]);
+    clock = 4_000;
+    store.complete({ workspaceId: "ws:1" });
+
+    const steps = store.get({ workspaceId: "ws:1" })!.steps;
+    expect(steps[0]).toMatchObject({ startedAt: 1_000, endedAt: 4_000 });
+    // M2 never ran; completing the plan starts and ends it in one moment.
+    expect(steps[1]).toMatchObject({ startedAt: 4_000, endedAt: 4_000 });
+  });
+
+  test("a step added to an existing plan starts when it appears", () => {
+    let clock = 1_000;
+    const store = new PlanStore({ now: () => clock });
+    store.set({ workspaceId: "ws:1" }, [
+      { id: "M1", title: "Explore", state: "active" },
+    ]);
+    clock = 6_000;
+    store.set({ workspaceId: "ws:1" }, [
+      { id: "M1", title: "Explore", state: "active" },
+      { id: "M2", title: "New", state: "active" },
+    ]);
+    const steps = store.get({ workspaceId: "ws:1" })!.steps;
+    expect(steps[0]!.startedAt).toBe(1_000);
+    expect(steps[1]!.startedAt).toBe(6_000);
   });
 });

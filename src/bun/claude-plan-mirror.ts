@@ -44,6 +44,11 @@ export function tasksToSteps(tasks: ClaudeTask[]): PlanStep[] {
       title,
       state,
       ...(t.description ? { description: t.description } : {}),
+      // Claude's own clock beats ours. The task knows when it was
+      // created and when it completed; τ-mux only knows when it next
+      // looked, and on CHRONO's axis that difference is visible.
+      ...(t.createdAt ? { startedAt: t.createdAt } : {}),
+      ...(t.completedAt ? { endedAt: t.completedAt } : {}),
     };
   });
 }

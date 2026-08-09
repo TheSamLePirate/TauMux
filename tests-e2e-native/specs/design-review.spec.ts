@@ -249,6 +249,56 @@ test.describe("@design-review", () => {
     await sleep(400);
   });
 
+  // A plan on the axis: each step a bar from when it started to when it
+  // finished, and the running one still growing toward now. Steps are
+  // driven one at a time with real delays so the bars have real widths —
+  // a plan published in one shot would draw four ticks and prove nothing.
+  test("scenario-chrono-plan", async ({ app }) => {
+    if (!app.info.tier2Ready) return;
+    await app.rpc.ui.setSettingsField("layoutVariant", "atlas");
+    await sleep(600);
+
+    const surfaces = await app.rpc.surface.list();
+    const id = surfaces[0]?.id;
+    if (id) {
+      await app.rpc.surface.send_text({
+        surface_id: id,
+        text: "for i in $(seq 1 30); do echo \"step output $i\"; sleep 0.1; done\n",
+      });
+    }
+
+    const steps = [
+      { id: "M1", title: "explore", state: "active" },
+      { id: "M2", title: "build the lease", state: "waiting" },
+      { id: "M3", title: "draw the field", state: "waiting" },
+      { id: "M4", title: "ship", state: "waiting" },
+    ];
+    const ws = (await app.rpc.workspace.list())[0]?.id;
+    if (!ws) return;
+    await app.rpc.plan.set({ workspace_id: ws, steps });
+    await sleep(1_800);
+    await app.rpc.plan.update({ workspace_id: ws, step_id: "M1", state: "done" });
+    await app.rpc.plan.update({ workspace_id: ws, step_id: "M2", state: "active" });
+    await sleep(2_400);
+    await app.rpc.plan.update({ workspace_id: ws, step_id: "M2", state: "done" });
+    await app.rpc.plan.update({ workspace_id: ws, step_id: "M3", state: "active" });
+    await sleep(2_000);
+
+    await app.rpc.ui.keydown({ key: "g", meta: true });
+    await sleep(1_200);
+    // Narrow the window onto the plan. A six-second plan in a 90-second
+    // field is honest and unreadable; this is exactly what the timebase
+    // is for, so the shot shows it being used.
+    for (let i = 0; i < 3; i++) {
+      await app.rpc.ui.keydown({ key: "+" });
+      await sleep(250);
+    }
+    await sleep(900);
+    await app.snap("chrono-plan", { scenario: "chrono-plan-timeline" });
+    await app.rpc.ui.keydown({ key: "Escape" });
+    await sleep(400);
+  });
+
   // The axis with a session's whole shape on it: what was asked, what
   // ran, what came back. Driven through the same webview event channel
   // the native Claude pane uses, so the strikes are the real ones rather

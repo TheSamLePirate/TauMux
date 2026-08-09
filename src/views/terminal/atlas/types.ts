@@ -112,6 +112,20 @@ export interface AtlasNode {
    *  one. Workspaces and panes do; plan steps and ports do not. */
   historyKey?: string;
 
+  /**
+   * When this node's work happened. `to` is null while it is still
+   * running.
+   *
+   * Only present on things that genuinely occupy a stretch of time and
+   * know it — plan steps and subagents. It is what lets CHRONO draw a
+   * step as a *bar* on the time axis rather than as a checkbox: how long
+   * it took is usually the question, and a checklist cannot answer it.
+   *
+   * Absent means "this node has no defensible position in time", and a
+   * consumer must draw nothing rather than guess one.
+   */
+  span?: { from: number; to: number | null };
+
   /** This node is the active workspace / the focused pane. */
   active: boolean;
   /** A turn is in flight, a build is running, a shell is busy. */

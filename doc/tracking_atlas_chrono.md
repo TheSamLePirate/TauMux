@@ -348,17 +348,65 @@ prompt that caused them.
 
 ### Deviations from the brief
 
-- **The plan is not on the time axis.** `PlanStep` carries no timestamp —
-  only the plan does, and its `updatedAt` moves for any edit. Laying steps
-  along the field would be inventing moments. It is a segmented bar in
-  the gutter instead: `3/5` says how many, the cells say which. Step
-  *transitions* still strike, stamped when noticed, which is the honest
-  timestamp available.
+- ~~**The plan is not on the time axis.**~~ *Resolved in round 3 — see
+  below. The original reason held: `PlanStep` carried no timestamp, so
+  the fix was upstream rather than a workaround in the view.*
 - **The window zooms in, not out past five minutes.** Bounded by what the
   rings hold rather than by taste.
 - **No pan.** The window always ends at *now*. CHRONO is a live
   instrument; a window that can drift off the present needs a "return to
   now" affordance to undo a gesture nobody asked for.
+
+---
+
+## Round 3 — plan steps on the axis
+
+The user's answer to "the honest fix is upstream": yes, timestamp them.
+
+### The data
+
+`PlanStep` gains `startedAt?` / `endedAt?`. `PlanStore.stampStep` owns the
+rules, and each one exists because getting it wrong is silently wrong:
+
+- **`waiting` clears both.** A step reset to waiting has no history left
+  to claim, and a `startedAt` on it would draw a bar for work nobody did.
+- **`active` keeps or assigns the start and clears the end.** Re-opening
+  a finished step means it is running again.
+- **`done` / `err` keep or assign both.** A step that jumped straight
+  from waiting to done still happened at a moment; equal start and end
+  draws a tick, not a lie about duration.
+- **Existing stamps always win.** This is the one that matters: agents
+  call `ht plan set` with the whole list on every change, so re-deriving
+  would reset a plan's entire history each time one box was ticked.
+- **A publisher's own stamps beat ours.** `claude-plan-mirror` passes
+  Claude's `createdAt` / `completedAt` straight through — the agent's
+  clock is truer than the moment τ-mux next looked.
+
+### The drawing
+
+`AtlasNode.span` is the general carrier ("this node occupies a stretch of
+time and knows it"), filled for plan steps and — free — for subagents.
+`field.ts` draws a plan track riding the top of a lane's band, and the
+trace yields it that room rather than drawing through it.
+
+A running step's bar has no right edge and grows toward *now*, which also
+means the field keeps repainting for as long as one is running. That is
+motion caused by data, so it is allowed; a plan with nothing running goes
+still like everything else.
+
+Labels ellipsize rather than clip: a name cut mid-glyph by a clip
+rectangle reads as a rendering fault.
+
+### Deviations
+
+- **A workspace-level plan rides its bracket's first lane.** `ht plan set`
+  without an agent id anchors to the workspace, which is a bracket here
+  and not a row, so it has no band of its own. The first lane of the
+  bracket is the row the cap already marks.
+- **Plan-step strikes were removed, except failures.** The bars say
+  everything a "step done" rule said and say the duration too; drawing
+  both was the same fact twice. A failure still strikes — it is the thing
+  you stop for.
 
 ---
 

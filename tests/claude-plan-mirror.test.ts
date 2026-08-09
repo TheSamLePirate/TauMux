@@ -24,10 +24,13 @@ describe("tasksToSteps", () => {
       task({ id: "b", name: "B" }),
       task({ id: "c", name: "C" }),
     ]);
+    // The task's own clock carries through: Claude knows when it created
+    // and completed each one, and on CHRONO's axis that is truer than
+    // the moment τ-mux next looked.
     expect(steps).toEqual([
-      { id: "a", title: "A", state: "done" },
-      { id: "b", title: "B", state: "active" },
-      { id: "c", title: "C", state: "waiting" },
+      { id: "a", title: "A", state: "done", startedAt: T0 },
+      { id: "b", title: "B", state: "active", startedAt: T0 },
+      { id: "c", title: "C", state: "waiting", startedAt: T0 },
     ]);
   });
 
@@ -45,10 +48,11 @@ describe("tasksToSteps", () => {
         title: "Capture the payload",
         state: "active",
         description: "Capture the payload. Then delete it.",
+        startedAt: T0,
       },
     ]);
     expect(tasksToSteps([task({ state: "completed", name: "" })])).toEqual([
-      { id: "t1", title: "task t1", state: "done" },
+      { id: "t1", title: "task t1", state: "done", startedAt: T0 },
     ]);
     const long = tasksToSteps([task({ name: "x".repeat(120) })]);
     expect(long[0]!.title.length).toBeLessThanOrEqual(80);

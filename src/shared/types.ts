@@ -465,6 +465,25 @@ export interface PlanStep {
   /** Optional longer context (e.g. Claude Code's task_description).
    *  Rendered as a hover tooltip on the step row — never inline. */
   description?: string;
+  /**
+   * Wall-clock ms when the step first left `waiting`, and when it
+   * reached `done` / `err`.
+   *
+   * Stamped by `PlanStore` on the transition, and **preserved across
+   * re-publishes**: agents call `ht plan set` with the whole list on
+   * every change, so deriving these fresh each time would reset a
+   * plan's entire history on every update.
+   *
+   * A publisher may supply them instead, and supplied values win —
+   * Claude's task list carries its own `createdAt` / `completedAt`,
+   * and those are truer than the moment τ-mux happened to look.
+   *
+   * Absent means "has not happened yet", never "happened at zero":
+   * a step reset to `waiting` has its stamps cleared, because it has
+   * no history left to claim.
+   */
+  startedAt?: number;
+  endedAt?: number;
 }
 
 export interface Plan {

@@ -7,6 +7,17 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.23.0 — Plan steps get timestamps, and a place on the axis
+
+`PlanStep` now records when it started and when it finished. `PlanStore` stamps both on the transition and preserves them across re-publishes — agents send the whole list on every change, so re-deriving would reset a plan's history each time one box was ticked. Claude's mirrored task list supplies its own `createdAt` / `completedAt`, which are truer than τ-mux's clock.
+
+- **[CHRONO](/features/layout-variants/#chrono--g) draws each step as a bar** from start to finish, in the state palette. The running step has no right edge and grows toward *now*.
+- A step still `waiting` is drawn nowhere: it has no timestamps, and a position would be an invention.
+- A step **failing** still strikes across every lane.
+- The channel strip keeps the compact one-cell-per-step version for short lanes and unstarted steps.
+
+Nothing changes for `ht plan` callers — the fields are additive and derived automatically.
+
 ## 0.22.0 — CHRONO becomes an instrument
 
 Follow-on to 0.20.0. The field could show how loud each pane was and nothing about what an agent actually *did*, the window was fixed at 90 seconds, and a wide pane in a narrow lane lost its last characters.

@@ -148,14 +148,15 @@ export class ChronoSources {
   }
 
   /**
-   * `ht plan` step transitions.
+   * `ht plan` step *failures*.
    *
-   * Steps carry no timestamps of their own — only the plan does, and its
-   * `updatedAt` moves for any edit — so unlike marks and tasks these can
-   * only be stamped with the moment we noticed. That is honest and it is
-   * also why the first snapshot is swallowed: replaying a plan's current
-   * shape as if it had all just happened would put four steps' worth of
-   * rules on the axis the instant you opened the view.
+   * Steps now carry their own `startedAt` / `endedAt`, so the field draws
+   * each one as a bar on the axis — which says everything a "step done"
+   * rule would have said, and says how long it took as well. Striking
+   * them too would draw the same fact twice.
+   *
+   * A failure is different. It is the thing you stop for, and a rule
+   * across every lane is exactly the right weight for it.
    */
   ingestPlans(now = Date.now()): boolean {
     let logged = false;
@@ -167,14 +168,9 @@ export class ChronoSources {
         const before = this.steps.get(key);
         this.steps.set(key, step.state);
         if (first || before === undefined || before === step.state) continue;
-        if (step.state !== "done" && step.state !== "err") continue;
+        if (step.state !== "err") continue;
         logged =
-          noteEvent(
-            step.state === "err" ? "error" : "task",
-            null,
-            `${step.title} — ${step.state === "err" ? "failed" : "done"}`,
-            now,
-          ) || logged;
+          noteEvent("error", null, `${step.title} — failed`, now) || logged;
       }
     }
     return logged;
