@@ -12,7 +12,7 @@ Plan: `doc/plan_atlas_chrono.md`. Six phases, each ending green on
 | 3 | the field | done | `ecf41f3f` |
 | 4 | the gutter | done | `9df276f8` |
 | 5 | polish | done | `f0b5c971` |
-| 6 | docs | done | (pending) |
+| 6 | docs | done | `d06fd884` |
 
 ---
 
