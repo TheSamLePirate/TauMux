@@ -281,3 +281,22 @@ round 1 (no System Events accessibility permission on this machine, so the
 isolated test instance can't be raised above the user's own). All visual
 work was done against the real modules and real `index.css` in the fixture
 harness.
+
+
+## Round 2a — v0.18.1 · river fixes found in the live app
+
+First look at Atlas running in the real app (v0.18.0 installed, 462 px
+column, three workspaces, one busy). `ht screenshot window` finally gave
+the real-window capture the fixture harness could not, and it showed three
+bugs the fixture had hidden — because every workspace in the fixture was
+*busy*, and the broken cases were all about being **quiet**.
+
+| Bug | Cause | Fix |
+|---|---|---|
+| Quiet lanes rendered as saturated full-brightness rules | A silent series' area collapses flat onto its own lane; the outline was stroked at a fixed `0.75` alpha, so it painted a loud rule exactly where the 0.16 hairline belonged | Outline alpha scales with the window's peak; below 1 % it isn't stroked at all |
+| The river was chopped into blocks by six vertical rules | Time ticks every 15 samples — at 0.05 white on near-black they read far stronger than intended, and said nothing the "now" edge doesn't | Removed |
+| The bottom workspace's lane was invisible | Drawn at `top + band - 0.5` = 33.5 in a 34 px canvas, clipped by the edge | Lane y clamped inside the canvas |
+
+Lesson for the harness: the fixture modelled the *interesting* case (three
+busy workspaces) and therefore never exercised the common one. The
+fixture now keeps two workspaces genuinely silent.

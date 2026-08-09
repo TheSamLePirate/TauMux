@@ -133,8 +133,11 @@ export class AtlasRiver {
       // Every workspace gets a lane, drawn at rest even with no data.
       // A missing lane is indistinguishable from a missing workspace.
       ctx.beginPath();
-      ctx.moveTo(0, top + band - 0.5);
-      ctx.lineTo(width, top + band - 0.5);
+      // Inset by a pixel so the bottom lane isn't clipped by the canvas
+      // edge — a workspace whose lane is invisible reads as missing.
+      const laneY = Math.min(HEIGHT - 0.5, top + band - 0.5);
+      ctx.moveTo(0, laneY);
+      ctx.lineTo(width, laneY);
       ctx.strokeStyle = withAlpha(colour, 0.16);
       ctx.lineWidth = 1;
       ctx.stroke();
@@ -147,9 +150,11 @@ export class AtlasRiver {
 
       ctx.beginPath();
       let open = false;
+      let peakLevel = 0;
       samples.forEach((sample: MetricSample, i) => {
         const x = colX(offset + i);
         const level = Math.min(1, sample.bytes / SATURATION);
+        if (level > peakLevel) peakLevel = level;
         if (level > 0.002) anyActivity = true;
         const y = top + band - level * (band - 1);
         const prev = samples[i - 1];
@@ -175,21 +180,16 @@ export class AtlasRiver {
       ctx.fillStyle = grad;
       ctx.fill();
 
-      ctx.strokeStyle = withAlpha(colour, 0.75);
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
+      // A silent series' area collapses flat onto its own lane, so a
+      // fixed-alpha outline would paint a saturated rule exactly where
+      // the quiet hairline belongs — louder than the thing it sits on.
+      // Fade the outline with the window's peak instead.
+      if (peakLevel > 0.01) {
+        ctx.strokeStyle = withAlpha(colour, 0.2 + peakLevel * 0.55);
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      }
     });
-
-    // Time axis: a tick every ~15 samples so the window has a scale.
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
-    ctx.lineWidth = 1;
-    for (let i = span - 1; i >= 0; i -= 15) {
-      const x = Math.round(colX(i)) + 0.5;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, HEIGHT);
-      ctx.stroke();
-    }
 
     this.caption.textContent = anyActivity ? "" : "quiet";
     this.element.classList.toggle("is-quiet", !anyActivity);
