@@ -9,8 +9,8 @@ Plan: `doc/plan_atlas_chrono.md`. Six phases, each ending green on
 |---|---|---|---|
 | 1 | the lease | done | `db0bea17` |
 | 2 | lanes and heads | done | `6c3f1afb` |
-| 3 | the field | done | (pending) |
-| 4 | the gutter | not started | |
+| 3 | the field | done | `ecf41f3f` |
+| 4 | the gutter | done | (pending) |
 | 5 | polish | not started | |
 | 6 | docs | not started | |
 
@@ -200,6 +200,43 @@ moving, and it goes still again once that skyline has drained.
 - **Log scale.** A linear one puts a 2 KB/s log tail and total silence in
   the same pixel, which loses exactly the distinction the trace exists to
   draw.
+
+---
+
+## Phase 4 — the gutter
+
+Most of the channel strip landed in phase 2 (it is what a lane *is*, and
+a lane without one is not a lane). What this phase added is the rest of
+the loop: hover previews and click commits into the shared
+`AtlasInspector`, and a footer that gives both the inspector and the
+strike legend a home.
+
+### Deviations from the plan
+
+- **Satellites are chips in the strip, not markers attached to the
+  lane.** The plan said "satellites, attached to their lane"; at lane
+  scale — down to 84 px — a second row of positioned markers would
+  collide with the trace. They *are* attached to their lane: in its
+  gutter row, where the lane's identity already lives.
+- **No per-satellite selection.** Ports, processes, plan steps and
+  subagents are a glance in the gutter and a detail in the inspector,
+  which already lists all of them for the selected lane. Making each chip
+  separately clickable would mean nesting controls inside the lane's own
+  `role="option"` button for information the card already carries.
+- **The footer is a row, not a floating card.** First cut docked the
+  inspector over the bottom-left of the field; it covered the bottom
+  lane's channel strip. Hiding one lane's identity in order to explain
+  another is the wrong trade in a view whose subject is *all* the lanes
+  at once.
+- **The inspector's sparkline is hidden here.** The whole view is a time
+  series. A second, tinier one in the corner is exactly the "two channels
+  for one fact" the brief rules out — and the 26 px it costs is what the
+  actions need to stay on screen.
+- **The strike legend stacks instead of thinning.** Phase 3 shipped one
+  label per cluster; that left the footer's right-hand two thirds empty
+  and threw away information. Labels now drop to the next row when they
+  would collide, up to four rows, and carry the event's text as well as
+  its kind.
 
 ---
 

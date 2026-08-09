@@ -40,7 +40,8 @@
 import { htEvents } from "../../../shared/event-bus";
 import type { SurfaceKind } from "../../../shared/types";
 import { applyFilter, type AtlasFilter } from "../atlas/filter";
-import type { AtlasSnapshot } from "../atlas/types";
+import { AtlasInspector } from "../atlas/inspector";
+import type { AtlasNode, AtlasSnapshot } from "../atlas/types";
 import {
   getClaudeSessions,
   subscribeClaudeSessions,
@@ -96,6 +97,12 @@ export class Chrono {
   private header: ChronoHeader | null = null;
   private field: ChronoField | null = null;
   private rail: ChronoStrikeRail | null = null;
+  private inspector: AtlasInspector | null = null;
+  /** Lane under the pointer. The inspector previews it and falls back to
+   *  the committed selection on leave, so the card never strands you on
+   *  something you merely passed over. */
+  private hoverId: string | null = null;
+  private snapshot: AtlasSnapshot | null = null;
   private readonly sources = new ChronoSources();
   private lanes: ChronoLane[] = [];
   private selectedId: string | null = null;
@@ -147,18 +154,38 @@ export class Chrono {
         onSelect: (id) => this.select(id),
         onEnter: (id) => this.enter(id),
         onActivate: (id) => this.activate(id),
+        onHover: (id) => this.hover(id),
       },
       styleTarget: root,
     });
 
     const rail = new ChronoStrikeRail();
-    root.append(header.element, header.ruler, view.element, rail.element);
+    // The inspector is the Atlas column's, unchanged. It docks bottom
+    // left, over the gutter and never over a head: covering a live
+    // terminal to explain it would be the wrong trade in this view.
+    const inspector = new AtlasInspector();
+    inspector.setRowCap(5);
+    const dock = document.createElement("div");
+    dock.className = "tau-chrono-dock";
+    dock.appendChild(inspector.element);
+
+    // One footer row, split on the same two column boundaries as
+    // everything else: the inspector under the gutter, the strike labels
+    // under the field they name. Floating the inspector over the lanes
+    // was the first cut and it covered the bottom lane's channel strip —
+    // hiding a lane's identity to explain another one is the wrong trade.
+    const foot = document.createElement("div");
+    foot.className = "tau-chrono-foot";
+    foot.append(dock, rail.element);
+
+    root.append(header.element, header.ruler, view.element, foot);
     document.body.appendChild(root);
 
     this.root = root;
     this.header = header;
     this.view = view;
     this.rail = rail;
+    this.inspector = inspector;
     this.field = new ChronoField(view.canvas, root);
     this.selectedId = this.source.focusedSurfaceId();
     // Prime the transition watcher before the first draw: opening during
@@ -207,6 +234,9 @@ export class Chrono {
     this.header = null;
     this.field = null;
     this.rail = null;
+    this.inspector = null;
+    this.snapshot = null;
+    this.hoverId = null;
     this.root = null;
     this.lanes = [];
     root.remove();
@@ -280,6 +310,7 @@ export class Chrono {
 
     const built = this.source.build();
     const snapshot = built ? applyFilter(built.snapshot, this.filter) : null;
+    this.snapshot = snapshot;
     this.lanes = snapshot
       ? buildLanes({
           snapshot,
@@ -338,6 +369,7 @@ export class Chrono {
     this.rail?.render(events, now);
 
     header.setAttentionCount(built?.snapshot.totals.attention ?? 0);
+    this.showInspected();
     this.reclaimKeyboard();
     this.syncExitHint();
     this.scheduleTick(fieldIsMoving(fieldInput));
@@ -378,6 +410,23 @@ export class Chrono {
 
   // ── selection ──────────────────────────────────────────────────────
 
+  /**
+   * What the inspector is explaining.
+   *
+   * Hover previews, click commits — the Atlas column's rule, for the same
+   * reason: a card that only followed clicks would make you commit to a
+   * lane to find out what it is. Resolved against the live snapshot on
+   * every draw, so a pane that closes stops being explained rather than
+   * freezing mid-sentence.
+   */
+  private showInspected(): void {
+    const id = this.hoverId ?? this.selectedId;
+    const node: AtlasNode | null = id
+      ? (this.snapshot?.nodes.get(id) ?? null)
+      : null;
+    this.inspector?.show(node);
+  }
+
   /** Gutter click / arrow key. CHRONO keeps the keyboard. */
   private select(id: string): void {
     const changed = this.selectedId !== id;
@@ -398,6 +447,12 @@ export class Chrono {
     if (changed) this.refresh();
     else this.syncExitHint();
     this.source.host()?.focusSurface(id);
+  }
+
+  private hover(id: string | null): void {
+    if (this.hoverId === id) return;
+    this.hoverId = id;
+    this.showInspected();
   }
 
   /** Go to the pane itself. CHRONO's job is done at that point. */

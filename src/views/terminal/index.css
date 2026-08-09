@@ -15222,15 +15222,10 @@ button.spp-step:hover {
  * they are wanted. The rail is fixed under the field and shares the same
  * two column widths, so a label sits under its own rule. */
 .tau-chrono-rail {
-  flex: 0 0 auto;
-  height: 20px;
-  padding-left: var(--chrono-gutter, 232px);
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 0 0;
   padding-right: var(--chrono-head, 420px);
-  border-top: 0.5px solid var(--tau-edge-soft);
-}
-
-.tau-chrono-rail.is-empty {
-  border-top-color: transparent;
 }
 
 .tau-chrono-rail-band {
@@ -15240,14 +15235,30 @@ button.spp-step:hover {
 
 .tau-chrono-strike-label {
   position: absolute;
-  top: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 26%;
   transform: translateX(-100%);
-  padding-right: 5px;
+  padding-right: 6px;
   font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
   white-space: nowrap;
   color: var(--tau-text-faint);
+}
+
+.tau-chrono-strike-kind {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  flex: 0 0 auto;
+}
+
+/* The rule's own name is the signal; what it was about is context, and
+ * context in this view is always the dimmer of the two. */
+.tau-chrono-strike-text {
+  color: var(--tau-text-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .tau-chrono-strike-label.is-approval,
@@ -15265,6 +15276,48 @@ button.spp-step:hover {
 
 .tau-chrono-strike-label.is-notify {
   color: var(--tau-cyan);
+}
+
+/* ── the footer: inspector + strike labels ───────────────────────── */
+
+/* Split on the same two column boundaries as everything else, so the
+ * inspector sits under the gutter and the strike labels sit under the
+ * field they name. It is a row, not a floating card: an overlay here
+ * covered the bottom lane's channel strip, and hiding one lane's
+ * identity to explain another is the wrong trade in this view. */
+.tau-chrono-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  max-height: 176px;
+  border-top: 0.5px solid var(--tau-edge);
+}
+
+.tau-chrono-dock {
+  flex: 0 0 var(--chrono-gutter, 232px);
+  width: var(--chrono-gutter, 232px);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tau-chrono-dock .tau-atlas-inspector {
+  border-top: none;
+  border-left: 2px solid var(--node, var(--tau-cyan));
+  background: transparent;
+  padding: 8px 12px 10px;
+  gap: 4px;
+}
+
+.tau-chrono-dock .tau-atlas-inspector-label {
+  flex-basis: 72px;
+}
+
+/* The inspector's CPU sparkline is cut here. The entire view *is* a time
+ * series; a second, tinier one in the corner is the "two channels for one
+ * fact" the design brief rules out — and the 26 px it costs is 26 px the
+ * actions need in order to stay on screen. */
+.tau-chrono-dock .tau-atlas-spark {
+  display: none;
 }
 
 /* ── empty state ─────────────────────────────────────────────────── */

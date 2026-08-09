@@ -56,6 +56,8 @@ export interface ChronoViewCallbacks {
   onEnter(id: string): void;
   /** Go to the pane and leave CHRONO. */
   onActivate(id: string): void;
+  /** Pointer entered a lane's gutter, or left the field. */
+  onHover(id: string | null): void;
 }
 
 export interface ChronoViewHost {
@@ -150,6 +152,9 @@ export class ChronoView {
     this.content.append(this.lanesEl, this.canvas);
     this.scroller.appendChild(this.content);
     this.element.append(this.scroller, this.empty);
+    this.element.addEventListener("pointerleave", () =>
+      this.callbacks.onHover(null),
+    );
   }
 
   /**
@@ -325,6 +330,7 @@ export class ChronoView {
       const gutter = new ChronoGutterRow(lane.id, {
         onSelect: (id) => this.callbacks.onSelect(id),
         onActivate: (id) => this.callbacks.onActivate(id),
+        onHover: (id) => this.callbacks.onHover(id),
       });
       const head = new ChronoHead(lane.id, {
         onEnter: (id) => this.callbacks.onEnter(id),

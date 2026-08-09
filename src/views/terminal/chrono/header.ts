@@ -142,20 +142,33 @@ export class ChronoHeader {
 }
 
 /**
- * The strike rail — the labels under the field.
+ * The strike rail — the event legend, laid out on the time axis.
  *
  * The rules themselves are drawn on the canvas, inside a scroller that
  * can be taller than the window. Their names cannot live there: a label
  * that scrolls off is a label that is not there when you need it. So the
- * rail is a fixed strip below the field, sharing the same two column
- * widths, and it names what the rules mean.
+ * rail is a fixed strip below the field, sharing the same right-hand
+ * column width, and every rule in the window gets its name printed under
+ * the x where it struck.
  *
- * Labels are thinned rather than stacked. Four approvals in eight seconds
- * draw four rules — that is the truth and it is legible — but four
- * overlapping words is just a smudge, so only the newest of a cluster
- * keeps its name.
+ * Labels are **stacked, not thinned**. Four approvals in eight seconds
+ * draw four rules — that is the truth, and it is legible — but four
+ * overlapping words is a smudge, so a label that would collide drops to
+ * the next row. Past the last row there is genuinely no room, and the
+ * remainder is dropped newest-first-wins.
  */
-const LABEL_MIN_GAP_PCT = 11;
+
+/** Rows the rail can stack into before it gives up. */
+const MAX_ROWS = 4;
+
+/** Row pitch, in px. Matches the 10 px mono line box plus air. */
+const ROW_H = 15;
+
+/** Rough label width as a share of the band, used for collision. A real
+ *  measurement would need layout; this is deliberately generous, because
+ *  a label pushed to the next row costs nothing and an overlap costs
+ *  legibility. */
+const LABEL_PCT = 13;
 
 export class ChronoStrikeRail {
   readonly element: HTMLDivElement;
@@ -171,34 +184,45 @@ export class ChronoStrikeRail {
   }
 
   render(events: readonly ChronoEvent[], now: number): void {
-    const placed: { pct: number; event: ChronoEvent }[] = [];
-    // Newest first, so a cluster keeps the most recent name rather than
-    // the one that happened to arrive first.
+    const placed: { pct: number; row: number; event: ChronoEvent }[] = [];
+    const rows: number[][] = Array.from({ length: MAX_ROWS }, () => []);
+
+    // Newest first: when the rail runs out of rows, the events you are
+    // most likely to still care about are the ones that keep their name.
     for (let i = events.length - 1; i >= 0; i--) {
       const event = events[i]!;
       const age = now - event.at;
       if (age < 0 || age > WINDOW_MS) continue;
       const pct = (1 - age / WINDOW_MS) * 100;
-      if (placed.some((p) => Math.abs(p.pct - pct) < LABEL_MIN_GAP_PCT)) {
-        continue;
-      }
-      placed.push({ pct, event });
-      if (placed.length >= 6) break;
+      const row = rows.findIndex((taken) =>
+        taken.every((other) => Math.abs(other - pct) >= LABEL_PCT),
+      );
+      if (row === -1) continue;
+      rows[row]!.push(pct);
+      placed.push({ pct, row, event });
     }
 
     const next = placed
-      .map((p) => `${p.event.kind}@${Math.round(p.pct)}`)
+      .map((p) => `${p.event.kind}@${Math.round(p.pct)}#${p.row}`)
       .join("|");
     if (next === this.signature) return;
     this.signature = next;
 
     this.band.replaceChildren(
-      ...placed.map(({ pct, event }) => {
+      ...placed.map(({ pct, row, event }) => {
         const el = document.createElement("span");
         el.className = `tau-chrono-strike-label tau-mono is-${event.kind}`;
-        el.textContent = event.kind;
-        el.title = event.text;
         el.style.left = `${pct}%`;
+        el.style.top = `${row * ROW_H}px`;
+        el.title = event.text;
+
+        const kind = document.createElement("span");
+        kind.className = "tau-chrono-strike-kind";
+        kind.textContent = event.kind;
+        const text = document.createElement("span");
+        text.className = "tau-chrono-strike-text";
+        text.textContent = event.text;
+        el.append(kind, text);
         return el;
       }),
     );

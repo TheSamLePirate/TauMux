@@ -26,6 +26,7 @@ const MAX_SATELLITES = 5;
 export interface ChronoGutterRowCallbacks {
   onSelect(id: string): void;
   onActivate(id: string): void;
+  onHover(id: string): void;
 }
 
 export class ChronoGutterRow {
@@ -69,6 +70,10 @@ export class ChronoGutterRow {
     this.element.append(this.bracket, body);
 
     this.element.addEventListener("click", () => callbacks.onSelect(this.id));
+    this.element.addEventListener("pointerenter", () =>
+      callbacks.onHover(this.id),
+    );
+    this.element.addEventListener("focus", () => callbacks.onHover(this.id));
     this.element.addEventListener("dblclick", () =>
       callbacks.onActivate(this.id),
     );
