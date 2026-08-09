@@ -7,6 +7,17 @@ sidebar:
 
 Cette page résume les changements visibles par les utilisateurs. Le journal complet des commits est sur [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), et le projet livre désormais un `CHANGELOG.md` généré à la racine du dépôt qui regroupe les commits par type conventional-commit (ajouté en 0.3.145).
 
+## 0.22.0 — CHRONO devient un instrument
+
+Suite de la 0.20.0. Le champ montrait le volume sonore de chaque panneau et rien de ce qu'un agent *faisait*, la fenêtre était figée à 90 secondes, et un panneau large dans une voie étroite perdait ses derniers caractères.
+
+- **Le terminal s'ajuste à sa voie.** Un panneau emprunté garde les colonnes auxquelles il a été ajusté chez lui : un panneau large perdait donc la fin droite de chaque ligne — souvent la moitié qui dit ce qui a échoué. Il est désormais mis à l'échelle uniformément à la largeur de la voie, et jamais agrandi, de sorte que le cas courant reste au pixel près.
+- **Une base de temps.** La fenêtre est réglable par crans de 10 s à 5 minutes : le sélecteur dans l'en-tête, la molette au-dessus du champ, ou `+` / `-`. Le réticule se redivise pour que chaque ligne tombe sur un nombre rond de secondes. Les anneaux d'historique retiennent cinq minutes en conséquence.
+- **Un curseur.** Posez le pointeur sur le champ : un filet lit chaque voie à cet instant — débit, CPU, contexte — dans une lecture qui remplace la règle tant qu'elle est active.
+- **Le contexte sur le graphique.** Les voies d'agent tracent l'usage de leur fenêtre de contexte en courbe ambre sur la même bande. Un niveau, pas un débit : donc une marque et une couleur différentes.
+- **Chaque action sur l'axe.** Pour un panneau Claude natif : ce que vous avez demandé, chaque outil exécuté, ce qui a été répondu, ce qui a nécessité un accord, chaque tâche passée au vert. Les horodatages sont les vrais — un tour est daté du moment où l'invite a été soumise, pas du moment où τ-mux l'a remarqué.
+- **Le plan comme forme.** Une voie exécutant un plan affiche une cellule par étape — faite, en cours, en attente, échouée — au lieu de `3/5`.
+
 ## 0.20.0 — CHRONO : ⌘G devient un champ temporel
 
 Atlas répondait à « qu'est-ce qui est vrai maintenant ». Rien ne répondait à « que s'est-il passé, et qu'est-ce qui a réagi à quoi ». `⌘G` n'ouvre plus l'arbre de topologie étendu ; il ouvre **[CHRONO](/fr/features/layout-variants/#chrono--g)**.

@@ -7,6 +7,17 @@ sidebar:
 
 This page summarizes user-facing changes. The full commit log is on [GitHub](https://github.com/TheSamLePirate/TauMux/commits/main), and the project also ships a generated `CHANGELOG.md` at the repo root that groups commits by conventional-commit type (added in 0.3.145).
 
+## 0.22.0 — CHRONO becomes an instrument
+
+Follow-on to 0.20.0. The field could show how loud each pane was and nothing about what an agent actually *did*, the window was fixed at 90 seconds, and a wide pane in a narrow lane lost its last characters.
+
+- **The terminal fits its lane.** A borrowed pane keeps the columns it was fitted to at home, so a wide one used to lose the right-hand end of every line — usually the half that says what went wrong. It now scales uniformly to the lane's width, and never scales *up*, so the common case stays pixel-exact.
+- **A timebase.** The window is adjustable by detents from 10 s to 5 minutes: the knob in the header, the wheel over the field, or `+` / `-`. The graticule re-divides so every line lands on a round number of seconds. History rings hold five minutes to match.
+- **A cursor.** Park the pointer on the field and a hairline reads every lane at that instant — rate, CPU, context — in a readout that replaces the ruler while it is live.
+- **Context on the chart.** Agent lanes draw their context-window usage as an amber curve over the same band. A level, not a rate, so a different mark and a different colour.
+- **Every action on the axis.** For a native Claude pane: what you asked, every tool it ran, what it replied, what it needed consent for, each task going green. Timestamps are the real ones — a turn is stamped with the moment the prompt was submitted, not the moment τ-mux noticed.
+- **The plan as a shape.** A lane running a plan shows one cell per step — done, running, waiting, failed — instead of `3/5`.
+
 ## 0.20.0 — CHRONO: ⌘G becomes a time field
 
 Atlas answered "what is true now". Nothing answered "what has been going on, and what reacted to what". `⌘G` no longer opens the expanded topology tree; it opens **[CHRONO](/features/layout-variants/#chrono--g)**.

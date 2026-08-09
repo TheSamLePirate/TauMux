@@ -195,6 +195,39 @@ Events — an agent's turn boundary, an approval, an error, a notification, an [
 
 Browser and extension panes are a native webview and an iframe; neither survives being reparented. Their lanes draw a trace like everyone else and show a **standby card** with the pane's title, its URL and a *go to pane* action. Browser overlays are hidden while CHRONO is open and restored when it closes.
 
+#### The timebase
+
+The window is adjustable, with detents rather than a slider: **10s · 20s · 30s · 60s · 90s · 3m · 5m**. A scope has a timebase knob with stops for the same reason — "30 seconds" has to look like 30 seconds every time, or two readings are not comparable.
+
+- The knob is in the header and prints its current setting.
+- The **wheel** over the field steps it, when the field has nothing to scroll. Hold **⌥** to zoom either way.
+- **`+`** and **`-`** do the same from the keyboard.
+
+The graticule re-divides with the window so every line lands on a round number of seconds, and the ruler picks one unit for the whole row.
+
+#### The cursor
+
+Park the pointer anywhere on the field and a hairline drops through every lane, snapping to the nearest sample. The ruler is replaced by a readout of that instant: how long ago it was, and for each lane its output rate, CPU, and context. Move off the field and the ruler comes back.
+
+#### What the traces carry
+
+- **Output rate**, as the skyline, in the lane's identity colour.
+- **Context used**, for agent lanes, as an amber curve over the same band. It is a *level*, not a rate, so it gets a different mark and a different colour — the one thing it must never do is look like output.
+
+#### Every action, on the axis
+
+For a native Claude pane, the strikes are the session itself: what you asked for, every tool it reached for, what it replied, what it needed consent for, and each task going green. Turn boundaries, errors, notifications and [`ht atlas mark`](/cli/atlas/) join them.
+
+Their names print on the axis under the field, stacked when they would collide, and ranked so the things you came to find keep their labels: an approval or a prompt never loses its name to the tool calls around it. Tool calls themselves are drawn at a third the weight — they outnumber everything else, and at full weight the field becomes a barcode with the approvals hidden inside it.
+
+Timestamps are the real ones wherever they exist. A turn is stamped with the moment the prompt was submitted, a task with its own `createdAt` / `completedAt`, a mark with the moment the agent wrote it. Only plan steps fall back to "when τ-mux noticed", because a step carries no timestamp of its own.
+
+#### The plan
+
+A lane running a plan shows it as a segmented bar in its channel strip — one cell per step: done, running, waiting, failed. `3/5` says how many; the cells say which, in the same width.
+
+The plan is deliberately **not** laid along the time axis. Steps carry no timestamps, so placing them there would be inventing moments, which is the one thing this view must not do. Step transitions still strike as they happen.
+
 #### Keyboard
 
 | Key | Action |
@@ -202,6 +235,7 @@ Browser and extension panes are a native webview and an iframe; neither survives
 | `↑` / `↓` | Move between lanes |
 | `Home` / `End` | First / last lane |
 | `Enter` | Go to the selected pane and close |
+| `+` / `-` | Narrow / widen the window |
 | `Esc` | Close — unless you have stepped into a head, where it belongs to the terminal |
 | `⌘G` | Close, always |
 

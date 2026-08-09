@@ -14,6 +14,14 @@ Plan: `doc/plan_atlas_chrono.md`. Six phases, each ending green on
 | 5 | polish | done | `f0b5c971` |
 | 6 | docs | done | `d06fd884` |
 
+### Round 2 — user feedback, 2026-08-09
+
+| What | Commit |
+|---|---|
+| fit, timebase, cursor, context ribbon | `344b021b` (v0.21.0) |
+| every action on the axis, plan as a shape | `52b89e55` (v0.22.0) |
+| docs for both | (this commit) |
+
 ---
 
 ## Phase 1 — the lease
@@ -280,6 +288,77 @@ strike legend a home.
   viewport mechanic, the head-kind table, who owns the keyboard, the
   three refresh cadences, and where events come from.
 - `doc/changes_to_document.md` — CHRONO's entry cleared.
+
+---
+
+## Round 2 — "make it better"
+
+The brief: context % on the chart, an interactive chart, a zoomable
+smart timeline, every action on it, a stunning plan view — and a real
+defect, terminals losing their last characters.
+
+The design lens for this round was **test equipment**, not "sci-fi HUD".
+CHRONO is a time-domain instrument, so the vernacular that fits it is a
+scope's: a graticule, a detented timebase, a phosphor trace, a cursor
+you park on the waveform and read a value off. Every decision below
+falls out of that, and it is a specific world rather than a generic one.
+
+### The fit (the reported defect)
+
+A leased terminal keeps the columns it was fitted to at home, so a wide
+pane in a narrower lane lost its right-hand end — usually the half of a
+log line that says what went wrong. `fitScale` scales it uniformly to the
+lane's width; `anchorOffset` takes the scale so the bottom anchor still
+lands. Measured with `offsetWidth/Height` rather than a bounding rect,
+because a rect is *post*-transform and would feed last frame's scale into
+this frame's. Never scales up, so the common case stays pixel-exact, and
+stops at 0.6 rather than turning "some characters missing" into "all
+characters unreadable".
+
+### The timebase
+
+`timebase.ts`: a detented ladder (10 s … 5 m), because a
+continuously-variable window makes every reading incomparable. Division
+counts are chosen per span so every graticule line lands on a round
+number of seconds. `metrics-history` grew from 90 to 300 samples to back
+the widest rung — a rung that shows an empty field is a rung that lies —
+and the river is now pinned to 90 s explicitly rather than inheriting the
+ring's capacity.
+
+### The cursor and the readout
+
+The signature interaction, and the one thing the traces could not do:
+shape without a readable value is a picture. The readout *replaces* the
+ruler rather than sitting beside it — both answer "where on the time axis
+am I", and two answers to one question is how an instrument becomes a HUD.
+
+### Every action
+
+`activity.ts` reuses `digestClaudeEvent`, the decoder the Claude pane's
+transcript already runs. A second decoder would drift the day the SDK
+renames a field.
+
+The judgement that matters is what earns a rule: deltas do not (a strike
+per token is a fill pattern), a tool *succeeding* does not (the start was
+the action), a tool *failing* does. Tool calls draw at a third weight
+because they outnumber everything else by an order of magnitude. The
+rail's labels rank by weight before recency — a turn is a prompt followed
+by a dozen tools, and ordering by time alone labels the tools and not the
+prompt that caused them.
+
+### Deviations from the brief
+
+- **The plan is not on the time axis.** `PlanStep` carries no timestamp —
+  only the plan does, and its `updatedAt` moves for any edit. Laying steps
+  along the field would be inventing moments. It is a segmented bar in
+  the gutter instead: `3/5` says how many, the cells say which. Step
+  *transitions* still strike, stamped when noticed, which is the honest
+  timestamp available.
+- **The window zooms in, not out past five minutes.** Bounded by what the
+  rings hold rather than by taste.
+- **No pan.** The window always ends at *now*. CHRONO is a live
+  instrument; a window that can drift off the present needs a "return to
+  now" affordance to undo a gesture nobody asked for.
 
 ---
 

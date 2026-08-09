@@ -195,6 +195,39 @@ Les événements — une frontière de tour d'agent, une approbation, une erreur
 
 Les panneaux navigateur et extension sont respectivement une vue web native et une iframe ; ni l'un ni l'autre ne survit à un changement de parent. Leurs voies dessinent une trace comme les autres et affichent une **carte de veille** avec le titre du panneau, son URL et une action *aller au panneau*. Les surcouches navigateur sont masquées pendant que CHRONO est ouvert et restaurées à la fermeture.
 
+#### La base de temps
+
+La fenêtre est réglable, par crans plutôt qu'au curseur : **10s · 20s · 30s · 60s · 90s · 3m · 5m**. Un oscilloscope a un sélecteur de base de temps cranté pour la même raison — « 30 secondes » doit ressembler à 30 secondes à chaque fois, sinon deux lectures ne sont pas comparables.
+
+- Le sélecteur est dans l'en-tête et affiche son réglage courant.
+- La **molette** au-dessus du champ le fait avancer, quand le champ n'a rien à faire défiler. Maintenez **⌥** pour zoomer dans tous les cas.
+- **`+`** et **`-`** font de même au clavier.
+
+Le réticule se redivise avec la fenêtre pour que chaque ligne tombe sur un nombre rond de secondes, et la règle choisit une seule unité pour toute la rangée.
+
+#### Le curseur
+
+Posez le pointeur n'importe où sur le champ : un filet vertical traverse toutes les voies en s'aimantant à l'échantillon le plus proche. La règle est remplacée par une lecture de cet instant — il y a combien de temps, et pour chaque voie son débit de sortie, son CPU et son contexte. Sortez du champ et la règle revient.
+
+#### Ce que portent les traces
+
+- **Le débit de sortie**, en silhouette, dans la couleur d'identité de la voie.
+- **Le contexte utilisé**, pour les voies d'agent, en courbe ambre sur la même bande. C'est un *niveau*, pas un débit : il obtient donc une marque et une couleur différentes — la seule chose qu'il ne doit jamais faire, c'est ressembler à de la sortie.
+
+#### Chaque action, sur l'axe
+
+Pour un panneau Claude natif, les frappes sont la session elle-même : ce que vous avez demandé, chaque outil employé, ce qui a été répondu, ce qui a nécessité un accord, et chaque tâche passée au vert. Les frontières de tour, les erreurs, les notifications et [`ht atlas mark`](/fr/cli/atlas/) les rejoignent.
+
+Leurs noms s'impriment sur l'axe sous le champ, empilés lorsqu'ils se chevaucheraient, et classés pour que ce que vous êtes venu chercher garde son étiquette : une approbation ou une invite ne perd jamais son nom au profit des appels d'outils qui l'entourent. Les appels d'outils sont eux-mêmes dessinés au tiers du poids — ils sont bien plus nombreux que tout le reste, et à plein poids le champ devient un code-barres avec les approbations cachées dedans.
+
+Les horodatages sont les vrais partout où ils existent. Un tour est daté du moment où l'invite a été soumise, une tâche de ses propres `createdAt` / `completedAt`, un repère du moment où l'agent l'a écrit. Seules les étapes de plan retombent sur « quand τ-mux l'a remarqué », car une étape ne porte pas d'horodatage.
+
+#### Le plan
+
+Une voie exécutant un plan l'affiche en barre segmentée dans sa bande de canal — une cellule par étape : faite, en cours, en attente, échouée. `3/5` dit combien ; les cellules disent lesquelles, dans la même largeur.
+
+Le plan n'est délibérément **pas** posé sur l'axe temporel. Les étapes ne portent pas d'horodatage, les placer là reviendrait donc à inventer des instants — la seule chose que cette vue ne doit pas faire. Les transitions d'étape frappent tout de même au moment où elles surviennent.
+
 #### Clavier
 
 | Touche | Action |
@@ -202,6 +235,7 @@ Les panneaux navigateur et extension sont respectivement une vue web native et u
 | `↑` / `↓` | Se déplacer entre les voies |
 | `Home` / `End` | Première / dernière voie |
 | `Enter` | Aller au panneau sélectionné et refermer |
+| `+` / `-` | Resserrer / élargir la fenêtre |
 | `Esc` | Refermer — sauf si vous êtes entré dans une tête, où elle appartient au terminal |
 | `⌘G` | Refermer, toujours |
 
