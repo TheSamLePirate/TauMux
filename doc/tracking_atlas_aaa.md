@@ -300,3 +300,17 @@ bugs the fixture had hidden — because every workspace in the fixture was
 Lesson for the harness: the fixture modelled the *interesting* case (three
 busy workspaces) and therefore never exercised the common one. The
 fixture now keeps two workspaces genuinely silent.
+
+### v0.18.2 — the resting lane was the wrong colour, not the wrong alpha
+
+0.18.1 removed the loud outline and the ticks, but the live app still
+showed two saturated rules. Diagnosing it properly turned up a **design**
+error rather than a value error: the resting lane was drawn in the
+workspace's own accent at 0.16 alpha, so three idle workspaces painted
+three coloured rules and an empty river became the loudest thing in the
+panel.
+
+Colour in the river means *"this workspace produced output"*. That a
+workspace **exists** is already the graph's job to say. The resting lane
+is structure, so it is now neutral white at 0.07; the accent appears only
+where there is actually a waveform to colour.

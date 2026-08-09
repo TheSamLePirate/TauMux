@@ -27,6 +27,10 @@ const HEIGHT = 34;
  *  point is the shape of the activity, not an exact reading. */
 const SATURATION = 262_144;
 
+/** Colour of a lane with nothing in it. Structure, not data — see the
+ *  note where it is drawn. */
+const REST_LANE = "rgba(255, 255, 255, 0.07)";
+
 export interface AtlasRiverCallbacks {
   onPick(seriesId: string): void;
 }
@@ -130,15 +134,20 @@ export class AtlasRiver {
       const top = bandIndex * band;
       const colour = resolve(s.color);
 
-      // Every workspace gets a lane, drawn at rest even with no data.
-      // A missing lane is indistinguishable from a missing workspace.
+      // Every workspace gets a lane, drawn at rest even with no data — a
+      // missing lane is indistinguishable from a missing workspace.
+      //
+      // The lane is deliberately NEUTRAL, not the workspace's colour.
+      // Colour here means "this workspace produced output"; that a
+      // workspace *exists* is already the graph's job to say. Painting
+      // three saturated rules for three idle workspaces made an empty
+      // river the loudest thing in the panel.
       ctx.beginPath();
-      // Inset by a pixel so the bottom lane isn't clipped by the canvas
-      // edge — a workspace whose lane is invisible reads as missing.
+      // Inset so the bottom lane isn't clipped by the canvas edge.
       const laneY = Math.min(HEIGHT - 0.5, top + band - 0.5);
       ctx.moveTo(0, laneY);
       ctx.lineTo(width, laneY);
-      ctx.strokeStyle = withAlpha(colour, 0.16);
+      ctx.strokeStyle = REST_LANE;
       ctx.lineWidth = 1;
       ctx.stroke();
 
