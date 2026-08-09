@@ -143,6 +143,67 @@ test.describe("chrono", () => {
     await expectClosed(app);
   });
 
+  test("↑ and ↓ walk the lanes and keep the keyboard", async ({ app }) => {
+    await app.rpc.surface.split({ direction: "horizontal" });
+    await sleep(700);
+    await openChrono(app);
+
+    // CHRONO opens on the focused pane, which is the one the split just
+    // created — the last lane. So ↑ is the move that has somewhere to go.
+    const first = (await app.rpc.ui.readChrono()).selectedLane;
+    expect(first).toBeTruthy();
+
+    await app.rpc.ui.keydown({ key: "ArrowUp" });
+    await expect
+      .poll(async () => (await app.rpc.ui.readChrono()).selectedLane, {
+        timeout: 3_000,
+      })
+      .not.toBe(first);
+
+    // Arrow navigation selects; it must not step *into* the pane, or
+    // Escape would silently stop closing the view.
+    expect((await app.rpc.ui.readChrono()).entered).toBe(false);
+
+    await app.rpc.ui.keydown({ key: "ArrowDown" });
+    await expect
+      .poll(async () => (await app.rpc.ui.readChrono()).selectedLane, {
+        timeout: 3_000,
+      })
+      .toBe(first);
+
+    // …and the ends clamp rather than wrapping: a field you can fall off
+    // the bottom of is a field you lose your place in.
+    await app.rpc.ui.keydown({ key: "ArrowDown" });
+    await sleep(250);
+    expect((await app.rpc.ui.readChrono()).selectedLane).toBe(first);
+
+    await app.rpc.ui.keydown({ key: "Escape" });
+    await expectClosed(app);
+  });
+
+  test("Enter goes to the selected pane and closes", async ({ app }) => {
+    await app.rpc.surface.split({ direction: "horizontal" });
+    await sleep(700);
+    await openChrono(app);
+
+    await app.rpc.ui.keydown({ key: "ArrowUp" });
+    await sleep(300);
+    const target = (await app.rpc.ui.readChrono()).selectedLane;
+    expect(target).toBeTruthy();
+
+    await app.rpc.ui.keydown({ key: "Enter" });
+    await expectClosed(app);
+    await sleep(400);
+
+    // Going to the pane is the whole point of Enter — landing back on
+    // the old one would make the key a no-op with extra steps.
+    await expect
+      .poll(async () => (await app.rpc.ui.readState()).focusedSurfaceId, {
+        timeout: 3_000,
+      })
+      .toBe(target);
+  });
+
   test("a browser pane stands by instead of being reparented", async ({
     app,
   }) => {

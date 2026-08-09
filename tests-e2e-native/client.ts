@@ -133,6 +133,8 @@ export interface ChronoStateDTO {
   minLaneHeight: number;
   minHomeWidth: number;
   headKinds: string[];
+  selectedLane: string | null;
+  entered: boolean;
 }
 
 export interface PaletteCommandDTO {

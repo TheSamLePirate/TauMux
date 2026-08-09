@@ -46,6 +46,7 @@ export class ChronoHeader {
 
     const title = document.createElement("span");
     title.className = "tau-chrono-title tau-mono";
+    title.id = "tau-chrono-title";
     title.textContent = "chrono";
 
     const group = document.createElement("div");

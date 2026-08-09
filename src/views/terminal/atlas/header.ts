@@ -68,8 +68,8 @@ export class AtlasHeader {
     const expand = document.createElement("button");
     expand.type = "button";
     expand.className = "tau-atlas-expand";
-    expand.title = "Expand the topology to the full window (⌘G)";
-    expand.setAttribute("aria-label", "Expand topology");
+    expand.title = "Chrono — the last 90 seconds (⌘G)";
+    expand.setAttribute("aria-label", "Open Chrono");
     expand.appendChild(expandGlyph());
     expand.addEventListener("click", () => callbacks.onExpand());
 

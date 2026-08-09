@@ -10,8 +10,8 @@ Plan: `doc/plan_atlas_chrono.md`. Six phases, each ending green on
 | 1 | the lease | done | `db0bea17` |
 | 2 | lanes and heads | done | `6c3f1afb` |
 | 3 | the field | done | `ecf41f3f` |
-| 4 | the gutter | done | (pending) |
-| 5 | polish | not started | |
+| 4 | the gutter | done | `9df276f8` |
+| 5 | polish | done | (pending) |
 | 6 | docs | not started | |
 
 ---
@@ -240,6 +240,35 @@ strike legend a home.
 
 ---
 
+## Phase 5 — polish
+
+- **Keyboard.** ↑/↓ walk the lanes and clamp at the ends (a field you can
+  fall off the bottom of is a field you lose your place in); Enter goes
+  to the selected pane *and closes*, because going to the pane is the
+  point; Escape closes unless the user has stepped into a head, where it
+  belongs to the terminal; ⌘G always closes. Home/End jump the ends.
+- **Reduced motion.** Everything that moves here is data — the traces
+  advance because bytes arrived, the lanes resize because a pane has
+  more to show — so none of it is removed: taking it away would take the
+  readings with it. What goes is the one piece of pure chrome, the open
+  fade.
+- **No new keyframes.** The entrance is a class-flipped transition, so
+  the animation audit needs no new entry and CHRONO adds nothing to the
+  §10 budget.
+- **A11y.** The field is a `role="listbox"` of `role="option"` lanes on a
+  roving tabindex; the lane rows between them are `role="presentation"`
+  so the relationship the roles claim is the one that exists. The canvas
+  is `aria-hidden` — it carries nothing the gutter does not say in
+  words. Heads sit *outside* the option buttons: a terminal nested in a
+  control would put the whole pane in the tab order and swallow its keys,
+  which is also why CHRONO does not use `ModalHost` — its focus trap
+  would eat Tab-completion in a live shell.
+- **Stale references removed.** The Atlas column's expand button, the
+  inspector's overflow hint, the ⌘G binding description and the CSS
+  banner all still described the topology overlay that no longer exists.
+
+---
+
 ## Issues met
 
 1. **`applyPositions` clobbering leased containers.** Found by reading
@@ -273,6 +302,11 @@ strike legend a home.
 
 7. **The overlay covers the titlebar**, so the header had to leave the
    macOS traffic lights their corner (84 px) — §11 says they stay stock.
+
+9. **The arrow-key spec assumed the wrong end.** CHRONO opens on the
+   focused pane, which after a split is the *last* lane — so ArrowDown
+   correctly clamped and the test read that as a broken key. The clamp
+   is now asserted deliberately rather than tripped over.
 
 8. **`seed()` swallowed the marks.** Priming every source on open is
    right for derived state and wrong for authored state: a mark carries

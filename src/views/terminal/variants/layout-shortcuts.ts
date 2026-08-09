@@ -31,11 +31,11 @@ export function toggleRail(deps: LayoutShortcutDeps): void {
 }
 
 /**
- * ⌘G — the full-window topology overlay.
+ * ⌘G — CHRONO, the time field.
  *
  * Falls back to hiding the Atlas column only if the panel has not
  * mounted yet (a settings change mid-boot); once Atlas is live, the
- * overlay is what this key is for.
+ * field is what this key is for.
  */
 export function toggleTopology(deps: LayoutShortcutDeps): void {
   if (toggleAtlasTopology()) return;

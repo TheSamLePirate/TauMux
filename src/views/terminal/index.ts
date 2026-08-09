@@ -2395,7 +2395,7 @@ const KEYBOARD_BINDINGS: Binding<KeyCtx>[] = [
   },
   {
     id: "layout.toggle-graph",
-    description: "Expand topology (Atlas)",
+    description: "Chrono — the last 90 seconds (Atlas)",
     category: "Layout",
     when: () => (currentSettings?.layoutVariant ?? "bridge") === "atlas",
     match: keyMatch({ key: "g", meta: true, shift: false }),

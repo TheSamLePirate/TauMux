@@ -135,7 +135,8 @@ export class Chrono {
     root.className = "tau-chrono";
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-modal", "true");
-    root.setAttribute("aria-label", "Chrono — the last 90 seconds");
+    root.setAttribute("aria-labelledby", "tau-chrono-title");
+    root.setAttribute("aria-description", "The last 90 seconds, one lane per pane");
 
     const header = new ChronoHeader({
       onFilter: (filter) => {

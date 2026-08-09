@@ -213,7 +213,7 @@ export class AtlasInspector {
     if (rows.length > shown.length) {
       const more = document.createElement("div");
       more.className = "tau-atlas-inspector-more";
-      more.textContent = `+${rows.length - shown.length} more — press G to expand`;
+      more.textContent = `+${rows.length - shown.length} more`;
       this.rowsEl.appendChild(more);
     }
   }

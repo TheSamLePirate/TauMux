@@ -12118,10 +12118,6 @@ body[data-tau-variant="atlas"] .tau-atlas-graph {
   animation: tauPulse 1.4s ease-in-out infinite;
 }
 
-/* ── Expanded topology overlay (⌘G) ──
- * The same snapshot, layout and renderer at full-window scale with the
- * per-pane processes, ports and mirrored tasks revealed. Sharing the
- * pipeline is what stops the two modes from drifting apart. */
 /* Motion is state, and a user who has asked for less of it still needs
  * the state. Position transitions and the flow dash go; the arcs,
  * colours and dashed attention ring carry the same information without
@@ -15338,10 +15334,20 @@ button.spp-step:hover {
   display: flex;
 }
 
-/* Motion is state. The open fade is the one transition here, and a user
- * who has asked for less of it gets the field immediately instead. */
+/* Motion is state, and everything that moves in this view is data: the
+ * traces advance because bytes arrived, the lanes resize because a pane
+ * has more to show. None of that is ornament and none of it is removed
+ * here — taking it away would take the readings with it.
+ *
+ * What does go is the one piece of pure chrome: the open fade. A user
+ * who has asked for less motion gets the field immediately instead. */
 @media (prefers-reduced-motion: reduce) {
   .tau-chrono {
+    transition: none;
+    opacity: 1;
+  }
+
+  .tau-chrono-filter {
     transition: none;
   }
 }

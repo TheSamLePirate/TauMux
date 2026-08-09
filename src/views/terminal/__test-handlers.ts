@@ -228,6 +228,10 @@ export interface ChronoTestState {
    *  that came back 0 px wide is the failure the lease exists to stop. */
   minHomeWidth: number;
   headKinds: string[];
+  /** Lane id the field has selected, and whether the user has stepped
+   *  into its head — the pair that decides who owns Escape. */
+  selectedLane: string | null;
+  entered: boolean;
 }
 
 function readChronoState(): ChronoTestState {
@@ -252,6 +256,11 @@ function readChronoState(): ChronoTestState {
     headKinds: Array.from(document.querySelectorAll(".tau-chrono-head")).map(
       (el) => (el as HTMLElement).dataset["kind"] ?? "",
     ),
+    selectedLane:
+      document
+        .querySelector<HTMLElement>(".tau-chrono-gutter.is-selected")
+        ?.dataset["laneId"] ?? null,
+    entered: !!document.querySelector(".tau-chrono-head.is-live"),
   };
 }
 

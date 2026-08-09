@@ -327,6 +327,11 @@ export class ChronoView {
       if (this.parts.has(lane.id)) continue;
       const row = document.createElement("div");
       row.className = "tau-chrono-lane";
+      // The lane row is layout, not structure: `role="option"` has to be
+      // a child of the listbox, and this div sits between them. Marking
+      // it presentational flattens it out of the accessibility tree so
+      // the relationship the roles claim is the one that exists.
+      row.setAttribute("role", "presentation");
       const gutter = new ChronoGutterRow(lane.id, {
         onSelect: (id) => this.callbacks.onSelect(id),
         onActivate: (id) => this.callbacks.onActivate(id),
