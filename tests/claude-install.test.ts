@@ -15,6 +15,7 @@ import {
   computeStatus,
   isManagedHookCommand,
   planInstall,
+  wrappedStatuslineTarget,
   planUninstall,
   readSettingsFile,
   writeSettingsFile,
@@ -89,14 +90,44 @@ describe("planInstall", () => {
     ]);
   });
 
-  test("keeps a user-defined statusline instead of clobbering it", () => {
+  // Claude Code runs exactly ONE statusline command, and that slot is
+  // also τ-mux's only data plane. Keeping the user's command and
+  // skipping ours — the old behaviour — silently killed model, cost,
+  // context %, rate limits, session name, lines ± and PR state
+  // everywhere, with nothing but a note in `doctor` to say so.
+  test("wraps a user-defined statusline instead of skipping it", () => {
     const withUserLine: ClaudeSettings = {
       statusLine: { type: "command", command: "~/my-statusline.sh" },
     };
     const r = planInstall(withUserLine, ["statusline"], BRIDGE);
-    expect(r.added).toEqual([]);
-    expect(r.next.statusLine!.command).toBe("~/my-statusline.sh");
-    expect(r.unchanged.some((u) => u.includes("kept yours"))).toBe(true);
+    expect(r.next.statusLine!.command).toBe(
+      "ht claude statusline --exec '~/my-statusline.sh'",
+    );
+    expect(r.added.some((a) => a.includes("wrapping yours"))).toBe(true);
+    expect(wrappedStatuslineTarget(r.next.statusLine!.command)).toBe(
+      "~/my-statusline.sh",
+    );
+  });
+
+  test("never clobbers the user's command — it stays recoverable", () => {
+    const cmd = "/opt/bin/my line --with 'quotes' --and spaces";
+    const r = planInstall(
+      { statusLine: { type: "command", command: cmd } },
+      ["statusline"],
+      BRIDGE,
+    );
+    expect(wrappedStatuslineTarget(r.next.statusLine!.command)).toBe(cmd);
+  });
+
+  test("wrapping is idempotent — installing twice does not nest", () => {
+    const once = planInstall(
+      { statusLine: { type: "command", command: "~/mine.sh" } },
+      ["statusline"],
+      BRIDGE,
+    );
+    const twice = planInstall(once.next, ["statusline"], BRIDGE);
+    expect(twice.next.statusLine!.command).toBe(once.next.statusLine!.command);
+    expect(twice.unchanged).toContain("statusLine");
   });
 });
 

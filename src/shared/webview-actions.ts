@@ -73,6 +73,9 @@ export interface CloseSurfacePayload {
 }
 
 export interface RenameSurfacePayload {
+  /** Programmatic rename: loses to an explicit user rename and does not
+   *  claim the title. Used for Claude Code's live session name. */
+  soft?: boolean;
   surfaceId?: unknown;
   title?: unknown;
 }

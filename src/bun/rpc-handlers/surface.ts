@@ -252,7 +252,15 @@ export function registerSurface(deps: HandlerDeps): Record<string, Handler> {
       // accept the focused-surface default).
       const id = resolveSurfaceId(params, getState().focusedSurfaceId);
       const title = (params["name"] as string) ?? (params["title"] as string);
-      if (id && title) dispatch("renameSurface", { surfaceId: id, title });
+      if (id && title) {
+        dispatch("renameSurface", {
+          surfaceId: id,
+          title,
+          // `soft` renames are programmatic (Claude's live session name):
+          // they lose to a user rename and never claim the title.
+          ...(params["soft"] === true ? { soft: true } : {}),
+        });
+      }
       return "OK";
     },
 

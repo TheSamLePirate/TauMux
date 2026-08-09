@@ -42,6 +42,7 @@ import { createWorkspaceRecord } from "./workspace-factory";
 import { TerminalSearchBar } from "./terminal-search";
 import { buildSidebarWorkspaces } from "./sidebar-state";
 import { metadataNeedsRepaint } from "./metadata-diff";
+import { decideTitle } from "../../shared/title-precedence";
 import {
   elementCaptureRect,
   unionCaptureRect,
@@ -770,6 +771,9 @@ export class SurfaceManager {
       // back up on the next updateSidebar, and auto-clear if the pinned dir
       // doesn't match any of the (re-)spawned surfaces.
       if (ws.selectedCwd) this.selectedCwds.set(workspace.id, ws.selectedCwd);
+      // Re-assert only the titles the USER chose; everything else stays
+      // unlocked so the program can keep retitling its pane.
+      for (const sid of ws.surfaceTitlesLocked ?? []) this.lockSurfaceTitle(sid);
     }
 
     const targetIdx = Math.max(
@@ -1718,6 +1722,12 @@ export class SurfaceManager {
     );
   }
 
+  /** Re-apply a persisted user title lock after layout restore. */
+  lockSurfaceTitle(surfaceId: string): void {
+    const view = this.surfaces.get(surfaceId);
+    if (view) view.titleLockedByUser = true;
+  }
+
   /** `ht set-progress` bars, keyed by workspace. The Atlas graph draws
    *  them as an arc on the workspace marker; the sidebar owns its own
    *  rendering. */
@@ -1752,20 +1762,22 @@ export class SurfaceManager {
   renameSurface(
     surfaceId: string,
     title: string,
-    opts: { fromOsc?: boolean } = {},
+    opts: { fromOsc?: boolean; fromRestore?: boolean } = {},
   ): void {
     const view = this.surfaces.get(surfaceId);
     if (!view) return;
 
-    // OSC 0/2 rename requests lose to an explicit user rename. Without
-    // this guard, a user who renames a pane to "my build watcher" and
-    // then runs vim watches the title flip to "vim foo.txt" every time
-    // they open a file. User rename always wins.
-    if (opts.fromOsc && view.titleLockedByUser) return;
-
+    // Precedence rule lives in `shared/title-precedence.ts`.
+    const source = opts.fromOsc
+      ? "program"
+      : opts.fromRestore
+        ? "restore"
+        : "user";
+    const decision = decideTitle(source, !!view.titleLockedByUser);
+    if (!decision.apply) return;
     view.title = title;
     view.titleEl.textContent = title;
-    if (!opts.fromOsc) view.titleLockedByUser = true;
+    if (decision.lock) view.titleLockedByUser = true;
 
     const workspace = this.findWorkspaceBySurfaceId(surfaceId);
     if (workspace && this.activeWorkspace()?.id === workspace.id) {
@@ -1796,6 +1808,7 @@ export class SurfaceManager {
       focusedSurfaceId: string | null;
       layout: import("../../shared/types").PaneNode;
       surfaceTitles?: Record<string, string>;
+      surfaceTitlesLocked?: string[];
       surfaceCwds?: Record<string, string>;
       selectedCwd?: string;
       surfaceUrls?: Record<string, string>;
@@ -1808,6 +1821,7 @@ export class SurfaceManager {
       workspaces: this.workspaces.map((ws) => {
         const surfaceIds = ws.layout.getAllSurfaceIds();
         const surfaceTitles: Record<string, string> = {};
+        const surfaceTitlesLocked: string[] = [];
         const surfaceCwds: Record<string, string> = {};
         const surfaceUrls: Record<string, string> = {};
         const surfaceEditorFiles: Record<string, string> = {};
@@ -1817,6 +1831,7 @@ export class SurfaceManager {
           const view = this.surfaces.get(sid);
           const title = view?.title;
           if (title) surfaceTitles[sid] = title;
+          if (view?.titleLockedByUser) surfaceTitlesLocked.push(sid);
           if (view?.surfaceType === "browser") {
             surfaceTypes[sid] = "browser";
             if (view.browserView) {
@@ -1854,6 +1869,8 @@ export class SurfaceManager {
           layout: ws.layout.root,
           surfaceTitles:
             Object.keys(surfaceTitles).length > 0 ? surfaceTitles : undefined,
+          surfaceTitlesLocked:
+            surfaceTitlesLocked.length > 0 ? surfaceTitlesLocked : undefined,
           surfaceCwds:
             Object.keys(surfaceCwds).length > 0 ? surfaceCwds : undefined,
           selectedCwd: pinned,

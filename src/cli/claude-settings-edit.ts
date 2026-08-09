@@ -155,6 +155,41 @@ export function isManagedStatusline(command: string | undefined): boolean {
   return !!command && /\bht claude statusline\b/.test(command);
 }
 
+/** Wrap a user's own statusline command so τ-mux's data plane runs too.
+ *
+ *  Claude Code invokes exactly one statusline command, and that single
+ *  slot is also the ONLY channel carrying model, cost, context %, rate
+ *  limits, session name, lines ± and PR state. Keeping the user's
+ *  command and skipping ours — what install used to do — silently kills
+ *  every one of those numbers. Wrapping keeps both: `--exec` tees the
+ *  payload to τ-mux, then runs their command on the same JSON and
+ *  prints its output verbatim. */
+export function wrapStatuslineCommand(userCommand: string): string {
+  return `${STATUSLINE_COMMAND} --exec ${quoteForShell(userCommand)}`;
+}
+
+/** Is this command ours wrapping something else? */
+export function wrappedStatuslineTarget(
+  command: string | undefined,
+): string | null {
+  if (!command || !isManagedStatusline(command)) return null;
+  // A single-quoted token may contain the POSIX `'\''` escape, so a
+  // naive `'([^']*)'` stops at the first embedded quote and silently
+  // truncates the user's command — which would then be re-wrapped on the
+  // next install and lost for good.
+  const quoted = command.match(/--exec\s+'((?:[^']|'\\'')*)'/);
+  if (quoted?.[1] !== undefined) return quoted[1].replace(/'\\''/g, "'");
+  const other = command.match(/--exec\s+(?:"([^"]*)"|(\S+))/);
+  return other ? (other[1] ?? other[2] ?? null) : null;
+}
+
+function quoteForShell(value: string): string {
+  // Single-quote and escape embedded single quotes. The command lands in
+  // a JSON string that Claude Code hands to a shell, so it must survive
+  // both layers intact.
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 // ---------------------------------------------------------------------------
 // Pure planning
 // ---------------------------------------------------------------------------
@@ -212,9 +247,16 @@ export function planInstall(
     if (cur && isManagedStatusline(cur.command)) {
       unchanged.push("statusLine");
     } else if (cur && cur.command) {
-      // A user statusline exists — do not clobber silently; callers
-      // surface this as a skipped item.
-      unchanged.push(`statusLine (kept yours: ${cur.command})`);
+      // A user statusline exists. Wrap it rather than skipping: their
+      // line renders unchanged, and τ-mux's data plane comes alive.
+      // Skipping (the old behaviour) left every number in the Atlas
+      // graph permanently blank with only a note in `doctor`.
+      next.statusLine = {
+        ...cur,
+        type: "command",
+        command: wrapStatuslineCommand(cur.command),
+      };
+      added.push(`statusLine (wrapping yours: ${cur.command})`);
     } else {
       next.statusLine = { type: "command", command: STATUSLINE_COMMAND };
       added.push("statusLine");
@@ -272,7 +314,9 @@ export interface InstallStatus {
   wiredEvents: string[];
   missingEvents: string[];
   approvalsWired: boolean;
-  statusline: "ours" | "other" | "none";
+  statusline: "ours" | "wrapped" | "other" | "none";
+  /** When `statusline === "wrapped"`, the user command we run. */
+  statuslineWraps?: string;
 }
 
 export function computeStatus(
@@ -303,7 +347,9 @@ export function computeStatus(
     wiredEvents: allEvents.filter((e) => wired.has(e)),
     missingEvents: allEvents.filter((e) => !wired.has(e)),
     approvalsWired: wired.has("permission-request"),
-    statusline: isManagedStatusline(statuslineCmd)
+    statusline: wrappedStatuslineTarget(statuslineCmd)
+      ? "wrapped"
+      : isManagedStatusline(statuslineCmd)
       ? "ours"
       : statuslineCmd
         ? "other"

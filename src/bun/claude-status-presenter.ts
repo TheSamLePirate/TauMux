@@ -191,6 +191,8 @@ export class ClaudeStatusPresenter {
   /** Last rendered pill payloads per session — skip no-op dispatches
    *  (the registry emits on every event AND every statusline tee). */
   private lastRendered = new Map<string, string>();
+  /** Last pane title pushed per session, so a stable name is pushed once. */
+  private lastTitle = new Map<string, string>();
   private unsubscribe: (() => void) | null = null;
   private readonly now: () => number;
 
@@ -250,7 +252,11 @@ export class ClaudeStatusPresenter {
       }
     }
 
-    if (s.ended) this.lastRendered.delete(s.sessionId);
+    this.syncPaneTitle(s);
+    if (s.ended) {
+      this.lastRendered.delete(s.sessionId);
+      this.lastTitle.delete(s.sessionId);
+    }
 
     const notif = decideNotification(s, prev, this.now());
     if (notif) {
@@ -262,6 +268,34 @@ export class ClaudeStatusPresenter {
         ...(s.surfaceId ? { surface_id: s.surfaceId } : {}),
       });
     }
+  }
+
+  /**
+   * Name the pane after the session.
+   *
+   * Claude Code also sets the terminal title over OSC, but that title is
+   * the summary of the session's *first* prompt plus an animated spinner
+   * glyph — it does not track what the session is doing an hour later,
+   * which is why a pane can sit on "Commit changes" through a completely
+   * different piece of work. `session_name` from the statusline is
+   * Claude's own live title for the session and does update, so it is the
+   * better source whenever the data plane is feeding.
+   *
+   * Pushed as a `soft` rename: it loses to an explicit user rename and
+   * never claims the title, so `ht rename-surface "watcher"` still wins
+   * for good.
+   */
+  private syncPaneTitle(s: ClaudeSessionState): void {
+    if (!s.surfaceId || s.ended) return;
+    const name = s.sessionName.trim();
+    if (!name) return;
+    if (this.lastTitle.get(s.sessionId) === name) return;
+    this.lastTitle.set(s.sessionId, name);
+    this.call("surface.rename", {
+      surface_id: s.surfaceId,
+      title: name,
+      soft: true,
+    });
   }
 
   private call(method: string, params: Record<string, unknown>): void {

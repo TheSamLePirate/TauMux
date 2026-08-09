@@ -26,6 +26,9 @@ export interface WorkspaceSnapshot {
   layout: PaneNode;
   /** Persisted display title per surface id (pane rename). */
   surfaceTitles?: Record<string, string>;
+  /** Surface ids whose title the user chose by hand. Only these outrank
+   *  OSC 0/2 titles after a restart. */
+  surfaceTitlesLocked?: string[];
   /** Live cwd per surface; persisted so restarts reopen shells in place. */
   surfaceCwds?: Record<string, string>;
   /** User-pinned cwd that drives the sidebar package.json card. */

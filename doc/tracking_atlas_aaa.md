@@ -314,3 +314,77 @@ Colour in the river means *"this workspace produced output"*. That a
 workspace **exists** is already the graph's job to say. The resting lane
 is structure, so it is now neutral white at 0.07; the accent appears only
 where there is actually a waveform to colour.
+
+
+---
+
+# Round 3 — v0.18.3 · Claude Code integration, both directions
+
+Two symptoms reported against the live app: the statusline "not rightly
+passed to τ-mux", and a pane title that Claude Code sets once and never
+updates.
+
+## Statusline — the data plane was simply not wired
+
+`ht claude install` deliberately preserves a user's existing `statusLine`
+command. The consequence was never stated: Claude Code runs exactly ONE
+statusline command, and that single slot is also the only channel
+carrying model, cost, context %, rate limits, session name, lines ± and
+PR state. Preserving the user's command therefore left every one of those
+permanently blank — the sidebar pills, the Atlas inspector, the meters
+strip — with nothing but a passive note in `doctor` to say so.
+
+Fixed three ways:
+- `ht claude statusline --exec <cmd>` tees the payload to τ-mux, then runs
+  the user's command on the same JSON and prints its output verbatim.
+  Failure policy is strict: Claude Code renders whatever this prints, so a
+  broken or slow wrapper must never blank the line. The tee runs first,
+  the wrapped command has a 2 s timeout, and an empty result falls back to
+  τ-mux's own line.
+- `install` now **wraps** rather than skips.
+- `doctor` reports a dead feed as `FAIL` and names what is lost.
+
+Verified live: the session driving this work went from no data at all to
+`Opus 5 · 75% ctx · $140.42` within a second of wiring.
+
+## Pane title — my first diagnosis was wrong
+
+I initially concluded that layout restore locked every pane's title by
+replaying it through the manual-rename path. That was wrong, and a probe
+against the running app disproved it: restore reaches the webview through
+`surfaceCreated`, which never sets the lock.
+
+The real cause is upstream. Claude Code's OSC title is
+`<glyph> <first-prompt summary>`; the glyph animates during a turn but the
+summary is fixed early, so a pane sits on "Commit changes" through
+completely different work an hour later.
+
+τ-mux cannot change what Claude Code emits, but it has a better source it
+was ignoring — the statusline's `session_name`, which is Claude's own live
+title. So:
+- `parseAgentTitle` splits the OSC title into stable text plus its status
+  glyph, killing the spinner churn (a saved `layout.json` used to hold a
+  spinner frame) and turning the glyph into a liveness signal.
+- `ClaudeStatusPresenter` renames the pane from `session_name` as a
+  **soft** rename — loses to an explicit user rename, never claims the
+  title.
+- `decideTitle` states the three-way precedence in one tested place,
+  because getting it wrong is invisible in the moment and maddening later.
+
+## Also
+
+- `layout.json` now records `surfaceTitlesLocked`, so a genuine user
+  rename survives a restart while a program-set title stays overridable.
+  Restore previously had to guess, and guessed "user" for everything.
+- `remapPersistedLayout` extracted from `bun/index.ts` — every
+  per-surface map must be re-keyed in lockstep with the pane tree, and
+  that rule is now pure and tested.
+- Hooks completed at the user's request: `permission-request` (17/17) and
+  the `approvals` feature.
+
+## Still open
+
+The `ht atlas` verbs (`pin` / `note` / `meter` / `mark` — Claude driving
+the graph directly) were approved in the same round but are **not built
+yet**. They need a new RPC domain, CLI mapping, webview push, snapshot
+integration and EN+FR docs.

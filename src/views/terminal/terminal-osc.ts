@@ -33,6 +33,7 @@
  */
 
 import type { Terminal } from "@xterm/xterm";
+import { parseAgentTitle, type AgentTitle } from "../../shared/agent-title";
 import { parseOsc94Payload, type Osc94Update } from "./osc-progress";
 
 /** Longest title we accept from OSC 0/2. A runaway title from a program
@@ -55,8 +56,9 @@ export function setOscClockForTest(clock?: () => number): void {
 }
 
 export interface TerminalOscHooks {
-  /** OSC 0/2 — window title. Already trimmed and length-capped. */
-  onTitle: (title: string) => void;
+  /** OSC 0/2 — window title. Already trimmed, glyph-stripped and
+   *  length-capped; `parsed` carries the status glyph that was removed. */
+  onTitle: (title: string, parsed: AgentTitle) => void;
   /** OSC 9;4 — progress. Only called when `isProgressEnabled()` is true. */
   onProgress: (update: Osc94Update) => void;
   /** OSC 9 (iTerm2 dialect) — a notification request from the program.
@@ -93,8 +95,13 @@ export function installTerminalOscHandlers(
   // Without this the pane bar showed the login shell's basename forever.
   if (typeof term.onTitleChange === "function") {
     term.onTitleChange((title) => {
-      const clean = title.trim().slice(0, MAX_TITLE_CHARS);
-      if (clean) hooks.onTitle(clean);
+      // Agent CLIs prefix the title with an animated status glyph. Strip
+      // it: the spinner would rewrite the pane bar several times a
+      // second without the name ever changing, and the glyph itself is
+      // better used as a liveness signal than as a character in a label.
+      const parsed = parseAgentTitle(title);
+      const clean = parsed.text.slice(0, MAX_TITLE_CHARS);
+      if (clean) hooks.onTitle(clean, parsed);
     });
   }
 

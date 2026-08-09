@@ -88,15 +88,19 @@ export function featureEvents(feature: ClaudeBridgeFeature): string[] {
  */
 export function deriveFeatureStatuses(
   wiredEvents: readonly string[],
-  statusline: "ours" | "other" | "none",
+  statusline: "ours" | "wrapped" | "other" | "none",
 ): ClaudeBridgeFeatureStatus[] {
   const wired = new Set(wiredEvents);
   return ALL_FEATURES.map((feature) => {
     if (feature === "statusline") {
+      // `wrapped` is fully installed: the user's own line renders and
+      // the data plane is live. Only `other` (their command, unwrapped)
+      // and `none` leave τ-mux without model / cost / context / limits.
+      const live = statusline === "ours" || statusline === "wrapped";
       return {
         feature,
-        state: statusline === "ours" ? "installed" : "missing",
-        wired: statusline === "ours" ? 1 : 0,
+        state: live ? "installed" : "missing",
+        wired: live ? 1 : 0,
         total: 1,
       } satisfies ClaudeBridgeFeatureStatus;
     }

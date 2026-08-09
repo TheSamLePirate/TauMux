@@ -55,6 +55,7 @@ import { SurfaceMetadataPoller } from "./surface-metadata";
 import { WebServer } from "./web-server";
 import { createRpcHandler } from "./rpc-handler";
 import { createClaudeIntegration } from "./claude-integration";
+import { remapPersistedLayout } from "../shared/layout-remap";
 import { createClaudePaneHost } from "./claude-pane-host";
 import {
   buildApplicationMenu,
@@ -2868,6 +2869,7 @@ function saveLayout(): void {
         layout: ws.layout,
         focusedSurfaceId: ws.focusedSurfaceId,
         surfaceTitles: ws.surfaceTitles,
+        surfaceTitlesLocked: ws.surfaceTitlesLocked,
         surfaceCwds: ws.surfaceCwds,
         selectedCwd: ws.selectedCwd,
         surfaceUrls: ws.surfaceUrls,
@@ -3059,62 +3061,14 @@ function tryRestoreLayout(cols: number, rows: number): boolean {
     }
   }
 
-  // Remap the layout trees + remap the surfaceCwds keys (old → new ids) so
-  // the webview can rehydrate its selectedCwds against live surface ids, and
-  // carry the user's pinned selectedCwd through untouched (path-based, not
-  // surface-id based, so no remapping needed).
-  const remappedLayout: PersistedLayout = {
-    ...persisted,
-    workspaces: persisted.workspaces.map((ws) => {
-      const remappedTitles: Record<string, string> = {};
-      if (ws.surfaceTitles) {
-        for (const [oldId, title] of Object.entries(ws.surfaceTitles)) {
-          const newId = surfaceMapping[oldId];
-          if (newId) remappedTitles[newId] = title;
-        }
-      }
-      const remappedCwds: Record<string, string> = {};
-      if (ws.surfaceCwds) {
-        for (const [oldId, cwd] of Object.entries(ws.surfaceCwds)) {
-          const newId = surfaceMapping[oldId];
-          if (newId) remappedCwds[newId] = cwd;
-        }
-      }
-      const remappedEditorFiles: Record<string, string> = {};
-      if (ws.surfaceEditorFiles) {
-        for (const [oldId, path] of Object.entries(ws.surfaceEditorFiles)) {
-          const newId = surfaceMapping[oldId];
-          if (newId) remappedEditorFiles[newId] = path;
-        }
-      }
-      const remappedExtensionIds: Record<string, string> = {};
-      if (ws.surfaceExtensionIds) {
-        for (const [oldId, extId] of Object.entries(ws.surfaceExtensionIds)) {
-          const newId = surfaceMapping[oldId];
-          if (newId) remappedExtensionIds[newId] = extId;
-        }
-      }
-      return {
-        ...ws,
-        layout: remapPaneNode(ws.layout, surfaceMapping),
-        focusedSurfaceId: ws.focusedSurfaceId
-          ? (surfaceMapping[ws.focusedSurfaceId] ?? null)
-          : null,
-        surfaceTitles:
-          Object.keys(remappedTitles).length > 0 ? remappedTitles : undefined,
-        surfaceCwds:
-          Object.keys(remappedCwds).length > 0 ? remappedCwds : undefined,
-        surfaceEditorFiles:
-          Object.keys(remappedEditorFiles).length > 0
-            ? remappedEditorFiles
-            : undefined,
-        surfaceExtensionIds:
-          Object.keys(remappedExtensionIds).length > 0
-            ? remappedExtensionIds
-            : undefined,
-      };
-    }),
-  };
+  // Every id in layout.json refers to a PTY that no longer exists;
+  // re-key the whole workspace in lockstep with the pane tree. Pure, and
+  // tested in isolation — see `shared/layout-remap.ts`.
+  const remappedLayout = remapPersistedLayout(
+    persisted,
+    surfaceMapping,
+    remapPaneNode,
+  );
 
   // Small delay to let webview process surfaceCreated messages first
   setTimeout(() => {

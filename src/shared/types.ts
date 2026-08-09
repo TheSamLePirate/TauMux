@@ -54,6 +54,15 @@ export interface PersistedWorkspace {
   focusedSurfaceId: string | null;
   /** Persisted display title per surface id (pane rename). */
   surfaceTitles?: Record<string, string>;
+  /** Surface ids whose title the USER chose, and which therefore outrank
+   *  OSC 0/2 titles from the program in the pane.
+   *
+   *  Without this, restore had to guess — and it guessed "user" for
+   *  every pane, because it replayed the saved title through the manual
+   *  rename path. That locked every restored pane forever, so a pane
+   *  running Claude Code (which retitles itself constantly) froze on
+   *  whatever title happened to be saved. */
+  surfaceTitlesLocked?: string[];
   /** Live cwd of each surface at save-time, so restored shells can spawn at
    *  the same directory they were running in. Derived from the metadata
    *  poller; entries without a known cwd are omitted. */
@@ -654,6 +663,7 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
           layout: PaneNode;
           /** Persisted display title per surface id (pane rename). */
           surfaceTitles?: Record<string, string>;
+          surfaceTitlesLocked?: string[];
           /** Live cwd per surface so restart can reopen shells in place. */
           surfaceCwds?: Record<string, string>;
           /** User-pinned workspace cwd (drives package.json card). */

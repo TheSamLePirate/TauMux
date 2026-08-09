@@ -60,7 +60,9 @@ export interface ClaudeBridgeStatus {
   missingEvents: string[];
   /** `ours` = `ht claude statusline`; `other` = the user has their own
    *  and we will not clobber it; `none` = unset. */
-  statusline: "ours" | "other" | "none";
+  /** `wrapped` = ours running the user's own command via `--exec`, so
+   *  their line renders unchanged AND the data plane is live. */
+  statusline: "ours" | "wrapped" | "other" | "none";
 }
 
 export interface ShellIntegrationStatus {

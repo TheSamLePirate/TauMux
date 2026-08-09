@@ -90,7 +90,13 @@ const SOCKET_ACTION_HANDLERS: Record<string, Handler> = {
   renameSurface: (p, { surfaceManager }) => {
     const id = p["surfaceId"] as string;
     const title = p["title"] as string;
-    if (id && title) surfaceManager.renameSurface(id, title);
+    // `soft` marks a rename the *program* chose, not the user: it loses
+    // to an explicit user rename and never claims the title itself.
+    // Claude Code's session name arrives this way.
+    const soft = p["soft"] === true;
+    if (id && title) {
+      surfaceManager.renameSurface(id, title, soft ? { fromOsc: true } : {});
+    }
   },
   setWorkspaceColor: (p, { surfaceManager }) => {
     const id = p["workspaceId"] as string;

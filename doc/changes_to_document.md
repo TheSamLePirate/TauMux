@@ -334,3 +334,27 @@ the docs-coverage gate catches none of this — it all needs writing by hand
   CLI-facing reference): `requestIntegrationsStatus`, `claudeIntegrationInstall`,
   `claudeIntegrationUninstall`, `shellIntegrationSet`, `extensionSetEnabled`,
   and the `integrationsStatus` push. `extensionList` entries gained `enabled`.
+
+## Pending — Claude Code integration: data plane + pane titles (2026-08-09)
+
+No new socket RPC method or `AppSettings` field, but `ht claude statusline`
+gains a **flag**, which the CLI reference should carry.
+
+- **`ht claude statusline --exec <command>` (new).** Claude Code runs
+  exactly one statusline command, and that slot is also τ-mux's only data
+  plane. `--exec` tees the payload to τ-mux, then runs the user's own
+  command on the same JSON and prints its output verbatim. `--append`
+  additionally appends τ-mux's segment.
+- **`ht claude install` now wraps** an existing user statusline instead of
+  skipping it. Document the behaviour change: previously it printed
+  "kept yours" and left the data feed dead.
+- **`ht claude doctor`** now reports a dead data plane as `FAIL` with a
+  paragraph naming exactly what is lost.
+- **Pane titles.** Claude Code's OSC title is the *first prompt's* summary
+  plus an animated spinner glyph, so it never tracks later work. τ-mux now
+  (a) strips the glyph so the pane bar stops churning, and (b) renames the
+  pane from the statusline's live `session_name`. Document the precedence:
+  a user rename always wins; a program title applies only while unclaimed;
+  restore re-applies text without claiming.
+- **`layout.json` gained `surfaceTitlesLocked`** — which titles the user
+  chose. Worth a line wherever layout persistence is described.

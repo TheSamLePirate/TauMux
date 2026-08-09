@@ -463,29 +463,97 @@ function resolveGitBranch(cwd: string | undefined): string | undefined {
  *  print ALWAYS happens and always comes first — a missing / hung app
  *  must never degrade the line Claude Code shows. Exit code is always 0
  *  for the same reason. */
+/**
+ * `ht claude statusline [--exec CMD] [--append]`
+ *
+ * Claude Code runs exactly ONE statusline command and hands it the
+ * session JSON on stdin. That single slot is also τ-mux's only data
+ * plane — model, cost, context %, rate limits, session name, lines ±
+ * and PR state arrive nowhere else. A user who already has their own
+ * statusline therefore had to choose between their line and every
+ * number in the Atlas graph, and `ht claude install` silently picked
+ * their line, leaving the feed dead with only a note in `doctor`.
+ *
+ * `--exec` removes the choice: tee the payload to τ-mux, then run the
+ * user's command on the *same* JSON and pass its stdout through
+ * verbatim. `--append` additionally appends τ-mux's own segment.
+ *
+ * Failure policy: Claude Code renders whatever this prints, so a broken
+ * wrapper must never blank the user's statusline. Every failure path
+ * falls back to printing something, and the tee is best-effort.
+ */
 async function runClaudeStatusline(): Promise<void> {
+  const text = readStatuslineStdin();
   let raw: Record<string, unknown> = {};
   try {
-    const text = process.stdin.isTTY ? "" : readFileSync(0, "utf-8");
     if (text.trim()) raw = JSON.parse(text) as Record<string, unknown>;
   } catch {
     /* malformed stdin — render the fallback line, skip the tee */
   }
 
   const data = parseStatuslinePayload(raw, process.env["HT_SURFACE"]);
-  const gitBranch = resolveGitBranch(data?.cwd);
-  console.log(
-    renderStatusline(data ?? { sessionId: "" }, { gitBranch }),
-  );
+  const exec = typeof flags["exec"] === "string" ? flags["exec"] : undefined;
+  const append = flags["append"] === true;
 
-  if (data) {
-    try {
-      await runRpc("claude.statusline", { data }, 250);
-    } catch {
-      /* τ-mux not running / slow — the line already printed */
+  // Tee FIRST. The wrapped command is the slow, failure-prone part; the
+  // data plane must not depend on it succeeding.
+  const teed = data
+    ? runRpc("claude.statusline", { data }, 250).catch(() => undefined)
+    : Promise.resolve(undefined);
+
+  let line: string;
+  if (exec) {
+    const wrapped = runWrappedStatusline(exec, text);
+    const ours = renderStatusline(data ?? { sessionId: "" }, {
+      gitBranch: resolveGitBranch(data?.cwd),
+    });
+    if (wrapped === null) {
+      // The wrapped command failed or produced nothing. Print ours
+      // rather than leaving Claude Code with an empty statusline.
+      line = ours;
+    } else {
+      line = append && ours ? `${wrapped}  ${ours}` : wrapped;
     }
+  } else {
+    line = renderStatusline(data ?? { sessionId: "" }, {
+      gitBranch: resolveGitBranch(data?.cwd),
+    });
   }
+  console.log(line);
+
+  await teed;
   process.exit(0);
+}
+
+function readStatuslineStdin(): string {
+  try {
+    return process.stdin.isTTY ? "" : readFileSync(0, "utf-8");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Run the user's own statusline command with `payload` on its stdin and
+ * return its first line of output, or null when it produced nothing
+ * usable. Hard timeout: Claude Code re-runs the statusline constantly,
+ * and a wedged script would stall every render.
+ */
+function runWrappedStatusline(command: string, payload: string): string | null {
+  try {
+    const r = spawnSync(command, {
+      shell: true,
+      input: payload,
+      encoding: "utf-8",
+      timeout: 2_000,
+      env: process.env,
+      maxBuffer: 1024 * 1024,
+    });
+    const out = (r.stdout ?? "").replace(/\n+$/, "");
+    return out.trim() ? out : null;
+  } catch {
+    return null;
+  }
 }
 
 function formatClaudeSessions(result: unknown): void {
@@ -691,10 +759,30 @@ async function runClaudeDoctor(): Promise<void> {
     "statusline",
     st.statusline === "ours"
       ? "ht claude statusline"
-      : st.statusline === "other"
-        ? "user-defined (τ-mux data feed inactive)"
-        : "none — add it for cost/context/rate-limit pills",
+      : st.statusline === "wrapped"
+        ? `ht claude statusline --exec (wrapping ${st.statuslineWraps ?? "your command"})`
+        : st.statusline === "other"
+          ? "FAIL — user-defined, τ-mux data feed INACTIVE"
+          : "FAIL — none, τ-mux data feed INACTIVE",
   );
+  // The statusline is the ONLY channel carrying model / cost / context %
+  // / rate limits / session name / lines ± / PR state. When it is not
+  // feeding τ-mux, every one of those is blank everywhere — the sidebar
+  // pills, the Atlas inspector, the meters strip. That deserves more
+  // than a status word: say what is lost and how to fix it.
+  if (st.statusline === "other" || st.statusline === "none") {
+    console.log("");
+    console.log(
+      "  τ-mux receives NO model, cost, context %, rate limits, session name,",
+    );
+    console.log("  lines ± or PR state until the statusline feeds it.");
+    console.log(
+      st.statusline === "other"
+        ? "  Fix (keeps your line): ht claude install --features statusline"
+        : "  Fix: ht claude install --features statusline",
+    );
+    console.log("");
+  }
   const skill = join(homedir(), ".claude", "skills", "tau-mux", "SKILL.md");
   line("skill", existsSync(skill) ? skill : "not installed");
 
