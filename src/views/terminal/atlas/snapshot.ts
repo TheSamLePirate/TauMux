@@ -1122,13 +1122,6 @@ function rootSummary(totals: AtlasSnapshot["totals"]): string {
 function applyAnnotation(node: AtlasNode): void {
   const ann = annotationFor(node.id);
   if (!ann) return;
-  if (ann.pinned) {
-    node.badges.unshift({
-      text: "pinned",
-      tone: "accent",
-      title: "Pinned by an agent (ht atlas pin)",
-    });
-  }
   if (ann.note) {
     node.sublabel = ann.note;
     node.detail = [
@@ -1146,8 +1139,11 @@ function applyAnnotation(node: AtlasNode): void {
   if (headline) {
     node.meter = { value: clamp01(headline.value), tone: "accent" };
   }
-  for (const meter of ann.meters) {
-    node.badges.push({
+  // Annotation badges go to the FRONT. The cap keeps the first three, and
+  // a reading the agent chose to publish outranks one τ-mux derived on
+  // its own — otherwise `ht atlas meter` silently loses to a cost chip.
+  for (const meter of [...ann.meters].reverse()) {
+    node.badges.unshift({
       text: `${meter.key.slice(0, 4)} ${Math.round(meter.value * 100)}%`,
       tone: "accent",
       title: meter.label ?? `${meter.key} — ht atlas meter`,
@@ -1157,6 +1153,13 @@ function applyAnnotation(node: AtlasNode): void {
       value: `${Math.round(meter.value * 100)}%`,
       meter: clamp01(meter.value),
       tone: "accent",
+    });
+  }
+  if (ann.pinned) {
+    node.badges.unshift({
+      text: "pinned",
+      tone: "accent",
+      title: "Pinned by an agent (ht atlas pin)",
     });
   }
   node.badges.length = Math.min(node.badges.length, MAX_BADGES);

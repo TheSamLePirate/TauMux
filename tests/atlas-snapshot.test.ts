@@ -22,6 +22,10 @@ import {
   setClaudeSessions,
 } from "../src/views/terminal/claude-session-store";
 import { resetPlans, setPlans } from "../src/views/terminal/plan-store";
+import {
+  resetAtlasAnnotations,
+  setAtlasAnnotations,
+} from "../src/views/terminal/atlas-annotation-store";
 import { resetMetrics } from "../src/views/terminal/metrics-history";
 import { resetThroughput } from "../src/views/terminal/throughput-meter";
 import {
@@ -144,6 +148,7 @@ describe("buildAtlasSnapshot", () => {
     resetThroughput();
     resetPlans();
     resetMetrics();
+    resetAtlasAnnotations();
     calls.length = 0;
   });
 
@@ -738,5 +743,82 @@ describe("buildAtlasSnapshot", () => {
       }),
     ]);
     expect(build({ deep: true }).nodes.has("s2:task:t1")).toBe(true);
+  });
+
+  // ── ht atlas annotations ───────────────────────────────────────────
+
+  describe("agent-authored annotations", () => {
+    test("a note replaces the derived sublabel", () => {
+      setAtlasAnnotations({
+        annotations: [
+          {
+            target: "s1",
+            pinned: false,
+            note: "waiting on CI",
+            meters: [],
+            updatedAt: NOW,
+          },
+        ],
+        marks: [],
+      });
+      const pane = build({}).nodes.get("s1")!;
+      // What the agent says it is doing beats what we inferred from argv.
+      expect(pane.sublabel).toBe("waiting on CI");
+      expect(pane.detail[0]).toMatchObject({
+        label: "note",
+        value: "waiting on CI",
+      });
+    });
+
+    test("a published meter survives the badge cap", () => {
+      setClaudeSessions([
+        session({ surfaceId: "s2", contextUsedPct: 78, costUsd: 1.42 }),
+      ]);
+      setAtlasAnnotations({
+        annotations: [
+          {
+            target: "s2",
+            pinned: true,
+            meters: [{ key: "verify", value: 0.8 }],
+            updatedAt: NOW,
+          },
+        ],
+        marks: [],
+      });
+      const texts = build({}).nodes.get("s2")!.badges.map((b) => b.text);
+      // ctx and cost are derived; the agent chose to publish this one.
+      expect(texts).toContain("pinned");
+      expect(texts).toContain("veri 80%");
+    });
+
+    test("the first meter takes the node's arc", () => {
+      setAtlasAnnotations({
+        annotations: [
+          {
+            target: "s1",
+            pinned: false,
+            meters: [
+              { key: "build", value: 0.62 },
+              { key: "tests", value: 0.1 },
+            ],
+            updatedAt: NOW,
+          },
+        ],
+        marks: [],
+      });
+      expect(build({}).nodes.get("s1")!.meter?.value).toBeCloseTo(0.62, 5);
+    });
+
+    test("an unannotated node is untouched", () => {
+      setAtlasAnnotations({ annotations: [], marks: [] });
+      const snap = build({
+        host: host({ metadata: { s1: meta({ cwd: "/Users/dev/repo" }) } }),
+      });
+      const pane = snap.nodes.get("s1")!;
+      expect(pane.badges).toEqual([]);
+      // The derived sublabel stands when no agent has overridden it.
+      expect(pane.sublabel).toBe("dev/repo");
+      expect(pane.detail.some((r) => r.label === "note")).toBe(false);
+    });
   });
 });
