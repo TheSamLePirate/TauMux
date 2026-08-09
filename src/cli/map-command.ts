@@ -513,13 +513,24 @@ export function mapCommand(ctx: CliContext): RpcCall {
           params: { all: flags["all"] === "true" },
         };
       }
+      if (sub === "permission-decision") {
+        // Asked by the ht-bridge before it opens a permission modal.
+        // Answering in τ-mux keeps the burst guard and per-session pause
+        // in force; see `ClaudeAutoApprove.decidePermission`.
+        return {
+          method: "claude.permission_decision",
+          params: {
+            session_id: flags["session"] ?? positional[1] ?? "",
+          },
+        };
+      }
       if (sub === "statusline") {
         throw new Error(
           "ht claude statusline: handled by main() — should not reach mapCommand",
         );
       }
       throw new Error(
-        `Unknown claude subcommand: ${sub ?? "(none)"} (expected pane|approve|auto-approve|sessions|statusline|install|uninstall|doctor|event)`,
+        `Unknown claude subcommand: ${sub ?? "(none)"} (expected pane|approve|auto-approve|permission-decision|sessions|statusline|install|uninstall|doctor|event)`,
       );
     }
 
@@ -1086,6 +1097,63 @@ export function mapCommand(ctx: CliContext): RpcCall {
     // `ht plan complete`           — mark every step as done.
     // `ht plan clear`              — drop the plan entirely.
     // `ht plan list`               — print every active plan.
+    // `ht atlas …` — agent-authored annotations on the Atlas graph.
+    // Everything else the graph draws is observed; these verbs let the
+    // thing doing the work say what observation cannot reach. Target
+    // defaults to the caller's own pane (HT_SURFACE), so an agent inside
+    // a pane annotates its own node with no arguments.
+    case "atlas": {
+      const sub = positional[0] ?? "state";
+      const scope: Record<string, unknown> = {};
+      if (flags["surface"]) scope["surface"] = flags["surface"];
+      if (flags["workspace"]) scope["workspace"] = flags["workspace"];
+      switch (sub) {
+        case "pin":
+          return { method: "atlas.pin", params: scope };
+        case "unpin":
+          return { method: "atlas.unpin", params: scope };
+        case "note":
+          return {
+            method: "atlas.note",
+            params: {
+              ...scope,
+              text: positional.slice(1).join(" "),
+              ...(flags["tone"] ? { tone: flags["tone"] } : {}),
+            },
+          };
+        case "meter":
+          return {
+            method: "atlas.meter",
+            params: {
+              ...scope,
+              key: positional[1] ?? "",
+              value: positional[2] ?? "",
+              ...(flags["label"] ? { label: flags["label"] } : {}),
+            },
+          };
+        case "mark":
+          return {
+            method: "atlas.mark",
+            params: {
+              ...scope,
+              text: positional.slice(1).join(" "),
+              ...(flags["tone"] ? { tone: flags["tone"] } : {}),
+            },
+          };
+        case "clear":
+          return {
+            method: "atlas.clear",
+            params: { ...scope, ...(flags["all"] ? { all: true } : {}) },
+          };
+        case "state":
+          return { method: "atlas.state", params: {} };
+        default:
+          throw new Error(
+            `Unknown atlas subcommand: ${sub} (expected pin|unpin|note|meter|mark|clear|state)`,
+          );
+      }
+    }
+
     case "plan": {
       const sub = positional[0] || "list";
       // Workspace is resolved server-side: explicit `--workspace` /

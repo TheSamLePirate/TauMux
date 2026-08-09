@@ -2,6 +2,7 @@ import type { ElectrobunRPCSchema } from "electrobun/bun";
 import type { AppSettings } from "./settings";
 import type { IntegrationsStatus } from "./integrations";
 import type { ClaudeSessionState } from "./claude-types";
+import type { AtlasAnnotationSnapshot } from "../bun/atlas-annotations";
 
 // === Pane Layout Types (shared between webview, bun, and web clients) ===
 
@@ -1334,6 +1335,12 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
        *  Debounced on the bun side; the registry emits on every hook
        *  event *and* every statusline tee. */
       claudeSessions: { sessions: ClaudeSessionState[] };
+
+      /** Agent-authored annotations on the Atlas graph — pins, notes,
+       *  meters and river marks published via `ht atlas`. Everything else
+       *  the graph draws is observed; this is the one channel where the
+       *  thing doing the work says something observation cannot reach. */
+      atlasAnnotations: AtlasAnnotationSnapshot;
     };
   };
 }

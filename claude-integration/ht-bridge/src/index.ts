@@ -139,6 +139,25 @@ async function handlePermissionRequest(
   const ask = formatPermissionAsk(payload);
   if (!ask) return;
 
+  // Auto-approve makes the modal pure friction: the user has already
+  // said "accept these", so a dialog that will be accepted anyway just
+  // blocks the turn until they dismiss it. Ask τ-mux, which owns the
+  // burst guard and the per-session pause — deciding here would approve
+  // without a ceiling. Fails closed: any error opens the modal.
+  const sessionId =
+    typeof payload["session_id"] === "string" ? payload["session_id"] : "";
+  if (sessionId && (await shouldAutoAllow(cfg, sessionId))) {
+    process.stdout.write(buildPermissionDecision("allow"));
+    const resolved = buildBridgeEvent(
+      "permission-resolved",
+      payload,
+      process.env,
+      Date.now(),
+    );
+    if (resolved) sendEvent(cfg, resolved);
+    return;
+  }
+
   // Shadow event: pill → red "Approval needed" while the modal is up.
   const shadow = buildBridgeEvent(
     "permission-request",
@@ -162,6 +181,53 @@ async function handlePermissionRequest(
   }
   // No decision → no output; Claude Code's Notification hook will keep
   // the pill red when its own prompt appears.
+}
+
+/**
+ * Ask τ-mux whether auto-approve should answer this request outright.
+ *
+ * Short timeout and fail-closed on every error path: if τ-mux is slow,
+ * gone, or on an older build without the method, we open the modal —
+ * which is exactly the behaviour that existed before this shortcut.
+ */
+function shouldAutoAllow(cfg: Config, sessionId: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let out = "";
+    const finish = (allow: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(allow);
+    };
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(
+        cfg.htBinary,
+        ["claude", "permission-decision", "--session", sessionId],
+        { stdio: ["ignore", "pipe", "ignore"] },
+      );
+    } catch {
+      finish(false);
+      return;
+    }
+    const watchdog = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+      finish(false);
+    }, 1_500);
+    child.stdout?.on("data", (b: Buffer) => (out += b.toString()));
+    child.on("error", () => {
+      clearTimeout(watchdog);
+      finish(false);
+    });
+    child.on("close", () => {
+      clearTimeout(watchdog);
+      finish(/"decision"\s*:\s*"allow"/.test(out));
+    });
+  });
 }
 
 /** Blocking `ht ask choice` with a hard watchdog slightly past the ask

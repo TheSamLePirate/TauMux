@@ -20,6 +20,7 @@ import {
   isGap,
   type MetricSample,
 } from "../metrics-history";
+import { atlasMarks } from "../atlas-annotation-store";
 import type { AtlasRiverSeries } from "./types";
 
 const HEIGHT = 34;
@@ -30,6 +31,15 @@ const SATURATION = 262_144;
 /** Colour of a lane with nothing in it. Structure, not data — see the
  *  note where it is drawn. */
 const REST_LANE = "rgba(255, 255, 255, 0.07)";
+
+/** Milestone tick colours. Resolved literals rather than tokens because
+ *  canvas cannot read CSS variables; they mirror the TAU state palette. */
+function markColour(tone: string | undefined): string {
+  if (tone === "ok") return "rgba(140, 233, 154, 0.75)";
+  if (tone === "warn") return "rgba(255, 197, 107, 0.75)";
+  if (tone === "err") return "rgba(255, 138, 138, 0.8)";
+  return "rgba(111, 233, 255, 0.6)";
+}
 
 export interface AtlasRiverCallbacks {
   onPick(seriesId: string): void;
@@ -199,6 +209,23 @@ export class AtlasRiver {
         ctx.stroke();
       }
     });
+
+    // Agent-authored milestones (`ht atlas mark`) as ticks on the time
+    // axis. The river already carries "how loud"; these carry "and this
+    // is when the thing you cared about happened".
+    const now = Date.now();
+    const windowMs = span * 1000;
+    for (const mark of atlasMarks()) {
+      const age = now - mark.at;
+      if (age < 0 || age > windowMs) continue;
+      const x = Math.round(width * (1 - age / windowMs)) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, HEIGHT);
+      ctx.strokeStyle = markColour(mark.tone);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
 
     this.caption.textContent = anyActivity ? "" : "quiet";
     this.element.classList.toggle("is-quiet", !anyActivity);

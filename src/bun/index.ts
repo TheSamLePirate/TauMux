@@ -56,6 +56,7 @@ import { WebServer } from "./web-server";
 import { createRpcHandler } from "./rpc-handler";
 import { createClaudeIntegration } from "./claude-integration";
 import { remapPersistedLayout } from "../shared/layout-remap";
+import { AtlasAnnotationStore } from "./atlas-annotations";
 import { createClaudePaneHost } from "./claude-pane-host";
 import {
   buildApplicationMenu,
@@ -140,6 +141,19 @@ const health = new HealthRegistry();
 // `restorePlans` so the future plan panel can render without
 // polling.
 const plans = new PlanStore();
+
+// Agent-authored Atlas annotations (`ht atlas pin|note|meter|mark`).
+// Debounced to the webview on the same principle as plans: agents can
+// publish in a loop and nothing on screen resolves faster than a frame.
+const atlasAnnotations = new AtlasAnnotationStore();
+let atlasBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
+atlasAnnotations.subscribe(() => {
+  if (atlasBroadcastTimer) return;
+  atlasBroadcastTimer = setTimeout(() => {
+    atlasBroadcastTimer = null;
+    rpc.send("atlasAnnotations", atlasAnnotations.snapshot());
+  }, 80);
+});
 const planStatusBridge = createPlanStatusBridge({ plans });
 let plansBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
 plans.subscribe(() => {
@@ -2570,6 +2584,9 @@ const socketHandler = createRpcHandler(
     claudeOpenPane: (opts) => claudePaneHost.createClaudeWorkspaceSurface(opts),
     claudeApprove: (surfaceId) =>
       claudeIntegration.autoApprove.approveNow(surfaceId),
+    atlasAnnotations,
+    claudeDecidePermission: (sessionId) =>
+      claudeIntegration.autoApprove.decidePermission(sessionId),
     claudeAutoApprove: {
       get: () => ({
         enabled: settingsManager.get().claudeAutoApprove,

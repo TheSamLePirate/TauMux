@@ -115,6 +115,10 @@ export interface TauMuxApi {
     pane: M;
     /** Accept a Claude Code terminal permission prompt. `{ surface_id? }` */
     approve: M;
+    /** Ask whether auto-approve should answer a PermissionRequest
+     *  outright, instead of opening a modal that will be accepted
+     *  anyway. Policy lives in τ-mux so the burst guard still applies. */
+    permissionDecision: M;
     /** Read or flip auto-approve. `{ enabled?, delay_ms? }`; no params reads. */
     autoApprove: M;
     event: M;
@@ -270,6 +274,21 @@ export interface TauMuxApi {
     resume: M;
     fire: M;
     audit: M;
+    atlas: M;
+  };
+
+  /** Agent-authored annotations on the Atlas graph. Everything else the
+   *  graph draws is observed; these are what the thing doing the work
+   *  says about it. */
+  atlas: {
+    pin: M;
+    unpin: M;
+    note: M;
+    meter: M;
+    clearMeter: M;
+    mark: M;
+    clear: M;
+    state: M;
   };
 
   /** Built-in self-audits. */
@@ -450,6 +469,16 @@ const NAMESPACES: Record<string, [string, string][]> = {
     ["list", "list"],
     ["clear", "clear"],
   ],
+  atlas: [
+    ["pin", "pin"],
+    ["unpin", "unpin"],
+    ["note", "note"],
+    ["meter", "meter"],
+    ["clearMeter", "clear_meter"],
+    ["mark", "mark"],
+    ["clear", "clear"],
+    ["state", "state"],
+  ],
   audit: [
     ["list", "list"],
     ["run", "run"],
@@ -458,6 +487,7 @@ const NAMESPACES: Record<string, [string, string][]> = {
   claude: [
     ["pane", "pane"],
     ["approve", "approve"],
+    ["permissionDecision", "permission_decision"],
     ["autoApprove", "auto_approve"],
     ["event", "event"],
     ["statusline", "statusline"],

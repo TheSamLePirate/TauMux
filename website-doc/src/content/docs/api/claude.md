@@ -106,3 +106,23 @@ event plane's job.
 Live sessions, most-recently-active first. `all: true` includes
 recently-ended sessions (kept ~5 minutes for UI teardown). Sessions with
 no events for 24 h are pruned; the registry caps at 200 sessions.
+
+## `claude.permission_decision`
+
+Asked by the [ht-bridge](/integrations/claude-code/) before it opens a
+permission modal: should auto-approve answer this request outright?
+
+With auto-approve on, the modal is pure friction — the user has already said
+"accept these", and a dialog that will be accepted anyway just blocks the
+turn until they dismiss it.
+
+The decision lives in τ-mux rather than in the bridge because the rules that
+make auto-approve tolerable are stateful: the burst guard (8 approvals a
+minute, then the session pauses until the next turn) and the per-session
+pause. A bridge deciding for itself would approve without a ceiling. A call
+consumes a burst slot, so modal-routed approvals count alongside terminal
+ones.
+
+Fails closed. No session id, auto-approve off, the guard tripped, or a
+question addressed to the human all return `ask`, which is the behaviour
+that existed before the shortcut.

@@ -160,6 +160,54 @@ export class ClaudeAutoApprove {
   }
 
   /**
+   * Should a `PermissionRequest` be allowed without asking the human?
+   *
+   * The bridge routes tool-permission requests to a τ-mux modal. With
+   * auto-approve on, that modal is pure friction: the user has already
+   * said "accept these", and a dialog that will be accepted anyway just
+   * blocks the turn until they dismiss it.
+   *
+   * The decision has to live HERE rather than in the bridge, because the
+   * safety rules that make auto-approve tolerable — the burst guard and
+   * the per-session pause — are stateful and belong to this engine. A
+   * bridge that decided for itself would approve without a ceiling.
+   *
+   * Deliberately NOT gated on `canAutoApprove`: that predicate answers a
+   * different question (can Enter be typed into this pane's tty). A
+   * PermissionRequest is answered by the hook's stdout, so a native
+   * Claude pane or a session with no tty is still eligible here.
+   *
+   * Calling this consumes a burst slot (via `burst()`), so the ceiling
+   * counts modal-routed approvals alongside tty ones.
+   */
+  decidePermission(sessionId: string): {
+    decision: "allow" | "ask";
+    reason: string;
+  } {
+    if (!this.deps.isEnabled()) {
+      return { decision: "ask", reason: "auto-approve off" };
+    }
+    if (this.paused.has(sessionId)) {
+      return { decision: "ask", reason: "paused by burst guard" };
+    }
+    if (this.burst(sessionId)) {
+      this.paused.add(sessionId);
+      const s = this.registry?.get(sessionId);
+      if (s) this.notifyPaused(s);
+      return { decision: "ask", reason: "burst guard tripped" };
+    }
+    // A question addressed to the human is never auto-answered — the
+    // same rule `canAutoApprove` enforces for the tty path.
+    const session = this.registry?.get(sessionId);
+    if (session?.awaitingUserChoice) {
+      return { decision: "ask", reason: "question addressed to the user" };
+    }
+    // `burst()` already recorded this attempt, so the ceiling counts
+    // modal-routed approvals alongside tty ones.
+    return { decision: "allow", reason: "auto-approve on" };
+  }
+
+  /**
    * Explicit approve — the manual path. Answers `surfaceId` when given,
    * otherwise the longest-waiting tty approval. Returns what happened so
    * the CLI can report it.

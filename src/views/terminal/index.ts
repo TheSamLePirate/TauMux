@@ -37,6 +37,7 @@ import { createIntegrationsControl } from "./integrations-control";
 import { PlanPanel } from "./plan-panel";
 import { setClaudeSessions } from "./claude-session-store";
 import { setPlans as setAtlasPlans } from "./plan-store";
+import { setAtlasAnnotations } from "./atlas-annotation-store";
 import { AskUserState } from "./ask-user-state";
 import { installAskUserModal } from "./ask-user-modal";
 import { SurfaceDetailsPanel } from "./surface-details";
@@ -386,6 +387,10 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       // than the two sidebar pills — currently the Atlas graph.
       claudeSessions: (payload) => {
         setClaudeSessions(payload.sessions);
+      },
+      // `ht atlas pin|note|meter|mark` — the graph's write side.
+      atlasAnnotations: (payload) => {
+        setAtlasAnnotations(payload);
       },
       // Plan #09 commit B — auto-continue audit ring. We render the
       // last few entries inline under the plan cards so the user

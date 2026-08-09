@@ -382,9 +382,38 @@ title. So:
 - Hooks completed at the user's request: `permission-request` (17/17) and
   the `approvals` feature.
 
-## Still open
+## Round 3b — v0.19.0 · the graph's write side, and a modal that stopped nagging
 
-The `ht atlas` verbs (`pin` / `note` / `meter` / `mark` — Claude driving
-the graph directly) were approved in the same round but are **not built
-yet**. They need a new RPC domain, CLI mapping, webview push, snapshot
-integration and EN+FR docs.
+### `ht atlas` — four verbs
+
+Everything the graph drew was *observed*. These are the one channel where
+the thing doing the work says something observation cannot reach:
+
+| Verb | Says | Rendered as |
+|---|---|---|
+| `pin` | this node matters | `pinned` badge; the path down to it opens |
+| `note` | what it is actually blocked on | the node's sublabel — outranks the derived one |
+| `meter` | how far through a job | outer arc + badge |
+| `mark` | a milestone, timestamped | a tick on the activity river |
+
+Target defaults to `HT_SURFACE`, so an agent inside a pane annotates its
+own node with no arguments. In memory only, and deliberately so: a note
+about what a session was blocked on an hour ago is worse than no note,
+because it outlives its truth with no way to tell.
+
+Bounds are all "oldest out", never "refused": a fifth meter means the
+fifth meter, `1.4` means done, `62` means 62 %.
+
+### Auto-approve now skips the modal
+
+Wiring the `approvals` feature meant every tool permission opened a τ-mux
+modal — including for a user who had already turned auto-approve on, for
+whom the modal is pure friction: a dialog that will be accepted anyway,
+blocking the turn until it is dismissed.
+
+The bridge now asks `claude.permission_decision` first. The decision
+lives in τ-mux, not the bridge, because the rules that make auto-approve
+tolerable are stateful — the burst guard and the per-session pause. A
+bridge deciding for itself would approve without a ceiling. The call
+consumes a burst slot, so modal-routed approvals count alongside tty
+ones, and every unexpected path returns `ask`.

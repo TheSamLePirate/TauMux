@@ -105,3 +105,25 @@ Sessions actives, la plus récemment active en premier. `all: true`
 inclut les sessions terminées récemment (conservées ~5 minutes pour le
 démontage de l'UI). Les sessions sans événement depuis 24 h sont
 purgées ; le registre plafonne à 200 sessions.
+
+## `claude.permission_decision`
+
+Interrogée par le [ht-bridge](/fr/integrations/claude-code/) avant qu'il
+n'ouvre une fenêtre de permission : l'auto-approbation doit-elle répondre
+directement ?
+
+Avec l'auto-approbation activée, la fenêtre est une pure friction —
+l'utilisateur a déjà dit « accepte ces demandes », et une boîte de dialogue
+qui sera acceptée de toute façon ne fait que bloquer le tour jusqu'à ce qu'il
+la referme.
+
+La décision vit dans τ-mux plutôt que dans le pont, car les règles qui
+rendent l'auto-approbation acceptable sont à état : le garde-fou anti-rafale
+(8 approbations par minute, puis la session se met en pause jusqu'au tour
+suivant) et la pause par session. Un pont décidant seul approuverait sans
+plafond. Un appel consomme un jeton de rafale : les approbations passées par
+la fenêtre comptent donc au même titre que celles du terminal.
+
+Échoue en position fermée. Pas d'identifiant de session, auto-approbation
+désactivée, garde-fou déclenché, ou question adressée à l'humain renvoient
+tous `ask`, c'est-à-dire le comportement d'avant ce raccourci.

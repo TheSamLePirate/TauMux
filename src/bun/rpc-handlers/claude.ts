@@ -42,6 +42,13 @@ export function registerClaude(
       delayMs: number;
     };
   },
+  /** Policy for a `PermissionRequest` the bridge is about to route to a
+   *  modal. Lives in the auto-approve engine because the burst guard and
+   *  the per-session pause are its state. */
+  decidePermission?: (sessionId: string) => {
+    decision: "allow" | "ask";
+    reason: string;
+  },
 ): Record<string, Handler> {
   return {
     /** Read or flip permission auto-approve. No params = read. Applies
@@ -69,6 +76,30 @@ export function registerClaude(
       if (!approve) return { ok: false, reason: "auto-approve not wired" };
       const sid = params["surface_id"] ?? params["surface"];
       return approve(typeof sid === "string" ? sid : undefined);
+    },
+
+    /**
+     * Should this permission request skip the τ-mux modal?
+     *
+     * Called by the bridge before it opens one. With auto-approve on the
+     * modal is pure friction — the user has already said "accept these",
+     * and a dialog that will be accepted anyway just blocks the turn
+     * until they dismiss it.
+     *
+     * Answering here rather than in the bridge keeps the burst guard and
+     * the per-session pause in force: a bridge deciding for itself would
+     * approve without a ceiling. Fails closed — anything unexpected
+     * returns `ask`, which is the behaviour that existed before.
+     */
+    "claude.permission_decision": (params) => {
+      const sessionId = params["session_id"] ?? params["sessionId"];
+      if (typeof sessionId !== "string" || !sessionId) {
+        return { decision: "ask", reason: "no session id" };
+      }
+      if (!decidePermission) {
+        return { decision: "ask", reason: "auto-approve not wired" };
+      }
+      return decidePermission(sessionId);
     },
 
     /** Open a native Claude Code pane (M3/WS5) from the CLI or a script —

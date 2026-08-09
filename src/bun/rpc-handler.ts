@@ -8,6 +8,8 @@ import type { SurfaceMetadataPoller } from "./surface-metadata";
 
 import type { AppState, Handler, HandlerDeps } from "./rpc-handlers/types";
 import { METHOD_SCHEMAS, validateParams } from "./rpc-handlers/shared";
+import { registerAtlas } from "./rpc-handlers/atlas";
+import type { AtlasAnnotationStore } from "./atlas-annotations";
 import { type AuditRegistryHandle, registerAudit } from "./rpc-handlers/audit";
 import { registerPlan } from "./rpc-handlers/plan";
 import {
@@ -118,6 +120,14 @@ export interface RpcHandlerOptions {
       enabled: boolean;
       delayMs: number;
     };
+  };
+  /** Policy for a PermissionRequest the bridge is about to route to a
+   *  modal — see `ClaudeAutoApprove.decidePermission`. */
+  /** Agent-authored annotations on the Atlas graph (`atlas.*`). */
+  atlasAnnotations?: AtlasAnnotationStore;
+  claudeDecidePermission?: (sessionId: string) => {
+    decision: "allow" | "ask";
+    reason: string;
   };
   claudeOpenPane?: (opts: {
     cwd?: string;
@@ -230,7 +240,11 @@ export function createRpcHandler(
           options.claudeOpenPane,
           options.claudeApprove,
           options.claudeAutoApprove,
+          options.claudeDecidePermission,
         )
+      : {},
+    options.atlasAnnotations
+      ? registerAtlas(deps, options.atlasAnnotations)
       : {},
     options.audits ? registerAudit(deps, options.audits) : {},
     options.plans ? registerPlan(deps, options.plans) : {},

@@ -30,6 +30,10 @@ import { AtlasHeader, buildLegend } from "./header";
 import { AtlasRiver } from "./river";
 import { pruneMetrics } from "../metrics-history";
 import { subscribePlans } from "../plan-store";
+import {
+  pinnedTargets,
+  subscribeAtlasAnnotations,
+} from "../atlas-annotation-store";
 import { applyFilter, type AtlasFilter } from "./filter";
 import { AtlasInspector } from "./inspector";
 import { COLUMN_LAYOUT, EXPANDED_LAYOUT, layoutAtlas } from "./layout";
@@ -170,6 +174,7 @@ export class AtlasPanel {
       htEvents.on("ht-surface-metadata", wake),
       htEvents.on("ht-statuses-changed", wake),
       subscribePlans(() => wake()),
+      subscribeAtlasAnnotations(() => wake()),
       htEvents.on("ht-surface-focused", (payload) => {
         if (payload?.surfaceId) {
           variantContext.setFocusedSurfaceId(payload.surfaceId);
@@ -304,6 +309,17 @@ export class AtlasPanel {
         return child?.kind === "plan-step" || child?.kind === "subagent";
       });
       if (carriesWork) this.expanded.add(node.id);
+    }
+    // A pinned node is one an agent asked to keep visible, so open the
+    // path down to it — a pin that leaves the node folded away inside a
+    // collapsed workspace has done nothing.
+    for (const id of pinnedTargets()) {
+      this.expanded.add(id);
+      let cursor = snapshot.nodes.get(id)?.parent;
+      while (cursor) {
+        this.expanded.add(cursor);
+        cursor = snapshot.nodes.get(cursor)?.parent ?? null;
+      }
     }
   }
 

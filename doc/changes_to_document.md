@@ -358,3 +358,9 @@ gains a **flag**, which the CLI reference should carry.
   restore re-applies text without claiming.
 - **`layout.json` gained `surfaceTitlesLocked`** — which titles the user
   chose. Worth a line wherever layout persistence is described.
+
+## Done — `ht atlas` + permission-decision (2026-08-09)
+
+Documented in the same change (`tests/docs-coverage.test.ts` gates both):
+new `cli/atlas.md` + `api/atlas.md` pages EN + FR, and
+`claude.permission_decision` added to the claude API pages.

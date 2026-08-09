@@ -32,6 +32,7 @@ import {
 import { flowLevel, formatThroughput, throughputOf } from "../throughput-meter";
 import { recordMetrics } from "../metrics-history";
 import { plansForWorkspace } from "../plan-store";
+import { annotationFor } from "../atlas-annotation-store";
 import {
   formatCost,
   formatCpu,
@@ -399,6 +400,7 @@ export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
         : []),
     ];
     if (wsAgents > 0) wsNode.tags = ["agent"];
+    applyAnnotation(wsNode);
   });
 
   // Sessions with no pane — Claude Code running in a shell τ-mux never
@@ -582,6 +584,7 @@ function buildSurfaceNode(input: SurfaceNodeInput): AtlasNode {
   if (node.attention) tags.push("attention");
   node.tags = tags;
   node.historyKey = input.sid;
+  applyAnnotation(node);
   return node;
 }
 
@@ -1105,6 +1108,58 @@ function rootSummary(totals: AtlasSnapshot["totals"]): string {
   ];
   if (totals.agents > 0) parts.push(`${totals.agents} agent`);
   return parts.join(" · ");
+}
+
+/**
+ * Fold an agent's own annotations onto a node.
+ *
+ * `ht atlas` is the one channel where the thing doing the work says
+ * something observation cannot reach, so its marks outrank derived ones:
+ * a note becomes the sublabel (what the agent says it is doing beats
+ * what we inferred from argv), and a published meter takes the outer arc
+ * from build progress.
+ */
+function applyAnnotation(node: AtlasNode): void {
+  const ann = annotationFor(node.id);
+  if (!ann) return;
+  if (ann.pinned) {
+    node.badges.unshift({
+      text: "pinned",
+      tone: "accent",
+      title: "Pinned by an agent (ht atlas pin)",
+    });
+  }
+  if (ann.note) {
+    node.sublabel = ann.note;
+    node.detail = [
+      {
+        label: "note",
+        value: ann.note,
+        ...(ann.noteTone && ann.noteTone !== "info"
+          ? { tone: ann.noteTone === "err" ? ("err" as const) : ("warn" as const) }
+          : {}),
+      },
+      ...node.detail,
+    ];
+  }
+  const headline = ann.meters[0];
+  if (headline) {
+    node.meter = { value: clamp01(headline.value), tone: "accent" };
+  }
+  for (const meter of ann.meters) {
+    node.badges.push({
+      text: `${meter.key.slice(0, 4)} ${Math.round(meter.value * 100)}%`,
+      tone: "accent",
+      title: meter.label ?? `${meter.key} — ht atlas meter`,
+    });
+    node.detail.push({
+      label: meter.key,
+      value: `${Math.round(meter.value * 100)}%`,
+      meter: clamp01(meter.value),
+      tone: "accent",
+    });
+  }
+  node.badges.length = Math.min(node.badges.length, MAX_BADGES);
 }
 
 // ── ht plan → topology ───────────────────────────────────────────────

@@ -1538,8 +1538,20 @@ Notifications:
   list-notifications                    List notifications
   clear-notifications                   Clear all notifications
 
+Atlas graph (agent-authored annotations — see /cli/atlas/):
+  atlas pin | unpin                 Keep a node visible in the graph
+  atlas note <text> [--tone T]      One line of context on a node
+  atlas meter <key> <0..1|0..100>   A named progress reading
+                                    [--label L]
+  atlas mark <text> [--tone T]      Timestamped milestone on the river
+  atlas clear [--all]               Drop annotations
+  atlas state                       Read back what is annotated
+                                    Target: --surface S | --workspace W,
+                                    else HT_SURFACE, else the focused pane.
+
 Claude Code (see claude-integration/README.md):
-  claude statusline                     Statusline command for Claude Code —
+  claude statusline [--exec CMD] [--append]
+                                        Statusline command for Claude Code —
                                         reads its JSON on stdin, prints the
                                         τ-mux status line, tees cost/context/
                                         rate-limit data into the sidebar.
