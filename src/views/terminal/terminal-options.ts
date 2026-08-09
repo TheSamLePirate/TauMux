@@ -18,6 +18,42 @@ export interface PaneTerminalOptionsInput {
 export const PANE_FONT_FAMILY =
   "'JetBrainsMono Nerd Font Mono', 'JetBrains Mono', 'Berkeley Mono', 'SF Mono', 'Menlo', monospace";
 
+/**
+ * Palette a pane is *born* with, before `applySettings` swaps in the
+ * user's chosen preset. Transparent background so the pane's own
+ * `--bg-terminal` shows through; everything else is the neutral set the
+ * default theme ships.
+ *
+ * Lives beside the option builder rather than in `surface-manager.ts`
+ * because it is the other half of "how a terminal is constructed", and
+ * the manager is under a module-size ratchet that this literal was
+ * quietly spending.
+ */
+export const DEFAULT_PANE_THEME: ITerminalOptions["theme"] = {
+  background: "rgba(10, 10, 10, 0)",
+  foreground: "#f5f7fb",
+  cursor: "#eab308",
+  cursorAccent: "#0a0a0a",
+  selectionBackground: "rgba(234, 179, 8, 0.2)",
+  selectionForeground: "#f5f7fb",
+  black: "#0a0a0a",
+  red: "#f87171",
+  green: "#4ade80",
+  yellow: "#f59e0b",
+  blue: "#a1a1aa",
+  magenta: "#c4c4cf",
+  cyan: "#d7dae1",
+  white: "#d7dce7",
+  brightBlack: "#5c6270",
+  brightRed: "#fca5a5",
+  brightGreen: "#86efac",
+  brightYellow: "#fbbf24",
+  brightBlue: "#c7cad2",
+  brightMagenta: "#d7dae1",
+  brightCyan: "#e5e7eb",
+  brightWhite: "#f5f7fb",
+};
+
 export function buildPaneTerminalOptions(
   input: PaneTerminalOptionsInput,
 ): ITerminalOptions {

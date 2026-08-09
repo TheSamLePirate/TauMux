@@ -55,7 +55,10 @@ import {
   hexToRgb,
 } from "../../shared/settings";
 import { installKeyOverrides } from "./terminal-input";
-import { buildPaneTerminalOptions } from "./terminal-options";
+import {
+  buildPaneTerminalOptions,
+  DEFAULT_PANE_THEME,
+} from "./terminal-options";
 import { attachSidebarResize } from "../../shared/sidebar-resize";
 import { focusXtermPreservingScroll } from "../../shared/xterm-focus";
 import { resizePreservingScroll } from "../../shared/xterm-fit";
@@ -109,36 +112,12 @@ import {
   renderSurfaceChips,
   type PaneChipsDeps,
 } from "../../shared/pane-chips";
+import { LEASE_FLAG } from "./chrono/screen-lease";
 
 const NATIVE_CHIP_DEPS: PaneChipsDeps = {
   onPortClick: (port) => {
     htEvents.emit("ht-open-external", { url: `http://localhost:${port}` });
   },
-};
-
-const defaultGlassTheme = {
-  background: "rgba(10, 10, 10, 0)",
-  foreground: "#f5f7fb",
-  cursor: "#eab308",
-  cursorAccent: "#0a0a0a",
-  selectionBackground: "rgba(234, 179, 8, 0.2)",
-  selectionForeground: "#f5f7fb",
-  black: "#0a0a0a",
-  red: "#f87171",
-  green: "#4ade80",
-  yellow: "#f59e0b",
-  blue: "#a1a1aa",
-  magenta: "#c4c4cf",
-  cyan: "#d7dae1",
-  white: "#d7dce7",
-  brightBlack: "#5c6270",
-  brightRed: "#fca5a5",
-  brightGreen: "#86efac",
-  brightYellow: "#fbbf24",
-  brightBlue: "#c7cad2",
-  brightMagenta: "#d7dae1",
-  brightCyan: "#e5e7eb",
-  brightWhite: "#f5f7fb",
 };
 
 export interface SurfaceView {
@@ -773,7 +752,8 @@ export class SurfaceManager {
       if (ws.selectedCwd) this.selectedCwds.set(workspace.id, ws.selectedCwd);
       // Re-assert only the titles the USER chose; everything else stays
       // unlocked so the program can keep retitling its pane.
-      for (const sid of ws.surfaceTitlesLocked ?? []) this.lockSurfaceTitle(sid);
+      for (const sid of ws.surfaceTitlesLocked ?? [])
+        this.lockSurfaceTitle(sid);
     }
 
     const targetIdx = Math.max(
@@ -1151,7 +1131,9 @@ export class SurfaceManager {
     // Repaint gate — see `metadata-diff.ts` for why an idle pane must
     // produce nothing at all. Consumers: the sidebar cards, and any view
     // driven by live telemetry (the Atlas graph listens for the event).
-    if (metadataNeedsRepaint(prev, metadata, surfaceId === this.focusedSurfaceId)) {
+    if (
+      metadataNeedsRepaint(prev, metadata, surfaceId === this.focusedSurfaceId)
+    ) {
       this.updateSidebar();
       htEvents.emit("ht-surface-metadata", { surfaceId });
     }
@@ -2401,7 +2383,7 @@ export class SurfaceManager {
 
     const term = new Terminal(
       buildPaneTerminalOptions({
-        theme: defaultGlassTheme,
+        theme: DEFAULT_PANE_THEME,
         fontSize: this.fontSize,
         scrollback: this.scrollbackLines,
       }),
@@ -2780,6 +2762,10 @@ export class SurfaceManager {
     for (const [surfaceId, rect] of rects) {
       const view = this.surfaces.get(surfaceId);
       if (!view) continue;
+      // CHRONO (⌘G) borrows live containers into its lanes and owns
+      // their geometry until it hands them back — see
+      // chrono/screen-lease.ts, which restores this rect verbatim.
+      if (view.container.dataset[LEASE_FLAG]) continue;
 
       const s = view.container.style;
       const sig = `${rect.x},${rect.y},${rect.w},${rect.h}`;
