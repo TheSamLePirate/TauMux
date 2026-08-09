@@ -27,7 +27,7 @@ import type { SurfaceKind } from "../../../shared/types";
 import { toneVar } from "../atlas/view";
 import { ChronoGutterRow, buildEmptyState } from "./gutter";
 import { ChronoHead } from "./head";
-import type { ChronoGrid } from "./grid";
+import { fitScale, type ChronoGrid } from "./grid";
 import { distributeLanes, type ChronoLane, type LaneBox } from "./lanes";
 import { ScreenLeases } from "./screen-lease";
 
@@ -283,29 +283,29 @@ export class ChronoView {
    */
   measureDemand(lanes: readonly ChronoLane[]): Map<string, number> {
     const demand = new Map<string, number>();
-    const cell = this.measureCellHeight();
-    if (cell <= 0) return demand;
     for (const lane of lanes) {
       if (lane.head !== "screen") continue;
+      const parts = this.parts.get(lane.id);
       const grid = this.host.getSurfaceGrid(lane.id);
-      if (!grid) continue;
+      if (!parts || !grid) continue;
+      const screen =
+        parts.head.slot.querySelector<HTMLElement>(".xterm-screen");
+      const box = parts.head.slot.querySelector<HTMLElement>(
+        ".surface-terminal",
+      );
+      if (!screen || !box || grid.rows <= 0) continue;
+      // Pre-transform measurements, then the lane's own fit scale: a
+      // terminal shrunk to fit needs proportionally less height to show
+      // the same rows, and asking for the unscaled height would leave a
+      // band of empty frame under every wide pane.
+      const cell = (screen.offsetHeight / grid.rows) *
+        fitScale(screen.offsetWidth, box.clientWidth);
+      if (cell <= 0) continue;
       // One row of headroom above the content, plus the slot's own inset,
       // so the top line never sits flush against the frame.
       demand.set(lane.id, (grid.contentRows + 1) * cell + HEAD_PADDING);
     }
     return demand;
-  }
-
-  private measureCellHeight(): number {
-    for (const [id, parts] of this.parts) {
-      const screen =
-        parts.head.slot.querySelector<HTMLElement>(".xterm-screen");
-      if (!screen) continue;
-      const rows = this.host.getSurfaceGrid(id)?.rows ?? 0;
-      const height = screen.getBoundingClientRect().height;
-      if (rows > 0 && height > 0) return height / rows;
-    }
-    return 0;
   }
 
   // ── reconciliation ─────────────────────────────────────────────────

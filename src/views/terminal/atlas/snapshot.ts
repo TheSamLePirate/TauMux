@@ -244,7 +244,13 @@ export function buildAtlasSnapshot(input: AtlasBuildInput): AtlasSnapshot {
       // Sample this pane into the history ring so the inspector's
       // sparkline and the activity river have a series to draw. The draw
       // pass is already change-gated, so an idle pane records nothing.
-      recordMetrics(sid, cpu, throughputOf(sid), now());
+      recordMetrics(
+        sid,
+        cpu,
+        throughputOf(sid),
+        now(),
+        session?.contextUsedPct ?? undefined,
+      );
 
       // A live subagent is a real branch of the work — give it a node
       // rather than burying it in a comma-joined inspector row.

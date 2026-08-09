@@ -81,19 +81,50 @@ export function readTerminalGrid(
   return { rows, contentRows: 1, alt };
 }
 
+/**
+ * Below this, shrinking to fit stops helping: a 220-column terminal in a
+ * 400 px lane is unreadable whether it is scaled or clipped, and scaling
+ * it merely turns "some characters missing" into "all characters
+ * illegible". Past the floor the lane clips, as it used to.
+ */
+export const MIN_FIT_SCALE = 0.6;
+
+/**
+ * Uniform scale that fits a terminal's full width into the lane.
+ *
+ * The pane was fitted to *its* box, not to the lane's, so a wide pane in
+ * a narrower head loses characters off the right — which is exactly the
+ * half of a log line that says what went wrong. Scaling is the only fix
+ * available: the alternative is `pty.resize`, and resizing a user's shell
+ * because they glanced at a summary view would be a far worse trade.
+ *
+ * Never scales *up*: a narrow terminal in a wide head stays at 1:1 and
+ * therefore stays pixel-exact, which is the common case.
+ */
+export function fitScale(naturalWidth: number, boxWidth: number): number {
+  if (naturalWidth <= 0 || boxWidth <= 0) return 1;
+  return Math.max(MIN_FIT_SCALE, Math.min(1, boxWidth / naturalWidth));
+}
+
 export interface AnchorInput {
   grid: ChronoGrid;
   /** Height of the lane's clipping box, in CSS px. */
   laneHeight: number;
-  /** Height of the terminal's own `.xterm-screen`, in CSS px. This is
-   *  `rows × cellHeight` for both renderers, which is why it is the one
-   *  measurement taken from the DOM. */
+  /** Height of the terminal's own `.xterm-screen`, in CSS px, *before*
+   *  any transform. This is `rows × cellHeight` for both renderers,
+   *  which is why it is the one measurement taken from the DOM. */
   screenHeight: number;
+  /** Fit scale applied to the terminal, from `fitScale`. */
+  scale?: number;
 }
 
 /**
  * `translateY`, in CSS px, that puts the anchor row on the lane's bottom
  * edge. Positive pushes the terminal down, negative scrolls it up.
+ *
+ * Applied as `translateY(offset) scale(s)` with the origin at the top
+ * left, so the translate is in final on-screen pixels and the content
+ * height it is measured against has to be the *scaled* one.
  *
  * Returns 0 for degenerate input rather than a value that would move a
  * pane off screen — a lane that has not been measured yet must show the
@@ -101,8 +132,9 @@ export interface AnchorInput {
  */
 export function anchorOffset(input: AnchorInput): number {
   const { grid, laneHeight, screenHeight } = input;
+  const scale = input.scale ?? 1;
   if (laneHeight <= 0 || screenHeight <= 0 || grid.rows <= 0) return 0;
-  const cellHeight = screenHeight / grid.rows;
+  const cellHeight = (screenHeight / grid.rows) * scale;
   const contentHeight = grid.contentRows * cellHeight;
   // Round to whole pixels: a fractional translate puts the character
   // grid on a half-pixel and every glyph in the lane blurs.

@@ -13,6 +13,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   anchorOffset,
+  fitScale,
+  MIN_FIT_SCALE,
   readTerminalGrid,
   type TerminalGridSource,
 } from "../src/views/terminal/chrono/grid";
@@ -171,6 +173,21 @@ describe("anchorOffset", () => {
     expect(Number.isInteger(offset)).toBe(true);
   });
 
+  test("accounts for the fit scale", () => {
+    // A terminal shrunk to fit the lane's width is proportionally
+    // shorter, so the same rows need less room and the anchor has to
+    // measure the scaled height — otherwise every wide pane sits a band
+    // of empty frame above its own last line.
+    expect(
+      anchorOffset({
+        grid: grid(24, 3),
+        laneHeight: 120,
+        screenHeight: 240,
+        scale: 0.5,
+      }),
+    ).toBe(105);
+  });
+
   test("degrades to no movement on unmeasured geometry", () => {
     // A lane that has not been laid out yet must show the terminal where
     // it already is, not somewhere invented.
@@ -180,6 +197,33 @@ describe("anchorOffset", () => {
     expect(
       anchorOffset({ grid: grid(24, 3), laneHeight: 120, screenHeight: 0 }),
     ).toBe(0);
+  });
+});
+
+describe("fitScale", () => {
+  test("shrinks a terminal wider than its lane", () => {
+    // The pane was fitted to *its* box, not the lane's. Without this the
+    // right-hand characters — usually the half of a log line that says
+    // what went wrong — are simply gone.
+    expect(fitScale(1000, 800)).toBe(0.8);
+  });
+
+  test("never scales up", () => {
+    // A narrow terminal in a wide head stays pixel-exact, which is the
+    // common case and the one worth protecting.
+    expect(fitScale(400, 900)).toBe(1);
+    expect(fitScale(400, 400)).toBe(1);
+  });
+
+  test("stops at the floor rather than shrinking to illegibility", () => {
+    // Past this, scaling turns "some characters missing" into "all
+    // characters unreadable", which is a worse trade.
+    expect(fitScale(4000, 400)).toBe(MIN_FIT_SCALE);
+  });
+
+  test("degrades to 1 on unmeasured geometry", () => {
+    expect(fitScale(0, 500)).toBe(1);
+    expect(fitScale(500, 0)).toBe(1);
   });
 });
 

@@ -172,6 +172,13 @@
    * lane's identity colour at an alpha the trace's own age decides. */
   --tau-chrono-trace-hot: #eafaff;
   --tau-chrono-strike: rgba(214, 226, 232, 0.2);
+  /* The graticule — a scope's calibration grid. Dimmer than any content
+   * line, because it is the paper the instrument draws on. */
+  --tau-chrono-graticule: rgba(111, 233, 255, 0.055);
+  /* …and the cursor, the one line on the field the *user* put there. It
+   * has to beat both a trace and a strike without joining the palette:
+   * near-white, no hue of its own. */
+  --tau-chrono-cursor: #d6e2e8;
   --tau-text: #d6e2e8;
   --tau-text-dim: #8a9aa3;
   --tau-text-mute: #55646c;
@@ -14751,13 +14758,146 @@ button.spp-step:hover {
   color: var(--tau-text-dim);
 }
 
-/* ── the time ruler ──────────────────────────────────────────────── */
+/* ── the timebase knob ───────────────────────────────────────────── */
+
+/* A scope prints its timebase on the front panel next to the knob. The
+ * window is the most load-bearing number on this screen and should never
+ * have to be inferred from the tick labels. */
+.tau-chrono-timebase {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 1px 3px 1px 8px;
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-chip);
+}
+
+.tau-chrono-timebase-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--tau-text-faint);
+  margin-right: 4px;
+}
+
+.tau-chrono-timebase-value {
+  min-width: 34px;
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--tau-cyan);
+}
+
+.tau-chrono-timebase-knob {
+  appearance: none;
+  border: none;
+  background: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--tau-text-mute);
+  cursor: pointer;
+  border-radius: var(--tau-r-chip);
+}
+
+.tau-chrono-timebase-knob:hover {
+  color: var(--tau-cyan);
+  background: var(--tau-cyan-dim);
+}
+
+/* The header's exit hint sits after the knob, so it loses the auto
+ * margin that used to push it right. */
+.tau-chrono-header .tau-chrono-hint {
+  margin-left: 12px;
+}
+
+/* ── the axis: ruler, or the cursor's readout ────────────────────── */
+
+/* Both answer "where on the time axis am I looking", so they share one
+ * row and only one of them is ever up. Two answers to one question is
+ * how an instrument turns into a HUD. */
+.tau-chrono-axis {
+  position: relative;
+  flex: 0 0 auto;
+  height: 20px;
+}
 
 .tau-chrono-ruler {
-  flex: 0 0 auto;
-  height: 18px;
+  position: absolute;
+  inset: 0;
   padding-left: var(--chrono-gutter, 232px);
   padding-right: var(--chrono-head, 420px);
+  transition: opacity 120ms ease-out;
+}
+
+.tau-chrono-axis:has(.tau-chrono-readout.is-live) .tau-chrono-ruler {
+  opacity: 0;
+}
+
+.tau-chrono-readout {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  gap: 14px;
+  padding-left: var(--chrono-gutter, 232px);
+  padding-right: 16px;
+  overflow: hidden;
+}
+
+.tau-chrono-readout.is-live {
+  display: flex;
+}
+
+/* The one place in CHRONO where a number is meant to be read rather than
+ * scanned, so it is the one place with a larger, tabular figure. */
+.tau-chrono-readout-time {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--tau-chrono-cursor);
+}
+
+.tau-chrono-readout-rows {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tau-chrono-readout-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.tau-chrono-readout-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--lane, var(--tau-cyan));
+  align-self: center;
+  flex: 0 0 auto;
+}
+
+.tau-chrono-readout-name {
+  color: var(--tau-text-mute);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tau-chrono-readout-value {
+  color: var(--tau-text);
+  font-variant-numeric: tabular-nums;
 }
 
 .tau-chrono-ruler-band {
@@ -14793,6 +14933,12 @@ button.spp-step:hover {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* Over the trace band the pointer is a cursor you park on a waveform,
+ * so it says so. The gutter and the heads keep their own cursors. */
+.tau-chrono-lane > .tau-chrono-track {
+  cursor: crosshair;
 }
 
 /* The two rules that make the field readable as a space: where the
@@ -15136,14 +15282,20 @@ button.spp-step:hover {
   display: none;
 }
 
-/* THE mechanic: bottom-anchor the live terminal so its last line sits on
- * the lane's bottom edge. `--chrono-anchor` is computed in chrono/grid.ts
- * from the terminal's own row count — no fit(), no pty.resize, no second
- * instance. See chrono/head.ts#applyAnchor. */
+/* THE mechanic: fit the live terminal to the lane's width and bottom-
+ * anchor it so its last line sits on the lane's bottom edge. Both values
+ * come from chrono/grid.ts, computed from the terminal's own grid — no
+ * fit(), no pty.resize, no second instance.
+ *
+ * Order matters. CSS applies transforms right to left, so `scale` runs
+ * first and `translateY` is therefore in final on-screen pixels, which is
+ * what `anchorOffset` returns. Origin at the top left keeps column 1 at
+ * the lane's left edge whatever the scale. See chrono/head.ts#applyAnchor. */
 .tau-chrono-head[data-kind="screen"]
   .surface-container[data-chrono-lease]
   .surface-terminal-layer {
-  transform: translateY(var(--chrono-anchor, 0px));
+  transform-origin: 0 0;
+  transform: translateY(var(--chrono-anchor, 0px)) scale(var(--chrono-scale, 1));
 }
 
 /* An unfocused head reads as depth rather than as a dimmed pane. */

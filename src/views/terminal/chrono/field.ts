@@ -27,15 +27,17 @@
  * carries a coarse clock — but only then. Ninety seconds after the last
  * byte, the window is empty again and the field goes completely still.
  */
-import { historyFor, isGap } from "../metrics-history";
+import { historyFor, isGap, type MetricSample } from "../metrics-history";
 import { withAlpha } from "../atlas/river";
 import { toneVar } from "../atlas/view";
 import type { ChronoEvent, ChronoEventKind } from "./event-log";
 import type { ChronoLane } from "./lanes";
+import { DEFAULT_SPAN, divisions } from "./timebase";
 import type { FieldGeometry } from "./view";
 
-/** The window, in ms. 90 s is what the rings hold. */
-export const WINDOW_MS = 90_000;
+/** The window the field falls back to when nobody has set a timebase.
+ *  Kept as `WINDOW_MS` because it is also the event log's horizon. */
+export const WINDOW_MS = DEFAULT_SPAN;
 
 /** Bytes/sec at which a trace reaches full height. Log-scaled below it —
  *  a linear scale puts a 2 KB/s log tail and total silence in the same
@@ -61,6 +63,11 @@ export interface FieldInput {
   geometry: FieldGeometry;
   events: readonly ChronoEvent[];
   now: number;
+  /** Window length in ms, from the timebase knob. */
+  span: number;
+  /** Where the cursor is, as a fraction across the field, or null when
+   *  the pointer is not over it. */
+  cursor: number | null;
 }
 
 /**
@@ -73,6 +80,8 @@ export function fieldSignature(input: FieldInput): string {
   const { geometry } = input;
   const parts: string[] = [
     `${Math.round(geometry.left)}x${Math.round(geometry.width)}x${Math.round(geometry.height)}`,
+    `span${input.span}`,
+    `cur${input.cursor === null ? "-" : Math.round(input.cursor * 1000)}`,
   ];
   let moving = false;
   for (const box of geometry.boxes) {
@@ -89,7 +98,7 @@ export function fieldSignature(input: FieldInput): string {
     // Something is in the window, so the picture scrolls.
     if (!moving) {
       for (const s of samples) {
-        if (s.bytes > 0 && input.now - s.at <= WINDOW_MS) {
+        if (s.bytes > 0 && input.now - s.at <= input.span) {
           moving = true;
           break;
         }
@@ -98,7 +107,7 @@ export function fieldSignature(input: FieldInput): string {
   }
   for (const event of input.events) {
     parts.push(`${event.at}:${event.kind}`);
-    if (input.now - event.at <= WINDOW_MS) moving = true;
+    if (input.now - event.at <= input.span) moving = true;
   }
   parts.push(moving ? String(Math.floor(input.now / CLOCK_MS)) : "still");
   return parts.join("|");
@@ -148,28 +157,38 @@ export class ChronoField {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    this.drawAxis(ctx, width, height);
+    this.drawGraticule(ctx, width, height, input.span);
     const boxes = new Map(input.geometry.boxes.map((b) => [b.id, b]));
     for (const lane of input.lanes) {
       const box = boxes.get(lane.id);
       if (!box) continue;
-      this.drawTrace(ctx, lane, box.top, box.height, width, input.now);
+      this.drawTrace(ctx, lane, box, width, input.now, input.span);
     }
     this.drawStrikes(ctx, input, width, height);
+    this.drawCursor(ctx, input, width, height);
     return true;
   }
 
-  /** The 30 s / 60 s rules. Structure, not data: hairlines, never
-   *  animated, and drawn under everything. */
-  private drawAxis(
+  /**
+   * The graticule — the calibration grid.
+   *
+   * Structure, not data: hairlines, never animated, drawn under
+   * everything. It re-divides with the timebase, so every line always
+   * lands on a round number of seconds and the field stays a *measured*
+   * space rather than a picture of one.
+   */
+  private drawGraticule(
     ctx: CanvasRenderingContext2D,
     width: number,
     height: number,
+    span: number,
   ): void {
-    ctx.strokeStyle = this.resolve("var(--tau-edge-soft)");
+    ctx.strokeStyle = this.resolve("var(--tau-chrono-graticule)");
     ctx.lineWidth = 1;
-    for (const seconds of [30, 60]) {
-      const x = Math.round(width * (1 - seconds / 90)) + 0.5;
+    for (const seconds of divisions(span)) {
+      if (seconds === 0) continue;
+      const x = Math.round(width * (1 - (seconds * 1000) / span)) + 0.5;
+      if (x < 0 || x > width) continue;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
@@ -178,23 +197,27 @@ export class ChronoField {
   }
 
   /**
-   * One lane's voice.
+   * One lane's voice, and — for an agent lane — how full its head is.
    *
-   * Bars rather than a line: at one sample a second across ninety
-   * seconds, a polyline reads as noise while bars read as a skyline —
-   * and bars are what lets each sample carry its own age as colour,
-   * which is the phosphor.
+   * Bars rather than a polyline: at one sample a second a line reads as
+   * noise while bars read as a skyline, and a bar can carry its own age
+   * as colour, which is what the phosphor *is*.
+   *
+   * The context ribbon rides over the top of the same band as a thin
+   * filled curve in the agent amber. It is a different quantity on a
+   * different scale, so it gets a different mark and a different colour
+   * — the one thing it must never do is look like output.
    */
   private drawTrace(
     ctx: CanvasRenderingContext2D,
     lane: ChronoLane,
-    top: number,
-    laneHeight: number,
+    box: { top: number; height: number },
     width: number,
     now: number,
+    span: number,
   ): void {
-    const base = top + laneHeight - BAND_PAD;
-    const span = Math.max(1, laneHeight - BAND_PAD * 2);
+    const base = box.top + box.height - BAND_PAD;
+    const band = Math.max(1, box.height - BAND_PAD * 2);
     const colour = this.resolve(lane.node.color ?? toneVar(lane.node.tone));
     const samples = historyFor(lane.historyKey);
 
@@ -210,25 +233,28 @@ export class ChronoField {
 
     if (samples.length === 0) return;
 
-    const barWidth = Math.max(2, width / (WINDOW_MS / 1000));
+    // One bar per sample, sized from the *window* rather than a fixed
+    // count: zoom in and the bars widen, which is what makes zooming
+    // feel like a timebase and not like a stretched image.
+    const barWidth = Math.max(1.5, width / (span / 1000));
     const hot = this.resolve("var(--tau-chrono-trace-hot)");
 
     for (let i = 0; i < samples.length; i++) {
       const sample = samples[i]!;
       const age = now - sample.at;
-      if (age < 0 || age > WINDOW_MS) continue;
+      if (age < 0 || age > span) continue;
       const level = levelOf(sample.bytes);
       if (level <= 0) continue;
 
-      const x = width * (1 - age / WINDOW_MS);
-      const barHeight = Math.max(1, level * span);
+      const x = width * (1 - age / span);
+      const barHeight = Math.max(1, level * band);
       // A gap in collection is a gap in the trace, not a bar bridging it.
       const prev = samples[i - 1];
       const leading = age <= HOT_MS && !(prev && isGap(prev, sample));
 
       // Phosphor: the leading edge blooms near-white, and each sample
       // decays back through the lane's colour as it ages leftward.
-      const decay = 1 - age / WINDOW_MS;
+      const decay = 1 - age / span;
       if (leading) {
         ctx.fillStyle = withAlpha(hot, 0.92);
         ctx.shadowColor = withAlpha(colour, 0.85);
@@ -242,10 +268,59 @@ export class ChronoField {
         Math.ceil(barWidth),
         Math.round(barHeight),
       );
-      if (leading) {
-        ctx.shadowBlur = 0;
-      }
+      if (leading) ctx.shadowBlur = 0;
     }
+
+    this.drawContext(ctx, samples, base, band, width, now, span);
+  }
+
+  /**
+   * The context ribbon — how full the agent's window is, over time.
+   *
+   * Only drawn where the number exists, which is agent lanes. A curve
+   * rather than bars, in amber rather than the lane's colour, riding the
+   * band's full height: it is a *level*, not a rate, and the two must
+   * never be mistaken for each other at a glance.
+   */
+  private drawContext(
+    ctx: CanvasRenderingContext2D,
+    samples: readonly { at: number; ctx?: number }[],
+    base: number,
+    band: number,
+    width: number,
+    now: number,
+    span: number,
+  ): void {
+    const points: { x: number; y: number }[] = [];
+    for (const sample of samples) {
+      const pct = sample.ctx;
+      if (pct === undefined || pct === null) continue;
+      const age = now - sample.at;
+      if (age < 0 || age > span) continue;
+      points.push({
+        x: width * (1 - age / span),
+        y: base - Math.min(1, pct / 100) * band,
+      });
+    }
+    if (points.length < 2) return;
+
+    const amber = this.resolve("var(--tau-agent)");
+    ctx.beginPath();
+    ctx.moveTo(points[0]!.x, points[0]!.y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i]!.x, points[i]!.y);
+    }
+    ctx.strokeStyle = withAlpha(amber, 0.7);
+    ctx.lineWidth = 1.25;
+    ctx.stroke();
+
+    // A whisper of fill under it, so the ribbon reads as a level rather
+    // than as one more line crossing the field.
+    ctx.lineTo(points[points.length - 1]!.x, base);
+    ctx.lineTo(points[0]!.x, base);
+    ctx.closePath();
+    ctx.fillStyle = withAlpha(amber, 0.07);
+    ctx.fill();
   }
 
   /**
@@ -261,18 +336,67 @@ export class ChronoField {
   ): void {
     for (const event of input.events) {
       const age = input.now - event.at;
-      if (age < 0 || age > WINDOW_MS) continue;
-      const x = Math.round(width * (1 - age / WINDOW_MS)) + 0.5;
+      if (age < 0 || age > input.span) continue;
+      const x = Math.round(width * (1 - age / input.span)) + 0.5;
       const colour = this.resolve(strikeTone(event.kind));
-      // Fades with age like everything else here, so a rule from eighty
-      // seconds ago does not compete with one from two.
-      const alpha = 0.24 + (1 - age / WINDOW_MS) * 0.5;
+      // Fades with age like everything else here, so a rule from the far
+      // side of the window does not compete with one from two seconds ago.
+      const alpha = 0.24 + (1 - age / input.span) * 0.5;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.strokeStyle = withAlpha(colour, alpha);
       ctx.lineWidth = 1;
       ctx.stroke();
+    }
+  }
+
+  /**
+   * The cursor.
+   *
+   * A scope's cursor is a hairline you park on the waveform to read a
+   * value off it, and that is exactly the gesture this view was missing:
+   * the traces show *shape*, and shape without a readable value is a
+   * picture. The rule is drawn full height so it can be read against
+   * every lane at once — the same reason the strikes are.
+   *
+   * Brighter than a strike and thinner than a division, so at a glance it
+   * is never mistaken for either: it is the one line on this field that
+   * the *user* put there.
+   */
+  private drawCursor(
+    ctx: CanvasRenderingContext2D,
+    input: FieldInput,
+    width: number,
+    height: number,
+  ): void {
+    if (input.cursor === null) return;
+    const x = Math.round(width * input.cursor) + 0.5;
+    if (x < 0 || x > width) return;
+    const colour = this.resolve("var(--tau-chrono-cursor)");
+
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.strokeStyle = withAlpha(colour, 0.55);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // A dot where the cursor crosses each lane's sample, so the readout
+    // in the rail has something to point at.
+    const boxes = new Map(input.geometry.boxes.map((b) => [b.id, b]));
+    for (const lane of input.lanes) {
+      const box = boxes.get(lane.id);
+      if (!box) continue;
+      const sample = sampleAt(lane.historyKey, input.cursor, input.now, input.span);
+      if (!sample) continue;
+      const base = box.top + box.height - BAND_PAD;
+      const band = Math.max(1, box.height - BAND_PAD * 2);
+      const y = base - levelOf(sample.bytes) * band;
+      ctx.beginPath();
+      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = withAlpha(colour, 0.9);
+      ctx.fill();
     }
   }
 
@@ -322,4 +446,35 @@ export function strikeTone(kind: ChronoEventKind): string {
     default:
       return "var(--tau-chrono-strike)";
   }
+}
+
+/**
+ * The sample a point on the field refers to — the nearest one in time,
+ * not the one before it. A cursor that snapped backwards would read
+ * "nothing here" for the half-second either side of every bar.
+ *
+ * Returns null when the nearest sample is further away than one
+ * division's worth of time, so parking the cursor over a genuinely empty
+ * stretch reads as empty rather than as the last thing that happened.
+ */
+export function sampleAt(
+  historyKey: string,
+  fraction: number,
+  now: number,
+  span: number,
+): MetricSample | null {
+  const target = now - (1 - fraction) * span;
+  const samples = historyFor(historyKey);
+  let best: MetricSample | null = null;
+  let bestDelta = Infinity;
+  for (const sample of samples) {
+    const delta = Math.abs(sample.at - target);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      best = sample;
+    }
+  }
+  // One sample is ~1 s; allow a little either side so the cursor feels
+  // magnetic rather than fussy.
+  return bestDelta <= 1_500 ? best : null;
 }

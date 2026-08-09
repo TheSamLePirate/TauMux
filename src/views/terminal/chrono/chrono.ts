@@ -41,6 +41,7 @@ import { htEvents } from "../../../shared/event-bus";
 import type { SurfaceKind } from "../../../shared/types";
 import { applyFilter, type AtlasFilter } from "../atlas/filter";
 import { AtlasInspector } from "../atlas/inspector";
+import { toneVar } from "../atlas/view";
 import type { AtlasNode, AtlasSnapshot } from "../atlas/types";
 import {
   getClaudeSessions,
@@ -50,11 +51,18 @@ import { subscribeAtlasAnnotations } from "../atlas-annotation-store";
 import { subscribePlans } from "../plan-store";
 import { throughputOf } from "../throughput-meter";
 import { variantContext } from "../variants/variant-context";
-import { ChronoField, WINDOW_MS, fieldIsMoving } from "./field";
+import { ChronoField, fieldIsMoving, sampleAt } from "./field";
 import { eventsSince } from "./event-log";
 import { ChronoHeader, ChronoStrikeRail } from "./header";
 import { buildLanes, type ChronoLane } from "./lanes";
+import { ChronoReadout, buildReadout } from "./readout";
 import { ChronoSources } from "./sources";
+import {
+  defaultTimebase,
+  stepTimebase,
+  timeAt,
+  type Timebase,
+} from "./timebase";
 import { ChronoView, type ChronoViewHost } from "./view";
 
 /** Follow-up cadence while any pane is still talking. Fast enough that a
@@ -98,6 +106,13 @@ export class Chrono {
   private field: ChronoField | null = null;
   private rail: ChronoStrikeRail | null = null;
   private inspector: AtlasInspector | null = null;
+  private readout: ChronoReadout | null = null;
+  /** The timebase knob. Survives a close/open within a session, because
+   *  a user who zoomed to 20 s meant it. */
+  private timebase: Timebase = defaultTimebase();
+  /** Cursor position as a fraction across the field, or null when the
+   *  pointer is not over it. */
+  private cursor: number | null = null;
   /** Lane under the pointer. The inspector previews it and falls back to
    *  the committed selection on leave, so the card never strands you on
    *  something you merely passed over. */
@@ -144,6 +159,7 @@ export class Chrono {
         this.refresh();
       },
       onClose: () => this.close(),
+      onZoom: (direction) => this.zoom(direction),
     });
     const view = new ChronoView({
       host: {
@@ -161,6 +177,7 @@ export class Chrono {
     });
 
     const rail = new ChronoStrikeRail();
+    const readout = new ChronoReadout();
     // The inspector is the Atlas column's, unchanged. It docks bottom
     // left, over the gutter and never over a head: covering a live
     // terminal to explain it would be the wrong trade in this view.
@@ -179,13 +196,18 @@ export class Chrono {
     foot.className = "tau-chrono-foot";
     foot.append(dock, rail.element);
 
-    root.append(header.element, header.ruler, view.element, foot);
+    const axis = document.createElement("div");
+    axis.className = "tau-chrono-axis";
+    axis.append(header.ruler, readout.element);
+
+    root.append(header.element, axis, view.element, foot);
     document.body.appendChild(root);
 
     this.root = root;
     this.header = header;
     this.view = view;
     this.rail = rail;
+    this.readout = readout;
     this.inspector = inspector;
     this.field = new ChronoField(view.canvas, root);
     this.selectedId = this.source.focusedSurfaceId();
@@ -236,8 +258,10 @@ export class Chrono {
     this.field = null;
     this.rail = null;
     this.inspector = null;
+    this.readout = null;
     this.snapshot = null;
     this.hoverId = null;
+    this.cursor = null;
     this.root = null;
     this.lanes = [];
     root.remove();
@@ -290,6 +314,25 @@ export class Chrono {
     this.disposers.push(() =>
       window.removeEventListener("keydown", onKey, true),
     );
+
+    // The field is the instrument's face: the pointer over it is a
+    // cursor, and the wheel over it is the timebase knob. Both are
+    // scoped to the trace band — over the gutter or a head the pointer
+    // means what it means everywhere else.
+    const field = this.view?.element;
+    if (field) {
+      const onMove = (e: PointerEvent) => this.onFieldPointer(e);
+      const onLeave = () => this.setCursor(null);
+      const onWheel = (e: WheelEvent) => this.onFieldWheel(e);
+      field.addEventListener("pointermove", onMove);
+      field.addEventListener("pointerleave", onLeave);
+      field.addEventListener("wheel", onWheel, { passive: false });
+      this.disposers.push(() => {
+        field.removeEventListener("pointermove", onMove);
+        field.removeEventListener("pointerleave", onLeave);
+        field.removeEventListener("wheel", onWheel);
+      });
+    }
 
     const onFocus = () => this.syncExitHint();
     this.root?.addEventListener("focusin", onFocus);
@@ -359,21 +402,100 @@ export class Chrono {
     // just settled on, and it is the one thing here allowed to decide
     // that the picture has not changed and skip itself entirely.
     const now = Date.now();
-    const events = eventsSince(WINDOW_MS, now);
+    const span = this.timebase.span;
+    const events = eventsSince(span, now);
     const fieldInput = {
       lanes: this.lanes,
       geometry: view.getGeometry(),
       events,
       now,
+      span,
+      cursor: this.cursor,
     };
     this.field?.render(fieldInput);
-    this.rail?.render(events, now);
+    this.rail?.render(events, now, span);
+    header.setSpan(span);
+    this.renderReadout(now, span);
 
     header.setAttentionCount(built?.snapshot.totals.attention ?? 0);
     this.showInspected();
     this.reclaimKeyboard();
     this.syncExitHint();
     this.scheduleTick(fieldIsMoving(fieldInput));
+  }
+
+  /**
+   * Where the pointer is, in trace-band coordinates.
+   *
+   * Returns null outside the band — the gutter and the heads are not
+   * part of the time axis, and a cursor that kept reading while the
+   * pointer was over a terminal would be answering a question nobody
+   * asked.
+   */
+  private bandFraction(clientX: number): number | null {
+    const view = this.view;
+    if (!view) return null;
+    const geometry = view.getGeometry();
+    if (geometry.width <= 0) return null;
+    const rect = view.getScroller().getBoundingClientRect();
+    const x = clientX - rect.left - geometry.left;
+    if (x < 0 || x > geometry.width) return null;
+    return x / geometry.width;
+  }
+
+  private onFieldPointer(e: PointerEvent): void {
+    this.setCursor(this.bandFraction(e.clientX));
+  }
+
+  /**
+   * The wheel over the field is the timebase.
+   *
+   * Only over the band, and only when the field has nothing to scroll: a
+   * user with ten lanes needs the wheel to reach the tenth, and stealing
+   * it for zoom would be the more annoying of the two losses. ⌥ forces
+   * zoom either way, so the gesture is always available.
+   */
+  private onFieldWheel(e: WheelEvent): void {
+    if (this.bandFraction(e.clientX) === null) return;
+    const scroller = this.view?.getScroller();
+    const scrollable =
+      !!scroller && scroller.scrollHeight - scroller.clientHeight > 2;
+    if (scrollable && !e.altKey) return;
+    e.preventDefault();
+    this.zoom(e.deltaY < 0 ? 1 : -1);
+  }
+
+  /** Step the timebase knob and repaint against the new window. */
+  private zoom(direction: number): void {
+    const next = stepTimebase(this.timebase, direction);
+    if (next.span === this.timebase.span) return;
+    this.timebase = next;
+    this.refresh();
+  }
+
+  /** Move the cursor, or put it away. A fraction rather than a pixel, so
+   *  it survives a resize and a zoom without meaning something else. */
+  private setCursor(fraction: number | null): void {
+    const next =
+      fraction === null ? null : Math.max(0, Math.min(1, fraction));
+    if (next === this.cursor) return;
+    this.cursor = next;
+    this.refresh();
+  }
+
+  /** What the cursor is pointing at, per lane. */
+  private renderReadout(now: number, span: number): void {
+    if (!this.readout) return;
+    if (this.cursor === null) {
+      this.readout.render(null, []);
+      return;
+    }
+    const rows = buildReadout(
+      this.lanes,
+      (lane) => sampleAt(lane.historyKey, this.cursor ?? 1, now, span),
+      (lane) => lane.node.color ?? toneVar(lane.node.tone),
+    );
+    this.readout.render(now - timeAt(this.cursor, now, span), rows);
   }
 
   /**
@@ -507,6 +629,14 @@ export class Chrono {
         break;
       case "Enter":
         if (this.selectedId) this.activate(this.selectedId);
+        break;
+      case "+":
+      case "=":
+        this.zoom(1);
+        break;
+      case "-":
+      case "_":
+        this.zoom(-1);
         break;
       default:
         return;

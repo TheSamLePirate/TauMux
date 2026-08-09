@@ -14,16 +14,18 @@
  * no hit-testing beyond a band lookup, and nothing that needs to be in
  * the tab order.
  */
-import {
-  HISTORY_CAPACITY,
-  historyFor,
-  isGap,
-  type MetricSample,
-} from "../metrics-history";
+import { historyFor, isGap, type MetricSample } from "../metrics-history";
 import { atlasMarks } from "../atlas-annotation-store";
 import type { AtlasRiverSeries } from "./types";
 
 const HEIGHT = 34;
+
+/** The river's window, in samples (~seconds). Pinned rather than taken
+ *  from the ring's capacity: the ring grew to five minutes for CHRONO's
+ *  adjustable timebase, and 300 s of history squeezed into a 34 px strip
+ *  under the header would be a different, worse instrument. The river's
+ *  caption says 90 s and the river shows 90 s. */
+const RIVER_SPAN = 90;
 /** Bytes/sec that fills the band. Above this the area saturates — the
  *  point is the shape of the activity, not an exact reading. */
 const SATURATION = 262_144;
@@ -136,7 +138,7 @@ export class AtlasRiver {
     for (const s of series) {
       span = Math.max(span, historyFor(s.id).length);
     }
-    span = Math.min(span, HISTORY_CAPACITY);
+    span = Math.min(span, RIVER_SPAN);
     const colX = (i: number) => (i / (span - 1)) * width;
 
     let anyActivity = false;

@@ -28,7 +28,7 @@
  * once: **the gutter is CHRONO's, the head is the pane's.**
  */
 import type { AtlasNode } from "../atlas/types";
-import { anchorOffset, type ChronoGrid } from "./grid";
+import { anchorOffset, fitScale, type ChronoGrid } from "./grid";
 import type { ChronoHeadKind } from "./lanes";
 
 export interface ChronoHeadCallbacks {
@@ -51,6 +51,7 @@ export class ChronoHead {
   private kind: ChronoHeadKind | null = null;
   private lastCard = "";
   private lastAnchor: number | null = null;
+  private lastScale: number | null = null;
 
   constructor(
     private readonly id: string,
@@ -144,19 +145,29 @@ export class ChronoHead {
       this.clearAnchor();
       return;
     }
+    // `offsetWidth/Height` are layout values and ignore transforms — the
+    // terminal's *natural* size, which is what both the fit and the
+    // anchor have to be computed from. A bounding rect here would feed
+    // last frame's scale back into this frame's and converge on nothing.
+    const scale = fitScale(screen.offsetWidth, box.clientWidth);
     const offset = anchorOffset({
       grid,
       laneHeight: box.clientHeight,
-      screenHeight: screen.getBoundingClientRect().height,
+      screenHeight: screen.offsetHeight,
+      scale,
     });
-    if (offset === this.lastAnchor) return;
+    if (offset === this.lastAnchor && scale === this.lastScale) return;
     this.lastAnchor = offset;
+    this.lastScale = scale;
     this.element.style.setProperty("--chrono-anchor", `${offset}px`);
+    this.element.style.setProperty("--chrono-scale", String(scale));
   }
 
   private clearAnchor(): void {
-    if (this.lastAnchor === null) return;
+    if (this.lastAnchor === null && this.lastScale === null) return;
     this.lastAnchor = null;
+    this.lastScale = null;
     this.element.style.removeProperty("--chrono-anchor");
+    this.element.style.removeProperty("--chrono-scale");
   }
 }

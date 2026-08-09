@@ -15,7 +15,7 @@
  */
 import type { AtlasFilter } from "../atlas/filter";
 import type { ChronoEvent } from "./event-log";
-import { WINDOW_MS } from "./field";
+import { divisionTicks, spanLabel } from "./timebase";
 
 const FILTERS: { id: AtlasFilter; label: string; hint: string }[] = [
   { id: "all", label: "all", hint: "Every pane" },
@@ -24,12 +24,11 @@ const FILTERS: { id: AtlasFilter; label: string; hint: string }[] = [
   { id: "attention", label: "alert", hint: "Anything waiting on you" },
 ];
 
-/** Ticks on the axis, in seconds before now. `0` is drawn as `now`. */
-const TICKS = [90, 60, 30, 0];
-
 export interface ChronoHeaderCallbacks {
   onFilter(filter: AtlasFilter): void;
   onClose(): void;
+  /** +1 zooms in (shorter window), −1 zooms out. */
+  onZoom(direction: number): void;
 }
 
 export class ChronoHeader {
@@ -38,7 +37,10 @@ export class ChronoHeader {
   private readonly buttons = new Map<AtlasFilter, HTMLButtonElement>();
   private readonly countEl: HTMLSpanElement;
   private readonly hintEl: HTMLButtonElement;
+  private readonly spanEl: HTMLSpanElement;
+  private readonly band: HTMLDivElement;
   private lastHint = "";
+  private lastSpan = -1;
 
   constructor(callbacks: ChronoHeaderCallbacks) {
     this.element = document.createElement("div");
@@ -77,24 +79,54 @@ export class ChronoHeader {
     this.hintEl.className = "tau-chrono-hint tau-mono";
     this.hintEl.addEventListener("click", () => callbacks.onClose());
 
-    this.element.append(title, group, this.countEl, this.hintEl);
+    // The timebase knob. A scope puts this on the front panel with its
+    // current setting printed next to it, and so does this: the window
+    // is the single most load-bearing number on screen and it should
+    // never have to be inferred from the tick labels.
+    const timebase = document.createElement("div");
+    timebase.className = "tau-chrono-timebase";
+    const knobLabel = document.createElement("span");
+    knobLabel.className = "tau-chrono-timebase-label tau-mono";
+    knobLabel.textContent = "window";
+    this.spanEl = document.createElement("span");
+    this.spanEl.className = "tau-chrono-timebase-value tau-mono";
+    const out = knob("−", "Widen the window", () => callbacks.onZoom(-1));
+    const inn = knob("+", "Narrow the window", () => callbacks.onZoom(1));
+    timebase.append(knobLabel, out, this.spanEl, inn);
+
+    this.element.append(title, group, this.countEl, timebase, this.hintEl);
 
     this.ruler = document.createElement("div");
     this.ruler.className = "tau-chrono-ruler";
     this.ruler.setAttribute("aria-hidden", "true");
-    const band = document.createElement("div");
-    band.className = "tau-chrono-ruler-band";
-    for (const seconds of TICKS) {
-      const tick = document.createElement("span");
-      tick.className = "tau-chrono-tick tau-mono";
-      tick.textContent = seconds === 0 ? "now" : `${seconds}s`;
-      // The axis runs right-to-left: now is pinned at the band's right
-      // edge, and 90 s ago is its left edge.
-      tick.style.left = `${((90 - seconds) / 90) * 100}%`;
-      if (seconds === 0) tick.classList.add("is-now");
-      band.appendChild(tick);
-    }
-    this.ruler.appendChild(band);
+    this.band = document.createElement("div");
+    this.band.className = "tau-chrono-ruler-band";
+    this.ruler.appendChild(this.band);
+  }
+
+  /**
+   * Redraw the axis for a new window.
+   *
+   * The ticks are the graticule's divisions, so a line on the field and
+   * a label above it are the same measurement — which is the whole point
+   * of drawing a graticule rather than a decorative grid.
+   */
+  setSpan(span: number): void {
+    if (span === this.lastSpan) return;
+    this.lastSpan = span;
+    this.spanEl.textContent = spanLabel(span);
+    this.band.replaceChildren(
+      ...divisionTicks(span).map(({ seconds, label }) => {
+        const tick = document.createElement("span");
+        tick.className = "tau-chrono-tick tau-mono";
+        tick.textContent = label;
+        // The axis runs right to left: now is pinned at the band's right
+        // edge and the window's far end is its left edge.
+        tick.style.left = `${(1 - (seconds * 1000) / span) * 100}%`;
+        if (seconds === 0) tick.classList.add("is-now");
+        return tick;
+      }),
+    );
   }
 
   setFilter(filter: AtlasFilter): void {
@@ -184,7 +216,7 @@ export class ChronoStrikeRail {
     this.element.appendChild(this.band);
   }
 
-  render(events: readonly ChronoEvent[], now: number): void {
+  render(events: readonly ChronoEvent[], now: number, span: number): void {
     const placed: { pct: number; row: number; event: ChronoEvent }[] = [];
     const rows: number[][] = Array.from({ length: MAX_ROWS }, () => []);
 
@@ -193,8 +225,8 @@ export class ChronoStrikeRail {
     for (let i = events.length - 1; i >= 0; i--) {
       const event = events[i]!;
       const age = now - event.at;
-      if (age < 0 || age > WINDOW_MS) continue;
-      const pct = (1 - age / WINDOW_MS) * 100;
+      if (age < 0 || age > span) continue;
+      const pct = (1 - age / span) * 100;
       const row = rows.findIndex((taken) =>
         taken.every((other) => Math.abs(other - pct) >= LABEL_PCT),
       );
@@ -229,4 +261,22 @@ export class ChronoStrikeRail {
     );
     this.element.classList.toggle("is-empty", placed.length === 0);
   }
+}
+
+/** One end of the timebase knob. A button, not a scroll target: the
+ *  wheel is claimed by the field, and a control you can only reach by
+ *  hovering the right pixels is a control most people never find. */
+function knob(
+  glyph: string,
+  title: string,
+  onClick: () => void,
+): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "tau-chrono-timebase-knob tau-mono";
+  btn.textContent = glyph;
+  btn.title = title;
+  btn.setAttribute("aria-label", title);
+  btn.addEventListener("click", onClick);
+  return btn;
 }

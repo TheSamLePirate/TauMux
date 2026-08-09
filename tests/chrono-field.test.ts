@@ -192,6 +192,8 @@ function input(now: number, ids = ["a"]): FieldInput {
     },
     events: [],
     now,
+    span: WINDOW_MS,
+    cursor: null,
   };
 }
 

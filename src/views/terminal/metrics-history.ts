@@ -21,10 +21,19 @@
  *    implies data nobody collected.
  */
 
-/** Samples retained per key. At ~1 Hz this is a 90-second window — long
- *  enough to see a build ramp up and finish, short enough to stay
- *  legible in a 40 px sparkline. */
-export const HISTORY_CAPACITY = 90;
+/**
+ * Samples retained per key. At ~1 Hz this is a five-minute window.
+ *
+ * It was 90 for as long as the only consumers were a 40 px sparkline and
+ * a 34 px river, both of which show a fixed span. CHRONO's timebase is
+ * adjustable, and a window you can widen to five minutes needs five
+ * minutes of samples behind it — zooming out to find nothing there is
+ * worse than not being able to zoom out.
+ *
+ * The cost is bounded and small: 300 samples × 3 numbers × the number of
+ * live panes and workspaces, dropped the moment a key stops existing.
+ */
+export const HISTORY_CAPACITY = 300;
 
 /** A sample older than this is treated as the far side of a gap. */
 const GAP_MS = 4_000;
@@ -36,6 +45,10 @@ export interface MetricSample {
   cpu: number;
   /** Stdout bytes/second at sample time. */
   bytes: number;
+  /** Percent of the agent's context window in use, when the subject has
+   *  one. Absent for anything that is not an agent — and absent is not
+   *  zero, which is why it is optional rather than defaulted. */
+  ctx?: number;
 }
 
 interface Ring {
@@ -56,6 +69,7 @@ export function recordMetrics(
   cpu: number,
   bytes: number,
   now = Date.now(),
+  contextPct?: number,
 ): void {
   let ring = rings.get(key);
   if (!ring) {
@@ -69,9 +83,13 @@ export function recordMetrics(
     // between two draws survives into the history.
     last.cpu = Math.max(last.cpu, cpu);
     last.bytes = Math.max(last.bytes, bytes);
+    // Context is a level, not a rate: the latest reading is the true one,
+    // and taking a peak would make a compaction invisible.
+    if (contextPct !== undefined) last.ctx = contextPct;
     return;
   }
   const sample: MetricSample = { at: now, cpu, bytes };
+  if (contextPct !== undefined) sample.ctx = contextPct;
   if (ring.samples.length < HISTORY_CAPACITY) {
     ring.samples.push(sample);
   } else {
