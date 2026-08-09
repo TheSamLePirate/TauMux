@@ -193,4 +193,48 @@ test.describe("@design-review", () => {
       variant: "rename-surface",
     });
   });
+
+  // ── CHRONO (⌘G) — the time field ────────────────────────────────────
+  //
+  // The one view whose whole point is that the heads are *live* panes,
+  // so a still of it is only worth anything with real output behind it.
+
+  test("scenario-chrono-field", async ({ app }) => {
+    if (!app.info.tier2Ready) return;
+    await app.rpc.ui.setSettingsField("layoutVariant", "atlas");
+    await sleep(700);
+
+    const first = (await app.rpc.surface.list())[0]?.id;
+    if (first) {
+      await app.rpc.surface.send_text({
+        surface_id: first,
+        text: "for i in $(seq 1 40); do echo \"build step $i ok\"; done\n",
+      });
+    }
+    await app.rpc.surface.split({ direction: "horizontal" });
+    await sleep(700);
+    const second = (await app.rpc.surface.list())[1]?.id;
+    if (second) {
+      await app.rpc.surface.send_text({
+        surface_id: second,
+        text: "ls -la /usr/bin | head -30\n",
+      });
+    }
+    await app.rpc.surface.split({ direction: "vertical" });
+    await sleep(700);
+    const third = (await app.rpc.surface.list())[2]?.id;
+    if (third) {
+      await app.rpc.surface.send_text({
+        surface_id: third,
+        text: "printf 'listening on :3000\\n'; sleep 60\n",
+      });
+    }
+    await sleep(1_200);
+
+    await app.rpc.ui.keydown({ key: "g", meta: true });
+    await sleep(1_400);
+    await app.snap("chrono-field", { scenario: "chrono-3-lanes" });
+    await app.rpc.ui.keydown({ key: "Escape" });
+    await sleep(400);
+  });
 });

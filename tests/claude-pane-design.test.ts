@@ -17,11 +17,22 @@ const CSS = readFileSync(
   "utf-8",
 );
 
-/** The pane's CSS block — from its banner to end of file. */
+/**
+ * The pane's CSS block — from its banner to the next top-level section
+ * banner, or to end of file when it is the last section.
+ *
+ * Bounded rather than "to end of file": the file grows at the bottom, and
+ * an open-ended slice quietly attributes every later section's colours
+ * and radii to this pane. CHRONO's block was the first to land after it
+ * and failed three of these assertions without touching a line of the
+ * pane.
+ */
 function claudeBlock(): string {
   const i = CSS.indexOf("/* ── Native Claude Code pane");
   expect(i).toBeGreaterThan(-1);
-  return CSS.slice(i);
+  const rest = CSS.slice(i);
+  const end = rest.indexOf("\n/* ═══");
+  return end === -1 ? rest : rest.slice(0, end);
 }
 
 describe("§1 palette — TAU tokens only", () => {

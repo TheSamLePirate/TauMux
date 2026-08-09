@@ -204,6 +204,54 @@ function buildHandlers(ctx: TestHandlerContext): Record<string, Handler> {
       height: window.innerHeight,
       devicePixelRatio: window.devicePixelRatio,
     }),
+
+    // CHRONO (⌘G) borrows live pane containers into its lanes. The one
+    // thing e2e has to be able to assert is the handover — which panes
+    // are in a lane, which are home, and that neither set is degenerate.
+    // A typed readout rather than an eval hook: the same shape as
+    // readWebviewState, and nothing here can execute caller-supplied code.
+    "__test.readChronoState": () => readChronoState(),
+  };
+}
+
+export interface ChronoTestState {
+  open: boolean;
+  lanes: number;
+  /** Pane containers currently sitting in a lane head. */
+  leased: number;
+  /** Pane containers back in the tiling layout. */
+  homePanes: number;
+  /** Smallest laid-out lane height, so "rendered" can be told from
+   *  "present in the DOM at zero pixels". */
+  minLaneHeight: number;
+  /** Smallest laid-out width across the panes that are home — a pane
+   *  that came back 0 px wide is the failure the lease exists to stop. */
+  minHomeWidth: number;
+  headKinds: string[];
+}
+
+function readChronoState(): ChronoTestState {
+  const root = document.querySelector(".tau-chrono");
+  const lanes = Array.from(document.querySelectorAll(".tau-chrono-lane"));
+  const home = Array.from(
+    document.querySelectorAll("#terminal-container > .surface-container"),
+  );
+  const measure = (els: Element[], pick: (r: DOMRect) => number): number =>
+    els.length === 0
+      ? 0
+      : Math.min(...els.map((el) => pick(el.getBoundingClientRect())));
+  return {
+    open: !!root,
+    lanes: lanes.length,
+    leased: document.querySelectorAll(
+      ".tau-chrono-screen > .surface-container[data-chrono-lease]",
+    ).length,
+    homePanes: home.length,
+    minLaneHeight: measure(lanes, (r) => r.height),
+    minHomeWidth: measure(home, (r) => r.width),
+    headKinds: Array.from(document.querySelectorAll(".tau-chrono-head")).map(
+      (el) => (el as HTMLElement).dataset["kind"] ?? "",
+    ),
   };
 }
 
@@ -263,4 +311,5 @@ export const TEST_HANDLER_NAMES: readonly string[] = [
   "__test.toggleSidebar",
   "__test.getWindowId",
   "__test.getWindowBounds",
+  "__test.readChronoState",
 ];

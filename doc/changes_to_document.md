@@ -364,3 +364,36 @@ gains a **flag**, which the CLI reference should carry.
 Documented in the same change (`tests/docs-coverage.test.ts` gates both):
 new `cli/atlas.md` + `api/atlas.md` pages EN + FR, and
 `claude.permission_decision` added to the claude API pages.
+
+## Pending — CHRONO, the ⌘G view (2026-08-09)
+
+⌘G under the Atlas variant no longer opens the expanded topology tree. It
+opens **CHRONO**, a time field: the horizontal axis is the last 90
+seconds with *now* at the right edge, every pane is a lane, and each
+lane's **live terminal** sits at *now*.
+
+Documentation impact (no new RPC method, `ht` command or `AppSettings`
+field, so `tests/docs-coverage.test.ts` does not gate it):
+
+- **`concepts/layout-variants`** (EN + FR) — rewrite the ⌘G section. It
+  currently describes the full-window topology overlay, which is gone.
+  What to say instead:
+  - ⌘G opens CHRONO; Escape or ⌘G closes it; it exists only in the Atlas
+    variant.
+  - A lane's head is the pane's *real* terminal, moved into the lane —
+    not a screenshot and not a copy. Typing into it types into the pane.
+    The terminal is never resized; the lane is a viewport onto it, and
+    the last line is anchored to the lane's bottom edge.
+  - **The gutter is CHRONO's, the head is the pane's.** Clicking a lane's
+    channel strip (or ↑/↓) selects it and leaves Escape closing the view;
+    clicking its head hands the keyboard to that terminal, Escape
+    included — the header says which one is live.
+  - Enter goes to the selected pane and closes the view.
+  - A lane's height follows what its terminal has to show, so a build
+    printing forty lines gets a taller band than an idle shell.
+  - Browser and extension panes cannot be moved (a native webview and an
+    iframe), so their lanes show a standby card with a "go to pane"
+    action. Browser overlays are hidden while CHRONO is open.
+  - The four filters (all / agents / live / alert) work as in the column.
+- **`guides/keyboard-shortcuts`** (EN + FR) — the ⌘G row's description
+  changes from "expand topology" to "CHRONO — the last 90 seconds".

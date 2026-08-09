@@ -36,7 +36,7 @@ import {
 } from "../atlas-annotation-store";
 import { applyFilter, type AtlasFilter } from "./filter";
 import { AtlasInspector } from "./inspector";
-import { COLUMN_LAYOUT, EXPANDED_LAYOUT, layoutAtlas } from "./layout";
+import { COLUMN_LAYOUT, layoutAtlas } from "./layout";
 import {
   ATLAS_ROOT_ID,
   buildAtlasSnapshot,
@@ -44,15 +44,13 @@ import {
   type AtlasHost,
 } from "./snapshot";
 import type { AtlasNode, AtlasScene, AtlasSnapshot } from "./types";
-import type { AskUserRequest } from "../../../shared/types";
+import type { AskUserRequest, SurfaceKind } from "../../../shared/types";
 import { AtlasView } from "./view";
+import { Chrono, type ChronoHost } from "../chrono/chrono";
 
 /** How long after the last byte we keep re-rendering to track the wire
  *  speed down to rest. Matches the meter's decay envelope. */
 const FLOW_DECAY_MS = 550;
-
-/** Widest the expanded topology's rows get, however big the window is. */
-const OVERLAY_MAX_WIDTH = 860;
 
 export interface AtlasPanelOptions {
   emit: AtlasEmitters;
@@ -68,7 +66,7 @@ export class AtlasPanel {
   private readonly header: AtlasHeader;
   private readonly view: AtlasView;
   private readonly inspector: AtlasInspector;
-  private readonly overlay: AtlasOverlay;
+  private readonly chrono: Chrono;
   private readonly river: AtlasRiver;
   private readonly legend: HTMLDivElement;
   private readonly emit: AtlasEmitters;
@@ -125,7 +123,21 @@ export class AtlasPanel {
     });
 
     this.inspector = new AtlasInspector();
-    this.overlay = new AtlasOverlay();
+    // ⌘G. The column says what is true now; CHRONO says what the last
+    // ninety seconds looked like, and lets you type into any of it.
+    this.chrono = new Chrono({
+      build: () => {
+        const host = variantContext.getSurfaceManager() as AtlasHost | null;
+        if (!host) return null;
+        return {
+          snapshot: this.buildDeepSnapshot(),
+          surfaceKinds: surfaceKindMap(host),
+        };
+      },
+      host: () =>
+        variantContext.getSurfaceManager() as unknown as ChronoHost | null,
+      focusedSurfaceId: () => variantContext.getFocusedSurfaceId(),
+    });
 
     const scroller = document.createElement("div");
     scroller.className = "tau-atlas-scroller";
@@ -154,16 +166,17 @@ export class AtlasPanel {
     if (this.decayTimer !== null) clearTimeout(this.decayTimer);
     this.frame = null;
     this.decayTimer = null;
-    this.overlay.close();
+    // Before anything else: CHRONO may be holding live pane containers,
+    // and they have to go home while there is still a layout to go to.
+    this.chrono.close();
     this.river.destroy();
     this.view.destroy();
     this.element.remove();
   }
 
-  /** ⌘G — full-window topology. */
+  /** ⌘G — the time field. */
   toggleOverlay(): void {
-    if (this.overlay.isOpen()) this.overlay.close();
-    else if (this.snapshot) this.overlay.open(this.buildDeepSnapshot());
+    this.chrono.toggle();
   }
 
   private attach(): void {
@@ -251,7 +264,6 @@ export class AtlasPanel {
       snapshot.totals.cpu,
     );
 
-    if (this.overlay.isOpen()) this.overlay.update(this.buildDeepSnapshot());
     this.scheduleFlowDecay(scene);
   }
 
@@ -443,136 +455,19 @@ export class AtlasPanel {
   }
 }
 
-// ── expanded overlay ─────────────────────────────────────────────────
-
 /**
- * The same scene at full-window scale, with per-pane processes, ports
- * and mirrored tasks revealed. The column is the glanceable instrument;
- * this is the one you explore. Sharing the snapshot builder, the layout
- * and the renderer means the two modes can never drift apart — the only
- * differences are the depth flag and the layout constants.
+ * Per-surface kind, flattened out of the workspace state.
+ *
+ * CHRONO needs it to decide what a lane can put at *now*: a terminal is
+ * clipped and bottom-anchored, a DOM pane is sized to the lane, and a
+ * native webview gets a standby card because it survives neither.
  */
-class AtlasOverlay {
-  private root: HTMLDivElement | null = null;
-  private view: AtlasView | null = null;
-  private snapshot: AtlasSnapshot | null = null;
-  private expanded = new Set<string>();
-  private escHandler: ((e: KeyboardEvent) => void) | null = null;
-
-  isOpen(): boolean {
-    return this.root !== null;
-  }
-
-  open(snapshot: AtlasSnapshot): void {
-    if (this.root) return;
-    this.snapshot = snapshot;
-    // Everything opens: the point of the overlay is the whole picture.
-    this.expanded = new Set(
-      [...snapshot.nodes.values()]
-        .filter((n) => n.children.length > 0)
-        .map((n) => n.id),
-    );
-
-    const root = document.createElement("div");
-    root.className = "tau-atlas-overlay";
-    root.setAttribute("role", "dialog");
-    root.setAttribute("aria-modal", "true");
-    root.setAttribute("aria-label", "Topology");
-
-    const head = document.createElement("div");
-    head.className = "tau-atlas-overlay-head";
-    const title = document.createElement("span");
-    title.className = "tau-atlas-eyebrow";
-    title.textContent = "topology";
-    const hint = document.createElement("span");
-    hint.className = "tau-atlas-overlay-hint";
-    hint.textContent = "esc to close";
-    head.append(title, hint);
-
-    const body = document.createElement("div");
-    body.className = "tau-atlas-overlay-body";
-
-    const inspector = new AtlasInspector();
-    inspector.setRowCap(40);
-    const view = new AtlasView({
-      onActivate: (id) => this.snapshot?.nodes.get(id)?.activate?.(),
-      onSelect: (id) => inspector.show(this.snapshot?.nodes.get(id) ?? null),
-      onHover: (id) =>
-        inspector.show(id ? (this.snapshot?.nodes.get(id) ?? null) : null),
-      onToggle: (id) => {
-        if (this.expanded.has(id)) this.expanded.delete(id);
-        else this.expanded.add(id);
-        this.draw();
-      },
-    });
-
-    const scroller = document.createElement("div");
-    scroller.className = "tau-atlas-overlay-scroller";
-    scroller.appendChild(view.element);
-
-    body.append(scroller, inspector.element);
-    root.append(head, body);
-    document.body.appendChild(root);
-
-    this.root = root;
-    this.view = view;
-    this.escHandler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        this.close();
-      }
-    };
-    window.addEventListener("keydown", this.escHandler, true);
-    root.addEventListener("click", (e) => {
-      if (e.target === root) this.close();
-    });
-    this.draw();
-  }
-
-  update(snapshot: AtlasSnapshot): void {
-    if (!this.root) return;
-    this.snapshot = snapshot;
-    for (const node of snapshot.nodes.values()) {
-      if (node.children.length > 0 && !this.expanded.has(node.id)) {
-        // New subtrees appear open — a pane that spawns a build should
-        // show it, not hide it behind a caret you have to find.
-        this.expanded.add(node.id);
-      }
+function surfaceKindMap(host: AtlasHost): Map<string, SurfaceKind> {
+  const kinds = new Map<string, SurfaceKind>();
+  for (const ws of host.getWorkspaceState().workspaces) {
+    for (const sid of ws.surfaceIds) {
+      kinds.set(sid, ws.surfaceTypes?.[sid] ?? "terminal");
     }
-    this.draw();
   }
-
-  private draw(): void {
-    if (!this.view || !this.snapshot) return;
-    // Bounded measure: a row spanning 1600 px of a wide display puts the
-    // badges a screen away from the label they describe.
-    const available = this.view.element.parentElement?.clientWidth ?? 0;
-    const width = Math.max(
-      EXPANDED_LAYOUT.width,
-      Math.min(available - 32, OVERLAY_MAX_WIDTH),
-    );
-    const scene = layoutAtlas({
-      snapshot: this.snapshot,
-      expanded: this.expanded,
-      options: { ...EXPANDED_LAYOUT, width },
-    });
-    this.view.render(
-      scene,
-      this.expanded,
-      EXPANDED_LAYOUT.radius,
-      EXPANDED_LAYOUT.rowHeight,
-    );
-  }
-
-  close(): void {
-    if (this.escHandler) {
-      window.removeEventListener("keydown", this.escHandler, true);
-      this.escHandler = null;
-    }
-    this.view?.destroy();
-    this.root?.remove();
-    this.root = null;
-    this.view = null;
-    this.snapshot = null;
-  }
+  return kinds;
 }

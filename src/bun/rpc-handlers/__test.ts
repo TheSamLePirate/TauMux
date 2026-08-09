@@ -62,5 +62,6 @@ export function registerTestHandlers(
       return deps.requestWebview?.("__test.getWindowId", {}) ?? null;
     },
     "__test.getWindowBounds": pipe("__test.getWindowBounds"),
+    "__test.readChronoState": pipe("__test.readChronoState"),
   };
 }

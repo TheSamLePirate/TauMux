@@ -124,6 +124,17 @@ export interface WebviewState {
   terminalRenderer: "webgl" | "dom" | null;
 }
 
+/** Mirrors `ChronoTestState` in `src/views/terminal/__test-handlers.ts`. */
+export interface ChronoStateDTO {
+  open: boolean;
+  lanes: number;
+  leased: number;
+  homePanes: number;
+  minLaneHeight: number;
+  minHomeWidth: number;
+  headKinds: string[];
+}
+
 export interface PaletteCommandDTO {
   id: string;
   label: string;
@@ -557,6 +568,9 @@ class RpcClient implements SocketRpc {
         height: number;
         devicePixelRatio: number;
       } | null>("__test.getWindowBounds"),
+    /** CHRONO's handover state: which panes are in a lane, which are
+     *  home, and whether either set is laid out or merely present. */
+    readChrono: () => this.call<ChronoStateDTO>("__test.readChronoState"),
   };
 }
 

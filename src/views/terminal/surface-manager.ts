@@ -113,6 +113,7 @@ import {
   type PaneChipsDeps,
 } from "../../shared/pane-chips";
 import { LEASE_FLAG } from "./chrono/screen-lease";
+import { readTerminalGrid, type ChronoGrid } from "./chrono/grid";
 
 const NATIVE_CHIP_DEPS: PaneChipsDeps = {
   onPortClick: (port) => {
@@ -1880,6 +1881,13 @@ export class SurfaceManager {
    *  mounted (caller should drop the overlay). */
   getSurfaceContainer(surfaceId: string): HTMLElement | null {
     return this.surfaces.get(surfaceId)?.container ?? null;
+  }
+
+  /** Grid geometry for CHRONO's bottom-anchored lane heads. Only the
+   *  Terminal can say how many rows carry content; the DOM that would
+   *  answer it exists under one renderer and not the other. */
+  getSurfaceGrid(surfaceId: string): ChronoGrid | null {
+    return readTerminalGrid(this.surfaces.get(surfaceId)?.term);
   }
 
   /** Start a persistent notification glow on a surface pane. */

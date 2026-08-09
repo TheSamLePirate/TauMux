@@ -166,6 +166,12 @@
   --tau-atlas-scan: rgba(111, 233, 255, 0.028);
   --tau-atlas-bracket: rgba(111, 233, 255, 0.26);
   --tau-atlas-horizon: rgba(111, 233, 255, 0.07);
+  /* CHRONO (⌘G). The field is ~92 % void, so it has exactly two colours
+   * of its own: the near-white leading edge of a live trace, and the
+   * rule an event strikes across every lane. Everything else is the
+   * lane's identity colour at an alpha the trace's own age decides. */
+  --tau-chrono-trace-hot: #eafaff;
+  --tau-chrono-strike: rgba(214, 226, 232, 0.2);
   --tau-text: #d6e2e8;
   --tau-text-dim: #8a9aa3;
   --tau-text-mute: #55646c;
@@ -12116,81 +12122,6 @@ body[data-tau-variant="atlas"] .tau-atlas-graph {
  * The same snapshot, layout and renderer at full-window scale with the
  * per-pane processes, ports and mirrored tasks revealed. Sharing the
  * pipeline is what stops the two modes from drifting apart. */
-.tau-atlas-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 900;
-  display: flex;
-  flex-direction: column;
-  /* Atlas is the one place §11's Liquid Glass ban is lifted. The
-   * overlay floats above live panes, and a solid ground would hide the
-   * very work you opened it to reason about; the blur keeps them
-   * readable as context without competing with the spine. */
-  background: color-mix(in srgb, var(--tau-void) 82%, transparent);
-  backdrop-filter: blur(14px) saturate(120%);
-  font-family: var(--tau-font-mono);
-}
-.tau-atlas-overlay-head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 38px;
-  padding: 0 16px;
-  border-bottom: 0.5px solid var(--tau-edge);
-  background: color-mix(in srgb, var(--tau-panel) 55%, transparent);
-}
-.tau-atlas-overlay-hint {
-  margin-left: auto;
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  color: var(--tau-text-faint);
-}
-.tau-atlas-overlay-body {
-  flex: 1 1 auto;
-  display: flex;
-  min-height: 0;
-}
-.tau-atlas-overlay-scroller {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: auto;
-  padding: 8px 0 24px;
-  background-image: radial-gradient(
-    var(--tau-atlas-grid) 0.5px,
-    transparent 0.5px
-  );
-  background-size: 20px 20px;
-  background-position: 13px 13px;
-}
-.tau-atlas-overlay .tau-atlas-inspector {
-  flex: 0 0 340px;
-  overflow-y: auto;
-  padding: 16px 16px 20px;
-  gap: 7px;
-  border-top: none;
-  border-left: 2px solid var(--node, var(--tau-cyan));
-  /* Denser glass than the overlay ground behind it. Two planes at
-   * different depths is what makes the inspector read as *above* the
-   * graph rather than beside it — the only reason to use the effect. */
-  background: color-mix(in srgb, var(--tau-panel) 72%, transparent);
-  backdrop-filter: blur(26px) saturate(130%);
-}
-.tau-atlas-overlay .tau-atlas-inspector-label {
-  flex-basis: 84px;
-}
-.tau-atlas-overlay .tau-atlas-row-label {
-  font-size: 12px;
-}
-.tau-atlas-overlay .tau-atlas-row-sub {
-  font-size: 11px;
-}
-.tau-atlas-overlay .tau-atlas-badge {
-  font-size: 10px;
-  line-height: 15px;
-  padding: 0 5px;
-}
-
 /* Motion is state, and a user who has asked for less of it still needs
  * the state. Position transitions and the flow dash go; the arcs,
  * colours and dashed attention ring carry the same information without
@@ -14685,4 +14616,627 @@ button.spp-step:hover {
   font-size: 9px;
   color: var(--tau-text-faint);
   margin-left: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * CHRONO — the ⌘G time field.
+ *
+ * The horizontal axis is the last 90 seconds with *now* pinned at the
+ * right edge. Left gutter (the channel strip), then the field, then a
+ * column of live terminal heads sitting at now. The three columns are
+ * published by the view as --chrono-gutter / --chrono-head so the ruler
+ * and the now-edge, which live outside the scroller, line up with the
+ * traces inside it.
+ *
+ * Ratio is the whole design: ~92 % void, and the only saturated things
+ * on screen are traces and live terminal text. No blur ground here —
+ * unlike the Atlas topology this replaced, CHRONO *is* the view of the
+ * panes, so there is nothing behind it worth showing through.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+.tau-chrono {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  background: var(--tau-void);
+  font-family: var(--tau-font-mono);
+  color: var(--tau-text);
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+
+.tau-chrono.is-open {
+  opacity: 1;
+}
+
+/* ── header ──────────────────────────────────────────────────────── */
+
+/* The field covers the window, titlebar included, so the header has to
+ * leave the macOS traffic lights their corner — they are drawn by the OS
+ * on top of whatever is there, and §11 says they stay stock. */
+.tau-chrono-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 34px;
+  padding: 0 16px 0 84px;
+  border-bottom: 0.5px solid var(--tau-edge);
+  -webkit-app-region: drag;
+}
+
+.tau-chrono-header button {
+  -webkit-app-region: no-drag;
+}
+
+.tau-chrono-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--tau-cyan);
+}
+
+.tau-chrono-filters {
+  display: flex;
+  gap: 2px;
+}
+
+.tau-chrono-filter {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 3px 7px;
+  border-radius: var(--tau-r-chip);
+  font-family: inherit;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--tau-text-mute);
+  cursor: pointer;
+  transition: color 120ms ease-out, background 120ms ease-out;
+}
+
+.tau-chrono-filter:hover {
+  color: var(--tau-text-dim);
+}
+
+.tau-chrono-filter.is-active {
+  color: var(--tau-cyan);
+  background: var(--tau-cyan-dim);
+}
+
+.tau-chrono-filter.has-alert {
+  color: var(--tau-warn);
+}
+
+.tau-chrono-alert {
+  display: none;
+  min-width: 15px;
+  padding: 0 4px;
+  border-radius: var(--tau-r-chip);
+  font-size: 9px;
+  line-height: 15px;
+  text-align: center;
+  color: var(--tau-void);
+  background: var(--tau-warn);
+}
+
+.tau-chrono-alert.is-visible {
+  display: inline-block;
+}
+
+.tau-chrono-hint {
+  appearance: none;
+  border: none;
+  background: none;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  font-family: inherit;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--tau-text-faint);
+  cursor: pointer;
+}
+
+.tau-chrono-hint:hover {
+  color: var(--tau-text-dim);
+}
+
+.tau-chrono-hint-typing {
+  color: var(--tau-cyan);
+}
+
+.tau-chrono-hint.is-typing .tau-chrono-hint-key {
+  color: var(--tau-text-dim);
+}
+
+/* ── the time ruler ──────────────────────────────────────────────── */
+
+.tau-chrono-ruler {
+  flex: 0 0 auto;
+  height: 18px;
+  padding-left: var(--chrono-gutter, 232px);
+  padding-right: var(--chrono-head, 420px);
+}
+
+.tau-chrono-ruler-band {
+  position: relative;
+  height: 100%;
+  border-bottom: 0.5px solid var(--tau-edge-soft);
+}
+
+.tau-chrono-tick {
+  position: absolute;
+  bottom: 2px;
+  transform: translateX(-50%);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tau-text-faint);
+  white-space: nowrap;
+}
+
+.tau-chrono-tick:first-child {
+  transform: none;
+}
+
+.tau-chrono-tick.is-now {
+  transform: translateX(-100%);
+  padding-right: 6px;
+  color: var(--tau-cyan);
+}
+
+/* ── the field ───────────────────────────────────────────────────── */
+
+.tau-chrono-field {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The two rules that make the field readable as a space: where the
+ * gutter ends, and where *now* is. Both are structure, not data, so
+ * both are hairlines and neither ever moves. */
+.tau-chrono-field::before,
+.tau-chrono-field::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0.5px;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.tau-chrono-field::before {
+  left: var(--chrono-gutter, 232px);
+  background: var(--tau-edge-soft);
+}
+
+.tau-chrono-field::after {
+  right: var(--chrono-head, 420px);
+  background: color-mix(in srgb, var(--tau-cyan) 34%, transparent);
+}
+
+/* No padding: the lane stack is sized to `clientHeight`, and padding is
+ * inside that box — 24 px of it would push the last lane past the
+ * window's bottom edge on every open. Lanes carry their own inset. */
+.tau-chrono-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.tau-chrono-content {
+  position: relative;
+  width: 100%;
+}
+
+.tau-chrono-canvas {
+  position: absolute;
+  top: 0;
+  left: var(--chrono-gutter, 232px);
+  right: var(--chrono-head, 420px);
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.tau-chrono-lanes {
+  position: absolute;
+  inset: 0;
+}
+
+.tau-chrono-lane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: grid;
+  grid-template-columns: var(--chrono-gutter, 232px) 1fr var(--chrono-head, 420px);
+  align-items: stretch;
+}
+
+/* ── the gutter: one channel strip per lane ──────────────────────── */
+
+.tau-chrono-gutter {
+  appearance: none;
+  border: none;
+  background: none;
+  display: flex;
+  /* The label hugs its text; only the bracket spans the lane. Stretching
+   * both puts the focus ring around 500 px of empty column. */
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  padding: 0 12px 0 14px;
+  text-align: left;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* The ring hugs the label rather than the lane: a lane can be 500 px
+ * tall, and a box that size reads as a container, not as a focus cue. */
+.tau-chrono-gutter:focus-visible {
+  outline: none;
+}
+
+.tau-chrono-gutter:focus-visible .tau-chrono-gutter-body {
+  outline: 1px solid var(--tau-cyan);
+  outline-offset: 3px;
+  border-radius: var(--tau-r-chip);
+}
+
+/* Workspaces are brackets, not boxes. A box drawn round two lanes would
+ * imply those two share an axis the others don't, and every lane shares
+ * the same one. */
+.tau-chrono-bracket {
+  position: relative;
+  align-self: stretch;
+  flex: 0 0 2px;
+  width: 2px;
+  background: color-mix(in srgb, var(--workspace, var(--tau-text-mute)) 40%, transparent);
+}
+
+.tau-chrono-gutter.is-workspace-head .tau-chrono-bracket {
+  border-top-left-radius: 1px;
+  border-top-right-radius: 1px;
+  margin-top: 6px;
+}
+
+.tau-chrono-gutter.is-workspace-tail .tau-chrono-bracket {
+  border-bottom-left-radius: 1px;
+  border-bottom-right-radius: 1px;
+  margin-bottom: 6px;
+}
+
+.tau-chrono-gutter.is-workspace-head .tau-chrono-bracket::before,
+.tau-chrono-gutter.is-workspace-tail .tau-chrono-bracket::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 7px;
+  height: 0.5px;
+  background: inherit;
+}
+
+.tau-chrono-gutter.is-workspace-head .tau-chrono-bracket::before {
+  top: 0;
+}
+
+.tau-chrono-gutter.is-workspace-tail .tau-chrono-bracket::after {
+  bottom: 0;
+}
+
+/* Top-aligned, not centred: lanes differ in height by a factor of three,
+ * and a centred label leaves the tall ones with their name floating in
+ * the middle of nothing. Aligned tops give the eye one scanning line. */
+.tau-chrono-gutter-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding-top: 6px;
+}
+
+.tau-chrono-workspace {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: color-mix(in srgb, var(--workspace, var(--tau-text-dim)) 72%, var(--tau-text-mute));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tau-chrono-workspace.is-empty,
+.tau-chrono-sub.is-empty,
+.tau-chrono-sats.is-empty {
+  display: none;
+}
+
+.tau-chrono-name {
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--lane, var(--tau-text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tau-chrono-sub {
+  font-size: 9.5px;
+  color: var(--tau-text-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tau-chrono-sats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 1px;
+  overflow: hidden;
+  max-height: 15px;
+}
+
+.tau-chrono-sat {
+  font-size: 9px;
+  line-height: 13px;
+  padding: 0 4px;
+  border-radius: var(--tau-r-chip);
+  background: color-mix(in srgb, var(--tau-panel-hi) 80%, transparent);
+  white-space: nowrap;
+}
+
+/* Attention is the one thing in the gutter allowed to be loud. */
+.tau-chrono-gutter[data-attention] .tau-chrono-name {
+  color: var(--tau-warn);
+}
+
+.tau-chrono-gutter[data-attention="error"] .tau-chrono-name {
+  color: var(--tau-err);
+}
+
+.tau-chrono-lane.is-selected .tau-chrono-gutter {
+  background: color-mix(in srgb, var(--tau-panel) 62%, transparent);
+}
+
+/* ── the heads: each lane's live terminal, at now ────────────────── */
+
+.tau-chrono-head {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--tau-r-pane);
+  background: var(--tau-panel);
+  margin: 0 14px 0 10px;
+}
+
+.tau-chrono-head-edge {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  border: 0.5px solid var(--tau-edge);
+  border-radius: var(--tau-r-pane);
+}
+
+.tau-chrono-lane.is-focused .tau-chrono-head-edge {
+  border-color: color-mix(in srgb, var(--lane, var(--tau-cyan)) 56%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--lane, var(--tau-cyan)) 22%, transparent);
+}
+
+/* The shield. Over an unshielded terminal xterm claims the wheel — and
+ * in the alternate buffer turns it into arrow keys — so scrolling the
+ * field past a `vim` lane would move `vim`'s cursor. It lifts on the
+ * focused lane: that one is live to the mouse, the rest are readouts. */
+.tau-chrono-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  cursor: pointer;
+}
+
+.tau-chrono-head.is-live .tau-chrono-shield {
+  display: none;
+}
+
+/* Inset from the frame on the two edges the eye lands on: the last line
+ * would otherwise sit *on* the bottom border and be shaved by it, and
+ * column 1 would touch the left edge. The anchor maths is unchanged —
+ * the slot is simply a slightly smaller box than the head. */
+.tau-chrono-screen {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 7px;
+  left: 10px;
+}
+
+.tau-chrono-head:not([data-kind="screen"]):not([data-kind="pane"])
+  .tau-chrono-screen {
+  display: none;
+}
+
+.tau-chrono-head[data-kind="screen"] .tau-chrono-card,
+.tau-chrono-head[data-kind="pane"] .tau-chrono-card {
+  display: none;
+}
+
+/* The borrowed pane. Its inline rect was cleared by the lease, so these
+ * rules are the whole of its geometry while CHRONO holds it. */
+.tau-chrono-screen > .surface-container[data-chrono-lease] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  filter: none;
+  transition: none;
+  background: transparent;
+  contain: layout paint style;
+}
+
+/* The gutter already carries the pane's name and its satellites; the
+ * pane's own header would be the same facts a second time. */
+.tau-chrono-screen > .surface-container[data-chrono-lease] > .surface-bar {
+  display: none;
+}
+
+/* The terminal is narrower than the head whenever the pane it came from
+ * was, and its own ground would then paint a lighter band down the right
+ * of the lane. The head owns the surface here. */
+.tau-chrono-screen > .surface-container[data-chrono-lease] .surface-terminal {
+  background: transparent;
+}
+
+/* Canvas overlays are positioned against the pane's laid-out box, which
+ * is not the box it is in right now. */
+.tau-chrono-screen > .surface-container[data-chrono-lease] .surface-panels {
+  display: none;
+}
+
+/* Bloom is aligned to the pane's own rect and sizes its canvas at fit
+ * time, so in a lane it would paint out of register. `!important`
+ * because TerminalEffects writes `display` inline. */
+.tau-chrono-screen
+  > .surface-container[data-chrono-lease]
+  .terminal-effects-layer {
+  display: none !important;
+}
+
+/* The head is a viewport, not a scroller: the wheel belongs to the
+ * field, and the scrollbar would ride the anchor transform. Matched on
+ * the head rather than through the lease attribute so it also covers a
+ * pane-kind head, whose inner scrollers are the surface's own. */
+.tau-chrono-head .xterm-viewport,
+.tau-chrono-head .xterm-scrollable-element > .scrollbar,
+.tau-chrono-head .xterm-decoration-container {
+  display: none;
+}
+
+/* Same reason, one level out: the field's own scrollbar would draw a
+ * chrome rail straight down the *now* edge, which is the one line in
+ * this view that has to read as unbroken. ↑/↓ scroll the selection into
+ * view, and the wheel still works over the gutter and the traces. */
+.tau-chrono-scroll {
+  scrollbar-width: none;
+}
+
+.tau-chrono-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* THE mechanic: bottom-anchor the live terminal so its last line sits on
+ * the lane's bottom edge. `--chrono-anchor` is computed in chrono/grid.ts
+ * from the terminal's own row count — no fit(), no pty.resize, no second
+ * instance. See chrono/head.ts#applyAnchor. */
+.tau-chrono-head[data-kind="screen"]
+  .surface-container[data-chrono-lease]
+  .surface-terminal-layer {
+  transform: translateY(var(--chrono-anchor, 0px));
+}
+
+/* An unfocused head reads as depth rather than as a dimmed pane. */
+.tau-chrono-head:not(.is-live) .surface-container[data-chrono-lease] {
+  filter: saturate(0.82) brightness(0.88);
+}
+
+/* ── standby / session cards ─────────────────────────────────────── */
+
+.tau-chrono-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 16px;
+  background: var(--tau-panel);
+}
+
+.tau-chrono-card-kind {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--tau-text-faint);
+}
+
+.tau-chrono-card-title {
+  font-size: 12px;
+  color: var(--tau-text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tau-chrono-card-sub {
+  font-size: 9.5px;
+  color: var(--tau-text-mute);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tau-chrono-card-go {
+  appearance: none;
+  margin-top: 4px;
+  padding: 3px 9px;
+  border-radius: var(--tau-r-btn);
+  border: 0.5px solid var(--tau-edge);
+  background: var(--tau-panel-hi);
+  font-family: inherit;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--tau-text-dim);
+  cursor: pointer;
+  z-index: 7;
+  position: relative;
+}
+
+.tau-chrono-card-go:hover {
+  color: var(--tau-cyan);
+  border-color: var(--tau-cyan-soft);
+}
+
+/* ── empty state ─────────────────────────────────────────────────── */
+
+.tau-chrono-empty {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--tau-text-faint);
+}
+
+.tau-chrono-empty.is-visible {
+  display: flex;
+}
+
+/* Motion is state. The open fade is the one transition here, and a user
+ * who has asked for less of it gets the field immediately instead. */
+@media (prefers-reduced-motion: reduce) {
+  .tau-chrono {
+    transition: none;
+  }
 }

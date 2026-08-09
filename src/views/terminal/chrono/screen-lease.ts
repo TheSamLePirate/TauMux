@@ -105,6 +105,12 @@ export class ScreenLeases {
       slot,
     });
     el.dataset[LEASE_FLAG] = "1";
+    // Hand presentation to the stylesheet. The pane arrives carrying the
+    // absolute rect `applyPositions` wrote, and an inline rect beats any
+    // rule the lane could state; clearing it is what lets
+    // `[data-chrono-lease]` own the geometry. The original is captured
+    // above and written back verbatim on release.
+    el.style.cssText = "";
     slot.appendChild(el);
     return true;
   }

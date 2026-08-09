@@ -94,19 +94,33 @@ describe("ScreenLeases.borrow", () => {
     expect(orphan.parentElement).toBeNull();
   });
 
-  test("is idempotent for the same surface and slot", () => {
+  test("clears the pane's inline rect so the lane can own the geometry", () => {
     const { slot, panes } = fixture();
     const leases = new ScreenLeases();
 
     leases.borrow("s0", panes[0]!, slot);
-    const cssAfterFirst = panes[0]!.style.cssText;
+
+    // An inline rect beats any rule a lane could state, so the borrow
+    // hands presentation to the stylesheet outright.
+    expect(panes[0]!.style.cssText).toBe("");
+  });
+
+  test("is idempotent for the same surface and slot", () => {
+    const { slot, panes } = fixture();
+    const leases = new ScreenLeases();
+    const original = panes[0]!.style.cssText;
+
+    leases.borrow("s0", panes[0]!, slot);
+    // A lane sets its own geometry between refreshes; a second borrow
+    // must not mistake that for the pane's return address.
+    panes[0]!.style.cssText = "position: relative; height: 100%;";
     leases.borrow("s0", panes[0]!, slot);
 
     expect(leases.size).toBe(1);
     expect(slot.children.length).toBe(1);
-    // The second borrow must not re-capture the *lane* geometry as the
-    // pane's return address — that is how a pane goes home 100 px wide.
-    expect(panes[0]!.style.cssText).toBe(cssAfterFirst);
+
+    leases.release("s0");
+    expect(panes[0]!.style.cssText).toBe(original);
   });
 
   test("re-borrowing into a new slot keeps the original return address", () => {
