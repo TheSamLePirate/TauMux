@@ -20,7 +20,7 @@ Plan: `doc/plan_atlas_chrono.md`. Six phases, each ending green on
 |---|---|
 | fit, timebase, cursor, context ribbon | `344b021b` (v0.21.0) |
 | every action on the axis, plan as a shape | `52b89e55` (v0.22.0) |
-| docs for both | (this commit) |
+| docs for both | `b203d5ab` |
 
 ---
 
