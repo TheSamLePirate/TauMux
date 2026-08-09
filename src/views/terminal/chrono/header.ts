@@ -187,9 +187,55 @@ export class ChronoHeader {
  * Labels are **stacked, not thinned**. Four approvals in eight seconds
  * draw four rules — that is the truth, and it is legible — but four
  * overlapping words is a smudge, so a label that would collide drops to
- * the next row. Past the last row there is genuinely no room, and the
- * remainder is dropped newest-first-wins.
+ * the next row.
+ *
+ * Past the last row there is genuinely no room, and what gets dropped is
+ * decided by **weight, then recency** — never recency alone. A turn is a
+ * prompt followed by a dozen tool calls in as many seconds; ordering by
+ * time alone means the tools label themselves and the prompt that caused
+ * them does not, which is precisely backwards.
  */
+
+/**
+ * What each kind is called on the axis.
+ *
+ * Verbs and nouns from the user's side of the screen, not the hook names
+ * that produced them: a person recognises "asked" and "ran", not
+ * `user-text` and `tool-start`. Short enough that four can stack without
+ * the rail becoming a paragraph.
+ */
+const KIND_LABEL: Record<string, string> = {
+  prompt: "asked",
+  reply: "replied",
+  tool: "ran",
+  turn: "turn",
+  task: "task",
+  approval: "approval",
+  question: "asking",
+  error: "error",
+  notify: "notify",
+  mark: "mark",
+};
+
+/**
+ * Which labels win the last row.
+ *
+ * Not a severity scale — a ranking of *what you came here to find*. You
+ * open a timeline to see what you asked for and what stopped, not to
+ * count the reads in between.
+ */
+const LABEL_RANK: Record<string, number> = {
+  error: 6,
+  approval: 6,
+  question: 6,
+  prompt: 5,
+  mark: 4,
+  reply: 3,
+  turn: 3,
+  task: 2,
+  notify: 2,
+  tool: 1,
+};
 
 /** Rows the rail can stack into before it gives up. */
 const MAX_ROWS = 4;
@@ -220,13 +266,19 @@ export class ChronoStrikeRail {
     const placed: { pct: number; row: number; event: ChronoEvent }[] = [];
     const rows: number[][] = Array.from({ length: MAX_ROWS }, () => []);
 
-    // Newest first: when the rail runs out of rows, the events you are
-    // most likely to still care about are the ones that keep their name.
-    for (let i = events.length - 1; i >= 0; i--) {
-      const event = events[i]!;
-      const age = now - event.at;
-      if (age < 0 || age > span) continue;
-      const pct = (1 - age / span) * 100;
+    // Loudest first, then newest. When the rail runs out of rows the
+    // labels that survive are the ones you would have looked for.
+    const candidates = events
+      .filter((event) => {
+        const age = now - event.at;
+        return age >= 0 && age <= span;
+      })
+      .sort(
+        (a, b) => LABEL_RANK[b.kind] - LABEL_RANK[a.kind] || b.at - a.at,
+      );
+
+    for (const event of candidates) {
+      const pct = (1 - (now - event.at) / span) * 100;
       const row = rows.findIndex((taken) =>
         taken.every((other) => Math.abs(other - pct) >= LABEL_PCT),
       );
@@ -251,7 +303,7 @@ export class ChronoStrikeRail {
 
         const kind = document.createElement("span");
         kind.className = "tau-chrono-strike-kind";
-        kind.textContent = event.kind;
+        kind.textContent = KIND_LABEL[event.kind] ?? event.kind;
         const text = document.createElement("span");
         text.className = "tau-chrono-strike-text";
         text.textContent = event.text;

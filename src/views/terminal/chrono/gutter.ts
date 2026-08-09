@@ -95,6 +95,9 @@ export class ChronoGutterRow {
       lane.node.attention ?? "",
       lane.node.running ? "1" : "0",
       sats.map((s) => `${s.text}:${s.tone}:${s.color ?? ""}`).join("|"),
+      planSteps(lane)
+        .map((s) => s.state)
+        .join(""),
     ].join("§");
     if (next === this.signature) return;
     this.signature = next;
@@ -116,8 +119,15 @@ export class ChronoGutterRow {
     this.subEl.title = lane.node.sublabel;
     this.subEl.classList.toggle("is-empty", lane.node.sublabel === "");
 
-    this.satsEl.replaceChildren(...sats.map(chip));
-    this.satsEl.classList.toggle("is-empty", sats.length === 0);
+    const steps = planSteps(lane);
+    this.satsEl.replaceChildren(
+      ...(steps.length > 0 ? [buildPlanBar(steps)] : []),
+      ...sats.map(chip),
+    );
+    this.satsEl.classList.toggle(
+      "is-empty",
+      sats.length === 0 && steps.length === 0,
+    );
 
     this.element.setAttribute("aria-label", describe(lane, sats));
   }
@@ -139,8 +149,6 @@ export class ChronoGutterRow {
  */
 export function satelliteChips(lane: ChronoLane): AtlasBadge[] {
   const out: AtlasBadge[] = [...lane.node.badges];
-  let steps = 0;
-  let doneSteps = 0;
   let subagents = 0;
   let processes = 0;
 
@@ -153,11 +161,6 @@ export function satelliteChips(lane: ChronoLane): AtlasBadge[] {
           title: `Listening — ${sat.sublabel}`,
         });
         break;
-      case "plan-step":
-      case "task":
-        steps += 1;
-        if (sat.tone === "ok") doneSteps += 1;
-        break;
       case "subagent":
         subagents += 1;
         break;
@@ -169,13 +172,6 @@ export function satelliteChips(lane: ChronoLane): AtlasBadge[] {
     }
   }
 
-  if (steps > 0) {
-    out.push({
-      text: `plan ${doneSteps}/${steps}`,
-      tone: doneSteps === steps ? "ok" : "accent",
-      title: `${doneSteps} of ${steps} steps done`,
-    });
-  }
   if (subagents > 0) {
     out.push({
       text: `${subagents}·sub`,
@@ -199,6 +195,56 @@ export function satelliteChips(lane: ChronoLane): AtlasBadge[] {
     title: "More detail in the inspector",
   });
   return shown;
+}
+
+/**
+ * The lane's plan, as a segmented bar.
+ *
+ * `plan 3/5` is a *count* of a thing that has a shape, and the shape is
+ * the part worth seeing: which steps are done, which one is running, and
+ * whether anything failed. Five cells say all three at a glance and take
+ * less room than the words did.
+ *
+ * No time axis here on purpose. A plan step carries no timestamp of its
+ * own — only the plan does — so placing steps along the field would be
+ * inventing moments, which is the one thing this view must never do.
+ */
+export function planSteps(lane: ChronoLane): { state: string; title: string }[] {
+  const out: { state: string; title: string }[] = [];
+  for (const sat of lane.satellites) {
+    if (sat.kind !== "plan-step" && sat.kind !== "task") continue;
+    out.push({
+      state:
+        sat.tone === "ok"
+          ? "done"
+          : sat.tone === "err"
+            ? "err"
+            : sat.running
+              ? "active"
+              : "waiting",
+      title: sat.label,
+    });
+  }
+  return out;
+}
+
+function buildPlanBar(
+  steps: readonly { state: string; title: string }[],
+): HTMLSpanElement {
+  const bar = document.createElement("span");
+  bar.className = "tau-chrono-plan";
+  const done = steps.filter((s) => s.state === "done").length;
+  bar.title = `${done} of ${steps.length} steps done`;
+  bar.setAttribute("aria-label", bar.title);
+  // Past a dozen the cells stop being distinguishable and the bar starts
+  // lying about proportion; the count in the title stays honest.
+  for (const step of steps.slice(0, 12)) {
+    const cell = document.createElement("span");
+    cell.className = `tau-chrono-plan-step is-${step.state}`;
+    cell.title = step.title;
+    bar.appendChild(cell);
+  }
+  return bar;
 }
 
 function chip(badge: AtlasBadge): HTMLSpanElement {

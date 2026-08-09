@@ -15132,6 +15132,35 @@ button.spp-step:hover {
   max-height: 15px;
 }
 
+/* The plan, as a shape rather than a count. `3/5` says how many; the
+ * cells say which — done, running, waiting, failed — in the same width. */
+.tau-chrono-plan {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  height: 13px;
+}
+
+.tau-chrono-plan-step {
+  width: 7px;
+  height: 4px;
+  border-radius: 1px;
+  background: var(--tau-text-faint);
+}
+
+.tau-chrono-plan-step.is-done {
+  background: var(--tau-ok);
+}
+
+.tau-chrono-plan-step.is-active {
+  background: var(--tau-cyan);
+  box-shadow: 0 0 5px var(--tau-cyan-glow);
+}
+
+.tau-chrono-plan-step.is-err {
+  background: var(--tau-err);
+}
+
 .tau-chrono-sat {
   font-size: 9px;
   line-height: 13px;
@@ -15386,7 +15415,7 @@ button.spp-step:hover {
   display: flex;
   align-items: baseline;
   gap: 5px;
-  max-width: 26%;
+  max-width: 34%;
   transform: translateX(-100%);
   padding-right: 6px;
   font-size: 9px;
@@ -15418,12 +15447,31 @@ button.spp-step:hover {
   color: var(--tau-err);
 }
 
-.tau-chrono-strike-label.is-turn {
+/* §7 on the axis: what the *human* did is cyan, what the *agent* did is
+ * amber. That is the one distinction on this rail worth spending colour
+ * on — everything else is weight. */
+.tau-chrono-strike-label.is-turn,
+.tau-chrono-strike-label.is-reply {
   color: var(--tau-agent);
 }
 
+.tau-chrono-strike-label.is-prompt,
 .tau-chrono-strike-label.is-notify {
   color: var(--tau-cyan);
+}
+
+.tau-chrono-strike-label.is-task {
+  color: var(--tau-ok);
+}
+
+/* Tool calls are the most frequent thing here by an order of magnitude.
+ * They stay countable and stop shouting. */
+.tau-chrono-strike-label.is-tool {
+  color: var(--tau-text-mute);
+}
+
+.tau-chrono-strike-label.is-tool .tau-chrono-strike-text {
+  color: var(--tau-text-faint);
 }
 
 /* ── the footer: inspector + strike labels ───────────────────────── */

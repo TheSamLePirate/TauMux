@@ -216,6 +216,7 @@ export class Chrono {
     // four minutes ago.
     this.sources.seed(getClaudeSessions(), variantContext.getNotifyWorkspaces());
     this.sources.ingestMarks();
+    this.sources.ingestPlans();
 
     // Native webviews cannot be reparented or covered reliably, so they
     // are hidden for the duration — the same move the command palette
@@ -298,7 +299,10 @@ export class Chrono {
         this.sources.ingestSessions(sessions);
         wake();
       }),
-      subscribePlans(() => wake()),
+      subscribePlans(() => {
+        this.sources.ingestPlans();
+        wake();
+      }),
       subscribeAtlasAnnotations(() => {
         this.sources.ingestMarks();
         wake();

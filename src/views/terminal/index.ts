@@ -29,6 +29,7 @@ import {
   toggleTopology,
 } from "./variants/layout-shortcuts";
 import { wireAtlasHost } from "./variants/atlas-host-wiring";
+import { noteAgentActivity } from "./chrono/activity";
 import type { VariantId } from "./variants/types";
 import { confirmDestructive, showPromptDialog } from "./prompt-dialog";
 import { ProcessManagerPanel } from "./process-manager";
@@ -350,6 +351,9 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
       },
       claudeAgentEvent: (payload) => {
         surfaceManager.claude.handleEvent(payload.surfaceId, payload.event);
+        // …and onto CHRONO's time axis. The pane shows the transcript;
+        // the axis shows *when*, beside every other pane's output.
+        noteAgentActivity(payload.surfaceId, payload.event);
       },
       claudeAgentExit: (payload) => {
         surfaceManager.claude.handleExit(payload.surfaceId, payload.error);

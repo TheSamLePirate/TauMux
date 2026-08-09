@@ -341,7 +341,8 @@ export class ChronoField {
       const colour = this.resolve(strikeTone(event.kind));
       // Fades with age like everything else here, so a rule from the far
       // side of the window does not compete with one from two seconds ago.
-      const alpha = 0.24 + (1 - age / input.span) * 0.5;
+      const alpha =
+        (0.24 + (1 - age / input.span) * 0.5) * strikeWeight(event.kind);
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
@@ -431,7 +432,11 @@ export function levelOf(bytes: number): number {
   return Math.min(1, Math.max(0, level));
 }
 
-/** Colour role for a strike. The state palette, unchanged. */
+/**
+ * Colour role for a strike. The state palette, unchanged, plus §7's
+ * identity rule: what the *human* did is cyan, what the *agent* did is
+ * amber. That is the one distinction worth colour on this axis.
+ */
 export function strikeTone(kind: ChronoEventKind): string {
   switch (kind) {
     case "approval":
@@ -440,11 +445,40 @@ export function strikeTone(kind: ChronoEventKind): string {
     case "error":
       return "var(--tau-err)";
     case "turn":
+    case "reply":
       return "var(--tau-agent)";
+    case "prompt":
     case "notify":
       return "var(--tau-cyan)";
+    case "task":
+      return "var(--tau-ok)";
     default:
       return "var(--tau-chrono-strike)";
+  }
+}
+
+/**
+ * How loudly a strike is drawn, relative to the rest.
+ *
+ * Tool calls are the most frequent thing on this axis by an order of
+ * magnitude — a busy turn is a dozen of them — and at full weight they
+ * turn the field into a barcode with the approvals hidden inside it.
+ * They are drawn as ticks: present, countable, and quiet enough that the
+ * things you actually stop for still stop you.
+ */
+export function strikeWeight(kind: ChronoEventKind): number {
+  switch (kind) {
+    case "tool":
+      return 0.34;
+    case "reply":
+    case "task":
+      return 0.62;
+    case "approval":
+    case "question":
+    case "error":
+      return 1.15;
+    default:
+      return 1;
   }
 }
 

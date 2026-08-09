@@ -22,6 +22,7 @@ import type { SettingsPanel } from "./settings-panel";
 import type { ProcessManagerPanel } from "./process-manager";
 import type { AppSettings } from "../../shared/settings";
 import { DEFAULT_SETTINGS, mergeSettings } from "../../shared/settings";
+import { noteAgentActivity } from "./chrono/activity";
 import {
   readActivePromptDialog,
   submitActivePromptDialog,
@@ -205,6 +206,17 @@ function buildHandlers(ctx: TestHandlerContext): Record<string, Handler> {
       devicePixelRatio: window.devicePixelRatio,
     }),
 
+    // Inject one agent event into CHRONO's time axis without needing a
+    // live Agent SDK session behind it. Routes through the same decoder
+    // and the same log the real stream uses, so a spec that drives this
+    // is exercising the production path rather than a fixture of it.
+    "__test.claudeEvent": (p) => ({
+      logged: noteAgentActivity(
+        String(p["surfaceId"] ?? ""),
+        p["event"] ?? {},
+      ),
+    }),
+
     // CHRONO (⌘G) borrows live pane containers into its lanes. The one
     // thing e2e has to be able to assert is the handover — which panes
     // are in a lane, which are home, and that neither set is degenerate.
@@ -321,4 +333,5 @@ export const TEST_HANDLER_NAMES: readonly string[] = [
   "__test.getWindowId",
   "__test.getWindowBounds",
   "__test.readChronoState",
+  "__test.claudeEvent",
 ];

@@ -63,5 +63,6 @@ export function registerTestHandlers(
     },
     "__test.getWindowBounds": pipe("__test.getWindowBounds"),
     "__test.readChronoState": pipe("__test.readChronoState"),
+    "__test.claudeEvent": pipe("__test.claudeEvent"),
   };
 }

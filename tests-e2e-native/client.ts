@@ -591,6 +591,10 @@ class RpcClient implements SocketRpc {
     /** CHRONO's handover state: which panes are in a lane, which are
      *  home, and whether either set is laid out or merely present. */
     readChrono: () => this.call<ChronoStateDTO>("__test.readChronoState"),
+    /** Inject one agent event into CHRONO's axis, through the real
+     *  decoder and the real log. */
+    claudeEvent: (params: { surfaceId: string; event: unknown }) =>
+      this.call<{ logged: boolean }>("__test.claudeEvent", params),
   };
 }
 

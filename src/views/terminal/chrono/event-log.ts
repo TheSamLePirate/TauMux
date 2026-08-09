@@ -23,13 +23,14 @@
  *    one approval would draw four rules a pixel apart.
  */
 
-/** Events retained. Well past what a 90-second window can show, so the
- *  cap is a safety net rather than a policy. */
-const CAPACITY = 256;
+/** Events retained. A busy agent turn is a prompt, a reply and a dozen
+ *  tool calls, so a five-minute window can legitimately hold a few
+ *  hundred; the cap is a safety net rather than a policy. */
+const CAPACITY = 512;
 
-/** Events older than this are dropped. Longer than the field's window so
- *  widening the window later does not need a change here. */
-const TTL_MS = 120_000;
+/** Events older than this are dropped. Matches the widest timebase, so
+ *  zooming all the way out never reaches past what the log remembers. */
+const TTL_MS = 300_000;
 
 /** Two events of the same kind on the same surface inside this window are
  *  the same event arriving twice. */
@@ -41,13 +42,21 @@ const DEDUPE_MS = 900;
  * output is already drawn, continuously, as the traces.
  */
 export type ChronoEventKind =
+  /** The human said something to an agent. */
+  | "prompt"
+  /** An agent replied. */
+  | "reply"
+  /** An agent reached for a tool. */
+  | "tool"
   /** An agent turn began or ended. */
   | "turn"
+  /** A task or plan step changed state. */
+  | "task"
   /** A tool is waiting for consent. */
   | "approval"
   /** A question is on screen for the human. */
   | "question"
-  /** A turn ended on an API error. */
+  /** A turn ended on an API error, or a tool failed. */
   | "error"
   /** An unread τ-mux notification. */
   | "notify"

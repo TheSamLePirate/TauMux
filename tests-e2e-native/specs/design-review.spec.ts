@@ -248,4 +248,64 @@ test.describe("@design-review", () => {
     await app.rpc.ui.keydown({ key: "Escape" });
     await sleep(400);
   });
+
+  // The axis with a session's whole shape on it: what was asked, what
+  // ran, what came back. Driven through the same webview event channel
+  // the native Claude pane uses, so the strikes are the real ones rather
+  // than a fixture that could drift from the decoder.
+  test("scenario-chrono-timeline", async ({ app }) => {
+    if (!app.info.tier2Ready) return;
+    await app.rpc.ui.setSettingsField("layoutVariant", "atlas");
+    await sleep(700);
+
+    const surfaces = await app.rpc.surface.list();
+    const id = surfaces[0]?.id;
+    if (!id) return;
+    await app.rpc.surface.send_text({
+      surface_id: id,
+      text: "for i in $(seq 1 25); do echo \"compiling module $i\"; done\n",
+    });
+    await app.rpc.surface.split({ direction: "horizontal" });
+    await sleep(600);
+
+    const agent = (await app.rpc.surface.list())[1]?.id;
+    if (agent) {
+      const step = async (event: unknown) => {
+        await app.rpc.ui.claudeEvent({ surfaceId: agent, event });
+        await sleep(500);
+      };
+      await step({
+        type: "user",
+        message: { content: [{ type: "text", text: "fix the failing test" }] },
+      });
+      await step({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "t1", name: "Read", input: { file_path: "src/a.ts" } },
+          ],
+        },
+      });
+      await step({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "t2", name: "Edit", input: { file_path: "src/a.ts" } },
+          ],
+        },
+      });
+      await step({ type: "__tau_permission", status: "pending", toolName: "Bash" });
+      await step({
+        type: "assistant",
+        message: { content: [{ type: "text", text: "Fixed the off-by-one." }] },
+      });
+    }
+    await sleep(900);
+
+    await app.rpc.ui.keydown({ key: "g", meta: true });
+    await sleep(1_600);
+    await app.snap("chrono-timeline", { scenario: "chrono-agent-timeline" });
+    await app.rpc.ui.keydown({ key: "Escape" });
+    await sleep(400);
+  });
 });

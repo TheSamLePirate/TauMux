@@ -21,6 +21,7 @@
 import type { ClaudeSessionState } from "../../../shared/claude-types";
 import { sessionTitle } from "../../../shared/claude-types";
 import { atlasMarks } from "../atlas-annotation-store";
+import { getPlans } from "../plan-store";
 import { noteEvent, type ChronoEventKind } from "./event-log";
 
 /**
@@ -31,7 +32,14 @@ import { noteEvent, type ChronoEventKind } from "./event-log";
  */
 export class ChronoSources {
   private phases = new Map<string, string>();
+  /** Task moments already logged, keyed `sessionId/taskId:created|done`.
+   *  Task lists are re-pushed whole, so this is what stops one task from
+   *  striking on every tick for as long as it exists. */
+  private tasks = new Set<string>();
   private marks = new Set<string>();
+  /** Last seen state per plan step, keyed `workspace/agent/stepId`. */
+  private steps = new Map<string, string>();
+  private plansPrimed = false;
   private notified = new Set<string>();
   private primed = false;
 
@@ -45,9 +53,10 @@ export class ChronoSources {
    * not when it arrived, and inventing "now" would be worse than saying
    * nothing.
    *
-   * Marks are deliberately *not* primed. They carry their own `at`, so
-   * they can be replayed at the moment they really happened — which is
-   * the whole reason an agent writes one.
+   * Marks and tasks are deliberately *not* primed. Both carry their own
+   * timestamps, so both can be replayed at the moment they really
+   * happened — which is the whole reason an agent writes a mark, and the
+   * whole reason a task list is worth putting on a time axis at all.
    */
   seed(
     sessions: readonly ClaudeSessionState[],
@@ -71,17 +80,102 @@ export class ChronoSources {
     const live = new Set<string>();
     for (const session of sessions) {
       live.add(session.sessionId);
+      logged = this.ingestTasks(session, now) || logged;
+
       const before = this.phases.get(session.sessionId);
       this.phases.set(session.sessionId, session.phase);
       if (before === session.phase) continue;
       const event = phaseEvent(before, session.phase);
       if (!event) continue;
+      // A turn that just started has a real timestamp — the registry
+      // recorded it on the prompt hook. Use it rather than the moment we
+      // noticed: on a busy machine those can be a second apart, and a
+      // second is the difference between "the approval came before the
+      // turn" and "after".
+      const at =
+        session.phase === "working" && session.promptStartedAt > 0
+          ? session.promptStartedAt
+          : now;
       logged =
-        noteEvent(event.kind, session.surfaceId, event.text(session), now) ||
+        noteEvent(event.kind, session.surfaceId, event.text(session), at) ||
         logged;
     }
     for (const id of [...this.phases.keys()]) {
       if (!live.has(id)) this.phases.delete(id);
+    }
+    return logged;
+  }
+
+  /**
+   * The plan, on the axis.
+   *
+   * The mirrored task list is the closest thing an agent publishes to a
+   * plan, and a plan's *shape over time* is exactly what a time axis is
+   * for: a step going green at t−40 s, beside the tool calls that made
+   * it happen and the approval that held it up.
+   *
+   * Each task carries `createdAt` and `completedAt`, so both moments are
+   * replayed at their real times rather than at the tick we noticed
+   * them. The set is what stops a task from striking again on every
+   * re-push for as long as it exists.
+   */
+  private ingestTasks(session: ClaudeSessionState, now: number): boolean {
+    let logged = false;
+    for (const task of session.tasks) {
+      const key = `${session.sessionId}/${task.id}`;
+      if (!this.tasks.has(`${key}:created`)) {
+        this.tasks.add(`${key}:created`);
+        logged =
+          noteEvent(
+            "task",
+            session.surfaceId,
+            `${task.name} — started`,
+            task.createdAt || now,
+          ) || logged;
+      }
+      if (task.state === "completed" && !this.tasks.has(`${key}:done`)) {
+        this.tasks.add(`${key}:done`);
+        logged =
+          noteEvent(
+            "task",
+            session.surfaceId,
+            `${task.name} — done`,
+            task.completedAt || now,
+          ) || logged;
+      }
+    }
+    return logged;
+  }
+
+  /**
+   * `ht plan` step transitions.
+   *
+   * Steps carry no timestamps of their own — only the plan does, and its
+   * `updatedAt` moves for any edit — so unlike marks and tasks these can
+   * only be stamped with the moment we noticed. That is honest and it is
+   * also why the first snapshot is swallowed: replaying a plan's current
+   * shape as if it had all just happened would put four steps' worth of
+   * rules on the axis the instant you opened the view.
+   */
+  ingestPlans(now = Date.now()): boolean {
+    let logged = false;
+    const first = !this.plansPrimed;
+    this.plansPrimed = true;
+    for (const plan of getPlans()) {
+      for (const step of plan.steps) {
+        const key = `${plan.workspaceId}/${plan.agentId ?? ""}/${step.id}`;
+        const before = this.steps.get(key);
+        this.steps.set(key, step.state);
+        if (first || before === undefined || before === step.state) continue;
+        if (step.state !== "done" && step.state !== "err") continue;
+        logged =
+          noteEvent(
+            step.state === "err" ? "error" : "task",
+            null,
+            `${step.title} — ${step.state === "err" ? "failed" : "done"}`,
+            now,
+          ) || logged;
+      }
     }
     return logged;
   }

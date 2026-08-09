@@ -71,17 +71,20 @@ describe("event-log", () => {
   });
 
   test("stays bounded under a flood", () => {
-    // Bounded by construction, like metrics-history: a week-long session
-    // cannot grow this.
-    for (let i = 0; i < 5_000; i++) {
-      noteEvent("turn", `s${i}`, `t${i}`, 1_000_000 + i * 1_000);
+    // Bounded by construction, like metrics-history. A busy agent turn is
+    // a prompt, a reply and a dozen tool calls, so the cap has to be
+    // generous — but it still has to be a cap.
+    for (let i = 0; i < 20_000; i++) {
+      noteEvent("tool", `s${i}`, `t${i}`, 1_000_000 + i * 1_000);
     }
-    expect(allEvents().length).toBeLessThanOrEqual(256);
+    expect(allEvents().length).toBeLessThanOrEqual(512);
   });
 
   test("expires events past the TTL", () => {
+    // The TTL matches the widest timebase, so zooming all the way out
+    // never reaches past what the log remembers.
     noteEvent("mark", null, "old", 1_000_000);
-    noteEvent("mark", null, "new", 1_000_000 + 200_000);
+    noteEvent("mark", null, "new", 1_000_000 + 400_000);
     expect(allEvents().map((e) => e.text)).toEqual(["new"]);
   });
 
