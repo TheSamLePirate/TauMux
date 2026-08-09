@@ -229,10 +229,21 @@ test.describe("@design-review", () => {
         text: "printf 'listening on :3000\\n'; sleep 60\n",
       });
     }
+    // Two milestones and a notification, so the field shows what it is
+    // actually for: rules crossing every lane at the moment something
+    // happened, with the traces either side of them.
+    await app.rpc.atlas.mark({ text: "build started", tone: "info" });
+    await sleep(900);
+    await app.rpc.notification.create({
+      title: "deploy",
+      body: "waiting on approval",
+    });
+    await sleep(900);
+    await app.rpc.atlas.mark({ text: "tests green", tone: "ok" });
     await sleep(1_200);
 
     await app.rpc.ui.keydown({ key: "g", meta: true });
-    await sleep(1_400);
+    await sleep(1_600);
     await app.snap("chrono-field", { scenario: "chrono-3-lanes" });
     await app.rpc.ui.keydown({ key: "Escape" });
     await sleep(400);

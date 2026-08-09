@@ -258,6 +258,16 @@ export interface SocketRpc {
     }): Promise<"OK">;
   };
 
+  /** Agent-authored graph annotations. `mark` is the only one the specs
+   *  need: a timestamped milestone, which CHRONO draws as a strike. */
+  atlas: {
+    mark(params: {
+      text: string;
+      tone?: "info" | "ok" | "warn" | "err";
+      target?: string;
+    }): Promise<unknown>;
+  };
+
   /** Tier 2 webview-state + driver namespace. Every method routes through a
    *  test-only webview IPC and is only available when the app was launched
    *  with `HYPERTERM_TEST_MODE=1` + `HT_CONFIG_DIR` under `/tmp`. Calls made
@@ -510,6 +520,14 @@ class RpcClient implements SocketRpc {
     clear: () => this.call<"OK">("notification.clear"),
     create: (params: { title: string; body: string; surface_id?: string }) =>
       this.call<"OK">("notification.create", params),
+  };
+
+  atlas = {
+    mark: (params: {
+      text: string;
+      tone?: "info" | "ok" | "warn" | "err";
+      target?: string;
+    }) => this.call<unknown>("atlas.mark", params),
   };
 
   ui = {

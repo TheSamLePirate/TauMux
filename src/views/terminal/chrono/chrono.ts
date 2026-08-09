@@ -41,17 +41,31 @@ import { htEvents } from "../../../shared/event-bus";
 import type { SurfaceKind } from "../../../shared/types";
 import { applyFilter, type AtlasFilter } from "../atlas/filter";
 import type { AtlasSnapshot } from "../atlas/types";
-import { subscribeClaudeSessions } from "../claude-session-store";
+import {
+  getClaudeSessions,
+  subscribeClaudeSessions,
+} from "../claude-session-store";
 import { subscribeAtlasAnnotations } from "../atlas-annotation-store";
 import { subscribePlans } from "../plan-store";
 import { throughputOf } from "../throughput-meter";
-import { ChronoHeader } from "./header";
+import { variantContext } from "../variants/variant-context";
+import { ChronoField, WINDOW_MS, fieldIsMoving } from "./field";
+import { eventsSince } from "./event-log";
+import { ChronoHeader, ChronoStrikeRail } from "./header";
 import { buildLanes, type ChronoLane } from "./lanes";
+import { ChronoSources } from "./sources";
 import { ChronoView, type ChronoViewHost } from "./view";
 
 /** Follow-up cadence while any pane is still talking. Fast enough that a
  *  build's trace grows smoothly, slow enough to stay free. */
 const FLOW_TICK_MS = 220;
+
+/** …and once everything has gone quiet but the window still holds a
+ *  skyline, which keeps scrolling leftward until it is ninety seconds
+ *  old. Slower, because a trace drifting at ~8 px/s does not need 4 Hz.
+ *  When the window is finally empty, no tick is scheduled at all and the
+ *  field is completely still. */
+const DRAIN_TICK_MS = 900;
 
 export interface ChronoHost extends ChronoViewHost {
   focusSurface(surfaceId: string): void;
@@ -80,6 +94,9 @@ export class Chrono {
   private root: HTMLDivElement | null = null;
   private view: ChronoView | null = null;
   private header: ChronoHeader | null = null;
+  private field: ChronoField | null = null;
+  private rail: ChronoStrikeRail | null = null;
+  private readonly sources = new ChronoSources();
   private lanes: ChronoLane[] = [];
   private selectedId: string | null = null;
   /** The user stepped into the selected lane's head. Only a click on the
@@ -134,13 +151,21 @@ export class Chrono {
       styleTarget: root,
     });
 
-    root.append(header.element, header.ruler, view.element);
+    const rail = new ChronoStrikeRail();
+    root.append(header.element, header.ruler, view.element, rail.element);
     document.body.appendChild(root);
 
     this.root = root;
     this.header = header;
     this.view = view;
+    this.rail = rail;
+    this.field = new ChronoField(view.canvas, root);
     this.selectedId = this.source.focusedSurfaceId();
+    // Prime the transition watcher before the first draw: opening during
+    // a long turn must not strike a rule at *now* for a turn that started
+    // four minutes ago.
+    this.sources.seed(getClaudeSessions(), variantContext.getNotifyWorkspaces());
+    this.sources.ingestMarks();
 
     // Native webviews cannot be reparented or covered reliably, so they
     // are hidden for the duration — the same move the command palette
@@ -180,6 +205,8 @@ export class Chrono {
     this.view?.destroy();
     this.view = null;
     this.header = null;
+    this.field = null;
+    this.rail = null;
     this.root = null;
     this.lanes = [];
     root.remove();
@@ -202,12 +229,25 @@ export class Chrono {
     this.disposers.push(
       htEvents.on("ht-workspaces-changed", wake),
       htEvents.on("ht-surface-metadata", wake),
-      htEvents.on("ht-notify-state-changed", wake),
+      htEvents.on("ht-notify-state-changed", () => {
+        this.sources.ingestNotifications(variantContext.getNotifyWorkspaces());
+        wake();
+      }),
       htEvents.on("ht-statuses-changed", wake),
       htEvents.on("ht-surface-focused", wake),
-      subscribeClaudeSessions(() => wake()),
+      // The stores carry *what is true*; the strikes need *when it
+      // changed*. `sources` is the diff that turns one into the other,
+      // and it runs before the wake so the event is in the log by the
+      // time the field draws.
+      subscribeClaudeSessions((sessions) => {
+        this.sources.ingestSessions(sessions);
+        wake();
+      }),
       subscribePlans(() => wake()),
-      subscribeAtlasAnnotations(() => wake()),
+      subscribeAtlasAnnotations(() => {
+        this.sources.ingestMarks();
+        wake();
+      }),
     );
 
     const onResize = () => this.refresh();
@@ -283,20 +323,43 @@ export class Chrono {
       paint();
     }
 
+    // The field goes on last: it draws against the geometry the lanes
+    // just settled on, and it is the one thing here allowed to decide
+    // that the picture has not changed and skip itself entirely.
+    const now = Date.now();
+    const events = eventsSince(WINDOW_MS, now);
+    const fieldInput = {
+      lanes: this.lanes,
+      geometry: view.getGeometry(),
+      events,
+      now,
+    };
+    this.field?.render(fieldInput);
+    this.rail?.render(events, now);
+
     header.setAttentionCount(built?.snapshot.totals.attention ?? 0);
     this.reclaimKeyboard();
     this.syncExitHint();
-    this.scheduleFlowTick();
+    this.scheduleTick(fieldIsMoving(fieldInput));
   }
 
   /**
-   * Keep ticking while any pane is still producing output, so its trace
-   * and its head's anchor track it down to rest. The moment every pane is
-   * quiet the timer is not rescheduled — no polling, no idle cost.
+   * Keep ticking while the picture is still changing, and stop dead when
+   * it is not.
+   *
+   * Two reasons it can still be changing, and they want different
+   * cadences. A pane producing output moves its trace's leading edge and
+   * its head's anchor several times a second. A window that merely still
+   * *holds* a skyline changes only because that skyline scrolls leftward,
+   * which at ~8 px/s does not need 4 Hz.
+   *
+   * When neither holds — no output, and nothing inside the window — no
+   * timer is scheduled at all. That is the whole "an idle τ-mux is
+   * completely still" rule, and it is why a time axis is affordable here.
    */
-  private scheduleFlowTick(): void {
+  private scheduleTick(moving: boolean): void {
     const flowing = this.lanes.some((lane) => throughputOf(lane.id) > 0);
-    if (!flowing) {
+    if (!flowing && !moving) {
       if (this.flowTimer !== null) {
         clearTimeout(this.flowTimer);
         this.flowTimer = null;
@@ -304,10 +367,13 @@ export class Chrono {
       return;
     }
     if (this.flowTimer !== null) return;
-    this.flowTimer = setTimeout(() => {
-      this.flowTimer = null;
-      this.refresh();
-    }, FLOW_TICK_MS);
+    this.flowTimer = setTimeout(
+      () => {
+        this.flowTimer = null;
+        this.refresh();
+      },
+      flowing ? FLOW_TICK_MS : DRAIN_TICK_MS,
+    );
   }
 
   // ── selection ──────────────────────────────────────────────────────

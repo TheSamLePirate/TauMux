@@ -14,6 +14,8 @@
  * live right now.
  */
 import type { AtlasFilter } from "../atlas/filter";
+import type { ChronoEvent } from "./event-log";
+import { WINDOW_MS } from "./field";
 
 const FILTERS: { id: AtlasFilter; label: string; hint: string }[] = [
   { id: "all", label: "all", hint: "Every pane" },
@@ -136,5 +138,70 @@ export class ChronoHeader {
     key.textContent = text;
     this.hintEl.appendChild(key);
     this.hintEl.classList.toggle("is-typing", !!typingInto);
+  }
+}
+
+/**
+ * The strike rail — the labels under the field.
+ *
+ * The rules themselves are drawn on the canvas, inside a scroller that
+ * can be taller than the window. Their names cannot live there: a label
+ * that scrolls off is a label that is not there when you need it. So the
+ * rail is a fixed strip below the field, sharing the same two column
+ * widths, and it names what the rules mean.
+ *
+ * Labels are thinned rather than stacked. Four approvals in eight seconds
+ * draw four rules — that is the truth and it is legible — but four
+ * overlapping words is just a smudge, so only the newest of a cluster
+ * keeps its name.
+ */
+const LABEL_MIN_GAP_PCT = 11;
+
+export class ChronoStrikeRail {
+  readonly element: HTMLDivElement;
+  private readonly band: HTMLDivElement;
+  private signature = "";
+
+  constructor() {
+    this.element = document.createElement("div");
+    this.element.className = "tau-chrono-rail";
+    this.band = document.createElement("div");
+    this.band.className = "tau-chrono-rail-band";
+    this.element.appendChild(this.band);
+  }
+
+  render(events: readonly ChronoEvent[], now: number): void {
+    const placed: { pct: number; event: ChronoEvent }[] = [];
+    // Newest first, so a cluster keeps the most recent name rather than
+    // the one that happened to arrive first.
+    for (let i = events.length - 1; i >= 0; i--) {
+      const event = events[i]!;
+      const age = now - event.at;
+      if (age < 0 || age > WINDOW_MS) continue;
+      const pct = (1 - age / WINDOW_MS) * 100;
+      if (placed.some((p) => Math.abs(p.pct - pct) < LABEL_MIN_GAP_PCT)) {
+        continue;
+      }
+      placed.push({ pct, event });
+      if (placed.length >= 6) break;
+    }
+
+    const next = placed
+      .map((p) => `${p.event.kind}@${Math.round(p.pct)}`)
+      .join("|");
+    if (next === this.signature) return;
+    this.signature = next;
+
+    this.band.replaceChildren(
+      ...placed.map(({ pct, event }) => {
+        const el = document.createElement("span");
+        el.className = `tau-chrono-strike-label tau-mono is-${event.kind}`;
+        el.textContent = event.kind;
+        el.title = event.text;
+        el.style.left = `${pct}%`;
+        return el;
+      }),
+    );
+    this.element.classList.toggle("is-empty", placed.length === 0);
   }
 }

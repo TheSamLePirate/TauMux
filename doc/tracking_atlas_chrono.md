@@ -8,8 +8,8 @@ Plan: `doc/plan_atlas_chrono.md`. Six phases, each ending green on
 | Phase | What | State | Commit |
 |---|---|---|---|
 | 1 | the lease | done | `db0bea17` |
-| 2 | lanes and heads | done | (pending) |
-| 3 | the field | not started | |
+| 2 | lanes and heads | done | `6c3f1afb` |
+| 3 | the field | done | (pending) |
 | 4 | the gutter | not started | |
 | 5 | polish | not started | |
 | 6 | docs | not started | |
@@ -138,6 +138,71 @@ view is only worth anything with real output behind it.
 
 ---
 
+## Phase 3 — the field
+
+`chrono/{event-log,field,sources}.ts`, `ChronoStrikeRail` in
+`chrono/header.ts`, `tests/chrono-field.test.ts`.
+
+### The event log
+
+The gap the plan identified: phase transitions are *known* but never
+timestamped into a ring — `claude-session-store` holds the current phase,
+not the moment it changed. `event-log.ts` is that ring: bounded (256),
+TTL'd (120 s), in-memory, no timers, deduped on
+`kind:surfaceId:text` inside 900 ms because the stores re-push whole
+snapshots and four rules a pixel apart is not four approvals.
+
+`sources.ts` is the watcher that fills it, and it distinguishes two
+shapes of source on purpose:
+
+- **Derived** (Claude phases, notifications) — a diff against what was
+  last seen, stamped with the moment we noticed. `seed()` primes it on
+  open, so opening during a long turn does not strike "turn started" at
+  *now* for a turn that began four minutes ago.
+- **Authored** (`ht atlas mark`) — carries its own `at` and its own id,
+  so it is replayed at its real time and deduped by id. Deliberately
+  *not* primed by `seed()`: a mark's timestamp is the whole reason an
+  agent writes one.
+
+Not every transition earns a rule. `idle → working` and `working → idle`
+are turn boundaries and matter; `compacting → working` is bookkeeping,
+and `ended` is already said by the lane disappearing.
+
+### Redraw only when the image would differ
+
+`fieldSignature()` folds every input that can change a pixel — geometry,
+lane identity and colour, each ring's length and last sample, the strike
+set — into one string, and pointedly *not* `now`.
+
+The subtlety the plan did not reach: while there **is** a skyline in the
+window, the image genuinely does change every frame, because it scrolls
+leftward. So the signature carries a coarse clock — but only then. The
+controller therefore ticks at three speeds: 220 ms while a pane is
+producing output, 900 ms while the window merely still holds something,
+and **not at all** once the window is empty. Ninety seconds after the
+last byte, an idle τ-mux is completely still again.
+
+`tests/chrono-field.test.ts` pins that: *an idle field advances its clock
+and does not repaint*, a non-zero sample invalidates, a skyline keeps it
+moving, and it goes still again once that skyline has drained.
+
+### Deviations from the plan
+
+- **Strike labels live in a fixed rail below the field, not on the
+  canvas.** The canvas scrolls with the lanes and can be taller than the
+  window; a label that scrolls off is a label that is not there when it
+  is wanted. Labels are also thinned — four approvals in eight seconds
+  draw four rules, which is the truth and is legible, but four
+  overlapping words is a smudge.
+- **Bars, not a polyline.** At one sample a second a polyline reads as
+  noise; bars read as a skyline, and a bar can carry its own age as
+  colour, which *is* the phosphor.
+- **Log scale.** A linear one puts a 2 KB/s log tail and total silence in
+  the same pixel, which loses exactly the distinction the trace exists to
+  draw.
+
+---
+
 ## Issues met
 
 1. **`applyPositions` clobbering leased containers.** Found by reading
@@ -171,3 +236,9 @@ view is only worth anything with real output behind it.
 
 7. **The overlay covers the titlebar**, so the header had to leave the
    macOS traffic lights their corner (84 px) — §11 says they stay stock.
+
+8. **`seed()` swallowed the marks.** Priming every source on open is
+   right for derived state and wrong for authored state: a mark carries
+   its own timestamp, so priming it threw away the one thing that made
+   it drawable. Caught by looking at the render — the strikes simply
+   were not there.

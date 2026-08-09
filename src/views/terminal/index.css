@@ -15215,6 +15215,58 @@ button.spp-step:hover {
   border-color: var(--tau-cyan-soft);
 }
 
+/* ── the strike rail ─────────────────────────────────────────────── */
+
+/* The rules are on the canvas, inside a scroller that can be taller than
+ * the window; their names cannot be, or they scroll away exactly when
+ * they are wanted. The rail is fixed under the field and shares the same
+ * two column widths, so a label sits under its own rule. */
+.tau-chrono-rail {
+  flex: 0 0 auto;
+  height: 20px;
+  padding-left: var(--chrono-gutter, 232px);
+  padding-right: var(--chrono-head, 420px);
+  border-top: 0.5px solid var(--tau-edge-soft);
+}
+
+.tau-chrono-rail.is-empty {
+  border-top-color: transparent;
+}
+
+.tau-chrono-rail-band {
+  position: relative;
+  height: 100%;
+}
+
+.tau-chrono-strike-label {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-100%);
+  padding-right: 5px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  white-space: nowrap;
+  color: var(--tau-text-faint);
+}
+
+.tau-chrono-strike-label.is-approval,
+.tau-chrono-strike-label.is-question {
+  color: var(--tau-warn);
+}
+
+.tau-chrono-strike-label.is-error {
+  color: var(--tau-err);
+}
+
+.tau-chrono-strike-label.is-turn {
+  color: var(--tau-agent);
+}
+
+.tau-chrono-strike-label.is-notify {
+  color: var(--tau-cyan);
+}
+
 /* ── empty state ─────────────────────────────────────────────────── */
 
 .tau-chrono-empty {
