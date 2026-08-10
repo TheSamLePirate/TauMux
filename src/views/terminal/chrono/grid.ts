@@ -82,28 +82,42 @@ export function readTerminalGrid(
 }
 
 /**
- * Below this, shrinking to fit stops helping: a 220-column terminal in a
- * 400 px lane is unreadable whether it is scaled or clipped, and scaling
- * it merely turns "some characters missing" into "all characters
- * illegible". Past the floor the lane clips, as it used to.
+ * The most this is willing to shrink a terminal.
+ *
+ * Below it, text stops being readable at a glance, which is the entire
+ * job of a lane head. A pane that would need more than this does not get
+ * a smaller scale — it gets *no* scale (see `fitScale`).
  */
-export const MIN_FIT_SCALE = 0.6;
+export const MIN_FIT_SCALE = 0.75;
 
 /**
  * Uniform scale that fits a terminal's full width into the lane.
  *
  * The pane was fitted to *its* box, not to the lane's, so a wide pane in
- * a narrower head loses characters off the right — which is exactly the
- * half of a log line that says what went wrong. Scaling is the only fix
- * available: the alternative is `pty.resize`, and resizing a user's shell
- * because they glanced at a summary view would be a far worse trade.
+ * a narrower head loses characters off the right — exactly the half of a
+ * log line that says what went wrong. Scaling is the only fix available:
+ * the alternative is `pty.resize`, and resizing a user's shell because
+ * they glanced at a summary view would be a far worse trade.
  *
- * Never scales *up*: a narrow terminal in a wide head stays at 1:1 and
- * therefore stays pixel-exact, which is the common case.
+ * The rule is **all or nothing**, and that is the whole point:
+ *
+ *  - It fits already → 1. Never scales *up*; a narrow terminal in a wide
+ *    head stays pixel-exact, which is the common case.
+ *  - It nearly fits → scale to fit exactly. Every character is present,
+ *    at a size still worth reading.
+ *  - It is much too wide → 1, and the lane clips.
+ *
+ * That last branch is the correction to a real defect. Clamping to a
+ * floor instead produced the worst of both worlds: a Claude Code pane at
+ * full window width came out shrunk to 60 % *and still* missing its
+ * right-hand end. Either you can see all of it at a readable size or you
+ * see the left of it at full size — never a shrunken fragment.
  */
 export function fitScale(naturalWidth: number, boxWidth: number): number {
   if (naturalWidth <= 0 || boxWidth <= 0) return 1;
-  return Math.max(MIN_FIT_SCALE, Math.min(1, boxWidth / naturalWidth));
+  const ratio = boxWidth / naturalWidth;
+  if (ratio >= 1) return 1;
+  return ratio >= MIN_FIT_SCALE ? ratio : 1;
 }
 
 export interface AnchorInput {

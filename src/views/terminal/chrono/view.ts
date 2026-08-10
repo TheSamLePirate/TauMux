@@ -35,12 +35,28 @@ import { ScreenLeases } from "./screen-lease";
  *  satellites at 10 px mono, narrow enough to leave the field the room. */
 const GUTTER_W = 232;
 
-/** The head column. Clamped so a 5K display doesn't give each lane a
- *  terminal wider than anything anyone types, and a 13" one still shows
- *  enough columns to read a log line. */
+/**
+ * The head column.
+ *
+ * Its width is *demand-driven*, like a lane's height: as wide as the
+ * widest pane actually needs, bounded below so a lane always shows
+ * something and above so the traces keep a field to live in. A fixed
+ * share was the second half of the "Claude Code comes out tiny" defect —
+ * a full-window agent pane needs about twice what 42 % of the window
+ * gives it, so it was being shrunk to fit a column sized for nobody in
+ * particular.
+ *
+ * All heads still share one width. That edge is *now*, and an edge that
+ * jogs per lane is not an axis.
+ */
 const HEAD_MIN = 300;
-const HEAD_MAX = 760;
-const HEAD_SHARE = 0.42;
+const HEAD_MAX = 1_100;
+/** Never more than this share of the window, whatever the panes want —
+ *  past it the field stops being a field. */
+const HEAD_MAX_SHARE = 0.56;
+/** …and never less than this, so a window with only narrow panes still
+ *  reads as an instrument rather than as a gutter with a margin. */
+const HEAD_MIN_SHARE = 0.3;
 
 /** Vertical gap between lanes. The 4 px grid, twice. */
 const LANE_GAP = 8;
@@ -48,6 +64,9 @@ const LANE_GAP = 8;
 /** The head's own chrome — the slot's top/bottom inset plus its frame.
  *  Part of what a lane has to ask for to show N rows of text. */
 const HEAD_PADDING = 14;
+
+/** …and horizontally: the slot's left inset plus its margins. */
+const HEAD_INSET = 34;
 
 export interface ChronoViewCallbacks {
   /** A gutter click: select the lane, keyboard stays with CHRONO. */
@@ -81,8 +100,11 @@ export interface ChronoRenderInput {
    *  down and the pane owns the keyboard. */
   entered: boolean;
   surfaceKinds: ReadonlyMap<string, SurfaceKind>;
-  /** Per-lane room demand in CSS px, from `measureDemand`. */
+  /** Per-lane room demand in CSS px, from `measure`. */
   demand: ReadonlyMap<string, number>;
+  /** Widest natural terminal width across the lanes, in CSS px, from
+   *  `measure`. Drives the head column. */
+  headDemand: number;
 }
 
 interface LaneParts {
@@ -202,7 +224,18 @@ export class ChronoView {
 
     const width = this.scroller.clientWidth;
     const headW = Math.round(
-      Math.min(HEAD_MAX, Math.max(HEAD_MIN, width * HEAD_SHARE)),
+      Math.min(
+        HEAD_MAX,
+        width * HEAD_MAX_SHARE,
+        Math.max(
+          HEAD_MIN,
+          width * HEAD_MIN_SHARE,
+          // What the widest pane needs to be shown whole, plus the
+          // slot's own inset. Zero before anything has been measured,
+          // which the floor covers.
+          input.headDemand + HEAD_INSET,
+        ),
+      ),
     );
     const gutterW = Math.min(GUTTER_W, Math.max(0, width - headW - 80));
     const { boxes, contentHeight } = distributeLanes({
@@ -281,8 +314,12 @@ export class ChronoView {
    * measure are simply absent from the map, which `distributeLanes`
    * reads as "no claim" rather than as "wants nothing".
    */
-  measureDemand(lanes: readonly ChronoLane[]): Map<string, number> {
+  measure(lanes: readonly ChronoLane[]): {
+    demand: Map<string, number>;
+    headDemand: number;
+  } {
     const demand = new Map<string, number>();
+    let headDemand = 0;
     for (const lane of lanes) {
       if (lane.head !== "screen") continue;
       const parts = this.parts.get(lane.id);
@@ -298,14 +335,16 @@ export class ChronoView {
       // terminal shrunk to fit needs proportionally less height to show
       // the same rows, and asking for the unscaled height would leave a
       // band of empty frame under every wide pane.
-      const cell = (screen.offsetHeight / grid.rows) *
+      const cell =
+        (screen.offsetHeight / grid.rows) *
         fitScale(screen.offsetWidth, box.clientWidth);
       if (cell <= 0) continue;
       // One row of headroom above the content, plus the slot's own inset,
       // so the top line never sits flush against the frame.
       demand.set(lane.id, (grid.contentRows + 1) * cell + HEAD_PADDING);
+      headDemand = Math.max(headDemand, screen.offsetWidth);
     }
-    return demand;
+    return { demand, headDemand };
   }
 
   // ── reconciliation ─────────────────────────────────────────────────

@@ -128,6 +128,10 @@ export class Chrono {
   /** Measured room demand per lane, and its signature — a lane's height
    *  is data, and this is the measurement it comes from. */
   private demand: ReadonlyMap<string, number> = new Map();
+  /** Widest natural terminal width across the lanes. The head column is
+   *  sized from it, so a full-window agent pane gets a head it fits in
+   *  rather than one sized for nobody in particular. */
+  private headDemand = 0;
   private demandSignature = "";
   private frame: number | null = null;
   private flowTimer: ReturnType<typeof setTimeout> | null = null;
@@ -380,6 +384,7 @@ export class Chrono {
         entered: this.entered,
         surfaceKinds: kinds,
         demand: this.demand,
+        headDemand: this.headDemand,
       });
       // Anchors read laid-out heights, so they run after the style writes
       // above have been flushed by the browser's own layout pass.
@@ -392,13 +397,14 @@ export class Chrono {
     // and lay out again if what we saw disagrees with what we assumed.
     // Bounded to one extra pass by the signature check, and both passes
     // land in the same frame, so nothing flashes.
-    const demand = view.measureDemand(this.lanes);
-    const signature = [...demand]
-      .map(([id, px]) => `${id}:${Math.round(px)}`)
-      .join("|");
+    const measured = view.measure(this.lanes);
+    const signature =
+      `${Math.round(measured.headDemand)}#` +
+      [...measured.demand].map(([id, px]) => `${id}:${Math.round(px)}`).join("|");
     if (signature !== this.demandSignature) {
       this.demandSignature = signature;
-      this.demand = demand;
+      this.demand = measured.demand;
+      this.headDemand = measured.headDemand;
       paint();
     }
 

@@ -215,10 +215,34 @@ describe("fitScale", () => {
     expect(fitScale(400, 400)).toBe(1);
   });
 
-  test("stops at the floor rather than shrinking to illegibility", () => {
-    // Past this, scaling turns "some characters missing" into "all
-    // characters unreadable", which is a worse trade.
-    expect(fitScale(4000, 400)).toBe(MIN_FIT_SCALE);
+  test("fits exactly when it nearly fits", () => {
+    // Every character present, at a size still worth reading.
+    expect(fitScale(1000, MIN_FIT_SCALE * 1000)).toBe(MIN_FIT_SCALE);
+  });
+
+  test("does not scale at all when it is much too wide", () => {
+    // All or nothing. Clamping to a floor produced the worst of both
+    // worlds — a full-window Claude Code pane came out shrunk to 60 %
+    // *and still* missing its right-hand end. Either you see all of it
+    // at a readable size, or you see the left of it at full size.
+    expect(fitScale(4000, 400)).toBe(1);
+    expect(fitScale(1000, 700)).toBe(1);
+  });
+
+  test("never returns a scale that still clips", () => {
+    // The property the defect violated: whatever comes back, either it
+    // fits or no scaling was applied.
+    for (const [natural, box] of [
+      [1000, 400],
+      [1000, 760],
+      [1000, 800],
+      [1000, 990],
+      [1000, 1200],
+      [640, 300],
+    ] as const) {
+      const scale = fitScale(natural, box);
+      expect(scale === 1 || natural * scale <= box + 0.5).toBe(true);
+    }
   });
 
   test("degrades to 1 on unmeasured geometry", () => {

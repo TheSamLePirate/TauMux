@@ -227,6 +227,9 @@ function buildHandlers(ctx: TestHandlerContext): Record<string, Handler> {
 }
 
 export interface ChronoTestState {
+  /** The Atlas column is mounted, so ⌘G has something to toggle. Specs
+   *  wait on this instead of guessing how long a variant switch takes. */
+  atlasReady: boolean;
   open: boolean;
   lanes: number;
   /** Pane containers currently sitting in a lane head. */
@@ -257,6 +260,7 @@ function readChronoState(): ChronoTestState {
       ? 0
       : Math.min(...els.map((el) => pick(el.getBoundingClientRect())));
   return {
+    atlasReady: !!document.querySelector(".tau-atlas-panel"),
     open: !!root,
     lanes: lanes.length,
     leased: document.querySelectorAll(

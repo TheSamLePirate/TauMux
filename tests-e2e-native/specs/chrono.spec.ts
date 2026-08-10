@@ -15,18 +15,38 @@ import { sleep } from "../helpers/wait";
  * confirm the panes moved, close, confirm they went home and still work.
  */
 
-/** CHRONO is the Atlas variant's ⌘G, so every spec here needs it. */
+/**
+ * CHRONO is the Atlas variant's ⌘G, so every spec here needs it.
+ *
+ * Waits for the column to actually be mounted rather than guessing at a
+ * duration: ⌘G falls through to a no-op until the panel exists, and a
+ * spec that raced it failed five seconds later somewhere unrelated.
+ */
 async function enterAtlas(app: AppFixture): Promise<void> {
   await app.rpc.ui.setSettingsField("layoutVariant", "atlas");
-  await sleep(700);
+  await expect
+    .poll(async () => (await app.rpc.ui.readChrono()).atlasReady, {
+      timeout: 5_000,
+    })
+    .toBe(true);
 }
 
 async function openChrono(app: AppFixture): Promise<void> {
   await app.rpc.ui.keydown({ key: "g", meta: true });
+  // Wait for the field to have *rendered*, not merely to exist. The
+  // overlay is in the DOM synchronously and paints on the next frame, so
+  // polling `open` alone catches a state with no lanes in it — which is
+  // real, brief, and not what any of these specs mean by "open".
   await expect
-    .poll(async () => (await app.rpc.ui.readChrono()).open, { timeout: 5_000 })
+    .poll(
+      async () => {
+        const state = await app.rpc.ui.readChrono();
+        return state.open && state.lanes > 0;
+      },
+      { timeout: 5_000 },
+    )
     .toBe(true);
-  // One more frame for the lane distribution to land.
+  // One more frame for the second, measured layout pass to settle.
   await sleep(400);
 }
 

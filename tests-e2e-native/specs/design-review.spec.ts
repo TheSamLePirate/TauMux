@@ -249,6 +249,42 @@ test.describe("@design-review", () => {
     await sleep(400);
   });
 
+  // A full-window pane beside a narrow one — the shape that produced the
+  // "Claude Code comes out tiny" defect. The head column has to size
+  // itself to the wide one, and the wide one has to end up either whole
+  // or full-size, never shrunk *and* clipped.
+  test("scenario-chrono-wide-pane", async ({ app }) => {
+    if (!app.info.tier2Ready) return;
+    await app.rpc.ui.setSettingsField("layoutVariant", "atlas");
+    await sleep(700);
+
+    const first = (await app.rpc.surface.list())[0]?.id;
+    if (first) {
+      // A line as wide as the pane, so clipping is unmistakable.
+      await app.rpc.surface.send_text({
+        surface_id: first,
+        text: "printf '%.0s=' {1..200}; echo ' END'\n",
+      });
+    }
+    await sleep(500);
+    await app.rpc.surface.split({ direction: "vertical" });
+    await sleep(600);
+    const second = (await app.rpc.surface.list())[1]?.id;
+    if (second) {
+      await app.rpc.surface.send_text({
+        surface_id: second,
+        text: "echo narrow\n",
+      });
+    }
+    await sleep(900);
+
+    await app.rpc.ui.keydown({ key: "g", meta: true });
+    await sleep(1_600);
+    await app.snap("chrono-wide-pane", { scenario: "chrono-wide-pane" });
+    await app.rpc.ui.keydown({ key: "Escape" });
+    await sleep(400);
+  });
+
   // A plan on the axis: each step a bar from when it started to when it
   // finished, and the running one still growing toward now. Steps are
   // driven one at a time with real delays so the bars have real widths —

@@ -22,6 +22,7 @@ Plan: `doc/plan_atlas_chrono.md`. Six phases, each ending green on
 | every action on the axis, plan as a shape | `52b89e55` (v0.22.0) |
 | docs for both | `b203d5ab` |
 | plan steps timestamped, bars on the axis | `2712fc2f` (v0.23.0) |
+| the wide-pane fit (Claude Code came out tiny) | (this commit) |
 
 ---
 
@@ -408,6 +409,48 @@ rectangle reads as a rendering fault.
   everything a "step done" rule said and say the duration too; drawing
   both was the same fact twice. A failure still strikes — it is the thing
   you stop for.
+
+---
+
+## Round 4 — the wide-pane fit
+
+Reported: with a Claude Code pane first, the head is "pas bien
+redimensionné et fortement scalé". Two causes, both mine.
+
+**1. The floor produced the worst of both worlds.** `fitScale` clamped at
+0.6, so a pane needing 0.45 came out shrunk to 60 % *and still* missing
+its right-hand end. Now it is all or nothing: it fits already → 1; it
+nearly fits (≥ 0.75) → scale to fit exactly; it is much too wide → 1 and
+the lane clips. Either you see all of it at a readable size or you see
+the left of it at full size, never a shrunken fragment. A property test
+pins exactly that.
+
+**2. The head column was a fixed 42 % share.** It ignored what the panes
+actually need, so a full-window agent pane — the common shape for Claude
+Code — was being squeezed into a column sized for nobody in particular.
+It is demand-driven now, the same rule lane *heights* already follow: as
+wide as the widest pane needs, floored at 30 % so a window of narrow
+panes still reads as an instrument, capped at 56 % so the field stays a
+field. Narrow panes now give the field *more* room than before.
+
+All heads still share one width. That edge is *now*, and an edge that
+jogs per lane is not an axis.
+
+### Also, a flaky spec chased to its actual cause
+
+`openChrono` waited for `.tau-chrono` to exist. The overlay is in the DOM
+synchronously and paints on the next frame, so the helper could return
+with zero lanes rendered and the assertion after it read `null`.
+
+Before assuming, a throwaway probe sampled the view at 10 Hz for three
+seconds across four runs: `closed=0` every time — CHRONO never closes
+itself — and exactly one zero-lane sample, always at t=0. That ruled out
+the interesting hypothesis (a settings echo or a sidebar rebuild tearing
+the panel down under the user) and left a test that mistook "the element
+exists" for "the view has rendered". The helper now waits for lanes, and
+`enterAtlas` waits for the column to be mounted rather than sleeping.
+
+Two specs still flake occasionally and pass on retry.
 
 ---
 

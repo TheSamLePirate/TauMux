@@ -126,6 +126,7 @@ export interface WebviewState {
 
 /** Mirrors `ChronoTestState` in `src/views/terminal/__test-handlers.ts`. */
 export interface ChronoStateDTO {
+  atlasReady: boolean;
   open: boolean;
   lanes: number;
   leased: number;
