@@ -32,6 +32,9 @@ Le plan M11–M17 (0.2.85 → 0.3.0) a amené le miroir web à **parité fonctio
 | Zone de logs | Lignes polies : badge de niveau coloré + timestamp `HH:MM:SS` + libellé de source + corps. Cliquez n'importe où sur la ligne pour copier `[HH:MM:SS] [source] [level] message`. L'en-tête montre `Logs (count) (showing 10)`. |
 | Panneaux sideband | Les quatre types de contenu sont rendus. Glisser/redimensionner reroute vers l'hôte. |
 | Process Manager | En lecture seule dans le miroir (pas de bouton kill — pour l'instant). |
+| Panes natifs (éditeur / agent / extension / Claude / navigateur) | **Panes placeholder** labellisés depuis la v0.24.3 — le miroir ne peut pas héberger ces surfaces natives, mais le layout n'a plus de trous : l'enveloppe `nonPtySurfaceCreated` + le seeding depuis les feuilles du layout affichent « File editor — Available in the desktop app » à l'emplacement du pane. |
+| UX de déconnexion | Après ~30 reconnexions échouées, le transport abandonne et une **bannière** (« Connection lost — Reload / Later ») apparaît depuis la v0.24.1. Avant, le seul signal était le point de 8 px de l'en-tête passant au rouge. |
+| Clavier logiciel iOS | Le suivi `visualViewport` depuis la v0.24.4 publie la bande occultée par le clavier comme `--kbd-occlusion` ; la barre d'accessoires et le conteneur de panes restent au-dessus du clavier (`interactive-widget=resizes-content` est réservé à Chromium — iOS Safari superpose le clavier). |
 
 ## Auth et durcissement
 

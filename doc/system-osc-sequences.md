@@ -16,11 +16,48 @@ produce τ-mux-specific UI side effects.
 | 8        | Hyperlink                                | xterm web-links addon   | Click → opens via `ht-open-external` event (URL allowlist applies)                |
 | 9;4      | **Progress reporting**                   | τ-mux                   | Bridges to the workspace progress bar (see below)                                  |
 | 11       | Default background                       | xterm                   | None                                                                               |
-| 52       | Set / get clipboard                      | xterm                   | None (xterm gates clipboard write)                                                 |
-| 133      | Shell integration semantic marks         | xterm                   | None — markers are visible via xterm itself                                        |
+| 52       | Set clipboard                            | τ-mux (`@xterm/addon-clipboard`, v0.11.2) | **Write-only**, gated: the payload lands on the macOS system clipboard via bun. Reads are refused (a program must never scrape the clipboard). See `src/views/terminal/terminal-clipboard.ts`. |
+| 133      | Shell integration semantic marks         | τ-mux (v0.12.0)         | **Command blocks**: prompt/command/output/exit-code boundaries feed `ht blocks` (see below). Requires the optional hooks from `ht shell-integration install`; without them the metadata poller remains the ground truth. |
 
 The xterm-handled OSCs are listed for completeness so someone debugging
 an OSC-related bug can see at a glance whether τ-mux is in the loop.
+
+> Doc note (2026-10): this table previously claimed OSC 52 and 133 had
+> "no τ-mux side effect" — stale rows from before v0.11.2/v0.12.0
+> shipped exactly those features. If a row here ever disagrees with
+> the code again, the code wins; please fix the row.
+
+---
+
+## OSC 133 — command blocks
+
+With the optional shell hooks installed (`ht shell-integration install`,
+zsh + bash), τ-mux sees the semantic marks a shell emits around every
+command: prompt start, command start, output start, command finished
+(with its exit code). Those boundaries are recorded as **command
+blocks** — what ran, where, how long it took, what it returned — and
+exposed over the socket API:
+
+```sh
+ht blocks                    # last finished command, with output
+ht blocks list --limit 10    # recent history
+ht blocks current            # what's running right now
+ht blocks --surface surface:2
+```
+
+Design notes:
+
+- **Strictly optional.** The process-metadata poller (cwd / foreground
+  command / ports, via libSystem FFI) stays the zero-config ground
+  truth; blocks add command-boundary and exit-code facts on top.
+- **Safe outside τ-mux.** The rc line sources `$HT_SHELL_INTEGRATION_PATH`,
+  which only exists inside τ-mux PTYs — the same rc file is inert in
+  iTerm2, over SSH, and in CI.
+- **Duplicate marks are deduped** — a shell that emits its own OSC 133
+  (or tmux passing them through) can't double-record a block.
+
+Implementation: `src/cli/shell-integration.ts` (installer),
+`src/bun/rpc-handlers/blocks.ts` (socket surface), `command-blocks.test.ts`.
 
 ---
 

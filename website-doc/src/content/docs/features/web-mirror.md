@@ -32,6 +32,9 @@ The M11–M17 plan (0.2.85 → 0.3.0) brought the web mirror to **feature parity
 | Logs zone | Polished rows: coloured level badge + `HH:MM:SS` timestamp + source label + body. Click any row to copy `[HH:MM:SS] [source] [level] message`. Header shows `Logs (count) (showing 10)`. |
 | Sideband panels | All four content types render. Drag/resize routes back to the host. |
 | Process Manager | Read-only in the mirror (no kill button — yet). |
+| Native-only panes (editor / agent / extension / Claude / browser) | Labelled **placeholder panes** since v0.24.3 — the mirror can't host these native surfaces, but the layout no longer has holes: the `nonPtySurfaceCreated` envelope + snapshot layout-leaf seeding render "File editor — Available in the desktop app" where the pane is. |
+| Disconnect UX | After ~30 failed reconnects the transport gives up and a **banner** ("Connection lost — Reload / Later") appears since v0.24.1. Before that the only signal was the 8 px header dot turning red. |
+| iOS software keyboard | `visualViewport` tracking since v0.24.4 publishes the keyboard-occluded strip as `--kbd-occlusion`; the key-accessory toolbar and the pane container ride above the keyboard (`interactive-widget=resizes-content` is Chromium-only — iOS Safari overlays instead). |
 
 ## Auth and hardening
 

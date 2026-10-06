@@ -365,3 +365,26 @@ Documented in the same change (`tests/docs-coverage.test.ts` gates both):
 new `cli/atlas.md` + `api/atlas.md` pages EN + FR, and
 `claude.permission_decision` added to the claude API pages.
 
+
+## Done — still-broken sweep (2026-10, v0.24.0 → v0.24.4)
+
+Folded into website-doc in the same commits as the code:
+
+- `webMirrorBind` default flipped to `127.0.0.1` + generated-token policy
+  for LAN binds (settings.md EN+FR, features/web-mirror.md EN+FR).
+- `onboardingCompleted` field (settings.md EN+FR).
+- `browserInterceptTerminalLinks` removed (settings.md EN+FR).
+- Mirror placeholder panes (`nonPtySurfaceCreated`), disconnect banner,
+  iOS `visualViewport` keyboard handling (features/web-mirror.md EN+FR).
+- `doc/system-osc-sequences.md` rewritten — the table claimed OSC 52/133
+  had no τ-mux side effect; both shipped in v0.11.2/v0.12.0.
+
+NOT documented (internal, not user-facing): the `webviewFault` webview→bun
+message (internal Electrobun channel, not a socket RPC method).
+
+## Older pending items (pre-sweep, status to verify)
+
+The 2026-08 sections above (clickable paths, Claude integration phases,
+IDE bridge, settings knobs) predate this sweep. Their code shipped
+(v0.13–v0.16) but the website-doc fold-in was never verified here —
+check each against the live pages before deleting.
