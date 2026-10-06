@@ -20,8 +20,8 @@ Démarré: 2026-10. Base: v0.23.1 (736249b4).
 | P2-13 | Timer partagé + GL lazy | ✅ | 4070a10 |
 | P2-14 | Envelope nonPtySurfaceCreated | ✅ | b4d8a78 |
 | P2-15 | visualViewport | ✅ | 9468db8 |
-| P3-16 | Docs | ✅ | à committer |
-| P3-17 | Release mechanics | 🔄 | — |
+| P3-16 | Docs | ✅ | 5b0ef2b |
+| P3-17 | Release mechanics | ✅ | 5b0ef2b |
 
 ## Déviations
 
