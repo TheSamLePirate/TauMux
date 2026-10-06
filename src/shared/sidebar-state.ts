@@ -340,8 +340,29 @@ function buildStatusPillsForWorkspace(
 const CPU_HISTORY_LIMIT = 32;
 const cpuHistories = new Map<string, number[]>();
 
-function pushCpuSample(wsId: string, sample: number): number[] {
+/** Minimum spacing between two recorded samples. The builder used to
+ *  append a sample on EVERY call — and it is called from every sidebar
+ *  flush (focus change, title change, workspace switch…), not just the
+ *  1 Hz metadata tick. That had two costs: the sparkline's time axis
+ *  lied (samples at flush cadence, not seconds), and — worse — the
+ *  self-mutating history made every built payload differ from the last,
+ *  so `Sidebar.setWorkspaces`' stable-signature memo could never hit:
+ *  we paid the JSON.stringify AND the render. cpuPercent itself is a
+ *  pure function of the metadata map, so once sampling is throttled to
+ *  the metadata cadence, non-metadata flushes produce byte-identical
+ *  payloads and the memo works as designed. */
+const CPU_SAMPLE_MIN_GAP_MS = 1000;
+const cpuSampleAt = new Map<string, number>();
+
+function pushCpuSample(wsId: string, sample: number, now = Date.now()): number[] {
   const existing = cpuHistories.get(wsId) ?? [];
+  const lastAt = cpuSampleAt.get(wsId);
+  // Sub-second re-entry (a non-metadata flush): no new sample — return
+  // the history UNCHANGED so downstream signatures stay stable.
+  if (lastAt !== undefined && now - lastAt < CPU_SAMPLE_MIN_GAP_MS) {
+    return existing;
+  }
+  cpuSampleAt.set(wsId, now);
   const next =
     existing.length >= CPU_HISTORY_LIMIT
       ? [...existing.slice(1), sample]
@@ -356,6 +377,9 @@ function pushCpuSample(wsId: string, sample: number): number[] {
 function pruneCpuHistories(keep: Set<string>): void {
   for (const id of [...cpuHistories.keys()]) {
     if (!keep.has(id)) cpuHistories.delete(id);
+  }
+  for (const id of [...cpuSampleAt.keys()]) {
+    if (!keep.has(id)) cpuSampleAt.delete(id);
   }
 }
 

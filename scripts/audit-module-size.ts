@@ -62,7 +62,12 @@ const IGNORE_DIRS = new Set([
   "vendor",
   "test-results",
 ]);
-const INCLUDE_EXT = new Set([".ts", ".tsx"]);
+// `.css` is included deliberately (improvement_analysis_2026-10 §1.8):
+// the ratchet existed to stop god modules growing, yet exempted the
+// biggest file in the repo — index.css grew 13.5k → 15.5k lines while
+// every tracked .ts file stayed frozen. Stylesheet bloat is module
+// bloat.
+const INCLUDE_EXT = new Set([".ts", ".tsx", ".css"]);
 
 export interface SizeViolation {
   path: string;

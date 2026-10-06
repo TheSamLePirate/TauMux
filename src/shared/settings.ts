@@ -248,8 +248,10 @@ export interface AppSettings {
   browserHomePage: string;
   /** Force dark mode on web pages via CSS injection. */
   browserForceDarkMode: boolean;
-  /** Open terminal URL clicks in the built-in browser instead of externally. */
-  browserInterceptTerminalLinks: boolean;
+  // NOTE: `browserInterceptTerminalLinks` was removed in v0.24.1 — it
+  // was declared, defaulted, validated, rendered and documented, but
+  // read by no code (a settings-shaped no-op). Dead knobs erode trust
+  // in the live ones.
   /** P7 S6 (H.8) — partition isolation strategy for new browser panes.
    *  `shared` (legacy) uses a single `persist:browser-shared` partition
    *  so every pane sees the same cookies / localStorage. `per-surface`
@@ -854,7 +856,6 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   browserSearchEngine: "google",
   browserHomePage: "",
   browserForceDarkMode: false,
-  browserInterceptTerminalLinks: false,
   browserPartitionMode: "per-surface",
 
   telegramEnabled: false,
@@ -979,10 +980,6 @@ export function validateSettings(s: AppSettings): AppSettings {
     browserForceDarkMode: SETTINGS_FIELD_SCHEMAS.browserForceDarkMode.validate(
       s.browserForceDarkMode,
     ),
-    browserInterceptTerminalLinks:
-      SETTINGS_FIELD_SCHEMAS.browserInterceptTerminalLinks.validate(
-        s.browserInterceptTerminalLinks,
-      ),
     browserPartitionMode: SETTINGS_FIELD_SCHEMAS.browserPartitionMode.validate(
       s.browserPartitionMode,
     ),

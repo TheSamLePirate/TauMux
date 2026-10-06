@@ -92,7 +92,6 @@ Voir l'[intégration Claude Code](/fr/integrations/claude-code/).
 | `browserSearchEngine` | `"google"` \| `"duckduckgo"` \| `"bing"` \| `"kagi"` | `"google"` | Engine used when the address bar input isn't a URL. |
 | `browserHomePage` | string | `""` | Page opened for a new browser surface. Empty = blank. |
 | `browserForceDarkMode` | boolean | `false` | Ask pages to render in dark mode. |
-| `browserInterceptTerminalLinks` | boolean | `false` | Open links clicked in a terminal in a browser pane instead of the system browser. |
 | `browserPartitionMode` | `"shared"` \| `"per-surface"` | `"per-surface"` | Cookie/storage partitioning across browser panes. |
 
 ## Scripts

@@ -407,3 +407,59 @@ describe("buildSidebarWorkspaces", () => {
     expect(row.progress).toEqual({ value: 42, label: "building" });
   });
 });
+
+// ------------------------------------------------------------------
+// CPU sampling cadence — the sidebar memo premise
+// (improvement_analysis_2026-10 §1.6). The builder used to append a
+// CPU sample on EVERY call, so the self-mutating history made every
+// payload differ and Sidebar.setWorkspaces' stable-signature memo
+// could never hit. Sampling is now throttled to the ~1 Hz metadata
+// cadence, so non-metadata flushes build byte-identical payloads.
+// ------------------------------------------------------------------
+
+describe("CPU sampling cadence (the render-memo premise)", () => {
+  const wsWithLoad = () => {
+    const ws = mkWorkspace("ws:cpu", "w", ["s1"]);
+    const metadata = new Map([
+      [
+        "s1",
+        mkMeta({ tree: [{ pid: 1, ppid: 0, command: "node", cpu: 12.5, rssKb: 100 }] }),
+      ],
+    ]);
+    return baseInput({ workspaces: [ws], metadata });
+  };
+
+  test("repeated builds within the same second produce byte-identical payloads", () => {
+    const input = wsWithLoad();
+    const a = JSON.stringify(buildSidebarWorkspaces(input));
+    const b = JSON.stringify(buildSidebarWorkspaces(input));
+    const c = JSON.stringify(buildSidebarWorkspaces(input));
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+  });
+
+  test("a build >= 1s later DOES advance the sparkline history", () => {
+    const input = wsWithLoad();
+    const first = buildSidebarWorkspaces(input)[0]!;
+    const realNow = Date.now;
+    try {
+      // Two seconds later (fake clock): a new sample must land.
+      Date.now = () => realNow() + 2000;
+      const second = buildSidebarWorkspaces(input)[0]!;
+      expect(second.cpuHistory.length).toBeGreaterThan(
+        first.cpuHistory.length,
+      );
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  test("sub-second builds do NOT grow the history (sparkline time axis stays honest)", () => {
+    const input = wsWithLoad();
+    const first = buildSidebarWorkspaces(input)[0]!;
+    const second = buildSidebarWorkspaces(input)[0]!;
+    const third = buildSidebarWorkspaces(input)[0]!;
+    expect(second.cpuHistory.length).toBe(first.cpuHistory.length);
+    expect(third.cpuHistory.length).toBe(first.cpuHistory.length);
+  });
+});

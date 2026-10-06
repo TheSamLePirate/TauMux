@@ -296,7 +296,6 @@ export const SETTINGS_FIELD_SCHEMAS = {
   // S15 !!-bool batch (coercing, not strict)
   bloomMigratedToTau: bool(false),
   browserForceDarkMode: bool(false),
-  browserInterceptTerminalLinks: bool(false),
   telegramEnabled: bool(false),
   telegramNotificationsEnabled: bool(false),
 

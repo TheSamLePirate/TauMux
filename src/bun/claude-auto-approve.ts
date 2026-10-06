@@ -49,6 +49,44 @@ import type { ClaudeSessionRegistry } from "./claude-session-registry";
 const MAX_BURST = 8;
 const BURST_WINDOW_MS = 60_000;
 
+/** Content gate for auto-approve (improvement_analysis_2026-10 §1.9).
+ *  The burst guard bounds the VOLUME of unattended approvals; this
+ *  list bounds their BLAST RADIUS — a single `rm -rf ~` needs only one
+ *  prompt. A match never deletes or blocks anything: it forces the
+ *  human path (the tty prompt stays up / the modal is shown), so a
+ *  false positive costs one prompt and a false negative is what's
+ *  actually expensive. Patterns therefore err generous. */
+const APPROVAL_DENY_LIST: Array<{ re: RegExp; label: string }> = [
+  { re: /\brm\s+(?:-[a-zA-Z]+\s+)*-[a-zA-Z]*(?:rf|fr)\b/, label: "rm -rf" },
+  { re: /\bsudo\b/, label: "sudo" },
+  { re: /\s--force\b/, label: "--force" },
+  {
+    re: /\b(?:curl|wget)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|fi)?sh\b/,
+    label: "download piped to a shell",
+  },
+  { re: />\s*\/dev\//, label: "write to /dev" },
+  { re: /\bdd\b[^|]*\bof=\/dev\//, label: "dd onto a device" },
+  { re: /\bmkfs\b/, label: "mkfs" },
+  { re: /\bshutdown\b|\breboot\b/, label: "shutdown/reboot" },
+  {
+    re: /\.ssh\/id_|\.aws\/credentials|\.netrc|\.gnupg\//,
+    label: "credential file access",
+  },
+];
+
+/** Does the pending approval's text ask for something no automation
+ *  should rubber-stamp? Returns the matched rule's label, or null.
+ *  Pure + exported for tests. */
+export function deniedApprovalReason(
+  message: string | null | undefined,
+): string | null {
+  if (!message) return null;
+  for (const rule of APPROVAL_DENY_LIST) {
+    if (rule.re.test(message)) return rule.label;
+  }
+  return null;
+}
+
 export interface ClaudeAutoApproveDeps {
   callRpc: (
     method: string,
@@ -89,6 +127,11 @@ export class ClaudeAutoApprove {
   private recent = new Map<string, number[]>();
   /** Sessions paused by the burst guard until the next turn. */
   private paused = new Set<string>();
+  /** Sessions already told their prompt was deny-listed. Cleared when
+   *  the session re-arms (leaves waiting-approval), so a refusal is
+   *  announced once per stuck-prompt episode — never spammed per hook
+   *  re-fire, never silent in the next turn either. */
+  private deniedNotified = new Set<string>();
   /** sessionId → the `approvalSeq` we have already scheduled/sent an
    *  approval for. Keyed by seq rather than a bare flag so a NEW prompt
    *  arriving while the previous one is still settling is not mistaken
@@ -107,6 +150,7 @@ export class ClaudeAutoApprove {
       // Any move away from a pending tty approval re-arms the session.
       if (!canAutoApprove(s)) {
         this.inFlightSeq.delete(s.sessionId);
+        this.deniedNotified.delete(s.sessionId);
         if (s.phase === "working" || s.phase === "idle") {
           this.paused.delete(s.sessionId);
         }
@@ -130,6 +174,17 @@ export class ClaudeAutoApprove {
       // nothing until the next prompt arrives.
       if (!this.deps.isEnabled()) return;
       if (this.paused.has(s.sessionId)) return;
+      // Content gate BEFORE the burst accounting: a deny-listed prompt
+      // is routed to the human without consuming a burst slot (it was
+      // never approved, attended or not).
+      const denied = deniedApprovalReason(s.approvalMessage);
+      if (denied) {
+        if (!this.deniedNotified.has(s.sessionId)) {
+          this.deniedNotified.add(s.sessionId);
+          this.notifyDenied(s, denied);
+        }
+        return;
+      }
       if (this.burst(s.sessionId)) {
         this.paused.add(s.sessionId);
         this.notifyPaused(s);
@@ -201,6 +256,12 @@ export class ClaudeAutoApprove {
     const session = this.registry?.get(sessionId);
     if (session?.awaitingUserChoice) {
       return { decision: "ask", reason: "question addressed to the user" };
+    }
+    // Content gate — same list as the tty path. Volume is not the only
+    // risk axis; one dangerous command needs one prompt.
+    const denied = deniedApprovalReason(session?.approvalMessage);
+    if (denied) {
+      return { decision: "ask", reason: `deny-listed content: ${denied}` };
     }
     // `burst()` already recorded this attempt, so the ceiling counts
     // modal-routed approvals alongside tty ones.
@@ -279,6 +340,18 @@ export class ClaudeAutoApprove {
     this.call("notification.create", {
       title: "Claude Code · auto-approve paused",
       body: `More than ${MAX_BURST} permission prompts in a minute — approve the rest yourself.`,
+      subtitle: "Claude Code",
+      ...(s.surfaceId ? { surface_id: s.surfaceId } : {}),
+    });
+  }
+
+  /** A deny-listed prompt is left for the human — say so once per
+   *  prompt (keyed by seq, like the approval latch) so the refusal is
+   *  visible rather than a silently-unanswered prompt. */
+  private notifyDenied(s: ClaudeSessionState, label: string): void {
+    this.call("notification.create", {
+      title: "Claude Code · auto-approve refused",
+      body: `Prompt mentions ${label} — left for you to decide.`,
       subtitle: "Claude Code",
       ...(s.surfaceId ? { surface_id: s.surfaceId } : {}),
     });

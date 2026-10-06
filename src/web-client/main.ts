@@ -70,6 +70,7 @@ import {
 import { renderSurfaceChips, type PaneChipsDeps } from "../shared/pane-chips";
 import { fitTerminal } from "../shared/xterm-fit";
 import { syncTerminalGridSizes } from "./resize-sync";
+import { applyConnectionBanner } from "./disconnect-banner";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -258,6 +259,9 @@ function boot() {
         : state.connection.status === "connecting"
           ? "reconnecting"
           : "";
+    // The dot alone is not a disconnect UX — after the transport gives
+    // up, say so in words and offer the way out.
+    applyConnectionBanner(state.connection.status);
   }
 
   // Forward declaration: the dispatcher needs `sendMsg`, which comes

@@ -965,16 +965,6 @@ export class SettingsPanel {
       },
     );
 
-    this.toggleField(
-      c,
-      "Intercept Terminal Links",
-      s.browserInterceptTerminalLinks,
-      "browserInterceptTerminalLinks",
-      {
-        note: "Open ⌘-clicked URLs in the built-in browser instead of the system browser.",
-      },
-    );
-
     this.segmentedField(
       c,
       "Cookie Isolation",
