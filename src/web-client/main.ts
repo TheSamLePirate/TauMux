@@ -37,6 +37,7 @@ import { attachDictationInput, type DictationInput } from "./dictation-input";
 import { attachSidebarResize } from "../shared/sidebar-resize";
 import { focusXtermPreservingScroll } from "../shared/xterm-focus";
 import { attachTouchGestures, pickWorkspaceStep } from "./touch-gestures";
+import { installViewportKeyboardTracking } from "./viewport-keyboard";
 import { createProcessManagerView } from "./process-manager";
 import {
   createSettingsPanelView,
@@ -1159,6 +1160,11 @@ function boot() {
 
   // Touch gestures: swipe to switch workspace, edge-swipe to open
   // drawer, pinch to zoom terminal font.
+  // iOS Safari overlays the software keyboard instead of resizing the
+  // layout viewport — publish the occluded strip as --kbd-occlusion so
+  // the accessory toolbar + last terminal rows stay above it.
+  installViewportKeyboardTracking();
+
   attachTouchGestures({
     paneArea: container,
     rootEl: document.body,
