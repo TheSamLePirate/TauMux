@@ -44,7 +44,8 @@ Cette page liste **tous** les champs, avec le défaut lu depuis `DEFAULT_SETTING
 | `terminalBloom` | boolean | `false` | WebGL bloom layer over the terminal. |
 | `bloomIntensity` | number | `0` | Bloom strength, 0–2. |
 | `legacyBloomIntensity` | number | `0` | Snapshot of the pre-TAU bloom value, kept so the migration is reversible. |
-| `bloomMigratedToTau` | boolean | `false` | Internal migration marker — do not set by hand. |
+| `bloomMigratedToTau` | boolean | `false` | Marqueur de migration interne — ne pas modifier à la main. |
+| `onboardingCompleted` | boolean | `false` | Activé une fois l'écran de bienvenue du premier lancement fermé. Remettez à `false` pour le revoir. Depuis la v0.24.2. |
 | `paneGap` | number | `2` | Gap between panes in px, 0–20. |
 | `sidebarWidth` | number | `320` | Sidebar width in px, 200–600. |
 | `layoutVariant` | `"bridge"` \| `"cockpit"` \| `"atlas"` | `"bridge"` | Variante de disposition du chrome — voir [Variantes de disposition](/fr/features/layout-variants/). |

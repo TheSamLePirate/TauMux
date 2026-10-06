@@ -337,3 +337,75 @@ describe("[U2] TerminalEffects — prefers-reduced-motion guard", () => {
     }
   });
 });
+
+// improvement_analysis_2026-10 §3.1 — the GL context must be LAZY.
+// Before the rework the constructor grabbed a context per terminal
+// pane even with bloom off (the default), spending WebKit's per-process
+// live-context budget on nothing and risking eviction of an xterm
+// renderer context on many-pane grids.
+describe("[2026-10] lazy GL acquisition", () => {
+  test("construction acquires NO webgl context", async () => {
+    const { TerminalEffects } = await load();
+    const calls: string[] = [];
+    const proto = HTMLCanvasElement.prototype as unknown as {
+      getContext: (kind: string, ...rest: unknown[]) => unknown;
+    };
+    const real = proto.getContext;
+    proto.getContext = function (kind: string, ...rest: unknown[]) {
+      calls.push(kind);
+      if (kind === "2d") return {}; // see below — keep the lazy path reachable
+      return real.call(this, kind, ...rest);
+    };
+    try {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const { term } = mockTerminal();
+      new TerminalEffects(host, term as unknown as never);
+      // The 2d occluder canvas may be probed; webgl must NOT be.
+      expect(calls.filter((k) => k.startsWith("webgl"))).toHaveLength(0);
+    } finally {
+      proto.getContext = real;
+    }
+  });
+
+  test("setEnabled(true) is what probes webgl (and fails soft under happy-dom)", async () => {
+    const { TerminalEffects } = await load();
+    const calls: string[] = [];
+    const proto = HTMLCanvasElement.prototype as unknown as {
+      getContext: (kind: string, ...rest: unknown[]) => unknown;
+    };
+    const real = proto.getContext;
+    proto.getContext = function (kind: string, ...rest: unknown[]) {
+      calls.push(kind);
+      // happy-dom returns null for EVERY context kind, which lands the
+      // constructor in the occluder-fail fallback before webgl is ever
+      // probed. Hand back a minimal 2d stand-in so the lazy path is
+      // actually reachable; webgl still returns null (no GL here).
+      if (kind === "2d") return {};
+      return real.call(this, kind, ...rest);
+    };
+    try {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const { term } = mockTerminal();
+      const e = new TerminalEffects(host, term as unknown as never);
+      expect(calls.filter((k) => k.startsWith("webgl"))).toHaveLength(0);
+      e.setEnabled(true);
+      expect(
+        calls.filter((k) => k.startsWith("webgl")).length,
+      ).toBeGreaterThan(0);
+      // happy-dom has no GL → soft-unavailable, never a crash.
+      expect(e.isEnabled()).toBe(false);
+      e.destroy();
+    } finally {
+      proto.getContext = real;
+    }
+  });
+
+  test("source pins: context budget + loseContext release path", () => {
+    expect(SRC).toContain("MAX_LIVE_EFFECTS_CONTEXTS");
+    expect(SRC).toContain('getExtension("WEBGL_lose_context")');
+    // The release path runs on disable AND on destroy.
+    expect(SRC).toContain("releaseGl()");
+  });
+});

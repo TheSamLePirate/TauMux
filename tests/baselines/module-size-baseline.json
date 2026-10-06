@@ -3,9 +3,9 @@
   "src/bun/index.ts": 3315,
   "src/shared/status-render.ts": 1881,
   "src/views/terminal/agent-panel.ts": 1877,
-  "src/views/terminal/index.css": 15554,
-  "src/views/terminal/index.ts": 3118,
-  "src/views/terminal/settings-panel.ts": 1959,
+  "src/views/terminal/index.css": 15691,
+  "src/views/terminal/index.ts": 3126,
+  "src/views/terminal/settings-panel.ts": 1971,
   "src/views/terminal/sidebar.ts": 3654,
   "src/views/terminal/surface-manager.ts": 2936,
   "src/web-client/client.css": 2710

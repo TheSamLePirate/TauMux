@@ -7,6 +7,11 @@ import {
 } from "../../shared/settings";
 import { ModalHost } from "./a11y/modal-host";
 import { renderAuthTokenRow } from "./settings-auth-token";
+import {
+  createSettingsSearchInput,
+  filterSettingsContent,
+  type SettingsSearchInput,
+} from "./settings-search";
 import { createIcon } from "./icons";
 import { htEvents } from "../../shared/event-bus";
 import {
@@ -69,6 +74,7 @@ export class SettingsPanel {
   // wrapped in try/catch because private-browsing modes throw.
   private static STORAGE_KEY = "hyperterm-canvas.settings-panel.section";
   private activeSection = SettingsPanel.loadActiveSection();
+  private search!: SettingsSearchInput;
   private onChange: SettingChangeHandler;
   /** Webview→bun bridge for the Advanced section's "Reveal Log File"
    *  button. Optional — the button is hidden when no callback is wired,
@@ -224,6 +230,10 @@ export class SettingsPanel {
 
     header.appendChild(titleCopy);
 
+    // Search across ALL sections (mechanics in settings-search.ts).
+    this.search = createSettingsSearchInput(() => this.renderActiveSection());
+    header.appendChild(this.search.el);
+
     const closeBtn = document.createElement("button");
     closeBtn.className = "settings-close-btn";
     closeBtn.setAttribute("aria-label", "Close settings");
@@ -364,6 +374,9 @@ export class SettingsPanel {
       btn.addEventListener("click", () => {
         this.activeSection = section.id;
         SettingsPanel.saveActiveSection(section.id);
+        // Leaving search mode: picking a section is an explicit "take
+        // me there", and staying in all-sections filter would hide it.
+        this.search?.clear();
         this.nav
           .querySelectorAll(".settings-nav-item")
           .forEach((el) => el.classList.remove("active"));
@@ -377,6 +390,15 @@ export class SettingsPanel {
 
   private renderActiveSection(): void {
     this.content.innerHTML = "";
+    const query = this.search?.query() ?? "";
+    if (query) {
+      // Search mode: render EVERY section, then hide non-matches.
+      for (const section of this.sections) {
+        section.render(this.content, this.settings);
+      }
+      filterSettingsContent(this.content, query, this.search.el.value.trim());
+      return;
+    }
     const section = this.sections.find((s) => s.id === this.activeSection);
     if (section) section.render(this.content, this.settings);
   }

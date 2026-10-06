@@ -45,6 +45,7 @@ This page lists **every** field, with the default read from `DEFAULT_SETTINGS`.
 | `bloomIntensity` | number | `0` | Bloom strength, 0–2. |
 | `legacyBloomIntensity` | number | `0` | Snapshot of the pre-TAU bloom value, kept so the migration is reversible. |
 | `bloomMigratedToTau` | boolean | `false` | Internal migration marker — do not set by hand. |
+| `onboardingCompleted` | boolean | `false` | Set once the first-run welcome overlay has been dismissed. Reset to `false` to see it again. Since v0.24.2. |
 | `paneGap` | number | `2` | Gap between panes in px, 0–20. |
 | `sidebarWidth` | number | `320` | Sidebar width in px, 200–600. |
 | `layoutVariant` | `"bridge"` \| `"cockpit"` \| `"atlas"` | `"bridge"` | Chrome layout variant — see [Layout variants](/features/layout-variants/). |

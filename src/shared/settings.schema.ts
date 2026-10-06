@@ -218,6 +218,7 @@ export const SETTINGS_FIELD_SCHEMAS = {
     round: true,
   }),
   legacyBloomIntensity: numberRangeStrict(0, 0, 2),
+  onboardingCompleted: bool(false),
 
   // S15 enum batch
   cursorStyle: enumStr("block" as "block" | "bar" | "underline", [

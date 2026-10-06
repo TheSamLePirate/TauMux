@@ -24,6 +24,24 @@ const RASTER_MIN_INTERVAL_MS = 33;
 const INPUT_PULSE_MIN_INTERVAL_MS = 16;
 const OUTPUT_PULSE_MIN_INTERVAL_MS = 35;
 
+/** Live bloom GL contexts across the whole web process, and the cap
+ *  past which ensureGl() refuses new ones. WebKit force-loses the
+ *  OLDEST context when its own cap (~16) overflows — with xterm's
+ *  webgl renderer also holding one context per pane, an unbounded
+ *  bloom layer could evict a renderer context and blank a terminal.
+ *  10 leaves comfortable headroom for the renderers.
+ *  Exported read-only for tests. */
+export const MAX_LIVE_EFFECTS_CONTEXTS = 10;
+let liveEffectsGlContexts = 0;
+let effectsContextBudgetWarned = false;
+
+/** Test hook: the counters are module state; suites that exercise
+ *  ensureGl/releaseGl need a clean slate. Not for production use. */
+export function __resetEffectsGlBudgetForTests(): void {
+  liveEffectsGlContexts = 0;
+  effectsContextBudgetWarned = false;
+}
+
 const VERTEX_SHADER_SOURCE = `
 attribute vec2 a_position;
 varying vec2 v_uv;
@@ -204,10 +222,20 @@ export class TerminalEffects {
   private pulses: PulseEvent[] = [];
   private lights: LightRect[] = [];
 
+  // Module-level live-context budget — see ensureGl(). WebKit caps
+  // live WebGL contexts per web process (~16); each TerminalEffects
+  // with bloom on holds one, and an xterm webgl renderer holds another
+  // per pane. The budget refuses new bloom layers early enough that an
+  // eviction can never take an xterm context down.
+  // (Counters are module-scope: the cap is per web process, not per
+  // instance.)
+
   private rafId: number | null = null;
   private destroyed = false;
   private available = true;
-  private active = true;
+  // Starts INACTIVE: the GL context is acquired lazily on the first
+  // setEnabled(true) — never at construction (see ensureGl).
+  private active = false;
   /** Phase 5 / U2 — when the OS asks for reduced motion, the WebGL
    *  bloom layer should go quiet. The Phase 0 CSS blanket (`@media
    *  prefers-reduced-motion`) doesn't reach a canvas with its own
@@ -299,46 +327,22 @@ export class TerminalEffects {
     this.occluderCtx = occluderCtx;
 
     host.appendChild(this.canvas);
-
-    this.gl =
-      (this.canvas.getContext("webgl2", {
-        alpha: true,
-        antialias: false,
-        premultipliedAlpha: false,
-      }) as GLContext | null) ??
-      (this.canvas.getContext("webgl", {
-        alpha: true,
-        antialias: false,
-        premultipliedAlpha: false,
-      }) as GLContext | null);
-
-    if (!this.gl) {
-      this.available = false;
-      this.active = false;
-      this.canvas.style.display = "none";
-      this.resizeObserver = new ResizeObserver(() => {});
-      return;
-    }
+    // Lazy GL (improvement_analysis_2026-10 §3.1): the context — two
+    // full-resolution framebuffers plus a shader compile per pane —
+    // is acquired on the first setEnabled(true), not here. The default
+    // is `terminalBloom: false`, so the default user paid all of it
+    // for nothing; worse, WebKit caps live contexts per web process
+    // (~16) and force-loses the OLDEST on overflow, which could evict
+    // an xterm webgl-renderer context on a many-pane grid. The canvas
+    // stays hidden and inert until bloom is actually on.
+    this.active = false;
+    this.canvas.style.display = "none";
 
     this.resizeObserver = new ResizeObserver(() => {
       this.resize();
       this.markDirty();
     });
     this.resizeObserver.observe(host);
-
-    try {
-      this.initGl();
-    } catch (error) {
-      console.warn("[terminal-effects] WebGL disabled:", error);
-      showToast(
-        "Terminal bloom unavailable — WebGL failed to initialize.",
-        "warning",
-      );
-      this.available = false;
-      this.active = false;
-      this.canvas.style.display = "none";
-      return;
-    }
 
     // H5 (full_app_review_2026-05.md §8.1): do NOT subscribe to onRender.
     // xterm fires onRender on every cursor-blink phase toggle (~600ms) even
@@ -372,11 +376,81 @@ export class TerminalEffects {
     this.resize();
     this.markDirty();
 
-    // Apply the initial reduced-motion state after the WebGL setup
-    // completes so the visibility class flips correctly on first paint.
+    // Apply the initial reduced-motion state after the setup completes
+    // so the visibility class flips correctly on first paint.
     if (this.reducedMotionQuery?.matches) {
       this.setReducedMotion(true);
     }
+  }
+
+  /** Acquire the GL context + compile the program, once. Returns false
+   *  (and marks the instance unavailable) when the context can't be
+   *  had or the module-level live-context budget is spent. */
+  private ensureGl(): boolean {
+    if (this.gl) return true;
+    if (liveEffectsGlContexts >= MAX_LIVE_EFFECTS_CONTEXTS) {
+      if (!effectsContextBudgetWarned) {
+        effectsContextBudgetWarned = true;
+        console.warn(
+          `[terminal-effects] refusing a ${MAX_LIVE_EFFECTS_CONTEXTS + 1}th bloom GL context — WebKit force-loses the oldest context past its cap, which could evict an xterm renderer context`,
+        );
+      }
+      this.available = false;
+      this.canvas.style.display = "none";
+      return false;
+    }
+    this.gl =
+      (this.canvas.getContext("webgl2", {
+        alpha: true,
+        antialias: false,
+        premultipliedAlpha: false,
+      }) as GLContext | null) ??
+      (this.canvas.getContext("webgl", {
+        alpha: true,
+        antialias: false,
+        premultipliedAlpha: false,
+      }) as GLContext | null);
+    if (!this.gl) {
+      this.available = false;
+      this.canvas.style.display = "none";
+      return false;
+    }
+    try {
+      this.initGl();
+    } catch (error) {
+      console.warn("[terminal-effects] WebGL disabled:", error);
+      showToast(
+        "Terminal bloom unavailable — WebGL failed to initialize.",
+        "warning",
+      );
+      this.gl = null;
+      this.available = false;
+      this.canvas.style.display = "none";
+      return false;
+    }
+    liveEffectsGlContexts++;
+    return true;
+  }
+
+  /** Give the GL resources back — delete the program/buffer/texture
+   *  and lose the context so WebKit's live-context cap isn't spent on
+   *  a disabled bloom layer. Re-enabling re-runs ensureGl(). */
+  private releaseGl(): void {
+    if (!this.gl) return;
+    const gl = this.gl;
+    try {
+      if (this.positionBuffer) gl.deleteBuffer(this.positionBuffer);
+      if (this.occluderTexture) gl.deleteTexture(this.occluderTexture);
+      if (this.program) gl.deleteProgram(this.program);
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+    } catch {
+      /* context may already be lost — nothing left to release */
+    }
+    this.positionBuffer = null;
+    this.occluderTexture = null;
+    this.program = null;
+    this.gl = null;
+    liveEffectsGlContexts = Math.max(0, liveEffectsGlContexts - 1);
   }
 
   setFocused(_focused: boolean): void {
@@ -401,6 +475,9 @@ export class TerminalEffects {
         this.gl.clear(this.gl.COLOR_BUFFER_BIT);
       }
     } else if (this.available) {
+      // Route through the lazy acquisition — a reduced-motion user who
+      // opts back out gets bloom only if a context can actually be had.
+      if (!this.ensureGl()) return;
       this.active = true;
       this.canvas.style.display = "block";
       this.markDirty();
@@ -434,14 +511,24 @@ export class TerminalEffects {
 
   setEnabled(enabled: boolean): void {
     if (!this.available) return;
-    this.active = enabled;
-    this.canvas.style.display = enabled ? "block" : "none";
     if (enabled) {
+      // Lazy acquisition — the whole point of the rework: bloom off
+      // (the default) must never hold a GL context.
+      if (!this.ensureGl()) return;
+      this.active = true;
+      this.canvas.style.display = "block";
+      // The canvas was display:none (0×0 layout box) until now, and
+      // the ResizeObserver watches the HOST — not the canvas — so a
+      // pure display flip doesn't fire it. Re-measure explicitly.
+      this.resize();
       this.markDirty();
-    } else if (this.gl) {
-      this.gl.clearColor(0, 0, 0, 0);
-      this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+      return;
     }
+    this.active = false;
+    this.canvas.style.display = "none";
+    // Give the context back: a disabled bloom layer must not keep two
+    // full-resolution framebuffers + a live context per pane alive.
+    this.releaseGl();
   }
 
   isEnabled(): boolean {
@@ -470,11 +557,7 @@ export class TerminalEffects {
     }
     this.reducedMotionQuery = null;
     this.reducedMotionListener = null;
-    if (this.available && this.gl) {
-      if (this.positionBuffer) this.gl.deleteBuffer(this.positionBuffer);
-      if (this.occluderTexture) this.gl.deleteTexture(this.occluderTexture);
-      if (this.program) this.gl.deleteProgram(this.program);
-    }
+    this.releaseGl();
     this.canvas.remove();
   }
 

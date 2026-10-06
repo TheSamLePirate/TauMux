@@ -152,6 +152,10 @@ export interface AppSettings {
    *  the UI — purely a migration stamp. */
   bloomMigratedToTau: boolean;
   legacyBloomIntensity: number;
+  /** First-run welcome overlay has been dismissed. False on a fresh
+   *  install → the overlay shows once; reset to false to see it again.
+   *  Never surfaced as a toggle in the UI. */
+  onboardingCompleted: boolean;
 
   // Network
   webMirrorPort: number;
@@ -808,6 +812,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   workspaceCardShowProgress: true,
   bloomMigratedToTau: false,
   legacyBloomIntensity: 0,
+  onboardingCompleted: false,
 
   webMirrorPort: 3000,
   autoStartWebMirror: false,
@@ -1020,6 +1025,9 @@ export function validateSettings(s: AppSettings): AppSettings {
     ),
     legacyBloomIntensity: SETTINGS_FIELD_SCHEMAS.legacyBloomIntensity.validate(
       s.legacyBloomIntensity,
+    ),
+    onboardingCompleted: SETTINGS_FIELD_SCHEMAS.onboardingCompleted.validate(
+      s.onboardingCompleted,
     ),
     terminalOsc94Enabled: SETTINGS_FIELD_SCHEMAS.terminalOsc94Enabled.validate(
       s.terminalOsc94Enabled,

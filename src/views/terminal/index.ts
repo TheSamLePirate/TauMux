@@ -49,6 +49,7 @@ import { registerEditorEvents } from "./editor-events";
 import { createSocketActionDispatcher } from "./socket-actions";
 import { NotificationOverlay } from "./notification-overlay";
 import { installWebviewFaultReporting } from "./webview-fault-reporting";
+import { maybeShowOnboarding } from "./onboarding";
 import { createTestActionRouter } from "./__test-handlers";
 import {
   type Binding,
@@ -678,6 +679,13 @@ function applySettings(settings: AppSettings): void {
   } else {
     variantController.refresh(settings);
   }
+  // First-run welcome — once per install, never in test mode (it would
+  // sit on top of every e2e / design-review screenshot).
+  maybeShowOnboarding({
+    completed: settings.onboardingCompleted || window.__htTestMode__ === true,
+    onDismiss: () =>
+      rpc.send("updateSettings", { settings: { onboardingCompleted: true } }),
+  });
   syncPaletteCommands();
 }
 

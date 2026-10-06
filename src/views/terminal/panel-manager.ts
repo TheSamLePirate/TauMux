@@ -40,15 +40,36 @@ export class PanelManager {
       term.onResize(() => this.updateInlinePanels()) as XtermDisposable,
     );
 
-    // Prune stale pending data entries
-    this.pendingPruneTimer = setInterval(() => {
-      const now = Date.now();
-      for (const [id, entry] of this.pendingData) {
-        if (now - entry.timestamp > PENDING_TTL_MS) {
-          this.pendingData.delete(id);
-        }
+    // NOTE: the pending-data prune timer is NOT armed here. One
+    // PanelManager exists per terminal pane, and pendingData is almost
+    // always empty — a constructor-armed 30 s interval per pane meant
+    // 20 panes = 20 timers iterating empty maps forever. It arms lazily
+    // on the first pending entry and disarms itself when the map
+    // empties (see armPendingPrune / prunePending).
+  }
+
+  /** Arm the prune timer on first use — pending data only exists when
+   *  binary content arrived before its panel's meta. */
+  private armPendingPrune(): void {
+    if (this.pendingPruneTimer !== null) return;
+    this.pendingPruneTimer = setInterval(
+      () => this.prunePending(),
+      PENDING_PRUNE_INTERVAL_MS,
+    );
+  }
+
+  private prunePending(): void {
+    const now = Date.now();
+    for (const [id, entry] of this.pendingData) {
+      if (now - entry.timestamp > PENDING_TTL_MS) {
+        this.pendingData.delete(id);
       }
-    }, PENDING_PRUNE_INTERVAL_MS);
+    }
+    // Nothing left to prune → disarm; the next pending entry re-arms.
+    if (this.pendingData.size === 0 && this.pendingPruneTimer !== null) {
+      clearInterval(this.pendingPruneTimer);
+      this.pendingPruneTimer = null;
+    }
   }
 
   handleMeta(msg: SidebandContentMessage): void {
@@ -110,6 +131,7 @@ export class PanelManager {
       panel.setContent(binary);
     } else {
       this.pendingData.set(id, { data: binary, timestamp: Date.now() });
+      this.armPendingPrune();
     }
   }
 
