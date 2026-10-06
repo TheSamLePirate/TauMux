@@ -579,3 +579,89 @@ describe("web-client store / reducer", () => {
     expect(state.htKeysSeen).toEqual(["build"]);
   });
 });
+
+// P2-14 — native-only panes on the mirror. The snapshot's surface list
+// is PTY-only; editor/agent/extension/claude/browser panes exist solely
+// as layout leaves. The reducer seeds placeholder entries for them so a
+// reconnect renders labelled placeholders, not xterm panes bound to no
+// PTY.
+describe("snapshot seeds placeholders for native-only layout leaves", () => {
+  const layoutWith = (...leaves: Array<{ id: string; kind?: string }>) => ({
+    type: "split" as const,
+    direction: "horizontal" as const,
+    sizes: [0.5, 0.5],
+    children: leaves.map((l) => ({
+      type: "leaf" as const,
+      surfaceId: l.id,
+      ...(l.kind ? { surfaceType: l.kind as never } : {}),
+    })),
+  });
+
+  const wsWith = (layout: ReturnType<typeof layoutWith>) => ({
+    id: "ws:1",
+    name: "w",
+    color: "#fff",
+    surfaceIds: [],
+    focusedSurfaceId: null,
+    layout: layout as never,
+  });
+
+  test("an editor leaf missing from the PTY list becomes a typed placeholder entry", () => {
+    const state = reducer(initialState(), {
+      kind: "snapshot/apply",
+      snapshot: snapshotWith({
+        surfaces: [{ id: "s1", title: "zsh", cols: 80, rows: 24 }],
+        workspaces: [
+          wsWith(
+            layoutWith({ id: "s1" }, { id: "editor:1:abc", kind: "editor" }),
+          ),
+        ],
+      }),
+    });
+    const seeded = state.surfaces["editor:1:abc"];
+    expect(seeded).toBeDefined();
+    expect(seeded!.surfaceType).toBe("editor");
+    // PTY surfaces are never re-typed.
+    expect(state.surfaces["s1"]!.surfaceType).toBeUndefined();
+  });
+
+  test("terminal + telegram leaves are NOT seeded", () => {
+    const state = reducer(initialState(), {
+      kind: "snapshot/apply",
+      snapshot: snapshotWith({
+        surfaces: [],
+        workspaces: [
+          wsWith(
+            layoutWith(
+              { id: "s1", kind: "terminal" },
+              { id: "tg:1:abc", kind: "telegram" },
+            ),
+          ),
+        ],
+      }),
+    });
+    expect(state.surfaces["s1"]).toBeUndefined();
+    expect(state.surfaces["tg:1:abc"]).toBeUndefined();
+  });
+
+  test("surface/created carries + refines surfaceType", () => {
+    const created = dispatchAll([
+      {
+        kind: "surface/created",
+        surfaceId: "agent:1",
+        title: "agent:1",
+        surfaceType: "agent",
+      },
+    ]);
+    expect(created.surfaces["agent:1"]!.surfaceType).toBe("agent");
+    // A later created for the same id refines the kind without losing the title.
+    const refined = reducer(created, {
+      kind: "surface/created",
+      surfaceId: "agent:1",
+      title: "pi · main",
+      surfaceType: "agent",
+    });
+    expect(refined.surfaces["agent:1"]!.title).toBe("pi · main");
+    expect(refined.surfaces["agent:1"]!.surfaceType).toBe("agent");
+  });
+});

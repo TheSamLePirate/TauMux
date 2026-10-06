@@ -38,6 +38,10 @@ export interface SurfaceState {
   cols: number;
   rows: number;
   metadata: SurfaceMetadata | null;
+  /** Non-terminal pane kind ("editor" / "agent" / …) when the surface
+   *  is a native-only pane the mirror can only placeholder. Undefined
+   *  = terminal (or telegram, distinguished by the tg: id prefix). */
+  surfaceType?: string;
 }
 
 export interface PanelState {
@@ -144,7 +148,12 @@ export type Action =
   | { kind: "connection/seq"; seq: number }
   | { kind: "connection/reset" }
   | { kind: "snapshot/apply"; snapshot: Snapshot }
-  | { kind: "surface/created"; surfaceId: string; title: string }
+  | {
+      kind: "surface/created";
+      surfaceId: string;
+      title: string;
+      surfaceType?: string;
+    }
   | { kind: "surface/renamed"; surfaceId: string; title: string }
   | { kind: "surface/closed"; surfaceId: string }
   | { kind: "surface/resized"; surfaceId: string; cols: number; rows: number }
@@ -259,6 +268,41 @@ export function reducer(state: AppState, action: Action): AppState {
           metadata: s.metadata[sref.id] ?? null,
         };
       }
+      // The snapshot's surface list is PTY-only (it comes from the
+      // session manager). Native-only panes (editor / agent / …) exist
+      // solely as layout leaves — seed placeholder entries for them so
+      // a reconnect renders labelled placeholders instead of xterm
+      // panes bound to no PTY.
+      const seedNonPty = (node: unknown): void => {
+        if (!node || typeof node !== "object") return;
+        const n = node as {
+          type?: string;
+          surfaceId?: string;
+          surfaceType?: string;
+          children?: unknown[];
+        };
+        if (n.type === "leaf" && n.surfaceId) {
+          const kind = n.surfaceType;
+          if (
+            kind &&
+            kind !== "terminal" &&
+            kind !== "telegram" &&
+            !surfaces[n.surfaceId]
+          ) {
+            surfaces[n.surfaceId] = {
+              id: n.surfaceId,
+              title: n.surfaceId,
+              cols: 80,
+              rows: 24,
+              metadata: null,
+              surfaceType: kind,
+            };
+          }
+          return;
+        }
+        if (Array.isArray(n.children)) for (const c of n.children) seedNonPty(c);
+      };
+      for (const w of s.workspaces) seedNonPty(w.layout);
       const panels: Record<string, PanelState> = {};
       for (const pid in s.panels) {
         const entry = s.panels[pid] as SnapshotPanelState;
@@ -301,7 +345,15 @@ export function reducer(state: AppState, action: Action): AppState {
           ...state,
           surfaces: {
             ...state.surfaces,
-            [action.surfaceId]: { ...existing, title: action.title },
+            [action.surfaceId]: {
+              ...existing,
+              title: action.title,
+              // A later nonPtySurfaceCreated can refine a snapshot-
+              // seeded entry (which never carries a kind).
+              ...(action.surfaceType
+                ? { surfaceType: action.surfaceType }
+                : {}),
+            },
           },
         };
       }
@@ -312,6 +364,7 @@ export function reducer(state: AppState, action: Action): AppState {
           [action.surfaceId]: {
             id: action.surfaceId,
             title: action.title,
+            ...(action.surfaceType ? { surfaceType: action.surfaceType } : {}),
             cols: 80,
             rows: 24,
             metadata: null,

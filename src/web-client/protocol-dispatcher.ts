@@ -251,6 +251,18 @@ export function createProtocolDispatcher(
         // No subscribeSurface — telegram panes don't stream stdout.
         break;
       }
+      case "nonPtySurfaceCreated": {
+        const p = rawPayload as ServerPayloadByType["nonPtySurfaceCreated"];
+        // Native-only pane (editor / agent / …) — the mirror renders a
+        // labelled placeholder. No subscribeSurface: no PTY behind it.
+        store.dispatch({
+          kind: "surface/created",
+          surfaceId: p.surfaceId,
+          title: p.title || p.surfaceId,
+          surfaceType: p.surfaceType,
+        });
+        break;
+      }
       case "telegramState": {
         const p = rawPayload as ServerPayloadByType["telegramState"];
         store.dispatch({

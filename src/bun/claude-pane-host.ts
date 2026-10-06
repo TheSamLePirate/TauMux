@@ -31,6 +31,9 @@ export interface ClaudePaneHostDeps {
    *  panes inherit it so sessions start where the user is working, not
    *  wherever the app process happens to live. */
   getDefaultCwd?: () => string | undefined;
+  /** Web-mirror fan-out — the mirror can't host a Claude pane but must
+   *  render a placeholder for it instead of a layout hole. */
+  broadcast?: (message: Record<string, unknown>) => void;
 }
 
 export interface ClaudePaneCreateOpts {
@@ -129,6 +132,11 @@ export function createClaudePaneHost(deps: ClaudePaneHostDeps): ClaudePaneHost {
             ? ("horizontal" as const)
             : undefined,
       cwd,
+    });
+    deps.broadcast?.({
+      type: "nonPtySurfaceCreated",
+      surfaceId: inst.id,
+      surfaceType: "claude",
     });
   }
 

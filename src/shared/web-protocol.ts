@@ -291,6 +291,19 @@ export interface TelegramSurfaceCreatedPayload {
   surfaceId: string;
 }
 
+/** A native-only pane kind (editor / extension / agent / claude /
+ *  browser) was created. The mirror can't host these — they are
+ *  native webview surfaces — but it must know they EXIST: without
+ *  this envelope the pane was a hole in the mirrored layout (an
+ *  xterm bound to no PTY). The client renders a labelled
+ *  placeholder instead. */
+export interface NonPtySurfaceCreatedPayload {
+  surfaceId: string;
+  /** SurfaceKind value — "editor" | "extension" | "agent" | "claude" | "browser". */
+  surfaceType: string;
+  title?: string;
+}
+
 export interface TelegramStatePayload {
   status: TelegramStatusWire;
   chats: TelegramChatWire[];
@@ -355,6 +368,7 @@ export type ServerMessage =
   | Envelope<"sidebarAction", SidebarActionPayload>
   | Envelope<"nativeViewport", NativeViewportPayload>
   | Envelope<"telegramSurfaceCreated", TelegramSurfaceCreatedPayload>
+  | Envelope<"nonPtySurfaceCreated", NonPtySurfaceCreatedPayload>
   | Envelope<"telegramState", TelegramStatePayload>
   | Envelope<"telegramMessage", TelegramMessagePayload>
   | Envelope<"telegramHistory", TelegramHistoryPayload>

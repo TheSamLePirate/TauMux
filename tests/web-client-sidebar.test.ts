@@ -28,6 +28,19 @@ async function loadStore() {
   return await import("../src/web-client/store");
 }
 
+/** CPU samples are throttled to the ~1 Hz metadata cadence
+ *  (v0.24.1 — the sidebar render-memo fix), so tests simulating
+ *  successive metadata ticks must advance the clock between them,
+ *  exactly like the real poller does. Each call permanently shifts
+ *  Date.now forward (monotonic, never restored — restoring could move
+ *  the clock BACKWARDS past a recorded sample time). */
+const realDateNow = Date.now;
+let virtualOffset = 0;
+function advanceCpuClock(ms = 1100): void {
+  virtualOffset += ms;
+  Date.now = () => realDateNow() + virtualOffset;
+}
+
 type SetupOpts = {
   sidebarVisible?: boolean;
   workspaces?: {
@@ -292,8 +305,11 @@ describe("createSidebarView.render", () => {
       sidebarEl.querySelector(".workspace-sparkline-flat") ??
         sidebarEl.querySelector(".workspace-sparkline-line"),
     ).not.toBeNull();
-    // A second render with the same workspace bumps the history to 2
-    // samples — the line variant takes over.
+    // A second render one metadata-tick later (CPU samples are
+    // throttled to the ~1 Hz cadence since v0.24.1 — sub-second renders
+    // intentionally do NOT add samples) bumps the history to 2 — the
+    // line variant takes over.
+    advanceCpuClock();
     view.render(store.getState());
     expect(sidebarEl.querySelector(".workspace-sparkline-line")).not.toBeNull();
   });
@@ -319,8 +335,11 @@ describe("createSidebarView.render", () => {
     });
     // Seed two samples so the sparkline is in the "line" regime (a
     // flat→line flip is a structural rebuild; we want the reconcile path).
+    // The clock advances between ticks: CPU sampling is throttled to
+    // the ~1 Hz metadata cadence.
     store.dispatch(meta(5, 1000));
     view.render(store.getState());
+    advanceCpuClock();
     store.dispatch(meta(10, 1200));
     view.render(store.getState());
     const cpuValue = sidebarEl.querySelector(
@@ -334,6 +353,7 @@ describe("createSidebarView.render", () => {
     expect(spark).not.toBeNull();
 
     // Pure value tick (still line regime) → reconcile in place.
+    advanceCpuClock();
     store.dispatch(meta(80, 4096));
     view.render(store.getState());
     expect(sidebarEl.querySelector(".workspace-cpu-value")).toBe(cpuValue);

@@ -71,6 +71,7 @@ import { AppContext } from "./app-context";
 import { switchToAccessoryMode } from "./accessory-mode";
 import { openTelegramDatabaseSafe } from "./telegram-db";
 import { ensureConfigDir } from "./bootstrap";
+import { broadcastNonPtySurfaceCreated } from "./mirror-broadcast";
 import {
   TelegramService,
   type TelegramServiceStatus,
@@ -89,7 +90,7 @@ import {
   type AuditResult,
 } from "./audits";
 import { HealthRegistry } from "./health";
-import { resolveWebMirrorAuth } from "./web-mirror-auth";
+import { enforceWebMirrorAuth } from "./web-mirror-auth";
 import { PlanStore } from "./plan-store";
 import { AutoContinueEngine } from "./auto-continue-engine";
 import {
@@ -122,8 +123,7 @@ import {
 const configDir =
   process.env["HT_CONFIG_DIR"] ?? join(Utils.paths.config, CONFIG_DIR_NAME);
 
-// Create the config dir NOW, before anything tries to open a file in
-// it (see bootstrap.ts for why this can't wait for the socket bind).
+// Create the config dir NOW — see bootstrap.ts for why this can't wait.
 ensureConfigDir(configDir);
 
 // Tee stdout + stderr to a daily-rotated log file. Must run before the
@@ -390,12 +390,10 @@ const extensionManager = new ExtensionManager({
 });
 
 // ── Telegram bot integration ──
-// Database is always opened so the read-side `telegram.history` /
-// `telegram.chats` RPCs return persisted data even when the long-poll
-// loop is off. The open MUST be crash-safe: this runs ~2,300 lines
-// before the socket binds, and a corrupt telegram.db used to abort the
-// whole bootstrap here (no socket, no notifications, exit 0). The safe
-// opener moves the corrupt file aside, retries, falls back to :memory:.
+// The DB opens even with the long-poll loop off so the read-side RPCs
+// return persisted history. The open MUST be crash-safe: this runs
+// ~2,300 lines before the socket binds — a corrupt telegram.db used to
+// abort the whole bootstrap here (no socket, no notifications, exit 0).
 const telegramDb = openTelegramDatabaseSafe(
   join(configDir, "telegram.db"),
   (message) => {
@@ -671,6 +669,7 @@ function readPiSessionTree(
 const claudePaneHost = createClaudePaneHost({
   askUser,
   send: (m, p) => (rpc.send as (m: string, p: unknown) => void)(m, p),
+  broadcast: (m) => app.webServer?.broadcast(m as never),
   setFocused: (id) => {
     app.focusedSurfaceId = id;
   },
@@ -1090,6 +1089,7 @@ function openEditorSurface(
       ? { splitFrom: splitFrom ?? undefined, direction: opts.split }
       : {}),
   });
+  broadcastNonPtySurfaceCreated(app, surfaceId, "editor", path);
   if (!path) return;
   rpc.send(
     "editorFileSnapshot",
@@ -1134,6 +1134,7 @@ function createExtensionWorkspaceSurface(extensionId: string): void {
         devUrl: handle.devUrl,
         bundleUrl: handle.bundleUrl,
       });
+      broadcastNonPtySurfaceCreated(app, surfaceId, "extension", handle.title);
     })
     .catch((err) => {
       console.error(`[ext] create failed (${extensionId}):`, err);
@@ -1160,6 +1161,7 @@ function splitExtensionSurface(
         splitFrom: splitFrom ?? undefined,
         direction,
       });
+      broadcastNonPtySurfaceCreated(app, surfaceId, "extension", handle.title);
     })
     .catch((err) => {
       console.error(`[ext] split failed (${extensionId}):`, err);
@@ -1788,6 +1790,7 @@ function createAgentWorkspaceSurface(
     surfaceId: agent.id,
     agentId: agent.id,
   });
+  broadcastNonPtySurfaceCreated(app, agent.id, "agent");
   // W3-AGENT-SPLIT-CATCH — a spawn-throw returns before the exit-event path,
   // so without surfacing it the pane stays inert (it was already announced via
   // agentSurfaceCreated). Route through the same onExit(1) the runtime uses on
@@ -1841,6 +1844,7 @@ function splitAgentSurface(
     splitFrom: splitFrom ?? undefined,
     direction,
   });
+  broadcastNonPtySurfaceCreated(app, agent.id, "agent");
   // W3-AGENT-SPLIT-CATCH — surface a spawn-throw via onExit(1) (parity with
   // createAgentSurface) so a failed split shows an `agent_exit` banner rather
   // than an inert pane.
@@ -2135,19 +2139,13 @@ function sendWebServerStatus(): void {
  *  call site can't forget them either. */
 function createWebServer(): WebServer {
   const settings = settingsManager.get();
-  // Never run a non-loopback mirror with an empty/weak token — the
-  // `stdin` route writes into a real PTY (see web-mirror-auth.ts).
-  const auth = resolveWebMirrorAuth(
-    settings.webMirrorBind,
-    settings.webMirrorAuthToken,
+  // Never run a non-loopback mirror with an empty/weak token (see web-mirror-auth.ts).
+  const auth = enforceWebMirrorAuth(
+    settings,
+    app.webServerPort,
+    (token) => settingsManager.update({ webMirrorAuthToken: token }),
+    (msg) => console.warn(msg),
   );
-  if (auth.generatedToken) {
-    console.warn(`[web] ${auth.note}`);
-    console.warn(
-      `[web] mirror URL: http://${auth.bind}:${app.webServerPort}/?t=${auth.authToken}`,
-    );
-    settingsManager.update({ webMirrorAuthToken: auth.authToken });
-  }
   const ws = new WebServer(
     app.webServerPort,
     sessions,
@@ -2209,11 +2207,13 @@ function dispatch(action: string, payload: Record<string, unknown>) {
       // Stop the extension's backend (+ dev server) so it doesn't leak.
       extensionManager.stop(surfaceId);
       rpc.send("surfaceClosed", { surfaceId });
+      app.webServer?.broadcast({ type: "surfaceClosed", surfaceId });
     } else if (
       surfaceId?.startsWith("editor:") ||
       surfaceId?.startsWith("tg:")
     ) {
       rpc.send("surfaceClosed", { surfaceId });
+      app.webServer?.broadcast({ type: "surfaceClosed", surfaceId });
     } else if (surfaceId) {
       sessions.closeSurface(surfaceId);
     }

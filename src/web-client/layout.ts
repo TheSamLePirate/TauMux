@@ -55,6 +55,25 @@ export function computeRects(
   return out;
 }
 
+/** Collect every leaf surfaceId in a pane tree. Used by the pane
+ *  reconciler to diff "what's mounted" against "what's in the
+ *  layout". */
+export function collectSurfaceIds(
+  node: { type?: string; surfaceId?: string; children?: unknown[] } | null,
+  out: Set<string>,
+): void {
+  if (!node) return;
+  if (node.type === "leaf") {
+    if (node.surfaceId) out.add(node.surfaceId);
+    return;
+  }
+  if (Array.isArray(node.children)) {
+    for (const c of node.children) {
+      collectSurfaceIds(c as typeof node, out);
+    }
+  }
+}
+
 function toPaneNode(node: LayoutNode): PaneNode | null {
   if (node.type === "leaf") {
     if (!node.surfaceId) return null;

@@ -57,6 +57,29 @@ export function defaultTokenGenerator(): string {
   return randomBytes(24).toString("base64url");
 }
 
+/** Apply the policy at server-construction time: resolve, and when a
+ *  token was generated, persist it (so restarts and the settings UI
+ *  agree) and log the full URL once — a generated token nobody can
+ *  find would lock the owner out of their own mirror. Kept here so
+ *  the single construction path in index.ts stays a one-liner. */
+export function enforceWebMirrorAuth(
+  settings: { webMirrorBind: WebMirrorBind; webMirrorAuthToken: string },
+  port: number,
+  persist: (token: string) => void,
+  warn: (message: string) => void,
+): { bind: WebMirrorBind; authToken: string } {
+  const d = resolveWebMirrorAuth(
+    settings.webMirrorBind,
+    settings.webMirrorAuthToken,
+  );
+  if (d.generatedToken) {
+    warn(`[web] ${d.note}`);
+    warn(`[web] mirror URL: http://${d.bind}:${port}/?t=${d.authToken}`);
+    persist(d.authToken);
+  }
+  return { bind: d.bind, authToken: d.authToken };
+}
+
 export function resolveWebMirrorAuth(
   bind: WebMirrorBind,
   authToken: string,
@@ -69,10 +92,10 @@ export function resolveWebMirrorAuth(
   if (token.length >= MIN_MIRROR_TOKEN_LEN) {
     return { bind, authToken: token, generatedToken: false, note: null };
   }
-  const authToken2 = generate();
+  const generated = generate();
   return {
     bind,
-    authToken: authToken2,
+    authToken: generated,
     generatedToken: true,
     note:
       token.length === 0

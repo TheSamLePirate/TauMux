@@ -2707,3 +2707,26 @@ body.sidebar-hidden .tau-status-bar {
     gap: 6px;
   }
 }
+
+/* Native-only pane placeholder (editor / agent / extension / claude /
+ * browser) — the mirror can't host these surfaces, so it renders a
+ * labelled stand-in instead of an xterm bound to no PTY. */
+.pane-placeholder { display: flex; flex-direction: column; }
+.pane-placeholder-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.pane-placeholder-kind {
+  font-family: var(--ht-font-ui);
+  font-size: 13px;
+  color: var(--ht-text-strong);
+}
+.pane-placeholder-note {
+  font-family: var(--ht-font-ui);
+  font-size: 11px;
+  color: var(--ht-text-dim);
+}

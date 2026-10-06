@@ -29,15 +29,22 @@ describe("[C1] web-mirror construction threads bind + auth token", () => {
     expect(rawCtors.length).toBe(1);
   });
 
-  test("the factory threads webMirrorBind + webMirrorAuthToken", () => {
+  test("the factory resolves bind + token through the auth policy and threads the RESULT", () => {
     const start = indexSrc.indexOf("function createWebServer");
     expect(start).toBeGreaterThan(-1);
     // Slice the factory body (up to the next top-level `function`/`}` block
     // is overkill; the next ~25 lines contain the whole construction).
     const body = indexSrc.slice(start, start + 800);
     expect(body).toContain("new WebServer(");
-    expect(body).toContain("webMirrorBind");
-    expect(body).toContain("webMirrorAuthToken");
+    // Since v0.24.0 the raw settings fields are no longer threaded
+    // directly: they go through enforceWebMirrorAuth, which replaces a
+    // missing/weak token on a non-loopback bind with a generated one.
+    // Pin that the factory (a) routes through the policy and (b) hands
+    // the POLICY OUTPUT — not raw settings — to the constructor.
+    expect(body).toContain("enforceWebMirrorAuth(");
+    expect(body).toContain("auth.bind");
+    expect(body).toContain("auth.authToken");
+    expect(body).not.toContain("settings.webMirrorBind,");
   });
 
   test("auto-start and port-change use the factory, not a raw constructor", () => {
