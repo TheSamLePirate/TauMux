@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { chmodSync, existsSync } from "node:fs";
+import { chmodSync, existsSync, renameSync } from "node:fs";
 
 /** A single message persisted to the local Telegram log. `direction` is
  *  "in" for messages received from Telegram and "out" for messages this
@@ -609,6 +609,66 @@ export class TelegramDatabase {
       /* ignore */
     }
     this.db.close();
+  }
+}
+
+/**
+ * Open the Telegram log DB without ever letting a corrupt file take
+ * down the whole app boot.
+ *
+ * Why this exists: the constructor runs `new Database()` + PRAGMAs +
+ * DDL, all of which throw on a corrupt or truncated WAL pair, a full
+ * disk, or a missing parent directory. When the call site constructs
+ * the DB at module top level — before the socket server binds — a
+ * single throw aborts the entire bootstrap (no socket, no window),
+ * which is exactly the "telegram crash ⇒ ht and notifications die"
+ * report. The Telegram log is a WAL SQLite file written continuously
+ * by the long-poll loop, so it is the most corruption-exposed file
+ * the app owns.
+ *
+ * Recovery ladder:
+ *   1. Try the real file.
+ *   2. On throw, move `telegram.db` (+ `-wal`/`-shm` sidecars) aside
+ *      as `*.corrupt-<ts>` and retry once — a fresh file is strictly
+ *      better than a dead app; history is recoverable, boot is not.
+ *   3. If even that fails (permissions, read-only FS), fall back to
+ *      an in-memory database so every call site keeps working and
+ *      reads return empty rather than crashing.
+ *
+ * `onDegraded` reports which rung we landed on so the caller can log
+ * and push a health row. A safe open that hides its own degradation
+ * would just trade a loud crash for a silent data loss.
+ */
+export function openTelegramDatabaseSafe(
+  filePath: string,
+  onDegraded: (message: string) => void,
+): TelegramDatabase {
+  try {
+    return new TelegramDatabase(filePath);
+  } catch (first) {
+    const stamp = Date.now();
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const p = `${filePath}${suffix}`;
+      if (!existsSync(p)) continue;
+      try {
+        renameSync(p, `${p}.corrupt-${stamp}`);
+      } catch {
+        /* best-effort — if we can't move it, the retry will fail
+         * the same way and we fall through to :memory: */
+      }
+    }
+    try {
+      const db = new TelegramDatabase(filePath);
+      onDegraded(
+        `telegram.db was unreadable; moved aside as *.corrupt-${stamp} and recreated (was: ${first})`,
+      );
+      return db;
+    } catch (second) {
+      onDegraded(
+        `telegram.db unrecoverable; running with an in-memory log for this session (was: ${second})`,
+      );
+      return new TelegramDatabase(":memory:");
+    }
   }
 }
 

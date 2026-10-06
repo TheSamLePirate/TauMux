@@ -109,8 +109,8 @@ Voir [auth & durcissement](/fr/web-mirror/auth-and-hardening/).
 |---|---|---|---|
 | `webMirrorPort` | number | `3000` | Mirror listen port, 1–65535. |
 | `autoStartWebMirror` | boolean | `false` | Start the mirror at launch. |
-| `webMirrorBind` | `"127.0.0.1"` \| `"0.0.0.0"` | `"0.0.0.0"` | Bind address. **`0.0.0.0` exposes the mirror to your whole LAN — set `webMirrorAuthToken` before enabling it there.** |
-| `webMirrorAuthToken` | string | `""` | Shared token for mirror access. **Empty means authentication is off.** |
+| `webMirrorBind` | `"127.0.0.1"` \| `"0.0.0.0"` | `"127.0.0.1"` | Adresse de bind. Loopback par défaut depuis la v0.24.0. **`0.0.0.0` expose le miroir à tout votre LAN — avec un jeton vide ou faible, τ-mux génère désormais automatiquement un jeton fort au lieu de tourner sans authentification.** |
+| `webMirrorAuthToken` | string | `""` | Jeton partagé pour l'accès au miroir. **Vide signifie authentification désactivée en loopback uniquement** — sur un bind `0.0.0.0`, un jeton absent ou court (<16 caractères) est remplacé par un jeton généré, persisté ici et journalisé une fois au démarrage. |
 | `rpcSocketRequireToken` | boolean | `true` | Require the per-boot token for state-mutating `ht` socket calls. On by default since v0.4.12; every first-party client presents it automatically. |
 
 ## Telegram

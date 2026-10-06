@@ -290,7 +290,9 @@ describe("validateSettings uses the schema for S15 enum / string / array fields"
     expect(out.workspaceCardDensity).toBe("comfortable");
     expect(out.browserSearchEngine).toBe("google");
     expect(out.browserPartitionMode).toBe("per-surface");
-    expect(out.webMirrorBind).toBe("0.0.0.0");
+    // Loopback is the default since v0.24.0 (LAN bind + no token is
+    // remote shell as the user — see src/bun/web-mirror-auth.ts).
+    expect(out.webMirrorBind).toBe("127.0.0.1");
   });
 
   test("enum fields honour valid values", () => {

@@ -48,6 +48,7 @@ import { registerBrowserEvents } from "./browser-events";
 import { registerEditorEvents } from "./editor-events";
 import { createSocketActionDispatcher } from "./socket-actions";
 import { NotificationOverlay } from "./notification-overlay";
+import { installWebviewFaultReporting } from "./webview-fault-reporting";
 import { createTestActionRouter } from "./__test-handlers";
 import {
   type Binding,
@@ -440,6 +441,10 @@ const rpc = Electroview.defineRPC<TauMuxRPC>({
     },
   },
 });
+
+// Webview fault reporting: window error/unhandledrejection → bun log
+// + health row. Extracted to its own module (module-size ratchet).
+installWebviewFaultReporting(rpc);
 
 surfaceManager = new SurfaceManager(
   terminalContainerEl,
@@ -2823,12 +2828,19 @@ function reportVisibility(): void {
 }
 document.addEventListener("visibilitychange", () => {
   hideSurfaceContextMenu();
+  // The terminal-typing de-emphasis (panels dimmed to 30%) was only
+  // cleared by mousemove/mousedown — so type a command, Cmd-Tab away
+  // without touching the mouse, and every sideband panel sat dimmed
+  // indefinitely (the "sideband view goes transparent when not
+  // focused" report). Losing the window/tab IS the end of typing.
+  clearTypingFocusMode();
   reportVisibility();
 });
 reportVisibility();
 
 window.addEventListener("blur", () => {
   hideSurfaceContextMenu();
+  clearTypingFocusMode();
   reportVisibility();
 });
 

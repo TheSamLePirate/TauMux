@@ -253,7 +253,9 @@ export const SETTINGS_FIELD_SCHEMAS = {
     "shared",
     "per-surface",
   ]),
-  webMirrorBind: enumStr("0.0.0.0" as "127.0.0.1" | "0.0.0.0", [
+  // Loopback default since v0.24.0 — a LAN bind without a token is
+  // remote shell as the user (see src/bun/web-mirror-auth.ts).
+  webMirrorBind: enumStr("127.0.0.1" as "127.0.0.1" | "0.0.0.0", [
     "127.0.0.1",
     "0.0.0.0",
   ]),

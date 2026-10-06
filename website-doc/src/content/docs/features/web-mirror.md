@@ -61,8 +61,8 @@ Terminal-state-correct replay uses `@xterm/headless` + `SerializeAddon` server-s
 | Setting | Default | Effect |
 |---|---|---|
 | `webMirrorPort` | `3000` | Port to listen on. Restarts a running mirror on change. |
-| `webMirrorBind` | `0.0.0.0` | Bind address. Set to `127.0.0.1` to keep it local-only. |
-| `webMirrorAuthToken` | `""` (off) | If set, every request must present the token. |
+| `webMirrorBind` | `127.0.0.1` | Bind address. Loopback by default since v0.24.0; set `0.0.0.0` to expose the mirror to your LAN. |
+| `webMirrorAuthToken` | `""` | On loopback, empty means off. On a `0.0.0.0` bind, an empty or short (<16 chars) token is **replaced by a generated token** (persisted to settings, logged once at startup) so the mirror never runs unauthenticated on a network. |
 | `autoStartWebMirror` | `false` | Whether the mirror starts at app launch. |
 
 `HYPERTERM_WEB_PORT` env var overrides `webMirrorPort` and forces auto-start regardless of the setting.

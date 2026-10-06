@@ -107,3 +107,66 @@ describe("[S1] telegram-db source wires chmod on open", () => {
     expect(src).toContain("chmodSync(sidecar, 0o600)");
   });
 });
+
+// improvement_analysis_2026-10 §1.10 — four persisted files carried
+// sensitive content (full Claude prompt text, per-pane cwds,
+// notification bodies, active extension list) at the default 0644
+// while settings/cookies/history were already 0600. The writes now
+// pass `mode: 0o600` through writeFileAtomic (which applies it to the
+// tmp file BEFORE the rename, so the content is never briefly
+// world-readable). Same source-wiring style as the telegram-db check
+// above: the OS-level chmod itself is covered by writeFileAtomic's
+// own tests; what we're guarding here is that these four call sites
+// keep passing the mode.
+describe("[S1] sensitive persisted JSON files pass mode 0o600 at the write site", () => {
+  const cases: Array<{ file: string; needle: RegExp; why: string }> = [
+    {
+      file: "claude-registry-persistence.ts",
+      needle: /writeFileAtomic\(path, JSON\.stringify\(payload\), \{ mode: 0o600 \}\)/,
+      why: "claude-sessions.json carries full prompt text + cwds",
+    },
+    {
+      file: "notification-persistence.ts",
+      needle: /writeFileAtomic\(path, JSON\.stringify\(payload\), \{ mode: 0o600 \}\)/,
+      why: "notifications.json carries agent output excerpts",
+    },
+    {
+      file: "extension-manager.ts",
+      needle: /writeFileAtomic\(this\.registryPath,[\s\S]*?\{\s*mode: 0o600,\s*\}\)/,
+      why: "extensions-registry.json records active third-party code",
+    },
+  ];
+  for (const c of cases) {
+    it(`${c.file} — ${c.why}`, () => {
+      const src = readFileSync(
+        join(import.meta.dir, "..", "src", "bun", c.file),
+        "utf-8",
+      );
+      expect(src).toMatch(c.needle);
+    });
+  }
+
+  it("index.ts persists layout.json atomically with mode 0o600", () => {
+    const src = readFileSync(
+      join(import.meta.dir, "..", "src", "bun", "index.ts"),
+      "utf-8",
+    );
+    expect(src).toMatch(
+      /writeFileAtomic\(layoutFile, JSON\.stringify\(persisted\), \{ mode: 0o600 \}\)/,
+    );
+    // And the old plain writeFileSync path is gone for good.
+    expect(src).not.toContain("writeFileSync(layoutFile");
+  });
+
+  it("extension install never runs dependency lifecycle scripts", () => {
+    // The "extensions are trusted code" model covers the extension's
+    // entry point, not its transitive dependency tree: without
+    // --ignore-scripts a postinstall hook executes with the user's
+    // full environment (API keys included) at install time.
+    const src = readFileSync(
+      join(import.meta.dir, "..", "src", "bun", "extension-manager.ts"),
+      "utf-8",
+    );
+    expect(src).toContain('"install", "--ignore-scripts"');
+  });
+});

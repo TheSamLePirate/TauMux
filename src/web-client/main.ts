@@ -69,6 +69,7 @@ import {
 } from "./notification-overlay-bridge";
 import { renderSurfaceChips, type PaneChipsDeps } from "../shared/pane-chips";
 import { fitTerminal } from "../shared/xterm-fit";
+import { syncTerminalGridSizes } from "./resize-sync";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -430,26 +431,7 @@ function boot() {
     }
     reconcilePanes(state);
     reconcilePanels(state);
-    // Host is authoritative for cols/rows. When a `resize` envelope
-    // lands (native window or pane drag, another web client's
-    // proposal, sessions.resize from any RPC path), apply it to the
-    // local xterm grid synchronously. Without this, the web's xterm
-    // kept whatever the last local fit picked and only caught up when
-    // workspace switching recreated the pane.
-    for (const sid in state.surfaces) {
-      const s = state.surfaces[sid];
-      const ps = prev.surfaces[sid];
-      if (!s) continue;
-      if (ps && s.cols === ps.cols && s.rows === ps.rows) continue;
-      const ref = terms[sid];
-      if (!ref || ref.kind !== "term" || !ref.term) continue;
-      if (ref.term.cols === s.cols && ref.term.rows === s.rows) continue;
-      try {
-        ref.term.resize(s.cols, s.rows);
-      } catch {
-        /* xterm not yet ready / disposed — skip */
-      }
-    }
+    syncTerminalGridSizes(state, prev, terms);
     layoutView.applyLayout(state);
     applyChips(state, prev);
     applyFullscreen(state, prev);

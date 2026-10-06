@@ -126,7 +126,11 @@ export function createDebouncedPersister(
           // a restart would otherwise lose.
           sessions: registry.list().filter((s) => s.tasks.length > 0),
         };
-        writeFileAtomic(path, JSON.stringify(payload));
+        // 0o600 — this file carries full Claude Code prompt text and
+        // working directories: among the most sensitive content the
+        // app persists. Owner-only from creation (writeFileAtomic
+        // applies the mode to the tmp file before the rename).
+        writeFileAtomic(path, JSON.stringify(payload), { mode: 0o600 });
       } catch {
         /* a busted FS must never break the registry */
       }

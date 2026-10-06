@@ -25,7 +25,6 @@ import {
   readlinkSync,
   statSync,
   unlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { writeFileAtomic } from "./atomic-write";
@@ -70,7 +69,8 @@ import { PiAgentManager } from "./pi-agent-manager";
 import { ExtensionManager } from "./extension-manager";
 import { AppContext } from "./app-context";
 import { switchToAccessoryMode } from "./accessory-mode";
-import { TelegramDatabase } from "./telegram-db";
+import { openTelegramDatabaseSafe } from "./telegram-db";
+import { ensureConfigDir } from "./bootstrap";
 import {
   TelegramService,
   type TelegramServiceStatus,
@@ -89,6 +89,7 @@ import {
   type AuditResult,
 } from "./audits";
 import { HealthRegistry } from "./health";
+import { resolveWebMirrorAuth } from "./web-mirror-auth";
 import { PlanStore } from "./plan-store";
 import { AutoContinueEngine } from "./auto-continue-engine";
 import {
@@ -120,6 +121,10 @@ import {
 // (user's Library/Application Support) is unchanged.
 const configDir =
   process.env["HT_CONFIG_DIR"] ?? join(Utils.paths.config, CONFIG_DIR_NAME);
+
+// Create the config dir NOW, before anything tries to open a file in
+// it (see bootstrap.ts for why this can't wait for the socket bind).
+ensureConfigDir(configDir);
 
 // Tee stdout + stderr to a daily-rotated log file. Must run before the
 // first `console.*` call so the bootstrap banner captures early output
@@ -387,10 +392,17 @@ const extensionManager = new ExtensionManager({
 // ── Telegram bot integration ──
 // Database is always opened so the read-side `telegram.history` /
 // `telegram.chats` RPCs return persisted data even when the long-poll
-// loop is off. The service itself is started/stopped on demand by
-// `applyTelegramSettings`, gated on `telegramEnabled` + a non-empty
-// token.
-const telegramDb = new TelegramDatabase(join(configDir, "telegram.db"));
+// loop is off. The open MUST be crash-safe: this runs ~2,300 lines
+// before the socket binds, and a corrupt telegram.db used to abort the
+// whole bootstrap here (no socket, no notifications, exit 0). The safe
+// opener moves the corrupt file aside, retries, falls back to :memory:.
+const telegramDb = openTelegramDatabaseSafe(
+  join(configDir, "telegram.db"),
+  (message) => {
+    console.error(`[telegram] ${message}`);
+    health.set("telegram", "degraded", message);
+  },
+);
 // Plan #08: drop notification_links rows older than 24h on startup so
 // stale taps (a user opening a day-old DM and pressing Continue)
 // don't fire actions on a surface that may have been recycled.
@@ -689,6 +701,7 @@ const {
   configDir,
   loggerHandle,
   htTestMode: HT_TEST_MODE,
+  health,
   broadcastSurfaceCreated,
   sendWebviewAction,
   sendWebServerStatus,
@@ -2122,14 +2135,27 @@ function sendWebServerStatus(): void {
  *  call site can't forget them either. */
 function createWebServer(): WebServer {
   const settings = settingsManager.get();
+  // Never run a non-loopback mirror with an empty/weak token — the
+  // `stdin` route writes into a real PTY (see web-mirror-auth.ts).
+  const auth = resolveWebMirrorAuth(
+    settings.webMirrorBind,
+    settings.webMirrorAuthToken,
+  );
+  if (auth.generatedToken) {
+    console.warn(`[web] ${auth.note}`);
+    console.warn(
+      `[web] mirror URL: http://${auth.bind}:${app.webServerPort}/?t=${auth.authToken}`,
+    );
+    settingsManager.update({ webMirrorAuthToken: auth.authToken });
+  }
   const ws = new WebServer(
     app.webServerPort,
     sessions,
     () => app.getAppState(),
     () => app.focusedSurfaceId,
     () => app.sidebarVisible,
-    settings.webMirrorBind,
-    settings.webMirrorAuthToken,
+    auth.bind,
+    auth.authToken,
   );
   setupWebServerCallbacks(ws);
   return ws;
@@ -2897,7 +2923,10 @@ function saveLayout(): void {
       sidebarVisible: app.sidebarVisible,
     };
     if (!existsSync(layoutDir)) mkdirSync(layoutDir, { recursive: true });
-    writeFileSync(layoutFile, JSON.stringify(persisted));
+    // Atomic + 0o600: layout.json records surface titles and per-pane
+    // cwds (project names/paths) — owner-only, and never a truncated
+    // file from a crash mid-write.
+    writeFileAtomic(layoutFile, JSON.stringify(persisted), { mode: 0o600 });
   } catch {
     /* ignore write failures */
   }

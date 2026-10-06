@@ -672,6 +672,17 @@ export interface TauMuxRPC extends ElectrobunRPCSchema {
       // and any future read-style RPC. `result` is opaque JSON.
       webviewResponse: { reqId: string; result: unknown };
 
+      // Webview fault report — window `error` / `unhandledrejection`
+      // events forwarded so a crashing UI layer leaves a log line and
+      // a health row instead of failing silently. Bun-side throttled.
+      webviewFault: {
+        kind: "error" | "unhandledrejection";
+        message: string;
+        stack?: string;
+        /** Where the fault was raised (filename / source description). */
+        source?: string;
+      };
+
       // Workspace state sync (webview → bun for socket API)
       workspaceStateSync: {
         workspaces: {

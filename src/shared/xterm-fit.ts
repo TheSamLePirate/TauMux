@@ -102,24 +102,61 @@ export function resizePreservingScroll(
   const isNormal = (before?.type ?? "normal") === "normal";
   // No buffer (headless mock / not-yet-opened) → nothing to preserve.
   const wasAtBottom = before ? before.viewportY >= before.baseY : true;
-  const distFromBottom = before ? before.baseY - before.viewportY : 0;
+  // Snapshot the geometry as PRIMITIVES before the resize: xterm's
+  // `buffer.active` is the same live object across a reflow, so
+  // reading `before.viewportY` after `resize()` would return the new,
+  // xterm-recomputed value — not the reading position we're trying to
+  // restore. (Caught by the reflow test: same-object mutation turns
+  // the anchor into a no-op.)
+  const beforeViewportY = before ? before.viewportY : 0;
+  const beforeBaseY = before ? before.baseY : 0;
+  const beforeRows = t.rows;
+  const beforeCols = t.cols;
 
   clear?.();
   t.resize(cols, rows);
 
   if (before && !wasAtBottom && isNormal) {
     const after = t.buffer?.active;
-    if (after) {
-      const target = Math.max(
-        0,
-        Math.min(after.baseY, after.baseY - distFromBottom),
+    // No scrollback to position in — the viewport is already the only
+    // possible one. (Also the case the old clamp mangled worst: it
+    // forced scrollToLine(0) here for no reason.)
+    if (!after || after.baseY <= 0) return;
+
+    // Two regimes, two anchors — the pre-fix code used
+    // distance-from-bottom for BOTH and each regime broke it
+    // differently ("terminal scrolls to the top — very boring", worse
+    // under pi because sideband panels force constant refits):
+    //
+    // COLS UNCHANGED → no re-wrap possible, so no content renumbered.
+    // Anchor on the ABSOLUTE viewport line. Covers rows changes (pane
+    // grows: rows ↑ ⇒ baseY ↓ — the old `baseY - distFromBottom`
+    // clamped negative → scrollToLine(0) slammed to the top) and
+    // output appended while scrolled up (the old anchor drifted the
+    // viewport down with every appended line).
+    //
+    // COLS CHANGED → lines re-wrapped, content above the reader moved
+    // by the total-lines delta. Since baseY = totalLines − rows, the
+    // lines delta = ΔbaseY + Δrows: follow it. Distance-from-bottom
+    // would absorb the rows component into the anchor error.
+    //
+    // The one case neither solves is scrollback trim (dropped top
+    // lines renumber everything), which xterm doesn't expose.
+    let target: number;
+    if (beforeCols === cols) {
+      target = Math.min(beforeViewportY, after.baseY);
+    } else {
+      const linesDelta = after.baseY - beforeBaseY + (rows - beforeRows);
+      target = Math.min(
+        Math.max(beforeViewportY + linesDelta, 0),
+        after.baseY,
       );
-      if (target !== after.viewportY) {
-        try {
-          t.scrollToLine(target);
-        } catch {
-          /* scrollToLine is public API; guard for odd builds/mocks */
-        }
+    }
+    if (target !== after.viewportY) {
+      try {
+        t.scrollToLine(target);
+      } catch {
+        /* scrollToLine is public API; guard for odd builds/mocks */
       }
     }
   }

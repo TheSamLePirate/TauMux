@@ -809,7 +809,12 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
 
   webMirrorPort: 3000,
   autoStartWebMirror: false,
-  webMirrorBind: "0.0.0.0",
+  // Loopback by default (improvement_analysis_2026-10 §1.2): a LAN
+  // bind with no token is remote shell as the user. Opting into
+  // "0.0.0.0" without a token now triggers a generated-token flow
+  // bun-side (see src/bun/web-mirror-auth.ts) rather than running
+  // unauthenticated.
+  webMirrorBind: "127.0.0.1",
   webMirrorAuthToken: "",
   rpcSocketRequireToken: true,
 

@@ -61,8 +61,8 @@ Le rejeu correct de l'état du terminal utilise `@xterm/headless` + `SerializeAd
 | Paramètre | Défaut | Effet |
 |---|---|---|
 | `webMirrorPort` | `3000` | Port d'écoute. Redémarre un miroir en cours d'exécution lors du changement. |
-| `webMirrorBind` | `0.0.0.0` | Adresse de bind. Mettez `127.0.0.1` pour le garder local. |
-| `webMirrorAuthToken` | `""` (off) | Si défini, chaque requête doit présenter le jeton. |
+| `webMirrorBind` | `127.0.0.1` | Adresse de bind. Loopback par défaut depuis la v0.24.0 ; mettez `0.0.0.0` pour exposer le miroir à votre LAN. |
+| `webMirrorAuthToken` | `""` | En loopback, vide signifie désactivé. Sur un bind `0.0.0.0`, un jeton vide ou court (<16 caractères) est **remplacé par un jeton généré** (persisté dans les réglages, journalisé une fois au démarrage) afin que le miroir ne tourne jamais sans authentification sur un réseau. |
 | `autoStartWebMirror` | `false` | Si le miroir démarre au lancement de l'app. |
 
 La variable d'environnement `HYPERTERM_WEB_PORT` remplace `webMirrorPort` et force l'auto-démarrage indépendamment du paramètre.

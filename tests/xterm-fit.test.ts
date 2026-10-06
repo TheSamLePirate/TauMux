@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fitTerminal } from "../src/shared/xterm-fit";
+import { fitTerminal, resizePreservingScroll } from "../src/shared/xterm-fit";
 
 /** Hand-rolled stub that mimics the bits of xterm.js the helper
  *  reads (cols/rows/element/_core/_renderService) without dragging
@@ -136,5 +136,133 @@ describe("shared fitTerminal", () => {
     expect(() =>
       fitTerminal(term, null as unknown as HTMLElement),
     ).not.toThrow();
+  });
+});
+
+/** Buffer-aware stub for resizePreservingScroll: models the xterm
+ *  buffer geometry the helper reads (viewportY / baseY) and lets each
+ *  test script how resize() changes that geometry. */
+function makeScrollTerm(before: { viewportY: number; baseY: number }) {
+  const state = {
+    cols: 80,
+    rows: 24,
+    buffer: {
+      active: {
+        type: "normal" as string,
+        viewportY: before.viewportY,
+        baseY: before.baseY,
+      },
+    },
+    scrolledTo: [] as number[],
+    resize(cols: number, rows: number) {
+      state.cols = cols;
+      state.rows = rows;
+      // Tests mutate state.buffer.active via the onResize hook below.
+      state.onResize?.();
+    },
+    onResize: null as null | (() => void),
+    scrollToLine(line: number) {
+      state.scrolledTo.push(line);
+      state.buffer.active.viewportY = line;
+    },
+  };
+  return state;
+}
+
+describe("resizePreservingScroll — the scroll-to-top regression", () => {
+  // The reported bug: scrolled up reading history, a refit (sidebar
+  // resize, sideband panel) slammed the viewport to scrollback line 0.
+  // Root cause was clamping `after.baseY - distFromBottom` with
+  // Math.max(0, …) once baseY shrank below the distance.
+  test("pane GROWS while scrolled up: viewport stays on its line (never slams to top)", () => {
+    // User at line 10 of baseY 100; growing rows shrinks baseY to 80
+    // (same content, more rows visible). Old code: target
+    // max(0, 80 - 90) = 0 → top. New: stay at 10.
+    const t = makeScrollTerm({ viewportY: 10, baseY: 100 });
+    t.onResize = () => {
+      t.buffer.active.baseY = 80;
+    };
+    resizePreservingScroll(t, 80, 40);
+    expect(t.scrolledTo).toEqual([]); // no correction needed — xterm kept the line
+    expect(t.buffer.active.viewportY).toBe(10);
+  });
+
+  test("baseY shrinks below the viewport with cols unchanged: clamp to the bottom, NEVER line 0", () => {
+    // Rows 24 → 60 explains baseY 100 → 64 on its own; the simulated
+    // drop to 40 means lines also vanished (trim-like). Cols are the
+    // same, so no re-wrap happened and the absolute anchor clamps to
+    // the new bottom (40) — the old code computed max(0, 40 - 50) = 0
+    // and showed the OLDEST scrollback line instead of the newest.
+    const t = makeScrollTerm({ viewportY: 50, baseY: 100 });
+    t.onResize = () => {
+      t.buffer.active.baseY = 40;
+      t.buffer.active.viewportY = 0; // xterm's own recompute got it wrong
+    };
+    resizePreservingScroll(t, 80, 60);
+    expect(t.scrolledTo).toEqual([40]);
+  });
+
+  test("cols CHANGED (re-wrap): follow the total-lines delta, minus the rows effect", () => {
+    // Widening 80 → 120 cols unwraps 30 lines (baseY 100 → 64 with
+    // rows 24 → 30: ΔbaseY = −36 = Δlines − Δrows ⇒ Δlines = −30).
+    // The reader's content moved up 30 lines: 50 → 20. The old
+    // distance-from-bottom anchor would say 14 (gap 50 preserved,
+    // content lost by the 6-row effect); the estimate tracks content.
+    const t = makeScrollTerm({ viewportY: 50, baseY: 100 });
+    t.onResize = () => {
+      t.buffer.active.baseY = 64;
+      t.buffer.active.viewportY = 64; // xterm snapped to bottom
+    };
+    resizePreservingScroll(t, 120, 30);
+    expect(t.scrolledTo).toEqual([20]);
+  });
+
+  test("output appended while scrolled up: the text under the reader does not move", () => {
+    // User reading line 50; 5 new lines arrive (baseY 100 → 105).
+    // The old distance-from-bottom anchor dragged the viewport down
+    // to 55, shifting the text being read. Absolute anchor: stay.
+    const t = makeScrollTerm({ viewportY: 50, baseY: 100 });
+    t.onResize = () => {
+      t.buffer.active.baseY = 105;
+      // xterm keeps the absolute viewport on append — nothing to do.
+    };
+    resizePreservingScroll(t, 80, 24);
+    expect(t.scrolledTo).toEqual([]);
+    expect(t.buffer.active.viewportY).toBe(50);
+  });
+
+  test("user AT bottom: no interference with xterm's follow-the-bottom", () => {
+    const t = makeScrollTerm({ viewportY: 100, baseY: 100 });
+    t.onResize = () => {
+      t.buffer.active.baseY = 120;
+      t.buffer.active.viewportY = 120;
+    };
+    resizePreservingScroll(t, 80, 24);
+    expect(t.scrolledTo).toEqual([]);
+  });
+
+  test("alt-screen buffer (vim/htop) is never fought", () => {
+    const t = makeScrollTerm({ viewportY: 10, baseY: 100 });
+    t.buffer.active.type = "alternate";
+    t.onResize = () => {
+      t.buffer.active.baseY = 0;
+    };
+    resizePreservingScroll(t, 80, 24);
+    expect(t.scrolledTo).toEqual([]);
+  });
+
+  test("no scrollback after resize (baseY 0): no forced scroll", () => {
+    const t = makeScrollTerm({ viewportY: 5, baseY: 100 });
+    t.onResize = () => {
+      t.buffer.active.baseY = 0;
+      t.buffer.active.viewportY = 0;
+    };
+    resizePreservingScroll(t, 80, 60);
+    expect(t.scrolledTo).toEqual([]);
+  });
+
+  test("missing buffer (headless / not-yet-opened) is a safe no-op", () => {
+    const t = { resize() {}, scrolledTo: [] as number[] };
+    expect(() => resizePreservingScroll(t, 80, 24)).not.toThrow();
   });
 });

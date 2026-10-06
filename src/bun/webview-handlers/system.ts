@@ -8,7 +8,18 @@ type Keys =
   | "updateSettings"
   | "openExternal"
   | "revealLogFile"
-  | "killPid";
+  | "killPid"
+  | "webviewFault";
+
+/** Throttle for webview fault reports: a render-loop exception can
+ *  fire hundreds of times per second; without a cap each one would be
+ *  a log line + a health write. We keep the first few per window and
+ *  summarise the rest. */
+const WEBVIEW_FAULT_WINDOW_MS = 60_000;
+const WEBVIEW_FAULT_MAX_PER_WINDOW = 10;
+let webviewFaultCount = 0;
+let webviewFaultWindowStart = 0;
+let webviewFaultSuppressed = 0;
 
 /** Catch-all "host integration" surface — context menus, settings,
  *  external links, log reveal, killing processes, web-server toggle.
@@ -76,6 +87,40 @@ export function registerSystemWebviewHandlers(
     },
     revealLogFile: () => {
       ctx.revealLogFile();
+    },
+    // The webview holds 100% of the UI and historically had NO failure
+    // reporting: a throw in SurfaceManager produced no log line, no
+    // health row, nothing — every "sidebar froze" report was
+    // unreproducible by construction. The webview forwards window
+    // `error` / `unhandledrejection` events here; we log and publish a
+    // health row so `ht health` reflects a sick UI layer.
+    webviewFault: (payload) => {
+      const now = Date.now();
+      if (now - webviewFaultWindowStart > WEBVIEW_FAULT_WINDOW_MS) {
+        webviewFaultWindowStart = now;
+        webviewFaultCount = 0;
+        if (webviewFaultSuppressed > 0) {
+          console.error(
+            `[webview] …plus ${webviewFaultSuppressed} suppressed fault(s) in the last window`,
+          );
+          webviewFaultSuppressed = 0;
+        }
+      }
+      webviewFaultCount++;
+      const where = payload.source ? ` (${payload.source})` : "";
+      if (webviewFaultCount > WEBVIEW_FAULT_MAX_PER_WINDOW) {
+        webviewFaultSuppressed++;
+        return;
+      }
+      console.error(
+        `[webview] ${payload.kind}${where}: ${payload.message}`,
+        payload.stack ? `\n${payload.stack}` : "",
+      );
+      ctx.health.set(
+        "webview",
+        "error",
+        `${payload.kind}${where}: ${payload.message}`.slice(0, 200),
+      );
     },
     killPid: (payload) => {
       const pid = Number(payload.pid);

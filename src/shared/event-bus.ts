@@ -69,7 +69,17 @@ export class EventBus<EventMap extends Record<string, unknown>> {
       // EventMap contract here. Producers using `emit` always wrap in
       // a CustomEvent; producers still on raw `dispatchEvent` are
       // expected to do the same (the existing convention).
-      handler((e as CustomEvent<EventMap[K]>).detail);
+      try {
+        handler((e as CustomEvent<EventMap[K]>).detail);
+      } catch (err) {
+        // A crashing subscriber must not poison the bus: DOM
+        // dispatchEvent does not stop on throw, but an uncaught error
+        // still reaches window.onerror and reads as an app fault when
+        // the real culprit is one listener. Log with the channel name
+        // so the culprit is identifiable, and swallow. (Same rule the
+        // web-client store applies to its own subscribers.)
+        console.error(`[event-bus] subscriber for "${name}" threw:`, err);
+      }
     };
     this.target.addEventListener(name, wrapped as EventListener);
     return () =>

@@ -259,7 +259,12 @@ export class ExtensionManager {
 
   private saveRegistry(reg: ExtensionRegistry): void {
     try {
-      writeFileAtomic(this.registryPath, JSON.stringify(reg, null, 2));
+      // 0o600 — the registry records which extensions (and thus which
+      // third-party code paths) are active on this machine; no reason
+      // for other users of the box to read it.
+      writeFileAtomic(this.registryPath, JSON.stringify(reg, null, 2), {
+        mode: 0o600,
+      });
     } catch (err) {
       this.log(`registry write failed: ${String(err)}`);
     }
@@ -597,13 +602,38 @@ export class ExtensionManager {
       }
       this.repairSdkDependency(dir);
       this.log(`bun install in ${dir}…`);
-      const proc = Bun.spawn([resolveBunBinary(), "install"], {
-        cwd: dir,
-        stdout: "pipe",
-        stderr: "pipe",
-        env: { ...process.env, PATH: loginShellPath() },
-      });
+      // `--ignore-scripts` is load-bearing for the trust model: the
+      // documented "extensions are trusted code" stance covers the
+      // extension's own entry point, NOT its dependency tree. Without
+      // the flag, any transitive dependency's postinstall hook would
+      // execute during install with the user's full environment
+      // (ANTHROPIC_API_KEY and friends present) before anyone had a
+      // chance to review it. Extensions that genuinely need a build
+      // step must ship prebuilt artefacts.
+      const proc = Bun.spawn(
+        [resolveBunBinary(), "install", "--ignore-scripts"],
+        {
+          cwd: dir,
+          stdout: "pipe",
+          stderr: "pipe",
+          env: { ...process.env, PATH: loginShellPath() },
+        },
+      );
+      // A hung registry/network must not wedge extension installs
+      // forever — kill after a generous bound and report.
+      const INSTALL_TIMEOUT_MS = 180_000;
+      const killTimer = setTimeout(() => {
+        try {
+          proc.kill();
+          this.log(
+            `bun install in ${dir} killed after ${INSTALL_TIMEOUT_MS / 1000}s (timeout)`,
+          );
+        } catch {
+          /* already exited */
+        }
+      }, INSTALL_TIMEOUT_MS);
       const code = await proc.exited;
+      clearTimeout(killTimer);
       if (code !== 0) {
         // Surface the failure so a broken install doesn't silently leave the
         // pane blank. Read stderr best-effort for the diagnostic.

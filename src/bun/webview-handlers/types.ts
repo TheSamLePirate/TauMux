@@ -57,6 +57,7 @@ import type { SurfaceMetadataPoller } from "../surface-metadata";
 import type { TelegramDatabase } from "../telegram-db";
 import type { TauMuxRPC } from "../../shared/types";
 import type { setupLogging } from "../logger";
+import type { HealthRegistry } from "../health";
 
 /** Concrete return type of `BrowserView.defineRPC<TauMuxRPC>`. Kept
  *  inferred rather than re-declared so any future Electrobun bump
@@ -100,6 +101,7 @@ export interface WebviewHandlerContext {
   configDir: string;
   loggerHandle: ReturnType<typeof setupLogging>;
   htTestMode: boolean;
+  health: HealthRegistry;
 
   // ── Late-bound dependencies (filled in after their `const` decls) ──
   readonly autoContinue: AutoContinueEngine;

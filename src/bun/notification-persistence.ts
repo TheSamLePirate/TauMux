@@ -78,7 +78,9 @@ export function createDebouncedPersister(
         // persist beyond what we'd load.
         list: store.list.slice(-MAX_PERSISTED),
       };
-      writeFileAtomic(path, JSON.stringify(payload));
+      // 0o600 — notification bodies can carry agent output excerpts
+      // and paths; owner-only like the rest of the persisted state.
+      writeFileAtomic(path, JSON.stringify(payload), { mode: 0o600 });
     } catch {
       /* a busted FS must not break notifications — log on the next
          tick if we ever wire one in, but never throw from the persist

@@ -42,27 +42,33 @@ function makeTerm(opts: {
 }
 
 describe("resizePreservingScroll", () => {
-  test("restores the distance-from-bottom when the user was scrolled up", () => {
-    // viewport at line 50, bottom at 100 → 50 lines up from the bottom.
+  test("restores the reading line when the user was scrolled up", () => {
+    // viewport at line 50, bottom at 100. Cols change (80 → 100) but
+    // the reflow happens to keep the line count identical; rows stay
+    // 24 so the geometry is physically consistent.
     const { term, calls, active } = makeTerm({ viewportY: 50, baseY: 100 });
-    resizePreservingScroll(term, 100, 30, () => {});
-    expect(calls.resize).toEqual([{ cols: 100, rows: 30 }]);
-    // After reflow xterm would have snapped to baseY (100); we restore to
-    // baseY - distFromBottom = 100 - 50 = 50.
+    resizePreservingScroll(term, 100, 24, () => {});
+    expect(calls.resize).toEqual([{ cols: 100, rows: 24 }]);
+    // After reflow xterm would have snapped to baseY (100); with zero
+    // total-lines delta the content anchor is the unchanged line 50.
     expect(calls.scrollToLine).toEqual([50]);
     expect(active.viewportY).toBe(50);
   });
 
-  test("preserves the gap even when the scrollback length changes on reflow", () => {
-    // 20 lines up; reflow grows baseY 100 → 140.
+  test("follows the content when reflow adds lines (rows effect removed)", () => {
+    // 20 lines up; heavy wrap on cols 80 → 100 plus rows 24 → 30.
+    // baseY 100 → 140 means ΔtotalLines = ΔbaseY + Δrows = 40 + 6 = 46
+    // wrapped lines appeared above/around the reader, so the content
+    // anchor moves 80 → 126. (The pre-2026-10 anchor preserved the
+    // distance-from-bottom gap exactly — 120 — but silently absorbed
+    // the 6-row effect into the reader's position.)
     const { term, calls } = makeTerm({
       viewportY: 80,
       baseY: 100,
       baseYAfter: 140,
     });
     resizePreservingScroll(term, 100, 30, () => {});
-    // target = 140 - (100 - 80) = 120.
-    expect(calls.scrollToLine).toEqual([120]);
+    expect(calls.scrollToLine).toEqual([126]);
   });
 
   test("leaves xterm's follow-the-bottom behaviour alone when already at bottom", () => {

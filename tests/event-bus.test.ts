@@ -102,4 +102,34 @@ describe("EventBus (P7 S8 / A6)", () => {
     htEvents.emit("ht-reorder-workspaces", { order: ["z"] });
     expect(typed).toEqual([["x", "y"]]);
   });
+
+  // Webview fault-isolation finding (improvement_analysis_2026-10
+  // §1.3): the webview had zero fault containment — one throwing
+  // subscriber would surface as an app-level error with no culprit.
+  // The bus now isolates each subscriber: a throw is logged with the
+  // channel name and swallowed; sibling subscribers still run.
+  test("a throwing subscriber does not take down the bus or its siblings", () => {
+    const { bus } = makeBus();
+    const errors: unknown[] = [];
+    const origError = console.error;
+    console.error = (...args: unknown[]) => errors.push(args);
+    try {
+      const seen: string[] = [];
+      bus.on("test:hello", () => {
+        throw new Error("boom");
+      });
+      bus.on("test:hello", (p) => seen.push(p.greeting));
+      bus.emit("test:hello", { greeting: "hi" });
+      // Sibling still ran despite the throw above it.
+      expect(seen).toEqual(["hi"]);
+      // The failure was logged with the channel name.
+      expect(errors.length).toBeGreaterThan(0);
+      expect(String(errors[0]?.[0])).toContain("test:hello");
+      // And the bus is reusable afterwards.
+      bus.emit("test:hello", { greeting: "again" });
+      expect(seen).toEqual(["hi", "again"]);
+    } finally {
+      console.error = origError;
+    }
+  });
 });
