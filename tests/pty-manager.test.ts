@@ -194,7 +194,11 @@ describe("PtyManager", () => {
     expect(pty.exited).toBe(false);
     pty.kill("SIGTERM");
 
-    await waitFor(() => pty.exited, 3000);
+    // Generous timeout: `_exited` flips at the END of the teardown
+    // chain (process death → exited promise → stdout stream flush), so
+    // on a loaded CI runner 3 s was marginal — this test asserts that
+    // SIGTERM kills the process, not that death happens quickly.
+    await waitFor(() => pty.exited, 10_000);
     expect(pty.exited).toBe(true);
   });
 
