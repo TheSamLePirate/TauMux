@@ -1,60 +1,13 @@
 import { test, expect } from "./fixtures";
-import { WebSocket as NodeWS } from "ws";
 import { WEB_PROTOCOL_VERSION } from "../src/shared/web-protocol";
-
-interface Envelope {
-  v: number;
-  seq: number;
-  type: string;
-  payload: Record<string, unknown>;
-}
-
-function parseEnvelope(raw: unknown): Envelope | null {
-  const text =
-    typeof raw === "string"
-      ? raw
-      : raw instanceof Buffer
-        ? raw.toString("utf8")
-        : null;
-  if (!text || text[0] !== "{") return null;
-  try {
-    return JSON.parse(text) as Envelope;
-  } catch {
-    return null;
-  }
-}
-
-async function openWS(port: number): Promise<NodeWS> {
-  const ws = new NodeWS(`ws://127.0.0.1:${port}/`);
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("ws open timeout")), 5_000);
-    ws.once("open", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-    ws.once("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
-  return ws;
-}
+import { openWSBuffered } from "./ws-client";
 
 test.describe("web mirror: hello envelope shape", () => {
   test("hello carries protocolVersion, hex sessionId, snapshot", async ({
     serverCtx,
   }) => {
-    const ws = await openWS(serverCtx.port);
-    const hello = await new Promise<Envelope>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("no hello")), 5_000);
-      ws.on("message", (raw) => {
-        const env = parseEnvelope(raw);
-        if (env?.type === "hello") {
-          clearTimeout(timer);
-          resolve(env);
-        }
-      });
-    });
+    const { ws, waitFor } = await openWSBuffered(serverCtx.port);
+    const hello = await waitFor("hello");
 
     expect(hello.v).toBe(WEB_PROTOCOL_VERSION);
     expect(hello.seq).toBe(0);
@@ -80,19 +33,10 @@ test.describe("web mirror: hello envelope shape", () => {
     const ctx2 = await boot();
 
     async function grabInstanceId(port: number): Promise<string> {
-      const ws = await openWS(port);
-      const id = await new Promise<string>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("no hello")), 5_000);
-        ws.on("message", (raw) => {
-          const env = parseEnvelope(raw);
-          if (env?.type === "hello") {
-            clearTimeout(timer);
-            resolve(env.payload["serverInstanceId"] as string);
-          }
-        });
-      });
+      const { ws, waitFor } = await openWSBuffered(port);
+      const hello = await waitFor("hello");
       ws.close();
-      return id;
+      return hello.payload["serverInstanceId"] as string;
     }
 
     const [a, b] = await Promise.all([
@@ -109,12 +53,7 @@ test.describe("web mirror: seq monotonicity", () => {
   test("every envelope has a strictly-increasing seq starting at 0", async ({
     serverCtx,
   }) => {
-    const ws = await openWS(serverCtx.port);
-    const seqs: number[] = [];
-    ws.on("message", (raw) => {
-      const env = parseEnvelope(raw);
-      if (env) seqs.push(env.seq);
-    });
+    const { ws, messages } = await openWSBuffered(serverCtx.port);
 
     // Space the echoes beyond the 16 ms OUTPUT_COALESCE_MS window so
     // they produce distinct output envelopes rather than being merged
@@ -131,8 +70,9 @@ test.describe("web mirror: seq monotonicity", () => {
     }
 
     await expect
-      .poll(() => seqs.length, { timeout: 10_000 })
+      .poll(() => messages.length, { timeout: 10_000 })
       .toBeGreaterThanOrEqual(3); // hello + at least 2 spaced outputs
+    const seqs = messages.map((m) => m.seq);
 
     // Seq starts at 0 (hello) and increments by exactly 1. Coalesced
     // outputs still get a new seq — the semantic is "per enqueued
@@ -202,12 +142,7 @@ test.describe("web mirror: subscribe / history replay", () => {
   test("subscribeSurface triggers a history envelope for that surface", async ({
     serverCtx,
   }) => {
-    const ws = await openWS(serverCtx.port);
-    const seen: Envelope[] = [];
-    ws.on("message", (raw) => {
-      const env = parseEnvelope(raw);
-      if (env) seen.push(env);
-    });
+    const { ws, messages: seen } = await openWSBuffered(serverCtx.port);
 
     // Produce some shell output so the surface has history to replay.
     ws.send(

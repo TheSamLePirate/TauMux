@@ -1,49 +1,6 @@
 import { test, expect } from "./fixtures";
-import { WebSocket as NodeWS } from "ws";
 import { WEB_PROTOCOL_VERSION } from "../src/shared/web-protocol";
-
-/**
- * Helpers for opening a WS, waiting for a specific envelope, and
- * sending messages. Each test builds its own ws so there's no shared
- * state.
- */
-async function openWS(port: number): Promise<NodeWS> {
-  const ws = new NodeWS(`ws://127.0.0.1:${port}/`);
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("ws open timeout")), 5_000);
-    ws.once("open", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-    ws.once("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
-  return ws;
-}
-
-interface Envelope {
-  v: number;
-  seq: number;
-  type: string;
-  payload: Record<string, unknown>;
-}
-
-function parseEnvelope(raw: unknown): Envelope | null {
-  const text =
-    typeof raw === "string"
-      ? raw
-      : raw instanceof Buffer
-        ? raw.toString("utf8")
-        : null;
-  if (!text || text[0] !== "{") return null;
-  try {
-    return JSON.parse(text) as Envelope;
-  } catch {
-    return null;
-  }
-}
+import { openWSBuffered } from "./ws-client";
 
 test.describe("web mirror: resize request clamping", () => {
   test("huge cols/rows are clamped rather than forwarded raw", async ({
@@ -60,12 +17,7 @@ test.describe("web mirror: resize request clamping", () => {
     // still accepts subsequent messages. A dedicated unit test in
     // tests/hardening-extra.test.ts already proves the clamping
     // arithmetic — this e2e checks the protocol stays healthy.
-    const ws = await openWS(serverCtx.port);
-    const messages: Envelope[] = [];
-    ws.on("message", (raw) => {
-      const env = parseEnvelope(raw);
-      if (env) messages.push(env);
-    });
+    const { ws, messages } = await openWSBuffered(serverCtx.port);
 
     // 1) Out-of-range (must be clamped or dropped silently — NOT cause
     //    the session to die).
@@ -120,12 +72,9 @@ test.describe("web mirror: reconnect + resume replay", () => {
     serverCtx,
   }) => {
     // 1. Open a first WS, wait for hello, note sessionId.
-    const ws1 = await openWS(serverCtx.port);
-    const msgs1: Envelope[] = [];
-    ws1.on("message", (raw) => {
-      const env = parseEnvelope(raw);
-      if (env) msgs1.push(env);
-    });
+    const { ws: ws1, messages: msgs1 } = await openWSBuffered(
+      serverCtx.port,
+    );
 
     await expect
       .poll(() => msgs1.some((m) => m.type === "hello"), { timeout: 5_000 })
@@ -178,7 +127,7 @@ test.describe("web mirror: reconnect + resume replay", () => {
     //    watermark; any new messages past that will surface on resume.
 
     // Create a brand-new short-lived WS just to push more stdin in.
-    const pusher = await openWS(serverCtx.port);
+    const { ws: pusher } = await openWSBuffered(serverCtx.port);
     const markerGap = `GAP_${Date.now()}`;
     pusher.send(
       JSON.stringify({
@@ -199,25 +148,10 @@ test.describe("web mirror: reconnect + resume replay", () => {
     //    should replay all envelopes with seq > lastSeqBefore, which
     //    includes the GAP marker (broadcast to all sessions subscribed
     //    to the surface).
-    const ws2 = new NodeWS(
-      `ws://127.0.0.1:${serverCtx.port}/?resume=${encodeURIComponent(sessionId)}&seq=${lastSeqBefore}`,
+    const { ws: ws2, messages: msgs2 } = await openWSBuffered(
+      serverCtx.port,
+      `?resume=${encodeURIComponent(sessionId)}&seq=${lastSeqBefore}`,
     );
-    const msgs2: Envelope[] = [];
-    ws2.on("message", (raw) => {
-      const env = parseEnvelope(raw);
-      if (env) msgs2.push(env);
-    });
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error("ws2 open timeout")),
-        5_000,
-      );
-      ws2.once("open", () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      ws2.once("error", reject);
-    });
 
     // After resume, the session should have the GAP marker replayed
     // as an output envelope (or already in the subsequent broadcast).
@@ -246,22 +180,10 @@ test.describe("web mirror: reconnect + resume replay", () => {
     serverCtx,
   }) => {
     const fakeId = "0".repeat(32);
-    const ws = new NodeWS(
-      `ws://127.0.0.1:${serverCtx.port}/?resume=${fakeId}&seq=0`,
+    const { ws, messages: msgs } = await openWSBuffered(
+      serverCtx.port,
+      `?resume=${fakeId}&seq=0`,
     );
-    const msgs: Envelope[] = [];
-    ws.on("message", (raw) => {
-      const env = parseEnvelope(raw);
-      if (env) msgs.push(env);
-    });
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("open timeout")), 5_000);
-      ws.once("open", () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      ws.once("error", reject);
-    });
 
     // Server fell back to creating a new session — first envelope is
     // a fresh hello, not a replay.
@@ -280,12 +202,7 @@ test.describe("web mirror: stdin size cap", () => {
   test("oversized stdin is dropped; normal stdin after still round-trips", async ({
     serverCtx,
   }) => {
-    const ws = await openWS(serverCtx.port);
-    const msgs: Envelope[] = [];
-    ws.on("message", (raw) => {
-      const env = parseEnvelope(raw);
-      if (env) msgs.push(env);
-    });
+    const { ws, messages: msgs } = await openWSBuffered(serverCtx.port);
 
     // 64 KiB + 1 — over the cap. Server should log-and-drop.
     const overMax = "x".repeat(64 * 1024 + 1);
