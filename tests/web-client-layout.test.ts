@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { computeRects, type LayoutNode } from "../src/web-client/layout";
+import {
+  collectSurfaceIds,
+  computeRects,
+  type LayoutNode,
+} from "../src/web-client/layout";
 
 const BOUNDS = { x: 0, y: 0, w: 800, h: 600 };
 
@@ -470,5 +474,45 @@ describe("createLayoutView paneGap from settings", () => {
     view.applyLayout(state as any);
     expect(t.cols).toBe(80); // 800/10 = 80
     expect(t.rows).toBe(30); // 600/20 = 30
+  });
+});
+
+describe("collectSurfaceIds", () => {
+  test("collects every leaf across nested splits", () => {
+    const out = new Set<string>();
+    collectSurfaceIds(
+      {
+        type: "split",
+        children: [
+          { type: "leaf", surfaceId: "s1" },
+          {
+            type: "split",
+            children: [
+              { type: "leaf", surfaceId: "s2" },
+              { type: "leaf", surfaceId: "s3" },
+            ],
+          },
+        ],
+      },
+      out,
+    );
+    expect([...out].sort()).toEqual(["s1", "s2", "s3"]);
+  });
+
+  test("null / malformed nodes are safe no-ops", () => {
+    const out = new Set<string>();
+    expect(() => {
+      collectSurfaceIds(null, out);
+      collectSurfaceIds({} as never, out);
+      collectSurfaceIds({ type: "leaf" } as never, out); // no surfaceId
+      collectSurfaceIds({ type: "split", children: "oops" } as never, out);
+    }).not.toThrow();
+    expect(out.size).toBe(0);
+  });
+
+  test("a bare leaf without surfaceId adds nothing", () => {
+    const out = new Set<string>();
+    collectSurfaceIds({ type: "leaf" }, out);
+    expect(out.size).toBe(0);
   });
 });
