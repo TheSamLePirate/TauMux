@@ -187,9 +187,13 @@ describe("PtyManager", () => {
     expect(fds.dataFd).not.toBe(fds.eventFd);
   });
 
-  // The third argument raises Bun's own per-test timeout (5 s default
-  // kills the test before any waitFor): teardown is measured at 3-5 s
-  // on CI runners, slower still under coverage instrumentation.
+  // SIGKILL, deliberately: /bin/sh with no args on a PTY is an
+  // INTERACTIVE shell (isatty stdin), and interactive shells ignore
+  // SIGTERM — on Linux CI runners the process simply never dies and
+  // no timeout (3 s, 15 s…) saves the test. What this test must prove
+  // is that kill() DELIVERS a signal to the process, and SIGKILL can't
+  // be ignored on any platform. The generous per-test timeout still
+  // covers slow exit-detection on loaded runners.
   test(
     "kill sends signal to process",
     async () => {
@@ -197,12 +201,8 @@ describe("PtyManager", () => {
       pty.spawn({ shell: "/bin/sh", cols: 80, rows: 24 });
 
       expect(pty.exited).toBe(false);
-      pty.kill("SIGTERM");
+      pty.kill("SIGKILL");
 
-      // Generous timeout: `_exited` flips at the END of the teardown
-      // chain (process death → exited promise → stdout stream flush), so
-      // on a loaded CI runner 3 s was marginal — this test asserts that
-      // SIGTERM kills the process, not that death happens quickly.
       await waitFor(() => pty.exited, 15_000);
       expect(pty.exited).toBe(true);
     },
