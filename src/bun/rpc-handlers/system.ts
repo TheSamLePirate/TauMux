@@ -6,7 +6,7 @@ import { RPC_PROTOCOL } from "../../shared/brand";
 // ../../shared/brand) because `scripts/bump-version.ts` rewrites this
 // exact line by regex. The two copies are pinned together by
 // tests/version-consistency.test.ts.
-const VERSION = "0.24.7";
+const VERSION = "0.24.8";
 const START_TIME_MS = Date.now();
 
 /** system.* handlers: diagnostic + discovery RPCs.

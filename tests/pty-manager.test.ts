@@ -115,9 +115,9 @@ describe("PtyManager", () => {
     // reads TIOCGWINSZ, which is set by the termios resize the
     // terminal API issues under the hood.
     pty.write("stty size\n");
-    await waitFor(() => output.includes("40 120"), 3000);
+    await waitFor(() => output.includes("40 120"), 10_000);
     expect(output).toContain("40 120");
-  });
+  }, 20_000);
 
   test("sets environment variables", async () => {
     pty = new PtyManager();
@@ -187,20 +187,27 @@ describe("PtyManager", () => {
     expect(fds.dataFd).not.toBe(fds.eventFd);
   });
 
-  test("kill sends signal to process", async () => {
-    pty = new PtyManager();
-    pty.spawn({ shell: "/bin/sh", cols: 80, rows: 24 });
+  // The third argument raises Bun's own per-test timeout (5 s default
+  // kills the test before any waitFor): teardown is measured at 3-5 s
+  // on CI runners, slower still under coverage instrumentation.
+  test(
+    "kill sends signal to process",
+    async () => {
+      pty = new PtyManager();
+      pty.spawn({ shell: "/bin/sh", cols: 80, rows: 24 });
 
-    expect(pty.exited).toBe(false);
-    pty.kill("SIGTERM");
+      expect(pty.exited).toBe(false);
+      pty.kill("SIGTERM");
 
-    // Generous timeout: `_exited` flips at the END of the teardown
-    // chain (process death → exited promise → stdout stream flush), so
-    // on a loaded CI runner 3 s was marginal — this test asserts that
-    // SIGTERM kills the process, not that death happens quickly.
-    await waitFor(() => pty.exited, 10_000);
-    expect(pty.exited).toBe(true);
-  });
+      // Generous timeout: `_exited` flips at the END of the teardown
+      // chain (process death → exited promise → stdout stream flush), so
+      // on a loaded CI runner 3 s was marginal — this test asserts that
+      // SIGTERM kills the process, not that death happens quickly.
+      await waitFor(() => pty.exited, 15_000);
+      expect(pty.exited).toBe(true);
+    },
+    20_000,
+  );
 
   test("destroy cleans up process", async () => {
     pty = new PtyManager();
@@ -235,16 +242,23 @@ describe("PtyManager", () => {
     expect(() => pty.resize(80, 24)).not.toThrow();
   });
 
-  test("kill is no-op on already exited process", async () => {
-    pty = new PtyManager();
-    pty.spawn({ shell: "/bin/sh", cols: 80, rows: 24 });
-    pty.write("exit 0\n");
+  // Same teardown-chain flake class as the SIGTERM test above —
+  // generous timeouts so a loaded / coverage-instrumented CI runner
+  // can't fail what is a no-op semantics test.
+  test(
+    "kill is no-op on already exited process",
+    async () => {
+      pty = new PtyManager();
+      pty.spawn({ shell: "/bin/sh", cols: 80, rows: 24 });
+      pty.write("exit 0\n");
 
-    await waitFor(() => pty.exited, 3000);
+      await waitFor(() => pty.exited, 15_000);
 
-    // Should not throw
-    expect(() => pty.kill("SIGTERM")).not.toThrow();
-  });
+      // Should not throw
+      expect(() => pty.kill("SIGTERM")).not.toThrow();
+    },
+    20_000,
+  );
 
   test("uses custom cwd", async () => {
     pty = new PtyManager();

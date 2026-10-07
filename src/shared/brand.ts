@@ -55,4 +55,4 @@ export const TERM_PROGRAM_NAME = "tau-mux";
  *  electrobun.config.ts and `src/bun/rpc-handlers/system.ts`. The three
  *  copies are pinned to each other by `tests/version-consistency.test.ts`,
  *  so a partial bump fails CI instead of shipping a lie. */
-export const APP_VERSION = "0.24.7";
+export const APP_VERSION = "0.24.8";
